@@ -55,6 +55,14 @@ final class Preferences: ObservableObject {
         /// Bundle identifiers of apps that get the composition in the candidate window instead of inline.  Empty by
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"
+
+        static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
+                          shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps]
+    }
+
+    func resetToDefaults() {
+        Key.all.forEach(defaults.removeObject(forKey:))
+        changed()
     }
 
     private func changed() {

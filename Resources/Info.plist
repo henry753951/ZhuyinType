@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>org.zhuyintype.inputmethod.ZhuyinType</string>
+    <key>CFBundleName</key><string>ZhuyinType</string>
+    <key>CFBundleDisplayName</key><string>ZhuyinType 注音</string>
+    <key>CFBundleExecutable</key><string>ZhuyinType</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleDevelopmentRegion</key><string>zh_TW</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSBackgroundOnly</key><false/>
+    <key>LSUIElement</key><true/>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSHumanReadableCopyright</key><string>Copyright (c) 2026 ZhuyinType contributors</string>
+    <key>InputMethodConnectionName</key><string>org.zhuyintype.inputmethod.ZhuyinType_Connection</string>
+    <key>InputMethodServerControllerClass</key><string>ZhuyinInputController</string>
+    <key>InputMethodServerDelegateClass</key><string>ZhuyinInputController</string>
+    <key>TISInputSourceID</key><string>org.zhuyintype.inputmethod.ZhuyinType</string>
+    <key>TISIntendedLanguage</key><string>zh-Hant</string>
+    <key>TISIconIsTemplate</key><true/>
+    <key>tsInputMethodCharacterRepertoireKey</key><array><string>Hant</string></array>
+    <key>tsInputMethodIconFileKey</key><string>InputSourceTemplate.tiff</string>
+    <key>tsInputMethodAlternateIconFileKey</key><string>InputSourceTemplate.tiff</string>
+    <key>ComponentInputModeDict</key>
+    <dict>
+        <key>tsInputModeListKey</key>
+        <dict>
+            <key>org.zhuyintype.inputmethod.ZhuyinType.Zhuyin</key>
+            <dict>
+                <key>TISInputSourceID</key><string>org.zhuyintype.inputmethod.ZhuyinType.Zhuyin</string>
+                <key>TISIntendedLanguage</key><string>zh-Hant</string>
+                <key>TISIconIsTemplate</key><true/>
+                <key>tsInputModeCharacterRepertoireKey</key><array><string>Hant</string></array>
+                <key>tsInputModeScriptKey</key><string>smTradChinese</string>
+                <key>tsInputModePrimaryInScriptKey</key><true/>
+                <key>tsInputModeMenuIconFileKey</key><string>InputSourceTemplate.tiff</string>
+                <key>tsInputModeAlternateMenuIconFileKey</key><string>InputSourceTemplate.tiff</string>
+                <key>tsInputModePaletteIconFileKey</key><string>InputSourceTemplate.tiff</string>
+                <key>tsInputModeDefaultStateKey</key><true/>
+                <key>tsInputModeIsVisibleKey</key><true/>
+            </dict>
+        </dict>
+        <key>tsVisibleInputModeOrderedArrayKey</key>
+        <array><string>org.zhuyintype.inputmethod.ZhuyinType.Zhuyin</string></array>
+    </dict>
+</dict>
+</plist>

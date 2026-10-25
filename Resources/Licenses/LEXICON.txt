@@ -1,0 +1,31 @@
+ZhuyinType 基本詞庫：CC BY-SA 4.0
+
+The bundled lexicon.tsv is an adaptation combining Traditional forms and
+Taiwan-preferred readings from CC-CEDICT, Big5 readings from Unicode Unihan,
+and frequency scores from wordfreq. ZhuyinType converts readings to Zhuyin,
+filters entries and computes unigram log probabilities. No endorsement by
+the original authors is implied. Changes and build code: data/tools/ in
+the ZhuyinType source distribution. Source list: data/SOURCES.md (also
+included as Licenses/SOURCES.md).
+
+CC-CEDICT: Copyright CC-CEDICT contributors, published by MDBG.
+CEDICT: Copyright (C) 1997, 1998 Paul Andrew Denisowski.
+https://www.mdbg.net/chinese/dictionary?page=cc-cedict
+https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz
+Licensed under CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
+
+Unicode Unihan: Copyright Unicode, Inc. and contributors.
+https://www.unicode.org/charts/unihan.html
+https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip
+Unicode License v3: https://www.unicode.org/license.txt
+
+wordfreq: Copyright Robyn Speer and contributors; frequency data CC BY-SA 4.0.
+https://github.com/rspeer/wordfreq
+https://github.com/rspeer/wordfreq/blob/master/README.md
+Upstream credits and citations are included in wordfreq-NOTICE.txt.
+https://creativecommons.org/licenses/by-sa/4.0/
+
+The generated lexicon is distributed under CC BY-SA 4.0. Copies of that
+license and Unicode License v3 accompany this notice. The application code
+is separately licensed under GNU AGPL version 3 (AGPL-3.0-only). These licenses do not grant trademark
+rights. No warranty is provided; see the complete license texts.

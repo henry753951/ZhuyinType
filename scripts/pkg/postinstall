@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+target_volume=${3:-/}
+if [[ "$target_volume" != / ]]; then
+    echo 'ZhuyinType 已安裝至指定卷宗。請從該卷宗啟動後，在「系統設定 → 鍵盤 → 輸入方式」加入「ZhuyinType 注音」。'
+    exit 0
+fi
+user=$(/usr/bin/stat -f '%Su' /dev/console)
+case "$user" in root|loginwindow|_mbsetupuser|'')
+    echo '請登入後，在「系統設定 → 鍵盤 → 輸入方式」按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。'
+    exit 0 ;;
+esac
+uid=$(/usr/bin/id -u "$user")
+binary='/Library/Input Methods/ZhuyinType.app/Contents/MacOS/ZhuyinType'
+if ! /bin/launchctl asuser "$uid" /usr/bin/sudo -H -u "$user" "$binary" --install; then
+    echo '請手動加入輸入方式：系統設定 → 鍵盤 → 輸入方式 → 編輯 → ＋ → 繁體中文 → ZhuyinType 注音。清單尚未出現時，請登出再登入。'
+fi
+exit 0

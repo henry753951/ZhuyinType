@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><style>
+body { font: 15px -apple-system, sans-serif; line-height: 1.65; padding: 12px; color: #222; }
+h1 { color: #245c9b; font-size: 25px; } code { font-size: 12px; }
+</style><body>
+<h1>加入輸入方式</h1>
+<ol>
+<li>開啟「系統設定 → 鍵盤 → 輸入方式 → 編輯」（部分版本顯示為「文字輸入」）。</li>
+<li>按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。已加入時可直接進行下一步。</li>
+<li>從選單列的輸入法選單選擇「注音 ZhuyinType」，或按 Control-Space 切換（依系統快捷鍵設定）。</li>
+</ol>
+<p>清單尚未出現時，請登出再登入。每個帳號各自加入輸入方式。</p>
+<p>移除：先切換至英文輸入方式，在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除
+<code>/Library/Input Methods/ZhuyinType.app</code>（需要管理員權限）。
+原始碼中的 <code>scripts/uninstall.sh</code> 可自動完成，預設保留自訂詞、記住的字詞與設定；加上 <code>--purge</code> 會一併刪除這些個人資料。</p>
+</body></html>

@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+# installer may upgrade an input method running in more than one login session.
+/usr/bin/pkill -x ZhuyinType || true
+exit 0
