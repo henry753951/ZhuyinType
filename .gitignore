@@ -1,0 +1,9 @@
+references/
+.DS_Store
+.build/
+.venv/
+DerivedData/
+data/raw/
+data/build/
+dist/
+*.xcodeproj/xcuserdata/
