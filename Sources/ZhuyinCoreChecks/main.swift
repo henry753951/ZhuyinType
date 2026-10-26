@@ -260,9 +260,9 @@ check(!literalDelete.isComposing, "multi-character literal is one token")
 for shifted in [false, true] {
     let c = composer(engine, "18 q8")
     let result = c.handle(shifted ? .shiftEnter : .enter)
-    check(result == KeyResult(handled: !shifted, commit: "八趴") && !c.isComposing, "enter/shift-enter completes valid buffer")
+    check(result == KeyResult(handled: !shifted, commit: "八ㄆㄚ") && !c.isComposing, "enter/shift-enter sends the unfinished syllable as typed")
     type("18 1u", into: c)
-    check(c.commitAll() == "八", "commit drops invalid buffer")
+    check(c.commitAll() == "八ㄅㄧ", "commit sends the unfinished symbols, never a guess")
 }
 var commitSpace = ComposerOptions(); commitSpace.spaceOpensCandidates = false
 let spaced = composer(engine, "18 ", options: commitSpace)

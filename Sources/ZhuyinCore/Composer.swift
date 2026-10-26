@@ -192,7 +192,11 @@ public final class Composer {
     }
 
     public func commitAll() -> String {
-        finishBuffer(droppingInvalid: true, allowingTypo: false)
+        // An unfinished syllable is sent as the symbols on screen: committing never guesses a tone or a correction.
+        if hasBuffer {
+            insert(.literal(bufferText))
+            clearBuffer()
+        }
         refresh()
         let text = presentation.text
         if options.learningEnabled {
