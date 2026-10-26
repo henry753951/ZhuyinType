@@ -1,5 +1,6 @@
 import AppKit
 import InputMethodKit
+import os
 
 final class IMKTextClient: TextClient {
     let input: IMKTextInput
@@ -21,19 +22,49 @@ final class IMKTextClient: TextClient {
         input.setMarkedText(text, selectionRange: selectionRange, replacementRange: replacementRange)
     }
 
+    /// The caret in screen coordinates: a zero-width rectangle as tall as the line.  Sources, most reliable first:
+    /// the composed text itself (the character before the caret, or the start of the composition), the attributes
+    /// query, the selection, the last caret found for this client, and finally the mouse.
     func caretRect(cursorIndex: Int) -> NSRect {
-        var rect = NSRect.zero
-        _ = input.attributes(forCharacterIndex: max(0, cursorIndex), lineHeightRectangle: &rect)
-        rect = rect.standardized
-        if !valid(rect) { rect = input.firstRect(forCharacterRange: selectedRange, actualRange: nil).standardized }
-        if valid(rect) { lastCaret = rect }
-        return lastCaret
+        let marked = markedRange
+        var sources: [(String, NSRect)] = []
+        if marked.location != NSNotFound {
+            let cursor = min(max(0, cursorIndex), marked.length)
+            if cursor > 0 {
+                let character = input.firstRect(forCharacterRange: NSRange(location: marked.location + cursor - 1, length: 1),
+                                                actualRange: nil).standardized
+                sources.append(("marked-before-caret", NSRect(x: character.maxX, y: character.minY, width: 0, height: character.height)))
+            }
+            let start = input.firstRect(forCharacterRange: NSRange(location: marked.location, length: 0), actualRange: nil)
+            sources.append(("marked-start", start.standardized))
+        }
+        var line = NSRect.zero
+        _ = input.attributes(forCharacterIndex: max(0, cursorIndex), lineHeightRectangle: &line)
+        sources.append(("attributes", line.standardized))
+        let selection = selectedRange
+        if selection.location != NSNotFound {
+            sources.append(("selection", input.firstRect(forCharacterRange: NSRange(location: selection.location, length: 0),
+                                                          actualRange: nil).standardized))
+        }
+        let chosen = sources.first { valid($0.1) }
+        Self.log.debug("caret \(self.bundleIdentifier, privacy: .public) cursor=\(cursorIndex) marked=\(marked.location),\(marked.length) chosen=\(chosen?.0 ?? "none", privacy: .public) \(sources.map { "\($0.0)=\(NSStringFromRect($0.1))" }.joined(separator: " "), privacy: .public)")
+        if let chosen {
+            lastCaret = chosen.1
+            return chosen.1
+        }
+        if valid(lastCaret) { return lastCaret }
+        let mouse = NSEvent.mouseLocation
+        return NSRect(x: mouse.x, y: mouse.y - 10, width: 0, height: 20)
     }
 
+    private static let log = Logger(subsystem: "org.zhuyintype", category: "caret")
+
+    /// A caret is a zero-width rectangle, so only the height must be positive.  Clients that cannot answer return
+    /// a zero rectangle at the screen origin, which is rejected too.
     private func valid(_ rect: NSRect) -> Bool {
-        guard rect.origin.x.isFinite, rect.origin.y.isFinite,
-              rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0 else { return false }
-        return NSScreen.screens.contains { $0.frame.intersects(rect) }
+        guard rect.origin.x.isFinite, rect.origin.y.isFinite, rect.width.isFinite, rect.height.isFinite,
+              rect.width >= 0, rect.height > 0, rect.height < 400, rect.origin != .zero else { return false }
+        return NSScreen.screens.contains { $0.frame.insetBy(dx: -1, dy: -1).contains(NSPoint(x: rect.minX, y: rect.midY)) }
     }
 }
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Character accuracy of whole-sentence conversion, typed key by key through zhuyin-cli.
 
-    python3 training/eval/conversion_eval.py --lexicon data/build/lexicon.tsv [--no-lm] [-n 200]
+    python3 training/eval/conversion_eval.py [--lexicon data/build/lexicon.tsv] [--test FILE ...] [--no-lm] [-n 200]
 
-Sentences come from data/build/lm/test_sentences.txt (held out from LM training).  Each sentence is cut into its Han
+Sentences come from held-out test files (default: data/build/lm/test_sentences.txt, and
+data/build/corpus/test_colloquial.txt when it exists), each reported separately.  Each sentence is cut into its Han
 runs; each run is given readings by longest-match against the lexicon (the most likely reading of each word), turned
 into standard-layout keys, typed, and committed with Enter.
 """
@@ -67,6 +68,7 @@ def main():
     parser.add_argument("-n", type=int, default=200)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--cli", default=".build/release/zhuyin-cli")
+    parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
 
     lexicon_path = args.lexicon
@@ -76,8 +78,15 @@ def main():
         shutil.copy(args.lexicon, lexicon_path)
     lexicon = load_lexicon(lexicon_path)
 
-    with open("data/build/lm/test_sentences.txt", encoding="utf-8") as f:
-        runs = [r for line in f for r in re.findall(r"[一-鿿]{4,20}", line)]
+    tests = args.test or [p for p in ["data/build/lm/test_sentences.txt", "data/build/corpus/test_colloquial.txt"]
+                          if os.path.exists(p)]
+    for test in tests:
+        evaluate(test, args, lexicon, lexicon_path)
+
+
+def evaluate(test, args, lexicon, lexicon_path):
+    with open(test, encoding="utf-8") as f:
+        runs = [r for line in f for r in re.findall(r"[\u4e00-\u9fff]{4,20}", line)]
     random.Random(args.seed).shuffle(runs)
     total = correct = whole = tested = 0
     misses = []
@@ -95,9 +104,10 @@ def main():
         total += len(run)
         correct += sum(a == b for a, b in zip(run, got))
         whole += got == run
-        if got != run and len(misses) < 12:
+        if got != run and len(misses) < 8:
             misses.append((run, got))
-    print(f"{tested} runs, character accuracy {correct / total:.1%}, whole-run accuracy {whole / tested:.1%}")
+    print(f"[{os.path.basename(test)}] {tested} runs, character accuracy {correct / max(1, total):.1%}, "
+          f"whole-run accuracy {whole / max(1, tested):.1%}")
     for want, got in misses:
         print(f"  {want}  →  {got}")
 
