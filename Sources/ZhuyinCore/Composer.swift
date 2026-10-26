@@ -59,12 +59,24 @@ public final class Composer {
     /// Scores to add to the best candidates for a span, given the composed text before it; nil leaves the order as is.
     /// Called once per span length when the candidate window opens.
     public var candidateScorer: ((_ before: String, _ candidates: [String]) -> [Double]?)?
+    /// A character model (the v3 syllable encoder): for each syllable, log P over the candidate characters given.
+    /// Nil when it cannot answer.  `characterWeight` is how much its scores count in the lattice.
+    public var characterScorer: ((_ syllables: [CharacterModelSyllable], _ candidates: [[Character]]) -> [[Double]]?)? {
+        didSet { conversionDirty = true; refresh() }
+    }
+    public var characterWeight = 1.0
+    /// The character model's scores for the current tokens, recomputed when they change.
+    private var characterScores: CharacterScores?
+    /// How many characters per syllable the character model is asked about.
+    static let characterCandidates = 64
+
     /// How many of a span's best-scoring candidates the scorer reorders.
     public var candidateScoringCount = 24
 
     /// Beam-bounded alternatives for completed tokens, excluding the unfinished syllable buffer.
     public func nBest(_ k: Int = 8) -> [ScoredSentence] {
-        engine.sentences(tokens, fixed: fixed, typo: options.typoTolerance, k: k, start: leadingHistory)
+        engine.sentences(tokens, fixed: fixed, typo: options.typoTolerance, k: k, start: leadingHistory,
+                         characters: characterScores)
     }
 
     public init(engine: Engine, options: ComposerOptions = ComposerOptions()) {
@@ -356,6 +368,7 @@ public final class Composer {
     /// starts a sentence after punctuation, a space or a line break).  Ignored while composing.
     public func setPrecedingText(_ text: String) {
         guard !hasComposition else { return }
+        engine.adaptDomain(to: text)
         let words = engine.trailingWords(of: text)
         leadingWords = words
         leadingHistory = words.last?.history ?? .init()
@@ -424,6 +437,47 @@ public final class Composer {
         run.append(KeyDecoder.Key(character: character, time: keyTime))
         if !applyRun() { run.removeLast() }
         return .consumed
+    }
+
+    /// Asks the character model about every syllable: the characters any lattice word puts there, the most frequent
+    /// `characterCandidates` of them.
+    private func scoreCharacters() -> CharacterScores? {
+        guard let characterScorer, tokens.contains(where: { $0.reading != nil }) else { return nil }
+        var candidates = Array(repeating: [Character: Double](), count: tokens.count)
+        for start in tokens.indices where tokens[start].reading != nil {
+            for match in engine.matches(tokens, start: start, typo: options.typoTolerance) {
+                for (offset, character) in match.entry.word.enumerated() where start + offset < tokens.count {
+                    let prior = match.entry.logp + match.entry.readingPrior - match.entry.penalty
+                    candidates[start + offset][character] = max(candidates[start + offset][character] ?? -.infinity, prior)
+                }
+            }
+        }
+        for word in fixed {
+            for (offset, character) in word.text.enumerated() where word.range.lowerBound + offset < tokens.count {
+                candidates[word.range.lowerBound + offset][character] = 0
+            }
+        }
+        let lists = candidates.map { $0.sorted { $0.value > $1.value }.prefix(Self.characterCandidates).map(\.key) }
+        let syllables = tokens.map { token -> CharacterModelSyllable in
+            guard case .syllable(let reading, let keys) = token else { return CharacterModelSyllable(base: nil, tone: 0, costBucket: 0) }
+            let toneMarks: [Character: Int] = ["ˊ": 2, "ˇ": 3, "ˋ": 4, "˙": 5]
+            let tone = reading.last.flatMap { toneMarks[$0] } ?? 1
+            let base = String(reading.filter { toneMarks[$0] == nil })
+            var bucket = 0
+            if !engine.isValidSyllable(reading) {
+                let cost = engine.alternatives(for: keys).first?.cost ?? .infinity
+                bucket = cost <= 6 ? 1 : cost <= 11 ? 2 : 3
+            }
+            return CharacterModelSyllable(base: base, tone: tone, costBucket: bucket)
+        }
+        guard let scores = characterScorer(syllables, lists) else { return nil }
+        var positions = Array(repeating: [Character: Double](), count: tokens.count)
+        for (index, list) in lists.enumerated() where index < scores.count {
+            for (column, character) in list.enumerated() where column < scores[index].count {
+                positions[index][character] = scores[index][column]
+            }
+        }
+        return CharacterScores(positions: positions, weight: characterWeight)
     }
 
     /// The run's split: the decoder's cheapest, unless another split of the same shape (as many syllables, the same
@@ -690,8 +744,9 @@ public final class Composer {
     private func refresh() {
         let revision = engine.conversionRevision
         if conversionDirty || conversionRevision != revision {
+            characterScores = scoreCharacters()
             conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache,
-                                        start: leadingHistory)
+                                        start: leadingHistory, characters: characterScores)
             if let reranker, !tokens.isEmpty {
                 let sentences = nBest(max(1, rerankingCount))
                 let index = reranker(sentences)

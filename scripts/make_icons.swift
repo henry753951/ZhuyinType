@@ -5,7 +5,7 @@
 //   Resources/AppIcon.icon/          Icon Composer source: a blue background and ㄓ on a Liquid Glass layer
 //   Resources/Assets.car             compiled icon, rendered by macOS 26 and later with the system glass material
 //   Resources/AppIcon.icns           the same icon for earlier systems
-//   Resources/InputSourceTemplate.tiff  menu bar icon (template), 16 pt at 1× and 2×
+//   Resources/InputSourceTemplate.pdf   input-source icon (template), 16 × 16 pt vector
 import AppKit
 import CoreText
 
@@ -23,8 +23,8 @@ func run(_ executable: String, _ arguments: [String]) throws {
 }
 
 /// The outline of ㄓ, scaled so its bounding box is `height` tall and centred on `center`.
-func glyphPath(height: CGFloat, center: CGPoint) -> CGPath {
-    let font = CTFontCreateWithName("PingFangTC-Semibold" as CFString, 1000, nil)
+func glyphPath(height: CGFloat, center: CGPoint, font name: String = "PingFangTC-Semibold") -> CGPath {
+    let font = CTFontCreateWithName(name as CFString, 1000, nil)
     var character: UniChar = 0x3113
     var glyph: CGGlyph = 0
     CTFontGetGlyphsForCharacters(font, &character, &glyph, 1)
@@ -120,17 +120,20 @@ try? fileManager.removeItem(at: resources.appendingPathComponent("AppIcon.iconse
 
 // MARK: - Menu bar icon
 
-/// The input-source badge, drawn like the system's: a 22 × 16 pt rounded rectangle with ㄓ cut out, as a vector PDF.
-/// Black on clear; Info.plist marks it as a template so macOS tints it for the menu bar and the input menu.
-let badgeSize = CGSize(width: 22, height: 16)
+/// The input-source badge, in the proportions of the system's own input-source icons: a 16 × 16 pt square with
+/// 2.5 pt corners and a regular-weight glyph about two thirds of its height cut out, as a vector PDF.  Black on clear;
+/// Info.plist marks it as a template, so macOS tints it for the menu bar, the input menu and the indicator by the
+/// insertion point.
+let badgeSize = CGSize(width: 16, height: 16)
 let badgeURL = resources.appendingPathComponent("InputSourceTemplate.pdf")
 var mediaBox = CGRect(origin: .zero, size: badgeSize)
 let pdf = CGContext(badgeURL as CFURL, mediaBox: &mediaBox, nil)!
 pdf.beginPDFPage(nil)
 let badge = CGMutablePath()
-badge.addRoundedRect(in: mediaBox, cornerWidth: 4.5, cornerHeight: 4.5)
+badge.addRoundedRect(in: mediaBox, cornerWidth: 2.5, cornerHeight: 2.5)
 // Union the glyph's contours first, so the even-odd fill cuts it out cleanly where strokes overlap.
-badge.addPath(glyphPath(height: 9, center: CGPoint(x: mediaBox.midX, y: mediaBox.midY)).normalized(using: .winding))
+badge.addPath(glyphPath(height: 10.5, center: CGPoint(x: mediaBox.midX, y: mediaBox.midY), font: "PingFangTC-Regular")
+    .normalized(using: .winding))
 pdf.addPath(badge)
 pdf.setFillColor(CGColor(gray: 0, alpha: 1))
 pdf.fillPath(using: .evenOdd)

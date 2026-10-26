@@ -149,6 +149,15 @@ public enum CandidateAnchor: Sendable {
     case beforeCursor
 }
 
+/// One syllable as a character model reads it: toneless reading (nil for a literal), tone 0 none, 1 first, 2 ˊ, 3 ˇ,
+/// 4 ˋ, 5 ˙, and how far the reading is from the keys typed (0 exact … 3 large correction).
+public struct CharacterModelSyllable: Equatable, Sendable {
+    public var base: String?
+    public var tone: Int
+    public var costBucket: Int
+    public init(base: String?, tone: Int, costBucket: Int) { self.base = base; self.tone = tone; self.costBucket = costBucket }
+}
+
 /// Ranges are composition token offsets, not UTF-16 offsets. Literals have an empty reading.
 public struct SentenceWord: Equatable, Sendable {
     public var range: Range<Int>

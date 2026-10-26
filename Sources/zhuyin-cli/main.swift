@@ -1,4 +1,6 @@
+#if canImport(CoreML)
 import CoreML
+#endif
 import Foundation
 import ZhuyinCore
 import ZhuyinML
@@ -12,11 +14,14 @@ var lexiconPath = "data/build/lexicon.tsv"
 var batch = false
 var keepMemory = false
 var rerankerPath: String?
+var modelServerPath: String?
 var rerankWeight = 0.5
 var rerankCount = 8
 var exactMargin: Double?
 /// Batch: print the engine's K best sentences (tab-separated) for each line instead of what it commits.
 var reportNBest = 0
+var v3Path: String?
+var v3Weight = 0.5
 var nbest = 0
 var context = ""
 /// Text committed so far by the line being typed (batch mode) or by the keys (single run).
@@ -24,7 +29,7 @@ var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -37,6 +42,10 @@ while let option = arguments.first, option.hasPrefix("--") {
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
     case "--keep-memory": keepMemory = true; arguments.removeFirst()
+    case "--model-server":
+        guard arguments.count >= 2 else { fail(usage) }
+        modelServerPath = arguments[1]
+        arguments.removeFirst(2)
     case "--reranker":
         guard arguments.count >= 2 else { fail(usage) }
         rerankerPath = arguments[1]
@@ -59,6 +68,69 @@ while let option = arguments.first, option.hasPrefix("--") {
         KeyDecoder.costs.swap = values[2]; KeyDecoder.costs.skip = values[3]
         KeyDecoder.costs.swapTogether = values[4]; KeyDecoder.costs.skipTogether = values[5]
         KeyDecoder.costs.swapApart = values[6]; KeyDecoder.costs.skipApart = values[7]
+        arguments.removeFirst(2)
+    case "--check-v3":
+        // Compares the v3 Core ML models with training/v3's golden outputs, then exits.
+        guard arguments.count >= 2 else { fail(usage) }
+        let directory = URL(fileURLWithPath: arguments[1])
+        do {
+            let scorer: SyllableScorer
+            if let modelServerPath {
+                let server = try ModelServer(path: modelServerPath)
+                scorer = try SyllableScorer(directory: directory, prediction: server.syllable)
+            } else {
+                scorer = try SyllableScorer(directory: directory)
+            }
+            let file = try JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("test_vectors.json"))) as! [String: Any]
+            var passed = 0, worst = 0.0
+            let vectors = file["vectors"] as! [[String: Any]]
+            for vector in vectors {
+                let inputs = vector["inputs"] as! [String: Any]
+                func row(_ key: String) -> [Int32] { ((inputs[key] as! [[Int]])[0]).map(Int32.init) }
+                let candidates = ((inputs["candidate_ids"] as! [[[Int]]])[0]).map { $0.map(Int32.init) }
+                let got = try scorer.rawScores(contextIDs: row("context_ids"), syllableIDs: row("syllable_ids"), tones: row("tone_ids"),
+                                               costs: row("cost_bucket"), boundaries: row("boundary"), candidates: candidates)
+                let expected = ((vector["expected"] as! [String: Any])["logprob"] as! [[[Double]]])[0]
+                var ok = true
+                for (r, list) in expected.enumerated() {
+                    for (c, value) in list.enumerated() where value > -9000 {
+                        let difference = abs(got[r][c] - value)
+                        worst = max(worst, difference)
+                        if difference > 0.002 + 0.002 * abs(value) { ok = false }
+                    }
+                }
+                if ok { passed += 1 }
+            }
+            print("v3 test vectors: \(passed)/\(vectors.count) within tolerance; largest difference \(worst)")
+            exit(passed == vectors.count ? 0 : 1)
+        } catch { fail(error.localizedDescription) }
+    case "--v3":
+        guard arguments.count >= 2 else { fail(usage) }
+        v3Path = arguments[1]
+        arguments.removeFirst(2)
+    case "--v3-weight":
+        guard arguments.count >= 2, let value = Double(arguments[1]) else { fail(usage) }
+        v3Weight = value
+        arguments.removeFirst(2)
+    case "--chat-lm":
+        guard arguments.count >= 2 else { fail(usage) }
+        Engine.chatModelDirectory = URL(fileURLWithPath: arguments[1])
+        arguments.removeFirst(2)
+    case "--end-share":
+        guard arguments.count >= 2, let value = Double(arguments[1]), value > 0, value <= 1 else { fail(usage) }
+        Engine.sentenceEndShare = value
+        arguments.removeFirst(2)
+    case "--chat-prior":
+        guard arguments.count >= 2, let value = Double(arguments[1]), value > 0, value < 1 else { fail(usage) }
+        Engine.chatPrior = value
+        arguments.removeFirst(2)
+    case "--domain-scale":
+        guard arguments.count >= 2, let value = Double(arguments[1]) else { fail(usage) }
+        Engine.domainEvidenceScale = value
+        arguments.removeFirst(2)
+    case "--domain-centre":
+        guard arguments.count >= 2, let value = Double(arguments[1]) else { fail(usage) }
+        Engine.domainEvidenceCentre = value
         arguments.removeFirst(2)
     case "--hotspot":
         guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
@@ -115,6 +187,9 @@ let specials: [String: KeyInput] = [
 /// Types parsed keys into a composer with key-down times: 0.12 s apart unless a `<dt:MS>` sets the gap before the next
 /// key.  Returns what was committed.
 var clock: TimeInterval = 1000
+/// With --timing, how long each key took in the composer (all models included), in milliseconds.
+var keyTimes: [Double] = []
+
 func typed(_ keys: [(String, KeyInput)], into composer: Composer, each: ((String, KeyResult) -> Void)? = nil) -> String {
     var committed = ""
     var gap = 0.12
@@ -122,7 +197,9 @@ func typed(_ keys: [(String, KeyInput)], into composer: Composer, each: ((String
         if label.hasPrefix("<dt:") { gap = (Double(label.dropFirst(4).dropLast()) ?? 120) / 1000; continue }
         clock += gap
         gap = 0.12
+        let start = DispatchTime.now().uptimeNanoseconds
         let result = composer.handle(key, at: clock)
+        if timing { keyTimes.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6) }
         committed += result.commit ?? ""
         each?(label, result)
     }
@@ -161,10 +238,32 @@ assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
     engine.fuzzySounds = fuzzy
-    // ZHUYIN_UNITS=all|gpu|ane compares Core ML compute units with --timing.
-    let units: MLComputeUnits = ["all": .all, "gpu": .cpuAndGPU, "ane": .cpuAndNeuralEngine][ProcessInfo.processInfo.environment["ZHUYIN_UNITS"] ?? ""] ?? .cpuOnly
-    let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight, computeUnits: units) }
+    let reranker: NeuralReranker?
+    let characterModel: SyllableScorer?
+    if let modelServerPath {
+        let server = try ModelServer(path: modelServerPath)
+        reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight, prediction: server.rerank) }
+        characterModel = try v3Path.map { try SyllableScorer(directory: URL(fileURLWithPath: $0), prediction: server.syllable) }
+    } else {
+        #if canImport(CoreML)
+        // ZHUYIN_UNITS=all|gpu|ane compares Core ML compute units with --timing.
+        let units: MLComputeUnits = ["all": .all, "gpu": .cpuAndGPU, "ane": .cpuAndNeuralEngine][ProcessInfo.processInfo.environment["ZHUYIN_UNITS"] ?? ""] ?? .cpuOnly
+        reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight, computeUnits: units) }
+        characterModel = try v3Path.map { try SyllableScorer(directory: URL(fileURLWithPath: $0)) }
+        #else
+        reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight) }
+        characterModel = try v3Path.map { try SyllableScorer(directory: URL(fileURLWithPath: $0)) }
+        #endif
+    }
     func attach(_ composer: Composer) {
+        if let characterModel {
+            composer.characterWeight = v3Weight
+            composer.characterScorer = { syllables, candidates in
+                characterModel.scores(context: context + committed, syllables: syllables.map {
+                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: false)
+                }, candidates: candidates)
+            }
+        }
         guard let reranker else { return }
         composer.rerankingCount = rerankCount
         if let exactMargin { reranker.exactMargin = exactMargin }
@@ -188,6 +287,7 @@ do {
         // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line
         // "TEXT<tab>KEYS" types KEYS after TEXT, as if TEXT were in the document before the insertion point.
         let baseContext = context
+        let usageStart = Usage.now(), wallStart = DispatchTime.now().uptimeNanoseconds
         while let line = readLine() {
             composer.reset()
             composer.breakContext()
@@ -208,11 +308,23 @@ do {
                 print(committed)
             }
         }
+        // On standard error, so batch output stays one line per input.
+        if timing {
+            FileHandle.standardError.write(Data(usageSummary(keyTimes: keyTimes, from: usageStart, to: Usage.now(),
+                wall: Double(DispatchTime.now().uptimeNanoseconds - wallStart) / 1e9).utf8))
+        }
         exit(0)
     }
     let composer = Composer(engine: engine, options: options)
     attach(composer)
     composer.setPrecedingText(context)
+    let usageStart = Usage.now(), wallStart = DispatchTime.now().uptimeNanoseconds
+    defer {
+        if timing {
+            print(usageSummary(keyTimes: keyTimes, from: usageStart, to: Usage.now(),
+                               wall: Double(DispatchTime.now().uptimeNanoseconds - wallStart) / 1e9), terminator: "")
+        }
+    }
     _ = typed(try parse(arguments[0]), into: composer) { label, result in
         let p = composer.presentation
         let string = p.text as NSString

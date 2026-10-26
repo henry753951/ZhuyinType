@@ -18,6 +18,7 @@ import random
 import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import tempfile
 
@@ -67,6 +68,11 @@ def keys_for(readings):
     return "".join(keys)
 
 
+# Interchangeable character forms (both acceptable in Taiwan text): a run differing only in these is still right
+# for the variant-equal score.
+VARIANTS = str.maketrans("臺妳裏爲衆啓峯綫着麪牀", "台你裡為眾啟峰線著麵床")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lexicon", default="data/build/lexicon.tsv")
@@ -90,6 +96,7 @@ def main():
     parser.add_argument("--line-context", action="store_true",
                         help="type each run after the text before it on its line (earlier clauses of the sentence), "
                         "as text already in the document")
+    parser.add_argument("--jobs", type=int, default=1, help="CLI processes to run in parallel")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -118,6 +125,7 @@ def evaluate(test, args, lexicon, lexicon_path):
     runs = [run for run, _ in found]
     before = dict(found)
     total = correct = whole = tested = 0
+    variant_whole = 0
     misses = []
     selected, scripts = [], []
     for run in runs:
@@ -148,10 +156,19 @@ def evaluate(test, args, lexicon, lexicon_path):
     command += args.cli_arg
     if args.sentence_boundaries:
         command += ["--sentence-boundaries", args.sentence_boundaries]
-    result = subprocess.run(command,
-                            input="".join(script + "\n" for script in scripts),
-                            capture_output=True, text=True, check=True)
-    outputs = result.stdout.splitlines()
+    # Batch lines are independent (the CLI resets the composer and forgets learning per line), so --jobs splits
+    # them over several CLI processes; each process uses one core.
+    jobs = max(1, min(args.jobs, len(scripts)))
+    size = -(-len(scripts) // jobs)
+    processes = [subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  text=True) for _ in range(jobs)]
+    with ThreadPoolExecutor(jobs) as pool:
+        results = list(pool.map(lambda job: processes[job].communicate(
+            "".join(script + "\n" for script in scripts[job * size:(job + 1) * size])), range(jobs)))
+    for process, (_, error) in zip(processes, results):
+        if process.returncode:
+            raise RuntimeError(f"zhuyin-cli failed: {error[-500:]}")
+    outputs = [line for out, _ in results for line in out.splitlines()]
     if len(outputs) != len(selected):
         raise RuntimeError(f"zhuyin-cli returned {len(outputs)} lines for {len(selected)} inputs")
     for run, got in zip(selected, outputs):
@@ -160,10 +177,12 @@ def evaluate(test, args, lexicon, lexicon_path):
         total += len(run)
         correct += sum(a == b for a, b in zip(run, got))
         whole += got == run
+        variant_whole += got.translate(VARIANTS) == run.translate(VARIANTS)
         if got != run and len(misses) < 8:
             misses.append((run, got))
     print(f"[{os.path.basename(test)}] {tested} runs, character accuracy {correct / max(1, total):.1%}, "
-          f"whole-run accuracy {whole / max(1, tested):.1%}")
+          f"whole-run accuracy {whole / max(1, tested):.1%}, "
+          f"counting variants as equal {variant_whole / max(1, tested):.1%}")
     for want, got in misses:
         print(f"  {want}  →  {got}")
 

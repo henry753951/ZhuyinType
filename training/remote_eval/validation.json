@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {"name": "plain", "args": []},
+    {"name": "reranker", "args": ["--reranker", "data/build/reranker", "--rerank-count", "16", "--rerank-weight", "1"]},
+    {"name": "v3", "args": ["--reranker", "data/build/reranker", "--rerank-count", "16", "--rerank-weight", "1", "--v3", "data/build/v3", "--v3-weight", "1"]}
+  ],
+  "sets": [
+    {"name": "colloquial", "path": "data/build/corpus/dev_colloquial.txt"},
+    {"name": "wikipedia", "path": "data/build/corpus/dev_wikipedia.txt"},
+    {"name": "chat", "path": "data/build/lm_chat/dev_chat_tt.txt"},
+    {"name": "context", "path": "data/build/corpus/dev_wikipedia.txt", "args": ["--line-context"]},
+    {"name": "continue", "path": "data/build/corpus/dev_colloquial.txt", "args": ["--split", "continue"]}
+  ]
+}

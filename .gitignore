@@ -1,11 +1,48 @@
-references/
+# macOS
 .DS_Store
+
+# Reference projects (read-only, never committed)
+references/
+
+# Swift and Xcode builds
 .build/
-.venv/
+.build-*/
+.swiftpm/
 DerivedData/
+*.xcodeproj/xcuserdata/
+dist/
+
+# Python environments and caches
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+
+# Data: downloads and everything generated from them (lexicon, corpora, language models, Core ML and ONNX models,
+# checkpoints, evaluation outputs). Each training/ directory documents how to rebuild its outputs.
 data/raw/
 data/build/
-dist/
-*.xcodeproj/xcuserdata/
-.build-*/
+
+# Training, inference and evaluation outputs written next to the code
+training/**/results/
+training/**/work/
+training/**/logs/
+training/**/outputs/
+training/**/checkpoints/
+*.log
+
+# Model files, wherever they end up
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.onnx.data
+*.mlmodel
+*.mlpackage/
+*.mlmodelc/
+*.bin
+!Resources/**/*.bin
+
+# Agent run logs
 .codex-logs/

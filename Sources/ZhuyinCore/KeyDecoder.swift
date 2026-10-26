@@ -47,7 +47,7 @@ public struct KeyDecoder {
     /// Costs on the keyboard channel's scale (KeyChannel: transposition 9, extra or missing key 12.5, neighbour 11).
     public struct Costs: Sendable {
         /// First tone without Space before the next initial.
-        // Chosen with training/eval/typing_errors.py on both dev sets (docs/MODEL_V3.md §4).
+        // Chosen with training/eval/typing_errors.py on both dev sets (docs/MODEL.md §3).
         public var implicitBoundary = 4.0
         /// A filled slot typed again (the slot keeps the later key).
         public var overwrite = 10.0

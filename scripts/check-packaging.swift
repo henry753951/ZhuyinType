@@ -37,9 +37,9 @@ for locale in ["en", "zh_TW", "zh-Hant"] {
     precondition(strings[modeID] == "注音 ZhuyinType")
     precondition(strings["CFBundleName"] == (locale == "en" ? "ZhuyinType" : "ZhuyinType 注音"))
 }
-// The menu-bar badge: a 22×16 pt monochrome vector drawn black on transparent, which macOS tints as a template.
+// The input-source badge: a 16×16 pt monochrome vector drawn black on transparent, which macOS tints as a template.
 let badge = NSImage(contentsOf: resources.appendingPathComponent("InputSourceTemplate.pdf"))!
-precondition(abs(badge.size.width - 22) < 0.01 && abs(badge.size.height - 16) < 0.01, "badge must be 22×16 points")
+precondition(abs(badge.size.width - 16) < 0.01 && abs(badge.size.height - 16) < 0.01, "badge must be 16×16 points")
 let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 44, pixelsHigh: 32, bitsPerSample: 8, samplesPerPixel: 4,
                            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
 NSGraphicsContext.saveGraphicsState()

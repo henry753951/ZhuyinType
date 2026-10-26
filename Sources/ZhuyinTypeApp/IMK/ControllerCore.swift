@@ -45,15 +45,25 @@ final class ControllerCore {
     var usesPrecedingText = true
     /// How long what was committed in an app stays context once typing there stops.
     static let contextWindow: TimeInterval = 600
+    /// How much the character model's scores count in the lattice (docs/MODEL.md §6).
+    static let characterWeight = 0.5
     /// Per app, what was last committed there: context across fields and focus changes, for `contextWindow`.
     private static var appContext: [String: (text: String, time: Date)] = [:]
     var now: () -> Date = Date.init
 
     init(engine: Engine, client: TextClient, options: ComposerOptions, isEnglish: Bool,
-         reranker: NeuralReranker? = nil) {
+         reranker: NeuralReranker? = nil, characterModel: SyllableScorer? = nil) {
         self.composer = Composer(engine: engine, options: options)
         self.client = client
         self.isEnglish = isEnglish
+        if let characterModel {
+            composer.characterWeight = Self.characterWeight
+            composer.characterScorer = { [weak self] syllables, candidates in
+                characterModel.scores(context: self?.recentText ?? "", syllables: syllables.map {
+                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: false)
+                }, candidates: candidates)
+            }
+        }
         if let reranker {
             composer.rerankingCount = reranker.candidateCount
             composer.reranker = { [weak self] in reranker.choose($0, context: self?.recentText ?? "") }

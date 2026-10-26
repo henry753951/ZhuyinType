@@ -1,4 +1,6 @@
+#if canImport(CoreML)
 import CoreML
+#endif
 import Foundation
 import ZhuyinCore
 
@@ -16,11 +18,26 @@ public final class NeuralReranker: @unchecked Sendable {
     /// log of how many characters share the model's <unk> token (5,465 lexicon characters are outside its 12,000):
     /// each gets its share of <unk>'s probability, not all of it, so rare characters do not outrank common ones.
     public var unknownPenalty = log(5465.0)
-    private let model: MLModel
+    public typealias Prediction = ([Int32], [Int32], Int, Int) throws -> [Double]
+    private var remotePrediction: Prediction?
+    #if canImport(CoreML)
+    private var model: MLModel?
+    #endif
     private let index: [Character: Int32]
     private let maxLength: Int
     private let lock = NSLock()
 
+    public init(directory: URL, weight: Double = 0.5, prediction: @escaping Prediction) throws {
+        self.weight = weight
+        remotePrediction = prediction
+        let vocabulary = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("vocab.json")))
+        var index: [Character: Int32] = [:]
+        for (id, token) in vocabulary.enumerated() where id > 2 && token.count == 1 { index[token.first!] = Int32(id) }
+        self.index = index
+        maxLength = 64
+    }
+
+    #if canImport(CoreML)
     /// `computeUnits` defaults to the CPU: for batches this small it answers in 2–11 ms, while the GPU path costs
     /// about 30 ms per call in dispatch overhead and the first call pays a 130 ms warm-up.
     public init(directory: URL, weight: Double = 0.5, computeUnits: MLComputeUnits = .cpuOnly) throws {
@@ -39,6 +56,14 @@ public final class NeuralReranker: @unchecked Sendable {
         maxLength = 64
     }
 
+    #endif
+
+    #if os(Linux)
+    public convenience init(directory: URL, weight: Double = 0.5) throws {
+        try self.init(directory: directory, weight: weight, prediction: ONNXModel.reranker(directory))
+    }
+    #endif
+
     private func encode(_ text: String) -> [Int32] { text.map { index[$0] ?? 2 } }
 
     /// log P(candidate | context) for each candidate; nil when the model cannot score them.
@@ -50,26 +75,38 @@ public final class NeuralReranker: @unchecked Sendable {
         let prefix = [Int32(1)] + encode(String(context.suffix(min(contextLength, maxLength - 1 - longest))))
         // The model accepts sequences of 2 or more; a lone character after <bos> is padded.
         let length = max(2, prefix.count - 1 + longest)
-        guard let ids = try? MLMultiArray(shape: [NSNumber(value: candidates.count), NSNumber(value: length)], dataType: .int32),
-              let targets = try? MLMultiArray(shape: ids.shape, dataType: .int32) else { return nil }
+        var ids = [Int32](repeating: 0, count: candidates.count * length)
+        var targets = ids
         for (row, candidate) in encoded.enumerated() {
             let tokens = prefix + candidate
             for column in 0..<length {
-                let input = column < tokens.count - 1 ? tokens[column] : 0
-                let target = column + 1 < tokens.count ? tokens[column + 1] : 0
-                ids[row * length + column] = NSNumber(value: input)
-                targets[row * length + column] = NSNumber(value: target)
+                ids[row * length + column] = column < tokens.count - 1 ? tokens[column] : 0
+                targets[row * length + column] = column + 1 < tokens.count ? tokens[column + 1] : 0
             }
         }
-        let output: MLFeatureProvider
+        let logprob: [Double]
         do {
-            let input = try MLDictionaryFeatureProvider(dictionary: ["ids": ids, "targets": targets])
-            output = try lock.withLock { try model.prediction(from: input) }
+            if let remotePrediction {
+                logprob = try lock.withLock { try remotePrediction(ids, targets, candidates.count, length) }
+            } else {
+                #if canImport(CoreML)
+                let shape = [NSNumber(value: candidates.count), NSNumber(value: length)]
+                let inputs = try MLMultiArray(shape: shape, dataType: .int32)
+                let labels = try MLMultiArray(shape: shape, dataType: .int32)
+                for i in ids.indices { inputs[i] = NSNumber(value: ids[i]); labels[i] = NSNumber(value: targets[i]) }
+                let input = try MLDictionaryFeatureProvider(dictionary: ["ids": inputs, "targets": labels])
+                let output = try lock.withLock { try model!.prediction(from: input) }
+                guard let values = output.featureValue(for: "logprob")?.multiArrayValue else { return nil }
+                logprob = (0..<values.count).map { values[$0].doubleValue }
+                #else
+                return nil
+                #endif
+            }
         } catch { return nil }
-        guard let logprob = output.featureValue(for: "logprob")?.multiArrayValue else { return nil }
+        guard logprob.count == ids.count, logprob.allSatisfy({ $0.isFinite }) else { return nil }
         let start = prefix.count - 1
         return encoded.enumerated().map { row, candidate in
-            (start..<(start + candidate.count)).reduce(0.0) { $0 + logprob[row * length + $1].doubleValue }
+            (start..<(start + candidate.count)).reduce(0.0) { $0 + logprob[row * length + $1] }
                 - unknownPenalty * Double(candidate.filter { $0 == 2 }.count)
         }
     }

@@ -11,6 +11,8 @@ enum EngineHost {
     static private(set) var engine: Engine?
     /// Chooses the displayed conversion among the engine's best; nil when the app ships no model.
     static private(set) var reranker: NeuralReranker?
+    /// The character model scoring each syllable's characters in the lattice; nil when the app ships none.
+    static private(set) var characterModel: SyllableScorer?
     static var lastEnglishMode: Bool?
 
     static func load() {
@@ -25,12 +27,18 @@ enum EngineHost {
                 let directory = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent("Library/Application Support/ZhuyinType", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                if let chat = Bundle.main.resourceURL?.appendingPathComponent("lm_chat"),
+                   FileManager.default.fileExists(atPath: chat.appendingPathComponent("bigram.tsv").path) {
+                    Engine.chatModelDirectory = chat
+                }
                 let loaded = try Engine(lexiconURL: lexiconURL, userDataDirectory: directory)
                 logger.info("Engine loaded in \(Date().timeIntervalSince(start), privacy: .public) seconds")
                 let neural = loadReranker()
+                let characters = loadCharacterModel()
                 DispatchQueue.main.async {
                     engine = loaded
                     reranker = neural
+                    characterModel = characters
                     SettingsWindowController.shared.engine = loaded
                     NotificationCenter.default.post(name: didLoad, object: nil)
                 }
@@ -57,6 +65,20 @@ enum EngineHost {
             return reranker
         } catch {
             logger.error("Reranker load failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private static func loadCharacterModel() -> SyllableScorer? {
+        guard let directory = Bundle.main.resourceURL?.appendingPathComponent("v3"),
+              FileManager.default.fileExists(atPath: directory.appendingPathComponent("chars.json").path) else { return nil }
+        let start = Date()
+        do {
+            let model = try SyllableScorer(directory: directory)
+            logger.info("Character model loaded in \(Date().timeIntervalSince(start), privacy: .public) seconds")
+            return model
+        } catch {
+            logger.error("Character model load failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

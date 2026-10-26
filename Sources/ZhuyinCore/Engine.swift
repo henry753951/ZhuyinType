@@ -140,16 +140,36 @@ public final class Engine: @unchecked Sendable {
     /// its start and committed at its end).  Read when an Engine is created.
     public static var sentenceBoundaries = true
 
+    /// The chat-domain bigram next to the encyclopedic one (`lm_chat/` beside `lm/`), mixed by the text before the
+    /// cursor; nil keeps the encyclopedic model alone.  Read when an Engine is created.
+    nonisolated(unsafe) public static var chatModelDirectory: URL?
+    /// How often the end of a composition is the end of a sentence (see `LanguageModel.endScore`).
+    nonisolated(unsafe) public static var sentenceEndShare = 1.0
+    /// The chat share with no text before the cursor, and how fast the text before it moves it (see `chatWeight`).
+    nonisolated(unsafe) public static var chatPrior = 0.5
+    nonisolated(unsafe) public static var domainEvidenceScale = 1.0
+    nonisolated(unsafe) public static var domainEvidenceCentre = -2.5
+
+    /// The mixture, when a chat model is loaded.
+    private let mixture: MixtureLanguageModel?
+
     private init(data: Data, userDataDirectory: URL?, languageModelDirectory: URL?) {
         directory = userDataDirectory
-        let model: any LanguageModel
+        var model: any LanguageModel
+        var mixture: MixtureLanguageModel?
         if let url = languageModelDirectory, let ngram = try? NGramLanguageModel(directory: url) {
             model = ngram
         } else if let url = languageModelDirectory, let bigram = try? BigramLanguageModel(directory: url) {
             model = bigram
+            if let chatURL = Engine.chatModelDirectory, let chat = try? BigramLanguageModel(directory: chatURL) {
+                let mixed = MixtureLanguageModel(chat: chat, encyclopedia: bigram, chatWeight: Engine.chatPrior)
+                mixture = mixed
+                model = mixed
+            }
         } else {
             model = UnigramLanguageModel()
         }
+        self.mixture = mixture
         let base = Engine.sentenceBoundaries || model.order == 1 ? model : BoundaryFreeLanguageModel(base: model)
         languageModel = PersonalizedLanguageModel(base: base, personal: personal)
         lexicon.reserveCapacity(50000)
@@ -536,6 +556,56 @@ public final class Engine: @unchecked Sendable {
             if let id = resolveID(word) { personal.forget(id) }
             learnedChanged()
         }
+    }
+
+    /// Sets the chat share of the language model mixture from the text before the cursor: the prior, moved by how much
+    /// likelier the chat model finds that text than the encyclopedic one, per word,
+    ///     logit λ = logit(prior) + scale × (mean log P_chat(w) − log P_encyclopedia(w) − centre).
+    /// No text keeps the prior.  Returns the share, or nil without a mixture.
+    @discardableResult
+    public func adaptDomain(to text: String) -> Double? {
+        guard let mixture else { return nil }
+        let words = segmentWords(text)
+        var weight = Engine.chatPrior
+        if !words.isEmpty {
+            var total = 0.0
+            var previous: UInt32 = 1
+            for word in words {
+                let id = mixture.wordID(for: word)
+                let (c, e) = mixture.scores(wordID: id, previous: previous, unigram: -14)
+                total += c - e
+                previous = id ?? 2
+            }
+            let evidence = Engine.domainEvidenceScale * (total / Double(words.count) - Engine.domainEvidenceCentre)
+            let prior = log(Engine.chatPrior / (1 - Engine.chatPrior))
+            weight = 1 / (1 + exp(-(prior + evidence * min(1, Double(words.count) / 4))))
+        }
+        if abs(mixture.chatWeight - weight) > 0.01 {
+            mixture.chatWeight = weight
+            synchronized {
+                entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
+                revision &+= 1
+            }
+        }
+        return weight
+    }
+
+    /// Han runs of `text` split into dictionary words by longest match (for scoring, not display).
+    private func segmentWords(_ text: String) -> [String] {
+        var words: [String] = []
+        let characters = Array(text)
+        var index = 0
+        while index < characters.count {
+            guard Self.isHan(characters[index]) else { index += 1; continue }
+            var length = min(6, characters.count - index)
+            while length > 1 && (characters[index..<(index + length)].contains { !Self.isHan($0) }
+                                 || synchronized({ reverse[String(characters[index..<(index + length)])] == nil })) {
+                length -= 1
+            }
+            words.append(String(characters[index..<(index + length)]))
+            index += length
+        }
+        return words
     }
 
     /// The last words of `text` (at most two, within its final run of Han characters) by longest dictionary match from

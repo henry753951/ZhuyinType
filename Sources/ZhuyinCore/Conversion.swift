@@ -53,11 +53,14 @@ fileprivate final class DecodingEdge {
     let entry: WordEntry?
     let values: (unigram: Double, adjustment: Double)?
     let components: [(entry: WordEntry, unigram: Double, adjustment: Double)]
+    /// The character model's weighted score for this word here (0 without one).
+    let characters: Double
     private var transitions: [LanguageModelHistory: (Double, LanguageModelHistory)] = [:]
 
     init(word: ConvertedWord, entry: WordEntry?, values: (unigram: Double, adjustment: Double)?,
-         components: [(entry: WordEntry, unigram: Double, adjustment: Double)]) {
+         components: [(entry: WordEntry, unigram: Double, adjustment: Double)], characters: Double = 0) {
         self.word = word; self.entry = entry; self.values = values; self.components = components
+        self.characters = characters
     }
 
     func transition(after history: LanguageModelHistory, model: any LanguageModel) -> (Double, LanguageModelHistory) {
@@ -74,6 +77,7 @@ fileprivate final class DecodingEdge {
                 next = next.appending(part.entry.wordID, order: model.order)
             }
         }
+        value += characters
         transitions[history] = (value, next)
         return (value, next)
     }
@@ -118,6 +122,26 @@ fileprivate final class DecodingPosition {
     }
 }
 
+/// Per syllable position, log P(character) from a character model (the v3 syllable encoder), with the weight they
+/// enter the lattice at.  A character the model was not asked about gets `floor`.
+public struct CharacterScores: Equatable {
+    public var positions: [[Character: Double]]
+    public var weight: Double
+    public var floor = -12.0
+    public init(positions: [[Character: Double]], weight: Double) { self.positions = positions; self.weight = weight }
+
+    /// The weighted sum over a word's characters, which start at token `start`.
+    func score(_ text: String, at start: Int) -> Double {
+        var total = 0.0
+        for (offset, character) in text.enumerated() {
+            let index = start + offset
+            guard positions.indices.contains(index), !positions[index].isEmpty else { continue }
+            total += positions[index][character] ?? floor
+        }
+        return weight * total
+    }
+}
+
 struct ConversionCache {
     var tokens: [CompositionToken]
     var fixed: [FixedWord]
@@ -132,15 +156,15 @@ struct ConversionCache {
 extension Engine {
     /// `start` is the LM history before the first token: the sentence start, or the words committed just before.
     func convert(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, cache: inout ConversionCache?,
-                 group: Range<Int>? = nil, start: LanguageModelHistory = .init()) -> [ConvertedWord] {
-        path(decode(tokens, fixed: fixed, typo: typo, cache: &cache, group: group, start: start).first)
+                 group: Range<Int>? = nil, start: LanguageModelHistory = .init(), characters: CharacterScores? = nil) -> [ConvertedWord] {
+        path(decode(tokens, fixed: fixed, typo: typo, cache: &cache, group: group, start: start, characters: characters).first)
     }
 
     func sentences(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, k: Int,
-                   start: LanguageModelHistory = .init()) -> [ScoredSentence] {
+                   start: LanguageModelHistory = .init(), characters: CharacterScores? = nil) -> [ScoredSentence] {
         guard k > 0 else { return [] }
         var cache: ConversionCache?
-        let nodes = decode(tokens, fixed: fixed, typo: typo, cache: &cache, start: start, k: k)
+        let nodes = decode(tokens, fixed: fixed, typo: typo, cache: &cache, start: start, characters: characters, k: k)
         var seen = Set<String>()
         return nodes.compactMap { node in
             let words = path(node)
@@ -153,8 +177,10 @@ extension Engine {
 
     private func decode(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance,
                         cache: inout ConversionCache?, group: Range<Int>? = nil, start: LanguageModelHistory = .init(),
-                        k: Int = 1) -> [PathNode] {
+                        characters: CharacterScores? = nil, k: Int = 1) -> [PathNode] {
         guard !tokens.isEmpty else { return [] }
+        // Character scores depend on every syllable (the model reads both directions): nothing carries over.
+        if characters != nil { cache = nil }
         let distinct = k > 1
         let width = max(Self.decodingBeamWidth, k)
         let revision = conversionRevision
@@ -216,7 +242,7 @@ extension Engine {
                                  components: parts.map {
                         let values = scoring($0, reading: $0.reading ?? "")
                         return ($0, values.unigram, values.adjustment)
-                    })
+                    }, characters: word.reading.isEmpty ? 0 : (characters?.score(word.text, at: word.range.lowerBound) ?? 0))
                 })
             }
             let position = edgeCache[start]!
