@@ -1,5 +1,6 @@
 import AppKit
 import ZhuyinCore
+import ZhuyinML
 
 protocol TextClient: AnyObject {
     func insertText(_ text: String, replacementRange: NSRange)
@@ -32,10 +33,17 @@ final class ControllerCore {
     private var rendering = false
     private let insertionRange = NSRange(location: NSNotFound, length: 0)
 
-    init(engine: Engine, client: TextClient, options: ComposerOptions, isEnglish: Bool) {
+    /// The last characters committed into this client: the context the reranker reads.
+    private(set) var recentText = ""
+
+    init(engine: Engine, client: TextClient, options: ComposerOptions, isEnglish: Bool,
+         reranker: NeuralReranker? = nil) {
         self.composer = Composer(engine: engine, options: options)
         self.client = client
         self.isEnglish = isEnglish
+        if let reranker {
+            composer.reranker = { [weak self] in reranker.choose($0, context: self?.recentText ?? "") }
+        }
     }
 
     private var capsLock = false
@@ -159,6 +167,7 @@ final class ControllerCore {
         defer { rendering = false }
         if let commit, !commit.isEmpty {
             client.insertText(commit, replacementRange: insertionRange)
+            recentText = String((recentText + commit).suffix(32))
             lastMark = nil // insertText replaces the old marked range, even if the next string is identical.
         }
 

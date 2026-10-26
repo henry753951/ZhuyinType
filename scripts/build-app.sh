@@ -28,6 +28,11 @@ cp -R -X Resources/*.lproj "$contents/Resources/"
 cp -R -X Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"
 cp -X data/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
+if [[ -f data/build/reranker/vocab.json && -d data/build/reranker/Reranker.mlmodelc ]]; then
+    mkdir -p "$contents/Resources/reranker"
+    cp -R -X data/build/reranker/Reranker.mlmodelc "$contents/Resources/reranker/"
+    cp -X data/build/reranker/vocab.json data/build/reranker/config.json "$contents/Resources/reranker/"
+fi
 if [[ -f data/build/lm/bigram.tsv ]]; then
     mkdir -p "$contents/Resources/lm"
     cp -X data/build/lm/{unigram,bigram,backoff}.tsv data/build/lm/NOTICE.md "$contents/Resources/lm/"

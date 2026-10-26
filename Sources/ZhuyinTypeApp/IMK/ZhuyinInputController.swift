@@ -181,7 +181,8 @@ final class ZhuyinInputController: IMKInputController {
         guard core == nil, let engine = EngineHost.engine, let textClient else { return }
         let preferences = Preferences.shared
         let core = ControllerCore(engine: engine, client: textClient, options: preferences.composerOptions,
-                                  isEnglish: EngineHost.lastEnglishMode ?? preferences.startInEnglish)
+                                  isEnglish: EngineHost.lastEnglishMode ?? preferences.startInEnglish,
+                                  reranker: EngineHost.reranker)
         self.core = core
         EngineHost.lastEnglishMode = core.isEnglish
         loggedNotReady = false

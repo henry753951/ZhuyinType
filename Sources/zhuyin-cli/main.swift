@@ -1,5 +1,6 @@
 import Foundation
 import ZhuyinCore
+import ZhuyinML
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -9,9 +10,11 @@ var arguments = Array(CommandLine.arguments.dropFirst())
 var lexiconPath = "data/build/lexicon.tsv"
 var batch = false
 var keepMemory = false
+var rerankerPath: String?
+var rerankWeight = 0.5
 var nbest = 0
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--batch [--keep-memory] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--reranker DIR [--rerank-weight W]] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -24,6 +27,14 @@ while let option = arguments.first, option.hasPrefix("--") {
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
     case "--keep-memory": keepMemory = true; arguments.removeFirst()
+    case "--reranker":
+        guard arguments.count >= 2 else { fail(usage) }
+        rerankerPath = arguments[1]
+        arguments.removeFirst(2)
+    case "--rerank-weight":
+        guard arguments.count >= 2, let weight = Double(arguments[1]) else { fail(usage) }
+        rerankWeight = weight
+        arguments.removeFirst(2)
     case "--sentence-boundaries":
         guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
         Engine.sentenceBoundaries = arguments[1] == "on"
@@ -74,8 +85,14 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
 assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
+    let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight) }
+    func attach(_ composer: Composer) {
+        guard let reranker else { return }
+        composer.reranker = { reranker.choose($0, context: "") }
+    }
     if batch {
         let composer = Composer(engine: engine, options: options)
+        attach(composer)
         while let line = readLine() {
             composer.reset()
             if !keepMemory { engine.forgetAllLearned() }
@@ -86,6 +103,7 @@ do {
         exit(0)
     }
     let composer = Composer(engine: engine, options: options)
+    attach(composer)
     for (label, key) in try parse(arguments[0]) {
         let result = composer.handle(key)
         let p = composer.presentation
