@@ -180,13 +180,25 @@ final class ControllerCore {
             if mark != lastMark {
                 let text = NSMutableAttributedString(string: p.text)
                 for (index, range) in p.clauses.enumerated() {
-                    text.addAttributes([
-                        .underlineStyle: (p.focusedClause == index ? NSUnderlineStyle.thick : .single).rawValue,
+                    var attributes: [NSAttributedString.Key: Any] = [
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
                         .markedClauseSegment: index,
-                    ], range: NSRange(location: range.lowerBound, length: range.count))
+                    ]
+                    if p.focusedClause == index {
+                        // The part the candidate window replaces: a thick accent underline on a light accent wash,
+                        // so it is clear which side of the caret is being changed.
+                        attributes[.underlineStyle] = NSUnderlineStyle.thick.rawValue
+                        attributes[.underlineColor] = NSColor.controlAccentColor
+                        attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(0.18)
+                    }
+                    text.addAttributes(attributes, range: NSRange(location: range.lowerBound, length: range.count))
                 }
-                client.setMarkedText(text, selectionRange: NSRange(location: p.cursor, length: 0),
-                                     replacementRange: insertionRange)
+                // While choosing, the replaced part is the marked text's selection; clients that draw their own
+                // composition (web engines) show the selected clause with a thick underline.
+                let selection = p.focusedClause.flatMap { p.clauses.indices.contains($0) ? p.clauses[$0] : nil }
+                    .map { NSRange(location: $0.lowerBound, length: $0.count) }
+                    ?? NSRange(location: p.cursor, length: 0)
+                client.setMarkedText(text, selectionRange: selection, replacementRange: insertionRange)
                 lastMark = mark
             }
         }
