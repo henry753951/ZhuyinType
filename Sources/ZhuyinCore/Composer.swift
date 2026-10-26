@@ -8,6 +8,8 @@ public final class Composer {
     private var buffer: [Character?] = [nil, nil, nil]
     private var fixed: [FixedWord] = []
     private var conversion: [ConvertedWord] = []
+    private var conversionDirty = true
+    private var conversionRevision: UInt64 = 0
     private var choices: [FixedWord] = []
     private var candidateSelection = 0
 
@@ -105,6 +107,7 @@ public final class Composer {
             fixed.append(choice)
             if options.learningEnabled { engine.learn(reading: choice.reading, word: choice.text, amount: 1) }
         }
+        conversionDirty = true
         closeCandidates()
         refresh()
         return .consumed
@@ -127,6 +130,7 @@ public final class Composer {
         clearBuffer()
         fixed.removeAll()
         conversion.removeAll()
+        conversionDirty = true
         closeCandidates()
         presentation = .empty
     }
@@ -147,6 +151,7 @@ public final class Composer {
     }
 
     private func insert(_ token: CompositionToken) {
+        conversionDirty = true
         fixed = fixed.compactMap { word in
             if word.range.lowerBound < cursor && cursor < word.range.upperBound { return nil }
             var word = word
@@ -158,6 +163,7 @@ public final class Composer {
     }
 
     private func delete(_ range: Range<Int>) {
+        conversionDirty = true
         fixed = fixed.compactMap { word in
             if word.range.overlaps(range) { return nil }
             var word = word
@@ -214,11 +220,14 @@ public final class Composer {
             let parts = tokens[start..<end].compactMap(\.reading)
             guard parts.count == length else { continue }
             let reading = parts.joined(separator: " ")
-            let precedingWord = conversion.last(where: { $0.range.upperBound <= start })
-            let previous = precedingWord?.reading.isEmpty == false ? precedingWord!.text : "<s>"
+            var history = LanguageModelHistory()
+            for word in conversion where word.range.upperBound <= start {
+                history = word.reading.isEmpty ? .init()
+                    : history.appending(word.wordID, order: engine.languageModel.order)
+            }
             for entry in engine.entries(for: reading) {
-                ranked.append((FixedWord(range: start..<end, text: entry.word, reading: reading),
-                               engine.score(entry, reading: reading, after: previous)))
+                ranked.append((FixedWord(range: start..<end, text: entry.word, reading: reading, wordID: entry.wordID),
+                               engine.score(entry, reading: reading, history: history)))
             }
         }
         if currentWord == nil {
@@ -248,7 +257,12 @@ public final class Composer {
     }
 
     private func refresh() {
-        conversion = engine.convert(tokens, fixed: fixed)
+        let revision = engine.conversionRevision
+        if conversionDirty || conversionRevision != revision {
+            conversion = engine.convert(tokens, fixed: fixed)
+            conversionDirty = false
+            conversionRevision = revision
+        }
         var text = ""
         var clauses: [Range<Int>] = []
         var caret = 0

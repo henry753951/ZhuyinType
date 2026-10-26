@@ -7,12 +7,19 @@ func fail(_ message: String) -> Never {
 }
 var arguments = Array(CommandLine.arguments.dropFirst())
 var lexiconPath = "data/build/lexicon.tsv"
-if arguments.first == "--lexicon" {
-    guard arguments.count >= 3 else { fail("Usage: zhuyin-cli [--lexicon PATH] \"<keys>\"") }
-    lexiconPath = arguments[1]
-    arguments.removeFirst(2)
+var batch = false
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--batch | \"<keys>\"]"
+while let option = arguments.first, option.hasPrefix("--") {
+    switch option {
+    case "--lexicon":
+        guard arguments.count >= 2 else { fail(usage) }
+        lexiconPath = arguments[1]
+        arguments.removeFirst(2)
+    case "--batch": batch = true; arguments.removeFirst()
+    default: fail(usage)
+    }
 }
-guard arguments.count == 1 else { fail("Usage: zhuyin-cli [--lexicon PATH] \"<keys>\"") }
+guard arguments.count == (batch ? 0 : 1) else { fail(usage) }
 let specials: [String: KeyInput] = [
     "space": .space, "bs": .backspace, "obs": .optionBackspace, "del": .forwardDelete,
     "left": .left, "right": .right, "home": .home, "end": .end, "up": .up, "down": .down,
@@ -46,6 +53,17 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
 assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
+    if batch {
+        let composer = Composer(engine: engine)
+        while let line = readLine() {
+            composer.reset()
+            engine.forgetAllLearned()
+            var committed = ""
+            for (_, key) in try parse(line) { committed += composer.handle(key).commit ?? "" }
+            print(committed)
+        }
+        exit(0)
+    }
     let composer = Composer(engine: engine)
     for (label, key) in try parse(arguments[0]) {
         let result = composer.handle(key)

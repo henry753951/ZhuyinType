@@ -5,6 +5,7 @@ struct WordEntry {
     var logp: Double
     var reading: String? = nil
     var penalty: Double = 0
+    var wordID: UInt32? = nil
 }
 
 struct PhraseKey: Hashable {
@@ -25,7 +26,8 @@ public final class Engine: @unchecked Sendable {
     private var lexicon: [String: [WordEntry]] = [:]
     private var reverse: [String: [(String, Double)]] = [:]
     private var phrases: [PhraseKey: Double] = [:]
-    private var phraseIndex: [String: [String: Double]] = [:]
+    private var phraseIndex: [String: [String: WordEntry]] = [:]
+    private var wordIDs: [String: UInt32] = [:]
     private var readingIndex: [String: [String]] = [:]
     private var syllables = Set<String>()
     private var syllableBases = Set<String>()
@@ -36,8 +38,11 @@ public final class Engine: @unchecked Sendable {
     private let directory: URL?
     private let writer = DispatchQueue(label: "ZhuyinType.personal-data", qos: .utility)
     private var pendingWrite: DispatchWorkItem?
+    private var revision: UInt64 = 0
+    var conversionRevision: UInt64 { synchronized { revision } }
     let languageModel: any LanguageModel
-    let usesBigram: Bool
+    /// Maximum distinct histories retained at each position in the decoder.
+    public static let decodingBeamWidth = 12
 
     public convenience init(lexiconURL: URL, userDataDirectory: URL?) throws {
         try self.init(lexiconURL: lexiconURL, userDataDirectory: userDataDirectory,
@@ -58,23 +63,31 @@ public final class Engine: @unchecked Sendable {
 
     private init(data: Data, userDataDirectory: URL?, languageModelDirectory: URL?) {
         directory = userDataDirectory
-        if let url = languageModelDirectory, let model = try? BigramLanguageModel(directory: url) {
+        if let url = languageModelDirectory, let model = try? NGramLanguageModel(directory: url) {
             languageModel = model
-            usesBigram = true
+        } else if let url = languageModelDirectory, let model = try? BigramLanguageModel(directory: url) {
+            languageModel = model
         } else {
             languageModel = UnigramLanguageModel()
-            usesBigram = false
         }
         lexicon.reserveCapacity(50000)
         reverse.reserveCapacity(125000)
         scanTSV(data) { fields in
             guard fields.count == 3, let score = Double(fields[2]), score.isFinite,
                   !fields[0].isEmpty, !fields[1].isEmpty else { return }
-            lexicon[fields[0], default: []].append(WordEntry(word: fields[1], logp: score))
+            lexicon[fields[0], default: []].append(WordEntry(word: fields[1], logp: score, wordID: resolveID(fields[1])))
             reverse[fields[1], default: []].append((fields[0], score))
         }
         loadPersonalData()
         rebuildReadingIndex()
+    }
+
+    private func resolveID(_ word: String) -> UInt32? {
+        guard languageModel.order > 1 else { return nil }
+        if let id = wordIDs[word] { return id == UInt32.max ? nil : id }
+        let id = languageModel.wordID(for: word)
+        wordIDs[word] = id ?? UInt32.max
+        return id
     }
 
     private func synchronized<T>(_ body: () throws -> T) rethrows -> T {
@@ -101,11 +114,11 @@ public final class Engine: @unchecked Sendable {
                     if !penalty.isFinite { continue }
                 }
                 var entries = lexicon[source] ?? []
-                for (word, score) in phraseIndex[source] ?? [:] {
+                for (word, phrase) in phraseIndex[source] ?? [:] {
                     if let index = entries.firstIndex(where: { $0.word == word }) {
-                        entries[index].logp = score
+                        entries[index].logp = phrase.logp
                     } else {
-                        entries.append(WordEntry(word: word, logp: score))
+                        entries.append(phrase)
                     }
                 }
                 for var entry in entries {
@@ -158,17 +171,21 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
-    func score(_ entry: WordEntry, reading: String, after previous: String) -> Double {
+    func scoring(_ entry: WordEntry, reading: String) -> (unigram: Double, adjustment: Double) {
         synchronized {
             let key = PhraseKey(reading: reading, word: entry.word)
             let source = entry.reading ?? reading
             let phrase = phrases[PhraseKey(reading: source, word: entry.word)]
             let original = phrase == nil ? entry.logp
                 : (lexicon[source]?.first(where: { $0.word == entry.word })?.logp ?? -7)
-            let base = languageModel.score(word: entry.word, after: previous, unigram: original)
-            return base + (phrase.map { $0 - original } ?? 0) - entry.penalty
-                + (learned[key]?.boost(now: Date().timeIntervalSince1970) ?? 0)
+            return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty
+                + (learned[key]?.boost(now: Date().timeIntervalSince1970) ?? 0))
         }
+    }
+
+    func score(_ entry: WordEntry, reading: String, history: LanguageModelHistory) -> Double {
+        let values = scoring(entry, reading: reading)
+        return languageModel.score(wordID: entry.wordID, history: history, unigram: values.unigram) + values.adjustment
     }
 
     public func userPhrases() -> [(reading: String, word: String)] {
@@ -183,7 +200,8 @@ public final class Engine: @unchecked Sendable {
         synchronized {
             let key = PhraseKey(reading: reading, word: word)
             phrases[key] = max(lexicon[reading]?.first(where: { $0.word == word })?.logp ?? -7, -7) + 1
-            phraseIndex[reading, default: [:]][word] = phrases[key]
+            phraseIndex[reading, default: [:]][word] = WordEntry(word: word, logp: phrases[key]!, wordID: resolveID(word))
+            revision &+= 1
             rebuildReadingIndex()
             scheduleWrite()
         }
@@ -193,6 +211,7 @@ public final class Engine: @unchecked Sendable {
         synchronized {
             phrases.removeValue(forKey: PhraseKey(reading: reading, word: word))
             phraseIndex[reading]?.removeValue(forKey: word)
+            revision &+= 1
             rebuildReadingIndex()
             scheduleWrite()
         }
@@ -223,12 +242,13 @@ public final class Engine: @unchecked Sendable {
     public func forgetLearned(word: String, reading: String) {
         synchronized {
             learned.removeValue(forKey: PhraseKey(reading: reading, word: word))
+            revision &+= 1
             scheduleWrite()
         }
     }
 
     public func forgetAllLearned() {
-        synchronized { learned.removeAll(); scheduleWrite() }
+        synchronized { learned.removeAll(); revision &+= 1; scheduleWrite() }
     }
 
     func learn(reading: String, word: String, amount: Double) {
@@ -236,6 +256,7 @@ public final class Engine: @unchecked Sendable {
             let now = Date().timeIntervalSince1970
             let key = PhraseKey(reading: reading, word: word)
             learned[key] = LearnedValue(count: (learned[key]?.count ?? 0) + amount, lastUsed: now)
+            revision &+= 1
             trimLearned(now: now)
             scheduleWrite()
         }
@@ -278,7 +299,8 @@ public final class Engine: @unchecked Sendable {
                 guard fields.count == 2, Self.validPhrase(word: fields[1], reading: fields[0]) else { return }
                 let base = lexicon[fields[0]]?.first(where: { $0.word == fields[1] })?.logp ?? -7
                 phrases[PhraseKey(reading: fields[0], word: fields[1])] = max(base, -7) + 1
-                phraseIndex[fields[0], default: [:]][fields[1]] = max(base, -7) + 1
+                phraseIndex[fields[0], default: [:]][fields[1]] = WordEntry(
+                    word: fields[1], logp: max(base, -7) + 1, wordID: resolveID(fields[1]))
             }
         }
         if let data = try? Data(contentsOf: directory.appendingPathComponent("learned.tsv")) {

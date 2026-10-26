@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Character accuracy of whole-sentence conversion, typed key by key through zhuyin-cli.
 
-    python3 training/eval/conversion_eval.py [--lexicon data/build/lexicon.tsv] [--test FILE ...] [--no-lm] [-n 200]
+    python3 training/eval/conversion_eval.py [--lexicon data/build/lexicon.tsv] [--test FILE ...] [--lm-dir DIR | --no-lm] [-n 200]
 
 Sentences come from held-out test files (default: data/build/lm/test_sentences.txt, and
 data/build/corpus/test_colloquial.txt when it exists), each reported separately.  Each sentence is cut into its Han
@@ -64,24 +64,31 @@ def keys_for(readings):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--lexicon", default="data/build/lexicon.tsv")
-    parser.add_argument("--no-lm", action="store_true", help="hide the lm/ directory next to the lexicon")
+    model = parser.add_mutually_exclusive_group()
+    model.add_argument("--no-lm", action="store_true", help="hide the lm/ directory next to the lexicon")
+    model.add_argument("--lm-dir", help="evaluate DIR as lm/, using DIR/lexicon.tsv when present")
     parser.add_argument("-n", type=int, default=200)
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--cli", default=".build/release/zhuyin-cli")
+    parser.add_argument("--cli", default=".build-engine/release/zhuyin-cli")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
-
-    lexicon_path = args.lexicon
-    if args.no_lm:
-        temp = tempfile.mkdtemp()
-        lexicon_path = os.path.join(temp, "lexicon.tsv")
-        shutil.copy(args.lexicon, lexicon_path)
-    lexicon = load_lexicon(lexicon_path)
+    if args.lm_dir and not os.path.isdir(args.lm_dir):
+        parser.error(f"model directory does not exist: {args.lm_dir}")
 
     tests = args.test or [p for p in ["data/build/lm/test_sentences.txt", "data/build/corpus/test_colloquial.txt"]
                           if os.path.exists(p)]
-    for test in tests:
-        evaluate(test, args, lexicon, lexicon_path)
+    with tempfile.TemporaryDirectory(prefix="zhuyin-eval-") as temp:
+        lexicon_path = args.lexicon
+        if args.no_lm or args.lm_dir:
+            candidate = os.path.join(args.lm_dir, "lexicon.tsv") if args.lm_dir else args.lexicon
+            source = candidate if os.path.isfile(candidate) else args.lexicon
+            lexicon_path = os.path.join(temp, "lexicon.tsv")
+            shutil.copyfile(source, lexicon_path)
+            if args.lm_dir:
+                os.symlink(os.path.abspath(args.lm_dir), os.path.join(temp, "lm"), target_is_directory=True)
+        lexicon = load_lexicon(lexicon_path)
+        for test in tests:
+            evaluate(test, args, lexicon, lexicon_path)
 
 
 def evaluate(test, args, lexicon, lexicon_path):
@@ -90,16 +97,23 @@ def evaluate(test, args, lexicon, lexicon_path):
     random.Random(args.seed).shuffle(runs)
     total = correct = whole = tested = 0
     misses = []
+    selected, scripts = [], []
     for run in runs:
-        if tested >= args.n:
+        if len(selected) >= args.n:
             break
         readings = readings_for(run, lexicon)
         if not readings:
             continue
-        out = subprocess.run([args.cli, "--lexicon", lexicon_path, keys_for(readings) + "<enter>"],
-                             capture_output=True, text=True).stdout
-        match = re.search(r"committed: (.*)", out)
-        got = match.group(1).strip() if match else ""
+        selected.append(run)
+        scripts.append(keys_for(readings) + "<enter>")
+    result = subprocess.run([args.cli, "--lexicon", lexicon_path, "--batch"],
+                            input="".join(script + "\n" for script in scripts),
+                            capture_output=True, text=True, check=True)
+    outputs = result.stdout.splitlines()
+    if len(outputs) != len(selected):
+        raise RuntimeError(f"zhuyin-cli returned {len(outputs)} lines for {len(selected)} inputs")
+    for run, got in zip(selected, outputs):
+        got = got.strip()
         tested += 1
         total += len(run)
         correct += sum(a == b for a, b in zip(run, got))

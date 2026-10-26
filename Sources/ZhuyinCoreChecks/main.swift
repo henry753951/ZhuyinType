@@ -549,6 +549,182 @@ try FileManager.default.removeItem(at: lmDirectory.appendingPathComponent("backo
 let incompleteLM = try Engine(lexiconText: lmLexicon, languageModelDirectory: lmDirectory)
 check(composer(incompleteLM, "18 ").presentation.text == "八", "incomplete optional LM safely falls back to unigram")
 
+// A byte-for-byte fixture, independently written in Swift, exercises every FORMAT.md backoff branch.
+let binaryDirectory = temp.appendingPathComponent("binary")
+try FileManager.default.createDirectory(at: binaryDirectory, withIntermediateDirectories: true)
+let binaryURL = binaryDirectory.appendingPathComponent("lm.bin")
+let fixtureUnigrams: [String: Float] = ["</s>": -1, "<unk>": -8, "八": -2, "巴": -2.3,
+                                       "趴": -2, "媽": -3, "麻": -3, "𠮷": -4]
+let fixtureBigrams: [LMBigram] = [
+    .init(first: "<s>", second: "八", logp: -0.1), .init(first: "<s>", second: "巴", logp: -0.5),
+    .init(first: "八", second: "趴", logp: -0.2, backoff: -0.7),
+    .init(first: "巴", second: "趴", logp: -0.2, backoff: -0.8),
+    .init(first: "趴", second: "媽", logp: -0.1), .init(first: "趴", second: "麻", logp: -1),
+    .init(first: "媽", second: "</s>", logp: -0.1), .init(first: "麻", second: "</s>", logp: -0.1),
+    .init(first: "<unk>", second: "趴", logp: -0.05),
+]
+let binaryFixture = lmFixture(order: 3, unigrams: fixtureUnigrams, backoffs: ["八": -0.4, "趴": -0.2],
+    bigrams: fixtureBigrams, trigrams: [
+        .init(first: "八", second: "趴", third: "媽", logp: -4),
+        .init(first: "八", second: "趴", third: "麻", logp: -0.05),
+        .init(first: "巴", second: "趴", third: "媽", logp: -0.01),
+    ])
+try binaryFixture.write(to: binaryURL)
+let binary = try NGramLanguageModel(directory: binaryDirectory)
+func binaryScore(_ word: String, _ older: String?, _ previous: String) -> Double {
+    binary.score(wordID: binary.wordID(for: word),
+                 history: .init(older: older.flatMap { binary.wordID(for: $0) }, previous: binary.wordID(for: previous)!),
+                 unigram: -9)
+}
+for (word, older, previous, expected) in [
+    ("媽", "八", "趴", -4.0), ("麻", "巴", "趴", -1.8), ("巴", "八", "趴", -3.2),
+    ("媽", "媽", "趴", -0.1), ("巴", "媽", "八", -2.7),
+] {
+    check(abs(binaryScore(word, older, previous) - expected) < 0.00001, "binary backoff \(older) \(previous) → \(word)")
+}
+check(abs(binaryScore("八", nil, "<s>") + 0.1) < 0.00001, "binary sentence start without older history")
+check(abs(binaryScore("巴", nil, "八") + 2.7) < 0.00001, "binary one-word backoff")
+check(abs(binaryScore("</s>", "八", "趴") + 1.9) < 0.00001, "binary end uses both backoffs")
+check(binary.wordID(for: "</s>") == 0 && binary.wordID(for: "<s>") == 1 && binary.wordID(for: "<unk>") == 2,
+      "binary reserved word IDs")
+check(binary.wordID(for: "𠮷") != nil && binary.wordID(for: "不存在") == nil && binary.wordID(for: "") == nil,
+      "binary UTF-8 vocabulary search and missing words")
+check(binary.score(wordID: 2, history: .init(), unigram: -9) == -8, "explicit unk uses model unigram")
+check(binary.score(wordID: nil, history: .init(), unigram: -9) == -9, "missing metadata defaults unknown shift to zero")
+try Data("{\"unknown_word_shift\":-2.3}".utf8).write(to: binaryDirectory.appendingPathComponent("lm.json"))
+let shiftedBinary = try NGramLanguageModel(directory: binaryDirectory)
+check(abs(shiftedBinary.score(wordID: nil, history: .init(), unigram: -9) + 11.3) < 0.00001,
+      "unknown lexicon probability plus metadata shift")
+check(shiftedBinary.score(wordID: UInt32.max, history: .init(previous: UInt32.max), unigram: -9).isFinite,
+      "invalid external IDs cannot access outside the mapping")
+check(abs(shiftedBinary.score(wordID: shiftedBinary.wordID(for: "趴"), history: .init(previous: 2), unigram: -9) + 0.05) < 0.00001,
+      "unknown history scores as the explicit unk context")
+let shiftedCompetition = "ㄅㄚ\t八\t-2\nㄅㄚ\t新\t-0.05\n"
+let shiftedChoice = try Engine(lexiconText: shiftedCompetition, languageModelDirectory: binaryDirectory)
+check(composer(shiftedChoice, "18 ").presentation.text == "八", "unknown calibration participates in conversion")
+try FileManager.default.removeItem(at: binaryDirectory.appendingPathComponent("lm.json"))
+let unshiftedChoice = try Engine(lexiconText: shiftedCompetition, languageModelDirectory: binaryDirectory)
+check(composer(unshiftedChoice, "18 ").presentation.text == "新", "missing calibration keeps lexicon probability")
+try Data("{\"unknown_word_shift\":-2.3}".utf8).write(to: binaryDirectory.appendingPathComponent("lm.json"))
+let binaryLexicon = lmLexicon + "ㄇㄚ\t媽\t-3\nㄇㄚ\t麻\t-3\n"
+let trigramEngine = try Engine(lexiconText: binaryLexicon, languageModelDirectory: binaryDirectory)
+check(composer(trigramEngine, "18 q8 a8 ").presentation.text == "八趴麻", "trigram changes best conversion")
+var fixedOptions = ComposerOptions(); fixedOptions.learningEnabled = false
+let fixedHistory = composer(trigramEngine, "18 ", options: fixedOptions)
+_ = fixedHistory.handle(.down)
+_ = fixedHistory.selectCandidate(at: fixedHistory.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
+type("q8 a8 ", into: fixedHistory)
+check(fixedHistory.presentation.text == "巴趴媽", "user-picked span retains its word in trigram history")
+for literal: KeyInput in [.shiftedChar(","), .shiftedChar("a")] {
+    let resetHistory = composer(trigramEngine, "18 q8 ")
+    _ = resetHistory.handle(literal)
+    type("a8 ", into: resetHistory)
+    check(resetHistory.presentation.text.hasSuffix("媽"), "literal resets both history words to sentence start")
+}
+let oovEngine = try Engine(lexiconText: "ㄅㄚ\t新\t-0.2\nㄆㄚ\t趴\t-2\n", languageModelDirectory: binaryDirectory)
+check(composer(oovEngine, "18 q8 ").presentation.text == "新趴", "OOV word becomes unk context for following word")
+try oovEngine.addUserPhrase(word: "新", reading: "ㄅㄚ")
+check(composer(oovEngine, "18 q8 ").presentation.text == "新趴", "new user phrase resolves its ID before decoding")
+let binaryPersonal = temp.appendingPathComponent("binary-personal")
+try FileManager.default.createDirectory(at: binaryPersonal, withIntermediateDirectories: true)
+try Data("ㄅㄚ\t巴\n".utf8).write(to: binaryPersonal.appendingPathComponent("user_phrases.tsv"))
+let loadedBinaryPhrase = try Engine(lexiconText: "ㄆㄚ\t趴\t-2\nㄇㄚ\t媽\t-3\nㄇㄚ\t麻\t-3\n",
+                                   userDataDirectory: binaryPersonal, languageModelDirectory: binaryDirectory)
+check(composer(loadedBinaryPhrase, "18 q8 a8 ").presentation.text == "巴趴媽", "persisted phrase has its model ID")
+let orderTwoFixture = lmFixture(order: 2, unigrams: fixtureUnigrams, backoffs: ["八": -0.4, "趴": -0.2], bigrams: fixtureBigrams)
+try orderTwoFixture.write(to: binaryURL, options: .atomic)
+let orderTwo = try NGramLanguageModel(directory: binaryDirectory)
+check(abs(orderTwo.score(wordID: orderTwo.wordID(for: "媽"),
+    history: .init(older: orderTwo.wordID(for: "八"), previous: orderTwo.wordID(for: "趴")!), unigram: -9) + 0.1) < 0.00001,
+      "order two ignores older history")
+let binaryBigramEngine = try Engine(lexiconText: binaryLexicon, languageModelDirectory: binaryDirectory)
+check(composer(binaryBigramEngine, "18 q8 a8 ").presentation.text == "八趴媽", "bigram alone prefers the other conversion")
+try lmFixture(order: 3, unigrams: [:], bigrams: []).write(to: binaryURL, options: .atomic)
+check((try? NGramLanguageModel(directory: binaryDirectory)) != nil, "empty bigram/trigram sections are valid")
+
+// Every malformed header/section must throw, then Engine must discover TSV or unigram instead.
+func replacing32(_ data: Data, _ offset: Int, _ value: UInt32) -> Data {
+    var result = data, little = value.littleEndian
+    withUnsafeBytes(of: &little) { result.replaceSubrange(offset..<(offset + 4), with: $0) }
+    return result
+}
+let vocabOffset = binaryFixture.withUnsafeBytes { Int(UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: 24, as: UInt64.self))) }
+let biOffset = binaryFixture.withUnsafeBytes { Int(UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: 40, as: UInt64.self))) }
+let triOffset = binaryFixture.withUnsafeBytes { Int(UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: 48, as: UInt64.self))) }
+var corruptFixtures = [Data(), Data(binaryFixture.prefix(63)), Data(binaryFixture.dropLast()),
+    replacing32(binaryFixture, 0, 0), replacing32(binaryFixture, 4, 2), replacing32(binaryFixture, 8, 4),
+    replacing32(binaryFixture, 12, UInt32.max), replacing32(binaryFixture, 16, UInt32.max),
+    replacing32(binaryFixture, 20, UInt32.max), replacing32(binaryFixture, 24, 65),
+    replacing32(binaryFixture, 32, 64), replacing32(binaryFixture, 40, UInt32.max),
+    replacing32(binaryFixture, 48, 0), replacing32(binaryFixture, 56, 64),
+    replacing32(binaryFixture, vocabOffset, 1), replacing32(binaryFixture, vocabOffset + 8, UInt32.max),
+    replacing32(binaryFixture, biOffset, 1), replacing32(binaryFixture, biOffset + 8, UInt32.max),
+    replacing32(binaryFixture, triOffset, 1), replacing32(binaryFixture, triOffset + 8, UInt32.max),
+    replacing32(orderTwoFixture, 20, 1), replacing32(orderTwoFixture, 48, 64)]
+for (index, fixture) in corruptFixtures.enumerated() {
+    try fixture.write(to: binaryURL, options: .atomic)
+    check((try? NGramLanguageModel(directory: binaryDirectory)) == nil, "reject corrupt/truncated binary fixture \(index)")
+    let fallback = try Engine(lexiconText: lmLexicon, languageModelDirectory: binaryDirectory)
+    check(composer(fallback, "18 q8 ").presentation.text == "八趴", "corrupt binary falls back without crash \(index)")
+}
+for size in 0..<binaryFixture.count {
+    try binaryFixture.prefix(size).write(to: binaryURL, options: .atomic)
+    check((try? NGramLanguageModel(directory: binaryDirectory)) == nil, "reject every truncated binary prefix \(size)")
+}
+// Supply a TSV alongside the binary to prove discovery preference and fallback independently.
+try Data("八\t-2\n巴\t-2.3\n趴\t-2\n</s>\t-1\n".utf8).write(to: binaryDirectory.appendingPathComponent("unigram.tsv"))
+try Data("<s>\t八\t-0.1\n<s>\t巴\t-0.5\n八\t趴\t-10\n巴\t趴\t-0.1\n趴\t</s>\t-0.1\n".utf8)
+    .write(to: binaryDirectory.appendingPathComponent("bigram.tsv"))
+try Data().write(to: binaryDirectory.appendingPathComponent("backoff.tsv"))
+let binaryFallback = try Engine(lexiconText: lmLexicon, languageModelDirectory: binaryDirectory)
+check(composer(binaryFallback, "18 q8 ").presentation.text == "巴趴", "corrupt binary falls back to complete TSV model")
+try binaryFixture.write(to: binaryURL, options: .atomic)
+let binaryPreferred = try Engine(lexiconText: binaryLexicon, languageModelDirectory: binaryDirectory)
+check(composer(binaryPreferred, "18 q8 a8 ").presentation.text == "八趴麻", "binary model takes precedence over TSV")
+
+// Compare the new beam against the original last-word recurrence, including multi-syllable paths and ties.
+let equivalenceLexicon = tiny + "\nㄇㄚ\t麻\t-2\n"
+// Keep using the TSV model's exact Double probabilities for this comparison.
+let equivalenceDirectory = temp.appendingPathComponent("equivalence")
+try FileManager.default.createDirectory(at: equivalenceDirectory, withIntermediateDirectories: true)
+for name in ["unigram.tsv", "bigram.tsv", "backoff.tsv"] {
+    try FileManager.default.copyItem(at: binaryDirectory.appendingPathComponent(name), to: equivalenceDirectory.appendingPathComponent(name))
+}
+let equivalenceModel = try BigramLanguageModel(directory: equivalenceDirectory)
+let equivalenceBigramEngine = try Engine(lexiconText: equivalenceLexicon, languageModelDirectory: equivalenceDirectory)
+let syllableScripts = [("ㄅㄚ", "18 "), ("ㄆㄚ", "q8 "), ("ㄇㄚ", "a8 ")]
+for length in 1...6 {
+    let combinations = Int(pow(3.0, Double(length)))
+    for code in 0..<combinations {
+        var value = code, readings: [String] = [], keys = ""
+        for _ in 0..<length {
+            let syllable = syllableScripts[value % 3]; value /= 3
+            readings.append(syllable.0); keys += syllable.1
+        }
+        let old = legacyBigramConversion(readings, lexicon: equivalenceLexicon, model: equivalenceModel)
+        let new = composer(equivalenceBigramEngine, keys).presentation
+        check(new.text == old.0 && new.clauses == old.1, "old/new bigram equivalence \(code)/\(length)")
+    }
+}
+
+// Presentation-only refreshes reuse the lattice, but personal-data edits invalidate a live composer.
+let cacheEngine = try Engine(lexiconText: "ㄅㄚ\t八\t-9\nㄅㄚ\t巴\t-10\n")
+let liveCache = composer(cacheEngine, "18 ")
+try cacheEngine.addUserPhrase(word: "巴", reading: "ㄅㄚ")
+_ = liveCache.handle(.left)
+check(liveCache.presentation.text == "巴", "phrase insertion invalidates live conversion cache")
+cacheEngine.removeUserPhrase(word: "巴", reading: "ㄅㄚ")
+_ = liveCache.handle(.right)
+check(liveCache.presentation.text == "八", "phrase removal invalidates live conversion cache")
+let learner = composer(cacheEngine, "18 ")
+_ = learner.handle(.down)
+_ = learner.selectCandidate(at: learner.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
+_ = liveCache.handle(.left)
+check(liveCache.presentation.text == "巴", "learning invalidates another composer's conversion cache")
+cacheEngine.forgetAllLearned()
+_ = liveCache.handle(.right)
+check(liveCache.presentation.text == "八", "forgetting invalidates live conversion cache")
+
 // UTF-16 offsets and defensive options.
 let unicodeEngine = try Engine(lexiconText: "ㄅㄚ\t𠮷\t-1\nㄆㄚ\t趴\t-2\nㄅㄚ ㄆㄚ\t𠮷趴\t-1\n")
 let unicode = composer(unicodeEngine, "18 q8 ")
@@ -575,8 +751,9 @@ for _ in 0..<4 { for key in mixed { _ = stress.handle(key); validPresentation(st
 let realURL = URL(fileURLWithPath: "data/build/lexicon.tsv")
 if FileManager.default.fileExists(atPath: realURL.path) {
     let (real, initMS) = try timed { try Engine(lexiconURL: realURL, userDataDirectory: nil) }
-    print(String(format: "TIMING real lexicon init: %.3f ms (target <400 ms)", initMS))
-    check(initMS < 400, "real lexicon init under 400 ms")
+    let (_, lexiconMS) = try timed { try Engine(lexiconURL: realURL, userDataDirectory: nil, languageModelDirectory: nil) }
+    print(String(format: "TIMING real lexicon + discovered LM init: %.3f ms; lexicon alone %.3f ms (target <400 ms)", initMS, lexiconMS))
+    check(lexiconMS < 400, "real lexicon init under 400 ms")
     let reverseKeys = Dictionary(uniqueKeysWithValues: keySymbols.map { ($0.1, String($0.0)) })
     let toneKeys: [Character: String] = ["ˊ": "6", "ˇ": "3", "ˋ": "4", "˙": "7"]
     func keysForReading(_ reading: String) -> String {
@@ -613,24 +790,57 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     let realPhraseEnd = composer(real, "vu,4vu,4")
     _ = realPhraseEnd.handle(.down)
     check(realPhraseEnd.presentation.candidates?.items.first?.text == "謝謝", "real tolerant multi-syllable candidate at end cursor")
-    for (label, keys, nextKeys) in [
-        ("first-tone", String(repeating: "wu0 ", count: 40), "wu0 "),
-        ("neutral-tolerant", String(repeating: "vu,4vu,4", count: 20), "vu,4"),
-    ] {
-        let long = composer(real, keys)
-        var samples: [Double] = []
-        for _ in 0..<100 {
-            samples.append(timed { _ = long.handle(.left) }.1)
-            _ = long.handle(.right)
-            for character in nextKeys {
-                samples.append(timed { _ = long.handle(character == " " ? .space : .char(character)) }.1)
+    func measureLatency(_ model: Engine, name: String) {
+        for (label, keys, nextKeys) in [
+            ("first-tone", String(repeating: "wu0 ", count: 40), "wu0 "),
+            ("neutral-tolerant", String(repeating: "vu,4vu,4", count: 20), "vu,4"),
+        ] {
+            let long = composer(model, keys)
+            var samples: [Double] = []
+            for _ in 0..<100 {
+                samples.append(timed { _ = long.handle(.left) }.1)
+                _ = long.handle(.right)
+                for character in nextKeys {
+                    samples.append(timed { _ = long.handle(character == " " ? .space : .char(character)) }.1)
+                }
+                _ = long.handle(.backspace)
             }
-            _ = long.handle(.backspace)
+            let ordered = samples.sorted()
+            let p95 = ordered[Int(Double(ordered.count - 1) * 0.95)]
+            print(String(format: "TIMING %@ %@ handle on 40 syllables: median %.3f ms, p95 %.3f ms, max %.3f ms (target <3 ms)", name, label, ordered[ordered.count / 2], p95, ordered.last!))
+            check(ordered.last! < 3, "40-syllable \(name) \(label) handle under 3 ms")
         }
-        let ordered = samples.sorted()
-        let p95 = ordered[Int(Double(ordered.count - 1) * 0.95)]
-        print(String(format: "TIMING %@ handle on 40 syllables: median %.3f ms, p95 %.3f ms, max %.3f ms (target <0.3 ms)", label, ordered[ordered.count / 2], p95, ordered.last!))
-        check(ordered.last! < 0.3, "40-syllable \(label) handle under 0.3 ms")
+    }
+    measureLatency(real, name: "discovered LM")
+    let benchmarkDirectory = temp.appendingPathComponent("150MB")
+    try FileManager.default.createDirectory(at: benchmarkDirectory, withIntermediateDirectories: true)
+    let realText = try String(contentsOf: realURL, encoding: .utf8)
+    let vocabulary = Set(realText.split(separator: "\n").compactMap { line -> String? in
+        let fields = line.split(separator: "\t")
+        return fields.count == 3 && !line.hasPrefix("#") ? String(fields[1]) : nil
+    })
+    try largeLMFixture(words: vocabulary).write(to: benchmarkDirectory.appendingPathComponent("lm.bin"))
+    let (resolved, binaryMS) = try timed {
+        let model = try NGramLanguageModel(directory: benchmarkDirectory)
+        return vocabulary.reduce(0) { $0 + (model.wordID(for: $1) == nil ? 0 : 1) }
+    }
+    check(resolved == vocabulary.count, "150 MB model maps every real lexicon word")
+    print(String(format: "TIMING 150 MB synthetic LM + %d unique lexicon IDs: %.3f ms (target <80 ms)", resolved, binaryMS))
+    check(binaryMS < 80, "150 MB model load and lexicon ID mapping under 80 ms")
+    let (largeEngine, fullBinaryMS) = try timed {
+        try Engine(lexiconURL: realURL, userDataDirectory: nil, languageModelDirectory: benchmarkDirectory)
+    }
+    print(String(format: "TIMING 150 MB synthetic LM complete Engine init: %.3f ms", fullBinaryMS))
+    measureLatency(largeEngine, name: "150 MB synthetic trigram")
+    let candidateDirectory = URL(fileURLWithPath: "data/build/lm2")
+    if FileManager.default.fileExists(atPath: candidateDirectory.appendingPathComponent("lm.bin").path) {
+        let candidateLexicon = candidateDirectory.appendingPathComponent("lexicon.tsv")
+        let url = FileManager.default.fileExists(atPath: candidateLexicon.path) ? candidateLexicon : realURL
+        let (candidate, candidateMS) = try timed {
+            try Engine(lexiconURL: url, userDataDirectory: nil, languageModelDirectory: candidateDirectory)
+        }
+        print(String(format: "TIMING lm2 complete Engine init: %.3f ms", candidateMS))
+        measureLatency(candidate, name: "lm2")
     }
 } else { print("WARNING real lexicon absent; skipped real-data checks") }
 print("\(checks - failures)/\(checks) checks passed; \(failures) failures")

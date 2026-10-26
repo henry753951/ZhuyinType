@@ -1,42 +1,80 @@
 import Foundation
 
-/// Scores use natural logarithms. The decoder retains the previous word as its state.
+/// IDs 0, 1 and 2 are </s>, <s> and <unk>. A nil word ID uses the lexicon probability.
+public struct LanguageModelHistory: Hashable, Sendable {
+    public var older: UInt32?
+    public var previous: UInt32
+    public init(older: UInt32? = nil, previous: UInt32 = 1) {
+        self.older = older; self.previous = previous
+    }
+    public func appending(_ wordID: UInt32?, order: Int) -> Self {
+        Self(older: order == 3 ? previous : nil, previous: order == 1 ? 1 : (wordID ?? 2))
+    }
+}
+
+/// Scores use natural logarithms; resolve strings once, before decoding.
 public protocol LanguageModel: Sendable {
-    func score(word: String, after previousWord: String, unigram: Double) -> Double
-    func endScore(after previousWord: String) -> Double
+    var order: Int { get }
+    func wordID(for word: String) -> UInt32?
+    func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double
+}
+
+extension LanguageModel {
+    public func endScore(history: LanguageModelHistory) -> Double {
+        score(wordID: 0, history: history, unigram: 0)
+    }
+    public func score(word: String, after previousWord: String, unigram: Double) -> Double {
+        score(wordID: wordID(for: word), history: .init(previous: wordID(for: previousWord) ?? 2), unigram: unigram)
+    }
+    public func endScore(after previousWord: String) -> Double {
+        endScore(history: .init(previous: wordID(for: previousWord) ?? 2))
+    }
 }
 
 public struct UnigramLanguageModel: LanguageModel {
     public init() {}
-    public func score(word: String, after previousWord: String, unigram: Double) -> Double { unigram }
-    public func endScore(after previousWord: String) -> Double { 0 }
+    public let order = 1
+    public func wordID(for word: String) -> UInt32? { nil }
+    public func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double { unigram }
 }
 
 public struct BigramLanguageModel: LanguageModel {
-    private var unigrams: [String: Double] = [:]
-    private var bigrams: [String: [String: Double]] = [:]
-    private var backoffs: [String: Double] = [:]
+    public let order = 2
+    private var ids: [String: UInt32] = ["</s>": 0, "<s>": 1, "<unk>": 2]
+    private var unigrams: [UInt32: Double] = [:]
+    private var bigrams: [UInt32: [UInt32: Double]] = [:]
+    private var backoffs: [UInt32: Double] = [:]
+
+    private mutating func intern(_ word: String) -> UInt32 {
+        if let id = ids[word] { return id }
+        let id = UInt32(ids.count)
+        ids[word] = id
+        return id
+    }
 
     public init(directory: URL) throws {
         scanTSV(try Data(contentsOf: directory.appendingPathComponent("unigram.tsv")), separatingSpaces: true) { fields in
             guard fields.count == 2 else { return }
-            if let score = Double(fields[1]), score.isFinite { unigrams[fields[0]] = score }
+            if let score = Double(fields[1]), score.isFinite { unigrams[intern(fields[0])] = score }
         }
         scanTSV(try Data(contentsOf: directory.appendingPathComponent("bigram.tsv")), separatingSpaces: true) { fields in
             guard fields.count == 3 else { return }
-            if let score = Double(fields[2]), score.isFinite { bigrams[fields[0], default: [:]][fields[1]] = score }
+            if let score = Double(fields[2]), score.isFinite {
+                let first = intern(fields[0]), second = intern(fields[1])
+                bigrams[first, default: [:]][second] = score
+            }
         }
         scanTSV(try Data(contentsOf: directory.appendingPathComponent("backoff.tsv")), separatingSpaces: true) { fields in
             guard fields.count == 2 else { return }
-            if let score = Double(fields[1]), score.isFinite { backoffs[fields[0]] = score }
+            if let score = Double(fields[1]), score.isFinite { backoffs[intern(fields[0])] = score }
         }
     }
 
-    public func score(word: String, after previousWord: String, unigram: Double) -> Double {
-        bigrams[previousWord]?[word] ?? ((backoffs[previousWord] ?? 0) + (unigrams[word] ?? unigram))
-    }
-    public func endScore(after previousWord: String) -> Double {
-        score(word: "</s>", after: previousWord, unigram: 0)
+    public func wordID(for word: String) -> UInt32? { ids[word] }
+    public func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double {
+        let word = wordID ?? UInt32.max
+        return bigrams[history.previous]?[word]
+            ?? ((backoffs[history.previous] ?? 0) + (unigrams[word] ?? unigram))
     }
 }
 
