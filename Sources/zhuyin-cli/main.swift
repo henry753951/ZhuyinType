@@ -15,6 +15,8 @@ var rerankerPath: String?
 var rerankWeight = 0.5
 var rerankCount = 8
 var exactMargin: Double?
+/// Batch: print the engine's K best sentences (tab-separated) for each line instead of what it commits.
+var reportNBest = 0
 var nbest = 0
 var context = ""
 /// Text committed so far by the line being typed (batch mode) or by the keys (single run).
@@ -22,7 +24,7 @@ var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -42,6 +44,10 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--rerank-count":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         rerankCount = count
+        arguments.removeFirst(2)
+    case "--report-nbest":
+        guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
+        reportNBest = count
         arguments.removeFirst(2)
     case "--exact-margin":
         guard arguments.count >= 2, let margin = Double(arguments[1]) else { fail(usage) }
@@ -157,7 +163,12 @@ do {
             }
             composer.setPrecedingText(context)
             for (_, key) in try parse(String(keys)) { committed += composer.handle(key).commit ?? "" }
-            print(committed)
+            if reportNBest > 0 {
+                print(composer.nBest(reportNBest).map(\.text).joined(separator: "\t"))
+                composer.reset()
+            } else {
+                print(committed)
+            }
         }
         exit(0)
     }
