@@ -1208,7 +1208,7 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     check(listing.presentation.candidates?.items.map(\.text) == ["好", "郝"], "Shift-↓ opens the single-character list")
     // Key-run decoding: first tone without Space, keys swapped across syllables, keys pressed together.
     func decoded(_ method: KeyDecoderMethod, _ keys: String, gaps: [Int: Double] = [:]) -> String {
-        var options = unlearned; options.keyDecoder = method
+        var options = unlearned; options.keyDecoder = method; options.typoTolerance = .standard
         let c = Composer(engine: real, options: options)
         var time = 100.0
         for (index, key) in keys.enumerated() {
@@ -1228,6 +1228,10 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     _ = runEdit.handle(.backspace)
     for key in "wu0 " { _ = runEdit.handle(key == " " ? .space : .char(key), at: 2) }
     check(runEdit.presentation.text == "今天", "Backspace inside the run, then typing on")
+    var offOptions = unlearned; offOptions.keyDecoder = .timed; offOptions.typoTolerance = .off
+    let asTyped = Composer(engine: real, options: offOptions)
+    for key in "jia3p7g4" { _ = asTyped.handle(.char(key)) }
+    check(asTyped.presentation.text != "我們是", "with correction off, keys are taken as typed")
     // Personal hit areas: a picked correction makes the same slip cheaper.
     let slips = try Engine(lexiconURL: realURL, userDataDirectory: nil)
     let before = slips.typoAlternatives(for: "ek4").first { $0.reading == "ㄍㄜˋ" }

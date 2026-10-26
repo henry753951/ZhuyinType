@@ -182,7 +182,7 @@ public struct ComposerOptions: Equatable, Sendable {
     public var typoTolerance: TypoTolerance = .standard
     public var candidateAnchor: CandidateAnchor = .afterCursor
     /// How keys typed at the end of the composition become syllables (see `KeyDecoderMethod`).
-    public var keyDecoder: KeyDecoderMethod = .slots
+    public var keyDecoder: KeyDecoderMethod = .timed
     /// The candidate window lists top to bottom: ↑↓ move the highlight and ←→ move to the neighbouring character.
     /// Left to right, ←→ move the highlight and ↑↓ turn pages.
     public var verticalList: Bool = true

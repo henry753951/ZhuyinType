@@ -51,6 +51,15 @@ while let option = arguments.first, option.hasPrefix("--") {
         }
         options.keyDecoder = method
         arguments.removeFirst(2)
+    case "--decoder-costs":
+        // implicit,overwrite,swap,skip,swapTogether,skipTogether,swapApart,skipApart
+        let values = arguments.count >= 2 ? arguments[1].split(separator: ",").compactMap { Double($0) } : []
+        guard values.count == 8 else { fail("--decoder-costs needs 8 comma-separated numbers") }
+        KeyDecoder.costs.implicitBoundary = values[0]; KeyDecoder.costs.overwrite = values[1]
+        KeyDecoder.costs.swap = values[2]; KeyDecoder.costs.skip = values[3]
+        KeyDecoder.costs.swapTogether = values[4]; KeyDecoder.costs.skipTogether = values[5]
+        KeyDecoder.costs.swapApart = values[6]; KeyDecoder.costs.skipApart = values[7]
+        arguments.removeFirst(2)
     case "--hotspot":
         guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
         KeyChannel.hotspot = arguments[1] == "on"

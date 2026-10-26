@@ -405,8 +405,11 @@ public final class Composer {
         runTokens = 0
     }
 
+    /// With typing correction off, only where syllables end is decided; keys are taken as typed.
     private var keyDecoder: KeyDecoder {
-        KeyDecoder(method: options.keyDecoder) { [engine, options] reading, keys in
+        let method = options.typoTolerance == .off && [.reorder, .timed].contains(options.keyDecoder) ? .boundaries
+            : options.keyDecoder
+        return KeyDecoder(method: method) { [engine, options] reading, keys in
             if engine.isValidSyllable(reading) { return 0 }
             guard options.typoTolerance != .off, let cheapest = engine.alternatives(for: keys).first else { return nil }
             return cheapest.cost * options.typoTolerance.costMultiplier
@@ -423,6 +426,31 @@ public final class Composer {
         return .consumed
     }
 
+    /// The run's split: the decoder's cheapest, unless another split of the same shape (as many syllables, the same
+    /// unfinished part) close in cost reads better to the language model, as when two keys pressed together leave
+    /// it open which one was meant.
+    private func bestSplit() -> KeyDecoder.Result? {
+        let splits = keyDecoder.decode(run, limit: 6)
+        guard let cheapest = splits.first, cheapest.cost.isFinite else { return nil }
+        let rivals = splits.filter {
+            $0.cost.isFinite && $0.cost <= cheapest.cost + Self.splitMargin
+                && $0.syllables.count == cheapest.syllables.count && $0.bufferKeys.isEmpty == cheapest.bufferKeys.isEmpty
+        }
+        guard rivals.count > 1, options.keyDecoder != .slots else { return cheapest }
+        let settled = Array(tokens.dropLast(runTokens))
+        return rivals.max { a, b in score(a, after: settled) < score(b, after: settled) }
+    }
+
+    private func score(_ split: KeyDecoder.Result, after settled: [CompositionToken]) -> Double {
+        let candidate = settled + split.syllables.map { CompositionToken.syllable($0.reading, keys: $0.keys) }
+        guard let sentence = engine.sentences(candidate, fixed: fixed, typo: options.typoTolerance, k: 1,
+                                              start: leadingHistory).first else { return -.infinity }
+        return sentence.score - split.cost
+    }
+
+    /// How much costlier than the cheapest a split may be and still be judged by the language model.
+    static let splitMargin = 6.0
+
     private func eraseFromRun() -> KeyResult {
         run.removeLast()
         if !applyRun() { settleRun() }
@@ -433,9 +461,10 @@ public final class Composer {
     /// composition too long, and nothing changes.
     @discardableResult
     private func applyRun() -> Bool {
-        let decoded = keyDecoder.decode(run)
+        guard let decoded = bestSplit() else { return false }
         let settled = tokens.dropLast(runTokens).filter { $0.reading != nil }.count
-        guard decoded.cost.isFinite, settled + decoded.syllables.count <= options.maxSyllables else { return false }
+        let unfinished = decoded.bufferKeys.isEmpty ? 0 : 1
+        guard decoded.cost.isFinite, settled + decoded.syllables.count + unfinished <= options.maxSyllables else { return false }
         if runTokens > 0 { delete((tokens.count - runTokens)..<tokens.count) }
         for syllable in decoded.syllables { insert(.syllable(syllable.reading, keys: syllable.keys)) }
         runTokens = decoded.syllables.count

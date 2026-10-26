@@ -21,7 +21,7 @@ public enum KeyDecoderMethod: String, Sendable, CaseIterable {
 /// repairs across syllables: two adjacent keys swapped (`ji3ap7` typed `jia3p7`) and a key pressed by mistake.
 /// Closing a syllable costs nothing when it is valid and the keyboard channel's cheapest correction otherwise, so
 /// the per-syllable typo correction stays where it was.
-struct KeyDecoder {
+public struct KeyDecoder {
     struct Key: Equatable {
         var character: Character
         /// Key-down time in seconds, when known.
@@ -44,16 +44,26 @@ struct KeyDecoder {
         var cost: Double
     }
 
-    /// First tone without Space before the next initial.
-    static let implicitBoundaryCost = 2.0
-    /// A filled slot replaced by another key of the same kind (the slot keeps the later key, as the composer does).
-    static let overwriteCost = 7.0
-    static let swapCost = 6.0
-    static let skipCost = 9.0
-    /// Gap under which two keys count as pressed together.
-    static let togetherGap: TimeInterval = 0.035
-    static let swapTogetherCost = 1.0
-    static let skipTogetherCost = 3.5
+    /// Costs on the keyboard channel's scale (KeyChannel: transposition 9, extra or missing key 12.5, neighbour 11).
+    public struct Costs: Sendable {
+        /// First tone without Space before the next initial.
+        // Chosen with training/eval/typing_errors.py on both dev sets (docs/MODEL_V3.md §4).
+        public var implicitBoundary = 4.0
+        /// A filled slot typed again (the slot keeps the later key).
+        public var overwrite = 10.0
+        public var swap = 10.0
+        public var skip = 13.0
+        /// For `timed`: keys pressed within `togetherGap` of each other.
+        public var swapTogether = 2.0
+        public var skipTogether = 4.0
+        /// For `timed`: keys typed apart.
+        public var swapApart = 12.0
+        public var skipApart = 15.0
+        public var togetherGap: TimeInterval = 0.035
+        public init() {}
+    }
+    /// Shared by every composer; zhuyin-cli can set them for calibration.
+    nonisolated(unsafe) public static var costs = Costs()
 
     let method: KeyDecoderMethod
     /// Cost of closing a syllable from these slots and keys: 0 when valid, a correction cost, or nil when impossible.
@@ -64,17 +74,21 @@ struct KeyDecoder {
         var keys = ""
         var syllables: [Syllable] = []
         var cost = 0.0
-        var signature: String { String(slots.map { $0 ?? "_" }) + "|" + keys }
+        /// States agreeing on the unfinished syllable and the last two syllables compete; earlier differences are
+        /// settled, so the search stays a beam while close alternatives survive for the language model.
+        var signature: String {
+            String(slots.map { $0 ?? "_" }) + "|" + keys + "|" + syllables.suffix(2).map(\.reading).joined(separator: " ")
+        }
     }
 
     private static let beamWidth = 24
 
-    func decode(_ keys: [Key]) -> Result {
+    /// The `limit` cheapest splits, cheapest first (each a different unfinished syllable or a different history).
+    func decode(_ keys: [Key], limit: Int) -> [Result] {
         // states[i]: the best states after consuming the first i typed keys.
         var states = Array(repeating: [String: State](), count: keys.count + 1)
         states[0][""] = State()
         func offer(_ state: State, at index: Int) {
-            // What follows depends only on the unfinished syllable, so states that agree on it compete.
             let signature = state.signature
             if let old = states[index][signature], old.cost <= state.cost { return }
             states[index][signature] = state
@@ -82,12 +96,17 @@ struct KeyDecoder {
         for index in 0..<keys.count {
             let beam = states[index].values.sorted { $0.cost < $1.cost }.prefix(Self.beamWidth)
             for state in beam {
-                for next in take(state, keys[index]) { offer(next, at: index + 1) }
+                for next in take(state, keys[index], pressedWithPrevious: together(keys, index, index - 1)) {
+                    offer(next, at: index + 1)
+                }
                 guard method == .reorder || method == .timed else { continue }
-                // Skip a key pressed by mistake.
-                var skipped = state
-                skipped.cost += skipCost(keys, index)
-                offer(skipped, at: index + 1)
+                // Skip a Zhuyin key pressed by mistake.  A tone key or Space that fits nothing is ignored by the
+                // composer instead, as it always was.
+                if ZhuyinKeyboard.symbols[keys[index].character] != nil {
+                    var skipped = state
+                    skipped.cost += skipCost(keys, index)
+                    offer(skipped, at: index + 1)
+                }
                 // Take the next two keys in the other order.
                 if index + 1 < keys.count, keys[index].character != keys[index + 1].character {
                     for first in take(state, keys[index + 1]) {
@@ -100,14 +119,19 @@ struct KeyDecoder {
                 }
             }
         }
-        guard let best = states[keys.count].values.min(by: { $0.cost < $1.cost }) else {
-            return Result(syllables: [], buffer: [nil, nil, nil], bufferKeys: "", cost: .infinity)
-        }
-        return Result(syllables: best.syllables, buffer: best.slots, bufferKeys: best.keys, cost: best.cost)
+        return Array(states[keys.count].values.sorted { $0.cost < $1.cost }.prefix(limit).map {
+            Result(syllables: $0.syllables, buffer: $0.slots, bufferKeys: $0.keys, cost: $0.cost)
+        })
+    }
+
+    func decode(_ keys: [Key]) -> Result {
+        decode(keys, limit: 1).first ?? Result(syllables: [], buffer: [nil, nil, nil], bufferKeys: "", cost: .infinity)
     }
 
     /// The states reached by taking one more key.
-    private func take(_ state: State, _ key: Key) -> [State] {
+    /// `pressedWithPrevious`: this key went down almost together with the one before it (`timed` then never ends a
+    /// syllable between them: nobody finishes one syllable and starts the next within a few milliseconds).
+    private func take(_ state: State, _ key: Key, pressedWithPrevious: Bool = false) -> [State] {
         let character = key.character
         if let tone = ZhuyinKeyboard.tones[character] ?? (character == " " ? "" : nil) {
             return close(state, tone: tone, toneKey: character, implicit: false).map { [$0] } ?? []
@@ -115,15 +139,20 @@ struct KeyDecoder {
         guard let symbol = ZhuyinKeyboard.symbols[character], let slot = ZhuyinKeyboard.slot(of: symbol) else { return [] }
         var results: [State] = []
         var placed = state
+        // A filled slot takes the later key, and every key stays in `keys` for the channel's correction, as the
+        // composer has always done; replacing a key costs.  An initial after the medial or final is a key out of
+        // order: cheap when pressed together with the key before it, otherwise priced like a swap.
         if placed.slots[slot] != nil {
-            placed.cost += Self.overwriteCost
-            placed.keys.removeAll { ZhuyinKeyboard.symbols[$0].flatMap(ZhuyinKeyboard.slot) == slot }
+            placed.cost += Self.costs.overwrite
+        } else if slot == 0, state.slots[1] != nil || state.slots[2] != nil {
+            placed.cost += method == .timed ? (pressedWithPrevious ? Self.costs.swapTogether : Self.costs.swapApart)
+                : method == .slots ? 0 : Self.costs.swap
         }
         placed.slots[slot] = symbol
         placed.keys.append(character)
         results.append(placed)
         // The syllable so far is a whole first-tone syllable and this key starts the next one.
-        if method != .slots, slot == 0, state.slots.contains(where: { $0 != nil }),
+        if method != .slots, slot == 0, state.slots.contains(where: { $0 != nil }), !(method == .timed && pressedWithPrevious),
            var closed = close(state, tone: "", toneKey: " ", implicit: true) {
             closed.slots[0] = symbol
             closed.keys = String(character)
@@ -141,23 +170,23 @@ struct KeyDecoder {
         next.syllables.append(Syllable(reading: reading, keys: keys, implicit: implicit))
         next.slots = [nil, nil, nil]
         next.keys = ""
-        next.cost += cost + (implicit ? Self.implicitBoundaryCost : 0)
+        next.cost += cost + (implicit ? Self.costs.implicitBoundary : 0)
         return next
     }
 
     private func together(_ keys: [Key], _ index: Int, _ other: Int) -> Bool {
         guard keys.indices.contains(other), let a = keys[index].time, let b = keys[other].time else { return false }
-        return abs(a - b) < Self.togetherGap
+        return abs(a - b) < Self.costs.togetherGap
     }
 
     private func swapCost(_ keys: [Key], _ index: Int) -> Double {
-        method == .timed ? (together(keys, index, index + 1) ? Self.swapTogetherCost : Self.swapCost * 1.5) : Self.swapCost
+        method == .timed ? (together(keys, index, index + 1) ? Self.costs.swapTogether : Self.costs.swapApart) : Self.costs.swap
     }
 
     private func skipCost(_ keys: [Key], _ index: Int) -> Double {
-        guard method == .timed else { return Self.skipCost }
+        guard method == .timed else { return Self.costs.skip }
         let near = (together(keys, index, index - 1) && KeyChannel.neighbours(of: keys[index - 1].character).contains(keys[index].character))
             || (together(keys, index, index + 1) && KeyChannel.neighbours(of: keys[index + 1].character).contains(keys[index].character))
-        return near ? Self.skipTogetherCost : Self.skipCost * 1.5
+        return near ? Self.costs.skipTogether : Self.costs.skipApart
     }
 }
