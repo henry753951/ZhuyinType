@@ -23,11 +23,15 @@ final class IMKTextClient: TextClient {
     }
 
     /// The caret in screen coordinates: a zero-width rectangle as tall as the line.  Sources, most reliable first:
-    /// the composed text itself (the character before the caret, or the start of the composition), the attributes
-    /// query, the selection, the last caret found for this client, and finally the mouse.
+    /// the attributes query (answered correctly by Cocoa and web-engine clients alike), the composed text's own
+    /// rectangle, the selection, the last caret found for this client, and finally the mouse.  Rectangles returned
+    /// through the client proxy can arrive garbled (subnormal numbers), so every one is checked before use.
     func caretRect(cursorIndex: Int) -> NSRect {
         let marked = markedRange
         var sources: [(String, NSRect)] = []
+        var line = NSRect.zero
+        _ = input.attributes(forCharacterIndex: max(0, cursorIndex), lineHeightRectangle: &line)
+        sources.append(("attributes", line.standardized))
         if marked.location != NSNotFound {
             let cursor = min(max(0, cursorIndex), marked.length)
             if cursor > 0 {
@@ -38,9 +42,6 @@ final class IMKTextClient: TextClient {
             let start = input.firstRect(forCharacterRange: NSRange(location: marked.location, length: 0), actualRange: nil)
             sources.append(("marked-start", start.standardized))
         }
-        var line = NSRect.zero
-        _ = input.attributes(forCharacterIndex: max(0, cursorIndex), lineHeightRectangle: &line)
-        sources.append(("attributes", line.standardized))
         let selection = selectedRange
         if selection.location != NSNotFound {
             sources.append(("selection", input.firstRect(forCharacterRange: NSRange(location: selection.location, length: 0),
@@ -59,11 +60,12 @@ final class IMKTextClient: TextClient {
 
     private static let log = Logger(subsystem: "org.zhuyintype", category: "caret")
 
-    /// A caret is a zero-width rectangle, so only the height must be positive.  Clients that cannot answer return
-    /// a zero rectangle at the screen origin, which is rejected too.
+    /// A caret is a zero-width rectangle, so only the height must be positive — and plausible: a line between 4 and
+    /// 400 points tall, on a screen, not the zero rectangle clients return when they cannot answer.
     private func valid(_ rect: NSRect) -> Bool {
         guard rect.origin.x.isFinite, rect.origin.y.isFinite, rect.width.isFinite, rect.height.isFinite,
-              rect.width >= 0, rect.height > 0, rect.height < 400, rect.origin != .zero else { return false }
+              rect.width >= 0, rect.width < 10_000, rect.height >= 4, rect.height < 400,
+              abs(rect.origin.x) >= 0.001 || abs(rect.origin.y) >= 0.001 else { return false }
         return NSScreen.screens.contains { $0.frame.insetBy(dx: -1, dy: -1).contains(NSPoint(x: rect.minX, y: rect.midY)) }
     }
 }
