@@ -175,23 +175,33 @@ enum ControllerCoreSelfTest {
                        "after 我們: \(core.composer.presentation.text), alone: \(alone)")
             try expect(core.recentText == "我們", "reranker context \(core.recentText)")
         }
-        test("Option held in the candidate window shows corrections; released, the exact list") {
+        test("Option held shows corrections until released; tapped, it keeps them for plain arrows") {
             let (core, client) = session()
             type("ji3ap7", into: core)
             _ = core.handle(.down)
-            try expect(core.composer.presentation.candidates?.tolerant == false, "list does not start exact")
-            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 1)
-            let tolerant = core.composer.presentation.candidates
-            try expect(tolerant?.tolerant == true && tolerant?.items.dropFirst().first?.annotation != nil,
+            func option(_ down: Bool, _ time: TimeInterval) {
+                _ = core.flagsChanged(keyCode: 58, modifiers: down ? .option : [], physicallyDown: down, timestamp: time)
+            }
+            var tolerant: Bool? { core.composer.presentation.candidates?.tolerant }
+            try expect(tolerant == false, "list does not start exact")
+            // Held: shown while down, gone when released.
+            option(true, 1)
+            try expect(tolerant == true && core.composer.presentation.candidates?.items.dropFirst().first?.annotation != nil,
                        "holding Option did not list corrections first")
-            try expect(core.keyDown(keyCode: 125, modifiers: .option), "↓ with Option held was not handled")
-            try expect(core.composer.presentation.candidates?.selection == 1, "↓ with Option held did not move")
-            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 2)
-            try expect(core.composer.presentation.candidates?.tolerant == false, "releasing Option did not restore the list")
-            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 3)
+            option(false, 2)
+            try expect(tolerant == false, "releasing a held Option did not restore the list")
+            // Tapped: kept, browsed with plain ↓, and tapped off again.
+            option(true, 3); option(false, 3.1)
+            try expect(tolerant == true, "a tap did not keep the corrections")
+            try expect(core.keyDown(keyCode: 125, modifiers: []), "plain ↓ was not handled")
+            try expect(tolerant == true && core.composer.presentation.candidates?.selection == 1, "↓ did not move in the kept list")
+            option(true, 4); option(false, 4.1)
+            try expect(tolerant == false, "a second tap did not turn the corrections off")
+            // Held with a digit: picks from the corrections, and the key up does not switch anything.
+            option(true, 5)
             let picked = core.composer.presentation.candidates!.items[1].text
             try expect(core.keyDown(keyCode: 19, modifiers: .option), "Option-2 was not handled")
-            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 4)
+            option(false, 5.1)
             core.commit()
             try expect(client.inserts.last?.hasSuffix(picked) == true, "Option-2 did not pick \(picked): \(client.inserts)")
         }

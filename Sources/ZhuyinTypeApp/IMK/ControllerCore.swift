@@ -34,8 +34,11 @@ final class ControllerCore {
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
     private var shiftTap: (key: UInt16, time: TimeInterval)?
-    /// Option is held and showed the corrections: releasing it shows the words for the keys as typed again.
-    private var correctionsHeld = false
+    /// Option went down in the candidate window: when, whether it switched the list, and whether another key was
+    /// pressed before it came up.  Held, it shows the corrections until released; tapped, it keeps them on (or off),
+    /// so they can be browsed with plain arrows, which many apps take for their own shortcuts with Option.
+    private var optionPress: (time: TimeInterval, switched: Bool, used: Bool)?
+    static let tapDuration: TimeInterval = 0.35
     private var rendering = false
     private let insertionRange = NSRange(location: NSNotFound, length: 0)
 
@@ -78,6 +81,7 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         shiftTap = nil
+        optionPress?.used = true
         guard !rendering, !isEnglish else { return false }
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
         if modifiers.contains(.capsLock) {
@@ -183,18 +187,24 @@ final class ControllerCore {
             }
             return false
         }
-        // Option held in the candidate window shows the corrections; released, the words for the keys as typed.
+        // Option in the candidate window: held, it shows the corrections until released (Option-digit picks one);
+        // tapped, it switches them on or off and leaves them so.
         if keyCode == 58 || keyCode == 61 {
             shiftTap = nil
+            let tolerant = composer.presentation.candidates?.tolerant
             if modifiers.contains(.option) {
                 let others = modifiers.intersection([.command, .control, .shift, .function])
-                if others.isEmpty, !correctionsHeld, composer.presentation.candidates?.tolerant == false {
-                    correctionsHeld = true
+                guard others.isEmpty, tolerant != nil, optionPress == nil else { return false }
+                optionPress = (timestamp, tolerant == false, false)
+                if tolerant == false { toggleCorrections() }
+            } else if let press = optionPress {
+                optionPress = nil
+                let tap = !press.used && timestamp >= press.time && timestamp - press.time <= Self.tapDuration
+                // A tap that switched them on keeps them; a tap while they were on turns them off; a hold that
+                // switched them on ends with the key.
+                if tap ? !press.switched : press.switched, composer.presentation.candidates?.tolerant == true {
                     toggleCorrections()
                 }
-            } else if correctionsHeld {
-                correctionsHeld = false
-                if composer.presentation.candidates?.tolerant == true { toggleCorrections() }
             }
             return false
         }

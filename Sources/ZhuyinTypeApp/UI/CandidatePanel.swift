@@ -163,7 +163,7 @@ private final class ZhuyinHintButton: NSButton {
 }
 
 /// A footer switch drawn as its keyboard key and a short name, accented while on: ⇧↓ 單字 (only the character at the
-/// target) and ⌥ 修正 (typing corrections; holding Option shows them too, until it is released).
+/// target) and ⌥ 修正 (typing corrections; Option held shows them until released, Option tapped keeps them).
 private final class KeycapToggle: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
     private let key: String
@@ -208,7 +208,7 @@ final class CandidateContentView: InputMaterialView {
     private let noticeLabel = NSTextField(labelWithString: "")
     private let zhuyinButton = ZhuyinHintButton()
     private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字（Shift-↓）")
-    private let correctionButton = KeycapToggle(key: "⌥", label: "修正", help: "列出按錯修正的字（按住 Option）")
+    private let correctionButton = KeycapToggle(key: "⌥", label: "修正", help: "列出按錯修正的字（按住 Option 看，單按 Option 固定）")
     private let pageLabel = NSTextField(labelWithString: "")
     private let previous = NSButton()
     private let next = NSButton()
