@@ -209,6 +209,7 @@ final class ZhuyinInputController: IMKInputController {
     private func refreshPreferences() {
         let p = Preferences.shared
         showModeToast = p.showModeToast
+        EngineHost.engine?.fuzzySounds = p.fuzzySounds
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
     }
 

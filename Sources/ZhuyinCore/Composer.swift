@@ -24,6 +24,16 @@ public final class Composer {
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
     /// passed-through key or `breakContext()`.
     private var leadingHistory = LanguageModelHistory()
+    /// The words behind `leadingHistory` (at most two, after the last literal), for learning across commits.
+    private var leadingWords: [ConvertedWord] = []
+    /// The last commit, followed while Backspace keys passed to the app delete it from its end.
+    private var lastCommit: (words: [ConvertedWord], leading: LanguageModelHistory, leadingWords: [ConvertedWord],
+                             time: Double)?
+    private var deletedCharacters = 0
+    /// Whole words of the last commit deleted that way.  Retyping their readings as other words is a correction.
+    private var deletedWords: [ConvertedWord] = []
+    /// Seconds after a commit in which deleting and retyping it counts as a correction.
+    static let correctionWindow: Double = 30
     /// Return an index into the score-ordered N-best list. Invalid indices fall back to the decoder's first choice.
     /// Called synchronously only when conversion changes; keep the hook within the typing latency budget.
     public var reranker: (([ScoredSentence]) -> Int)? {
@@ -61,8 +71,45 @@ public final class Composer {
     public func handle(_ key: KeyInput) -> KeyResult {
         let result = process(key)
         // A key the app receives may move the insertion point or edit the text before it.
-        if !result.handled { leadingHistory = .init() }
+        if !result.handled && !(key == .backspace && followDeletion()) { forgetContext() }
         return result
+    }
+
+    private func forgetContext() {
+        leadingHistory = .init()
+        leadingWords = []
+        lastCommit = nil
+        deletedWords = []
+    }
+
+    /// Backspace passed to the app with nothing composed deletes the last commit from its end: the context becomes
+    /// what is left of it.  False when it is not following a recent commit.
+    private func followDeletion() -> Bool {
+        guard !hasComposition, let last = lastCommit, engine.clock() - last.time < Self.correctionWindow else { return false }
+        deletedCharacters += 1
+        var remaining = deletedCharacters, kept = last.words.count
+        while kept > 0, remaining >= last.words[kept - 1].text.count {
+            remaining -= last.words[kept - 1].text.count
+            kept -= 1
+        }
+        guard kept > 0 || remaining == 0 else { return false }
+        deletedWords = last.words[kept...].filter { !$0.reading.isEmpty }
+        if remaining > 0 {
+            leadingHistory = .init(); leadingWords = []
+        } else if kept == 0 {
+            leadingHistory = last.leading; leadingWords = last.leadingWords
+        } else {
+            let before = Array(last.words[..<kept])
+            leadingHistory = before.last?.history ?? .init()
+            leadingWords = Self.trailingWords(before, after: last.leadingWords)
+        }
+        return true
+    }
+
+    /// The last two syllable words of `words` after its last literal, continuing `earlier` when there is no literal.
+    private static func trailingWords(_ words: [ConvertedWord], after earlier: [ConvertedWord]) -> [ConvertedWord] {
+        let tail = words.reversed().prefix { !$0.reading.isEmpty }.reversed()
+        return Array((tail.count == words.count ? earlier + Array(tail) : Array(tail)).suffix(2))
     }
 
     private func process(_ key: KeyInput) -> KeyResult {
@@ -177,7 +224,7 @@ public final class Composer {
                     if options.escapeClearsComposition { reset() }
                     result = .consumed
                 } else { result = .passThrough }
-            case .shiftedChar, .shiftLeft, .shiftRight: result = .passThrough
+            case .shiftedChar, .printed, .shiftLeft, .shiftRight: result = .passThrough
             }
         }
         refresh()
@@ -220,21 +267,52 @@ public final class Composer {
         refresh()
         let text = presentation.text
         if options.learningEnabled, !text.isEmpty {
-            let committed = conversion.map { word in
+            var committed = conversion.map { word in
                 CommittedWord(range: word.range, text: word.text, reading: word.reading, wordID: word.wordID,
                               picked: fixed.contains { $0.range == word.range && $0.text == word.text })
             }
-            engine.learn(commit: committed, syllableCount: tokens.filter { $0.reading != nil }.count)
+            let corrected = correctedPrefix()
+            if corrected > 0 {
+                // Deleted right after it was committed and typed again as other words: learn it like a pick, and
+                // weaken what was deleted where it stood.
+                for index in committed.indices where committed[index].range.upperBound <= corrected {
+                    committed[index].picked = true
+                }
+                for word in deletedWords where !conversion.contains(where: { $0.text == word.text && $0.reading == word.reading }) {
+                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: word.history)
+                }
+            }
+            let context = leadingWords.map {
+                CommittedWord(range: 0..<0, text: $0.text, reading: $0.reading, wordID: $0.wordID, picked: false)
+            }
+            engine.learn(commit: committed, syllableCount: tokens.filter { $0.reading != nil }.count, context: context)
         }
-        // A literal at the end (punctuation, symbols as typed) leaves the sentence-start history.
-        if !text.isEmpty { leadingHistory = conversion.last?.history ?? .init() }
+        if !text.isEmpty {
+            // A literal at the end (punctuation, symbols as typed) leaves the sentence-start history.
+            lastCommit = (conversion, leadingHistory, leadingWords, engine.clock())
+            leadingWords = Self.trailingWords(conversion, after: leadingWords)
+            leadingHistory = conversion.last?.history ?? .init()
+            deletedCharacters = 0
+            deletedWords = []
+        }
         reset()
         return text
     }
 
+    /// The number of leading tokens that retype the deleted words' readings as different words; 0 when they do not.
+    private func correctedPrefix() -> Int {
+        guard !deletedWords.isEmpty else { return 0 }
+        let readings = deletedWords.flatMap { $0.reading.split(separator: " ").map(String.init) }
+        guard tokens.count >= readings.count,
+              zip(tokens, readings).allSatisfy({ $0.reading == $1 }),
+              conversion.contains(where: { $0.range.upperBound == readings.count }) else { return 0 }
+        let retyped = conversion.filter { $0.range.upperBound <= readings.count }.map(\.text).joined()
+        return retyped == deletedWords.map(\.text).joined() ? 0 : readings.count
+    }
+
     /// The next composition starts a sentence: call when the text before the insertion point is unknown.
     public func breakContext() {
-        leadingHistory = .init()
+        forgetContext()
         if !tokens.isEmpty { conversionDirty = true; refresh() }
     }
 

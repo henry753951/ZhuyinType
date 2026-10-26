@@ -10,6 +10,9 @@ public enum KeyInput: Equatable, Sendable {
     case char(Character)
     /// A printable ASCII key with Shift held, named by its unshifted character: Shift+1 is `.shiftedChar("1")`.
     case shiftedChar(Character)
+    /// A digit or symbol key with Option held: the ASCII character printed on it, typed as is (Option+. is ".", Option+Shift+. is
+    /// ">"), for the symbols the Zhuyin keys and Chinese punctuation cover.
+    case printed(Character)
     case space, shiftSpace
     case enter, shiftEnter
     case backspace, optionBackspace, forwardDelete
@@ -98,6 +101,29 @@ public enum TypoTolerance: String, Sendable, CaseIterable {
     var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
 }
 
+/// Sound pairs many speakers merge.  With a pair on, each sound also matches the other one at a small cost, so an
+/// exact match ranks first unless the other word is clearly likelier; a syllable can use one initial and one final pair.
+public struct FuzzySounds: OptionSet, Hashable, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+    /// ㄗ and ㄓ
+    public static let zZh = FuzzySounds(rawValue: 1 << 0)
+    /// ㄘ and ㄔ
+    public static let cCh = FuzzySounds(rawValue: 1 << 1)
+    /// ㄙ and ㄕ
+    public static let sSh = FuzzySounds(rawValue: 1 << 2)
+    /// ㄣ and ㄥ
+    public static let enEng = FuzzySounds(rawValue: 1 << 3)
+    /// ㄢ and ㄤ
+    public static let anAng = FuzzySounds(rawValue: 1 << 4)
+
+    /// Each pair, and whether it is an initial (true) or a final.
+    static let pairs: [(set: FuzzySounds, a: Character, b: Character, initial: Bool)] = [
+        (.zZh, "ㄗ", "ㄓ", true), (.cCh, "ㄘ", "ㄔ", true), (.sSh, "ㄙ", "ㄕ", true),
+        (.enEng, "ㄣ", "ㄥ", false), (.anAng, "ㄢ", "ㄤ", false),
+    ]
+}
+
 public enum CandidateAnchor: Sendable {
     /// Spans start at the cursor, except at the composition end where they end at the cursor.
     case afterCursor
@@ -110,6 +136,8 @@ public struct SentenceWord: Equatable, Sendable {
     public var range: Range<Int>
     public var text: String
     public var reading: String
+    /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
+    public var corrected = false
 }
 
 public struct ScoredSentence: Equatable, Sendable {
@@ -117,6 +145,8 @@ public struct ScoredSentence: Equatable, Sendable {
     /// Natural-log decoder score, including sentence boundaries.
     public var score: Double
     public var text: String { words.map(\.text).joined() }
+    /// Some word differs from the keys as typed.
+    public var corrected: Bool { words.contains(where: \.corrected) }
 }
 
 public struct ComposerOptions: Equatable, Sendable {

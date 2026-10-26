@@ -84,7 +84,8 @@ final class ControllerCore {
         let visible = composer.presentation.text
         let result = composer.handle(key)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
-        if !result.handled { recentText = "" }
+        // Backspace passed to the app deletes the last committed character; other keys may move away from it.
+        if !result.handled { recentText = key == .backspace ? String(recentText.dropLast()) : "" }
         return result.handled
     }
 
@@ -142,6 +143,7 @@ final class ControllerCore {
                timestamp >= tap.time, timestamp - tap.time <= 0.35 {
                 commit()
                 isEnglish.toggle()
+                breakContext()
                 modeChanged?(isEnglish, client.caretRect(cursorIndex: 0))
             }
         }

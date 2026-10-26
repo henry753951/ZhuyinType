@@ -82,6 +82,9 @@ def main():
     parser.add_argument("--reranker", help="directory with Reranker.mlmodelc and vocab.json")
     parser.add_argument("--rerank-weight", type=float, default=1.0)
     parser.add_argument("--rerank-count", type=int, default=8)
+    parser.add_argument("--typing-lexicon", help="derive the typed readings from this lexicon instead of --lexicon, "
+                        "so two lexicons are compared on the same keys")
+    parser.add_argument("--fuzzy", help="fuzzy sound pairs, e.g. zh,ch,sh,en,an")
     parser.add_argument("--split", choices=["none", "continue", "restart"], default="none")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
@@ -99,7 +102,7 @@ def main():
             shutil.copyfile(source, lexicon_path)
             if args.lm_dir:
                 os.symlink(os.path.abspath(args.lm_dir), os.path.join(temp, "lm"), target_is_directory=True)
-        lexicon = load_lexicon(lexicon_path)
+        lexicon = load_lexicon(args.typing_lexicon or lexicon_path)
         for test in tests:
             evaluate(test, args, lexicon, lexicon_path)
 
@@ -133,6 +136,8 @@ def evaluate(test, args, lexicon, lexicon_path):
     if args.reranker:
         command += ["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight),
                     "--rerank-count", str(args.rerank_count)]
+    if args.fuzzy:
+        command += ["--fuzzy", args.fuzzy]
     if args.sentence_boundaries:
         command += ["--sentence-boundaries", args.sentence_boundaries]
     result = subprocess.run(command,

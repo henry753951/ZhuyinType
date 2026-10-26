@@ -52,6 +52,7 @@ final class Preferences: ObservableObject {
             Key.popupCompositionApps: [String](),
             Key.typoTolerance: TypoSetting.standard.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
+            Key.fuzzySounds: 0,
         ])
     }
 
@@ -70,10 +71,11 @@ final class Preferences: ObservableObject {
         static let popupCompositionApps = "popupCompositionApps"
         static let typoTolerance = "typoTolerance"
         static let candidateAnchor = "candidateAnchor"
+        static let fuzzySounds = "fuzzySounds"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
                           shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor]
+                          typoTolerance, candidateAnchor, fuzzySounds]
     }
 
     func resetToDefaults() {
@@ -134,6 +136,11 @@ final class Preferences: ObservableObject {
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
+    }
+
+    var fuzzySounds: FuzzySounds {
+        get { FuzzySounds(rawValue: defaults.integer(forKey: Key.fuzzySounds)) }
+        set { defaults.set(newValue.rawValue, forKey: Key.fuzzySounds); changed() }
     }
 
     var composerOptions: ComposerOptions {

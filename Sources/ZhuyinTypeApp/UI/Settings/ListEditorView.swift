@@ -38,7 +38,8 @@ struct ListRow {
 final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     var onAdd: ((NSView) -> Void)?
     var onRemove: (([ListRow]) -> Void)?
-    var onExtra: (() -> Void)?
+    /// Builds the actions menu (the trailing ⋯ button) when it opens, so items can follow the selection.
+    var makeMenu: (() -> NSMenu)?
 
     private let columnCount: Int
     private let table = ListTableView()
@@ -47,14 +48,14 @@ final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let emptyText: String
     private let add = NSButton()
     private let remove = NSButton()
-    private let extra = NSButton()
+    private let actions = NSButton()
     private var allRows: [ListRow] = []
     private var rows: [ListRow] = []
     private var query = ""
     private let sortColumn: Int
     private let ascending: Bool
 
-    init(columns: Int, emptyText: String, extraTitle: String? = nil, sortColumn: Int = 0, ascending: Bool = true) {
+    init(columns: Int, emptyText: String, hasActions: Bool = false, sortColumn: Int = 0, ascending: Bool = true) {
         columnCount = columns
         self.emptyText = emptyText
         self.sortColumn = sortColumn
@@ -82,7 +83,7 @@ final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         empty.textColor = .secondaryLabelColor
         empty.alignment = .center
 
-        for (button, symbol, label) in [(add, "plus", "加入"), (remove, "minus", "移除")] {
+        for (button, symbol, label) in [(add, "plus", "加入"), (remove, "minus", "移除"), (actions, "ellipsis.circle", "更多")] {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
             button.bezelStyle = .accessoryBarAction
             button.isBordered = false
@@ -93,16 +94,12 @@ final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         add.action = #selector(addPressed(_:))
         remove.action = #selector(removePressed)
 
-        extra.title = extraTitle ?? ""
-        extra.isHidden = extraTitle == nil
-        extra.bezelStyle = .push
-        extra.controlSize = .small
-        extra.target = self
-        extra.action = #selector(extraPressed)
+        actions.action = #selector(actionsPressed)
+        actions.isHidden = !hasActions
 
         let separator = NSBox()
         separator.boxType = .separator
-        let bar = NSStackView(views: [add, remove, NSView(), extra])
+        let bar = NSStackView(views: [add, remove, NSView(), actions])
         bar.orientation = .horizontal
         bar.spacing = 2
         bar.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 8)
@@ -127,6 +124,7 @@ final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             bar.heightAnchor.constraint(equalToConstant: 34),
             add.widthAnchor.constraint(equalToConstant: 26),
             remove.widthAnchor.constraint(equalToConstant: 26),
+            actions.widthAnchor.constraint(equalToConstant: 26),
         ])
         updateChrome()
     }
@@ -174,12 +172,14 @@ final class ListEditorView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         empty.isHidden = !rows.isEmpty
         empty.stringValue = query.isEmpty ? emptyText : "沒有符合「\(query)」的項目"
         remove.isEnabled = !table.selectedRowIndexes.isEmpty
-        extra.isEnabled = !allRows.isEmpty
     }
 
     @objc private func addPressed(_ sender: NSButton) { onAdd?(sender) }
     @objc private func removePressed() { removeSelected() }
-    @objc private func extraPressed() { onExtra?() }
+    @objc private func actionsPressed() {
+        guard let menu = makeMenu?() else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: actions.bounds.maxY + 4), in: actions)
+    }
     private func removeSelected() {
         let selected = selectedRows
         guard !selected.isEmpty else { return }

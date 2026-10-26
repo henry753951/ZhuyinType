@@ -8,3 +8,4 @@ data/build/
 dist/
 *.xcodeproj/xcuserdata/
 .build-*/
+.codex-logs/

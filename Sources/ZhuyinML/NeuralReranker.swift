@@ -81,15 +81,17 @@ public final class NeuralReranker: @unchecked Sendable {
         return result
     }
 
-    /// The index of the sentence to display.
+    /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.
+    public var exactMargin = 2.0
+
+    /// The index of the sentence to display.  The keys as typed win unless a correction scores clearly better.
     public func choose(_ sentences: [ScoredSentence], context: String) -> Int {
         guard sentences.count > 1, let neural = scores(context: context, candidates: sentences.map(\.text)) else { return 0 }
-        var best = 0
-        var bestScore = -Double.infinity
-        for (index, sentence) in sentences.enumerated() {
-            let score = sentence.score + weight * neural[index]
-            if score > bestScore { best = index; bestScore = score }
-        }
-        return best
+        let totals = sentences.indices.map { sentences[$0].score + weight * neural[$0] }
+        let best = totals.indices.max { totals[$0] < totals[$1] }!
+        guard sentences[best].corrected,
+              let exact = totals.indices.filter({ !sentences[$0].corrected }).max(by: { totals[$0] < totals[$1] }),
+              totals[best] - totals[exact] < exactMargin else { return best }
+        return exact
     }
 }

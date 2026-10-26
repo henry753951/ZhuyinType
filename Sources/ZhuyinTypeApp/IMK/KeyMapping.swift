@@ -12,10 +12,17 @@ enum KeyMapping {
         46: "m", 47: ".", 50: "`",
     ]
 
+    /// The upper character printed on each key of the US layout.
+    static let shifted: [Character: Character] = Dictionary(uniqueKeysWithValues:
+        zip(Array("1234567890-=[]\\;',./`"), Array("!@#$%^&*()_+{}|:\"<>?~")))
+
     static func input(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> KeyInput? {
         if !modifiers.intersection([.command, .control]).isEmpty { return nil }
         if modifiers.contains(.option) {
-            return keyCode == 51 ? .optionBackspace : nil
+            if keyCode == 51 { return .optionBackspace }
+            // Digit and symbol keys type what is printed on them; Option-letter stays the app's (shortcuts).
+            guard let character = printable[keyCode], !character.isLetter else { return nil }
+            return .printed(modifiers.contains(.shift) ? shifted[character] ?? character : character)
         }
         if let character = printable[keyCode] {
             if modifiers.contains(.capsLock), character.isLetter { return nil }

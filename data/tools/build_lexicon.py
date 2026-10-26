@@ -7,7 +7,10 @@ Inputs (downloaded by data/tools/fetch.sh into data/raw/):
   - wordfreq (CC BY-SA 4.0 data): word frequencies, looked up by Simplified form
 
 Output: one line per (reading, word): `reading<TAB>word<TAB>logp`, where reading is the Zhuyin syllables separated by
-spaces (tone marks ˊˇˋ˙ after the syllable, first tone unmarked) and logp is a natural-log unigram probability.
+spaces (tone marks ˊˇˋ˙ after the syllable, first tone unmarked) and logp is a natural-log probability of the word
+written with that reading.  A character's frequency is shared among its readings by Unihan's kHanyuPinlu counts, so
+the engine can tell a common reading (說 ㄕㄨㄛ) from a rare one (說 ㄕㄨㄟˋ).  Words with 一 or 不 also get the
+readings people type after tone sandhi (一直 ㄧˋ ㄓˊ, 一定 ㄧˊ ㄉㄧㄥˋ, 不要 ㄅㄨˊ ㄧㄠˋ).
 """
 import collections
 import math
@@ -103,6 +106,9 @@ HAN = re.compile(r"^[㐀-鿿豈-﫿\U00020000-\U0003134f]+$")
 VARIANT = re.compile(r"^(old |archaic |Japanese |ancient |erhua )?variant of ")
 
 
+COMMON = set()  # (trad, reading) with a lower-case (non-name) entry: surnames alone do not make a usual reading
+
+
 def read_cedict():
     entries = []  # (trad, simp, reading, is_taiwan, is_variant)
     with open(os.path.join(RAW, "cedict.txt"), encoding="utf-8") as f:
@@ -117,18 +123,30 @@ def read_cedict():
                 continue
             definitions = defs.split("/")
             variant = all(VARIANT.match(d) or d.startswith("see ") for d in definitions)
-            taiwan = None
+            # "/Taiwan pr. [wei2]/" as its own item is the reading of the whole entry; "(Taiwan pr. [xing4])" inside
+            # an item belongs to that sense only (行 conduct), and the entry's reading stays the main one.
+            taiwan, sense_readings = None, []
             for d in definitions:
-                tm = re.search(r"Taiwan pr\. \[([^\]]*)\]", d)
-                if tm:
-                    taiwan = cedict_reading(tm.group(1))
+                whole = re.fullmatch(r"Taiwan pr\. \[([^\]]*)\]", d.strip())
+                if whole:
+                    taiwan = cedict_reading(whole.group(1))
+                    continue
+                for tm in re.finditer(r"Taiwan pr\. \[([^\]]*)\]", d):
+                    sense_readings.append(cedict_reading(tm.group(1)))
             reading = cedict_reading(pinyin)
             if taiwan and len(taiwan.split()) == len(trad):
+                if not pinyin[:1].isupper():
+                    COMMON.add((trad, taiwan))
                 entries.append((trad, simp, taiwan, True, variant))
                 if reading:
                     entries.append((trad, simp, reading, False, True))  # mainland reading, kept but demoted
             elif reading and len(reading.split()) == len(trad):
+                if not pinyin[:1].isupper():
+                    COMMON.add((trad, reading))
                 entries.append((trad, simp, reading, False, variant))
+                for sense in sense_readings:
+                    if sense and sense != reading and len(sense.split()) == len(trad):
+                        entries.append((trad, simp, sense, True, True))  # one sense's Taiwan reading, demoted
     return entries
 
 
@@ -159,6 +177,63 @@ def read_unihan():
     return big5, readings
 
 
+def read_pinlu():
+    """kHanyuPinlu: character -> {Zhuyin reading: count} from a frequency dictionary of spoken and written Mandarin."""
+    counts = {}
+    with open(os.path.join(RAW, "Unihan_Readings.txt"), encoding="utf-8") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) != 3 or parts[1] != "kHanyuPinlu":
+                continue
+            ch = chr(int(parts[0][2:], 16))
+            for value in parts[2].split():
+                m = re.fullmatch(r"(\S+)\((\d+)\)", value)
+                if not m:
+                    continue
+                base, tone = numbered_from_diacritic(m.group(1))
+                zy = to_zhuyin(base, tone)
+                if zy:
+                    counts.setdefault(ch, collections.Counter())[zy] += int(m.group(2))
+    return counts
+
+
+def reading_shares(char_readings, pinlu, taiwan_of):
+    """char -> {reading: share of the character's frequency}, from kHanyuPinlu counts with add-one smoothing.
+
+    `taiwan_of[(char, mainland reading)]` is CC-CEDICT's Taiwan reading for the same character: its count moves there.
+    Characters without counts, or whose counts cover none of their readings, share equally."""
+    shares = {}
+    for ch, readings in char_readings.items():
+        if len(readings) < 2:
+            continue
+        counts = collections.Counter()
+        for reading, count in pinlu.get(ch, {}).items():
+            counts[taiwan_of.get((ch, reading), reading)] += count
+        known = {r: counts[r] for r in readings}
+        if sum(known.values()) == 0:
+            continue
+        total = sum(known.values()) + len(readings)
+        shares[ch] = {r: (known[r] + 1) / total for r in readings}
+    return shares
+
+
+SANDHI_PENALTY = 2.5  # a lone 一 or 不 typed with its sandhi tone, where the next character is another word
+
+
+def sandhi_readings(word, reading):
+    """Readings of `word` with 一 or 不 changed the way they are pronounced before the next syllable of the word."""
+    syllables = reading.split()
+    changed = list(syllables)
+    for i, ch in enumerate(word[:-1]):
+        tone = syllables[i + 1][-1] if syllables[i + 1][-1] in "ˊˇˋ˙" else ""
+        if ch == "一" and syllables[i] == "ㄧ":
+            changed[i] = "ㄧˊ" if tone in ("ˋ", "˙") else "ㄧˋ"
+        elif ch == "不" and syllables[i] == "ㄅㄨˋ" and tone in ("ˋ", "˙"):
+            changed[i] = "ㄅㄨˊ"
+    variant = " ".join(changed)
+    return [variant] if variant != reading else []
+
+
 # MARK: - Build
 
 
@@ -166,6 +241,7 @@ def main():
     freq = wordfreq.get_frequency_dict("zh")
     cedict = read_cedict()
     big5, unihan = read_unihan()
+    pinlu = read_pinlu()
 
     # A Simplified form can stand for several Traditional ones (后: 後/后, 发: 發/髮). The frequency is shared out by how
     # much each Traditional character is used inside other words, which separates 後 (以後, 然後) from 后 (皇后).
@@ -218,13 +294,45 @@ def main():
         for i, zy in enumerate(unihan[ch]):
             put(zy, ch, math.log(MISSING_CHAR) - 1.0 - i)
 
+    # A character's frequency is shared among its readings.  CC-CEDICT gives every reading of a character the full
+    # frequency of its form; kHanyuPinlu says how often each reading is used.
+    char_readings = collections.defaultdict(set)
+    for (reading, word) in best:
+        if len(word) == 1:
+            char_readings[word].add(reading)
+    taiwan_of = {}
+    by_char = collections.defaultdict(list)
+    for trad, simp, reading, taiwan, variant in cedict:
+        if len(trad) == 1:
+            by_char[trad].append((reading, taiwan, variant))
+    for ch, items in by_char.items():
+        tw = sorted({r for r, t, v in items if t and not v})
+        main = {r for r, t, v in items if not v and (ch, r) in COMMON}
+        if len(tw) == 1:
+            for r, t, v in items:
+                if not t and r != tw[0] and r not in main:
+                    taiwan_of[(ch, r)] = tw[0]
+    for ch, share in reading_shares(char_readings, pinlu, taiwan_of).items():
+        for reading, value in share.items():
+            best[(reading, ch)] += math.log(value)
+
+    # Tone sandhi of 一 and 不 inside words, and at a cost for the lone characters.
+    for (reading, word), logp in list(best.items()):
+        if len(word) > 1 and ("一" in word or "不" in word):
+            for variant in sandhi_readings(word, reading):
+                put(variant, word, logp - 0.01)
+    for word, plain, tones in [("一", "ㄧ", ["ㄧˊ", "ㄧˋ"]), ("不", "ㄅㄨˋ", ["ㄅㄨˊ"])]:
+        if (plain, word) in best:
+            for tone in tones:
+                put(tone, word, best[(plain, word)] - SANDHI_PENALTY)
+
     # Traditional-only lexicon: drop entries whose characters are all outside Big5 and Unihan's Traditional set
     # only when they are pure Simplified forms (the same string also appears as some entry's Simplified side only).
     trad_forms = set(e[0] for e in cedict)
     rows = [(r, w, p) for (r, w), p in best.items() if w in trad_forms or len(w) == 1]
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    rows.sort(key=lambda x: (x[0], -x[2]))
+    rows.sort(key=lambda x: (x[0], -x[2], x[1]))
     with open(OUT, "w", encoding="utf-8") as f:
         f.write("# ZhuyinType basic lexicon. Sources: CC-CEDICT (CC BY-SA 4.0), Unicode Unihan (Unicode License v3), "
                 "wordfreq (CC BY-SA 4.0). See data/SOURCES.md.\n")

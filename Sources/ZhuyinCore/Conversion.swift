@@ -12,6 +12,8 @@ struct ConvertedWord: Equatable {
     var reading: String
     var wordID: UInt32? = nil
     var history: LanguageModelHistory? = nil
+    /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
+    var corrected = false
 }
 
 struct FixedWord: Equatable {
@@ -143,7 +145,8 @@ extension Engine {
         return nodes.compactMap { node in
             let words = path(node)
             guard seen.insert(words.map(\.text).joined()).inserted else { return nil }
-            return ScoredSentence(words: words.map { SentenceWord(range: $0.range, text: $0.text, reading: $0.reading) },
+            return ScoredSentence(words: words.map { SentenceWord(range: $0.range, text: $0.text, reading: $0.reading,
+                                                                 corrected: $0.corrected) },
                                   score: node.beamScore)
         }.prefix(k).map { $0 }
     }
@@ -197,7 +200,7 @@ extension Engine {
                     if !fixed.contains(where: { $0.range.lowerBound == start }) {
                         for match in matches(tokens, start: start, typo: typo) {
                             edges.append((ConvertedWord(range: match.range, text: match.entry.word,
-                                reading: match.typedReading), match.entry, []))
+                                reading: match.typedReading, corrected: match.annotation != nil), match.entry, []))
                         }
                     }
                     // Preserve completed tokens if a user removes a phrase that supplied their only dictionary entry.

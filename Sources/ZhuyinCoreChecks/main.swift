@@ -148,11 +148,15 @@ for (typed, source, keys, penalty) in [
               "candidate ranking includes adjusted tolerant score")
     }
 }
+// A word keeps its likeliest reading: 甲 is nearly always ㄅㄚ˙, so typed as ㄅㄚ it scores as ㄅㄚ˙ less the
+// neutral-tone tolerance, not by its rare first-tone reading.
 let exactPreferred = try Engine(lexiconText: "ㄅㄚ\t甲\t-5\nㄅㄚ˙\t甲\t0\nㄅㄚ\t乙\t-4\n")
 let exactChoice = composer(exactPreferred, "18 ")
-check(exactChoice.presentation.text == "乙", "exact same-word entry wins over a higher scoring tolerant entry")
+check(exactChoice.presentation.text == "甲", "a word's likelier tolerant reading beats its rare exact one")
 _ = exactChoice.handle(.down)
-check(exactChoice.presentation.candidates?.items.map(\.text) == ["乙", "甲"], "same-word exact wins and candidates deduplicate")
+check(exactChoice.presentation.candidates?.items.map(\.text) == ["甲", "乙"], "candidates keep one entry per word")
+let sameReading = try Engine(lexiconText: "ㄅㄚ\t甲\t-1\nㄅㄚ˙\t甲\t-1\nㄅㄚ\t乙\t-1.2\n")
+check(composer(sameReading, "18 ").presentation.text == "甲", "equally likely readings: the exact one, without tolerance cost")
 let tolerantPick = composer(phraseOnly, "vu,4vu,4")
 _ = tolerantPick.handle(.down)
 check(tolerantPick.presentation.candidates?.items.first?.text == "謝謝", "tolerant phrase offered at end cursor")
@@ -1136,6 +1140,46 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     restarted.breakContext()
     type("g4", into: restarted)
     check(restarted.presentation.text == fresh.presentation.text, "breakContext restarts the sentence")
+    // Backspace passed to the app deletes the last commit from its end; the context is what is left of it.
+    let deleting = composer(real, "ji3ap7g4", options: unlearned)
+    check(deleting.commitAll() == "我們是", "deletion context commit")
+    check(deleting.handle(.backspace).handled == false, "backspace with nothing composed passes through")
+    type("g4", into: deleting)
+    check(deleting.presentation.text == "是", "after deleting 是, ㄕˋ continues from 我們")
+    deleting.reset()
+    for _ in 0..<2 { _ = deleting.handle(.backspace) }
+    type("g4", into: deleting)
+    check(deleting.presentation.text == fresh.presentation.text, "deleting the whole commit leaves no context")
+    // Deleting a commit and retyping its reading as another word is learned like a pick.
+    let correcting = try Engine(lexiconURL: realURL, userDataDirectory: nil)
+    let corrector = composer(correcting, "ek4")
+    let first = corrector.commitAll()
+    _ = corrector.handle(.backspace)
+    type("ek4", into: corrector)
+    _ = corrector.handle(.down)
+    let other = corrector.presentation.candidates!.items.firstIndex { $0.text != first && $0.text.count == 1 }!
+    let picked = corrector.presentation.candidates!.items[other].text
+    _ = corrector.selectCandidate(at: other)
+    _ = corrector.commitAll()
+    check(composer(correcting, "ek4").presentation.text == picked, "a deleted and retyped word is remembered")
+    // Export and import carry what was learned to another engine; excluded words are never learned again.
+    let receiving = try Engine(lexiconURL: realURL, userDataDirectory: nil)
+    let rows = try receiving.importPersonalData(correcting.exportPersonalData())
+    check(rows > 0 && composer(receiving, "ek4").presentation.text == picked, "imported memory converts the same")
+    check((try? receiving.importPersonalData(Data("not an export".utf8))) == nil, "a foreign file is refused")
+    receiving.excludeFromLearning(word: picked, reading: "ㄍㄜˋ")
+    check(composer(receiving, "ek4").presentation.text != picked, "excluding forgets the word")
+    let excludedPick = composer(receiving, "ek4")
+    _ = excludedPick.handle(.down)
+    if let index = excludedPick.presentation.candidates?.items.firstIndex(where: { $0.text == picked }) {
+        _ = excludedPick.selectCandidate(at: index)
+    }
+    _ = excludedPick.commitAll()
+    check(composer(receiving, "ek4").presentation.text != picked, "an excluded word is not learned from a pick")
+    check(receiving.excludedEntries().map(\.word) == [picked], "exclusions are listed")
+    let reimported = try Engine(lexiconURL: realURL, userDataDirectory: nil)
+    try reimported.importPersonalData(receiving.exportPersonalData())
+    check(reimported.excludedEntries().map(\.word) == [picked], "exclusions travel with an export")
     var conversions = [("謝謝", "vu,4vu,7"), ("謝謝", "vu,4vu,4"),
                        ("我們", "ji3ap7"), ("我們", "ji3ap "),
                        ("東西", "2j/ vu "), ("東西", "2j/ vu7"),

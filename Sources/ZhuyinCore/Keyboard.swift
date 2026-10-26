@@ -28,6 +28,7 @@ enum ZhuyinKeyboard {
         case .shiftedChar(let c):
             if c.isASCII && c.isLetter { return String(c).uppercased() }
             return shiftedPunctuation[c]
+        case .printed(let c): return String(c)
         default: return nil
         }
     }

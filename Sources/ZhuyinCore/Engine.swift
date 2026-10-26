@@ -10,6 +10,9 @@ struct WordEntry {
     var wordID: UInt32? = nil
     /// A recall of a whole earlier composition: offered only when it covers the whole current one.
     var wholeOnly = false
+    /// log P(this reading | word) against the word's most common reading (0 for it, below 0 for rarer ones), so the
+    /// language model's word probability is not spent on a reading the word rarely has: 說 for ㄕㄨㄟˋ, 睡 is likelier.
+    var readingPrior: Double = 0
 }
 
 struct PhraseKey: Hashable {
@@ -71,6 +74,8 @@ public final class Engine: @unchecked Sendable {
     private var alternativeCache: [String: [ReadingAlternative]] = [:]
     private var entryCache: [String: [WordEntry]] = [:]
     private var learned: [PhraseKey: RecallValue] = [:]
+    /// Words the user asked never to remember.
+    private var excluded = Set<PhraseKey>()
     let personal = PersonalLanguageModel()
     /// The time the personal memory decays by (seconds since 1970); replaceable for tests.
     public var clock: () -> Double {
@@ -87,6 +92,22 @@ public final class Engine: @unchecked Sendable {
     private let writer = DispatchQueue(label: "ZhuyinType.personal-data", qos: .utility)
     private var pendingWrite: DispatchWorkItem?
     private var revision: UInt64 = 0
+    private var fuzzy: FuzzySounds = []
+    /// Cost of one fuzzy-sound substitution, a little under a 3↔4 tone slip: whoever turns a pair on merges those
+    /// sounds, so a clearly likelier word wins, while an equally likely exact match stays first.
+    static let fuzzyCost = 3.0
+    /// Sound pairs that match each other; none by default.
+    public var fuzzySounds: FuzzySounds {
+        get { synchronized { fuzzy } }
+        set {
+            synchronized {
+                guard newValue != fuzzy else { return }
+                fuzzy = newValue
+                matchCache.removeAll(keepingCapacity: true)
+                revision &+= 1
+            }
+        }
+    }
     var conversionRevision: UInt64 { synchronized { revision } }
     let languageModel: any LanguageModel
     /// Default beam width; N-best decoding widens it when K is larger.
@@ -134,6 +155,17 @@ public final class Engine: @unchecked Sendable {
             lexicon[fields[0], default: []].append(WordEntry(word: fields[1], logp: score, wordID: resolveID(fields[1])))
             reverse[fields[1], default: []].append((fields[0], score))
         }
+        // The lexicon gives log P(word, reading); split it into the word's probability and the reading's share.
+        var best: [String: Double] = [:]
+        best.reserveCapacity(reverse.count)
+        for (word, readings) in reverse where readings.count > 1 { best[word] = readings.map(\.1).max() }
+        for index in lexicon.indices {
+            for i in lexicon.values[index].indices {
+                guard let top = best[lexicon.values[index][i].word] else { continue }
+                lexicon.values[index][i].readingPrior = lexicon.values[index][i].logp - top
+                lexicon.values[index][i].logp = top
+            }
+        }
         loadPersonalData()
         rebuildReadingIndex()
     }
@@ -162,7 +194,7 @@ public final class Engine: @unchecked Sendable {
             if let cached = entryCache[reading] { return cached }
             let typed = reading.split(separator: " ")
             var result: [WordEntry] = []
-            var exactWords = Set<String>()
+            var position: [String: Int] = [:]
             let readings = [reading] + (readingIndex[Self.withoutTones(reading)] ?? []).filter { $0 != reading }
             for source in readings {
                 var penalty = 0.0
@@ -178,6 +210,7 @@ public final class Engine: @unchecked Sendable {
                 for (word, phrase) in phraseIndex[source] ?? [:] {
                     if let index = entries.firstIndex(where: { $0.word == word }) {
                         entries[index].logp = phrase.logp
+                        entries[index].readingPrior = 0
                         entries[index].recalled = source == reading
                     } else {
                         var entry = phrase
@@ -185,12 +218,19 @@ public final class Engine: @unchecked Sendable {
                         entries.append(entry)
                     }
                 }
+                // One entry per word: the reading that costs least, so a particle typed without its neutral tone
+                // (吧 as ㄅㄚ) uses ㄅㄚ˙ rather than the rare first-tone reading.
                 for var entry in entries {
-                    if source == reading { exactWords.insert(entry.word) }
-                    else if exactWords.contains(entry.word) { continue }
                     entry.reading = source
                     entry.penalty = penalty
-                    result.append(entry)
+                    if let index = position[entry.word] {
+                        let old = result[index]
+                        guard !old.recalled, entry.readingPrior - penalty > old.readingPrior - old.penalty else { continue }
+                        result[index] = entry
+                    } else {
+                        position[entry.word] = result.count
+                        result.append(entry)
+                    }
                 }
             }
             let now = personal.clock()
@@ -298,7 +338,7 @@ public final class Engine: @unchecked Sendable {
 
     func matches(_ tokens: [CompositionToken], start: Int, typo: TypoTolerance) -> [Match] {
         var span: [CompositionToken] = []
-        var key = typo.rawValue
+        var key = typo.rawValue + "\(fuzzySounds.rawValue)"
         for token in tokens[start..<min(tokens.count, start + 6)] {
             guard case .syllable(_, let keys) = token else { break }
             span.append(token)
@@ -328,19 +368,24 @@ public final class Engine: @unchecked Sendable {
 
     private func buildMatches(_ tokens: [CompositionToken], typo: TypoTolerance) -> [Match] {
         let start = 0
+        let fuzzy = fuzzySounds
         var options: [[ReadingAlternative]] = []
         var typed: [String] = []
         for token in tokens[start..<min(tokens.count, start + 6)] {
             guard case .syllable(let reading, let keys) = token else { break }
             typed.append(reading)
-            options.append([ReadingAlternative(reading: reading, cost: 0)]
-                + (typo == .off ? [] : alternatives(for: keys)))
+            var cheapest: [String: ReadingAlternative] = [reading: ReadingAlternative(reading: reading, cost: 0)]
+            for option in Self.fuzzyAlternatives(for: reading, fuzzy) + (typo == .off ? [] : alternatives(for: keys))
+            where option.cost < cheapest[option.reading]?.cost ?? .infinity {
+                cheapest[option.reading] = option
+            }
+            options.append(cheapest.values.sorted { $0.cost == $1.cost ? $0.reading < $1.reading : $0.cost < $1.cost })
         }
         var result: [Match] = []
         func visit(_ index: Int, _ reading: String, _ base: String, _ cost: Double, _ edits: Int) {
             guard index < options.count else { return }
             for option in options[index] {
-                let count = edits + (option.cost > 0 ? 1 : 0)
+                let count = edits + (option.cost > 0 && !option.fuzzy ? 1 : 0)
                 guard count <= 2 else { continue }
                 let next = reading + (reading.isEmpty ? "" : " ") + option.reading
                 let nextBase = base + (base.isEmpty ? "" : " ") + Self.withoutTones(option.reading)
@@ -376,13 +421,32 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// The readings `reading` also matches under `fuzzy`; invalid ones are pruned by the reading prefixes.
+    static func fuzzyAlternatives(for reading: String, _ fuzzy: FuzzySounds) -> [ReadingAlternative] {
+        guard !fuzzy.isEmpty else { return [] }
+        var variants: [([Character], Int)] = [(Array(reading), 0)]
+        for pair in FuzzySounds.pairs where fuzzy.contains(pair.set) {
+            for (symbols, swaps) in variants {
+                let index = pair.initial ? symbols.indices.first
+                    : symbols.lastIndex { !"ˊˇˋ˙".contains($0) }
+                guard let index, symbols[index] == pair.a || symbols[index] == pair.b else { continue }
+                var swapped = symbols
+                swapped[index] = symbols[index] == pair.a ? pair.b : pair.a
+                variants.append((swapped, swaps + 1))
+            }
+        }
+        return variants.dropFirst().map {
+            ReadingAlternative(reading: String($0.0), cost: Double($0.1) * fuzzyCost, fuzzy: true)
+        }
+    }
+
     func scoring(_ entry: WordEntry, reading: String) -> (unigram: Double, adjustment: Double) {
         synchronized {
             let source = entry.reading ?? reading
             let phrase = phrases[PhraseKey(reading: source, word: entry.word)]
             let original = phrase == nil ? entry.logp
                 : (lexicon[source]?.first(where: { $0.word == entry.word })?.logp ?? -7)
-            return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty)
+            return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty + entry.readingPrior)
         }
     }
 
@@ -401,13 +465,18 @@ public final class Engine: @unchecked Sendable {
                           userInfo: [NSLocalizedDescriptionKey: "A phrase needs 1–6 characters and one valid Zhuyin reading per character."])
         }
         synchronized {
-            let key = PhraseKey(reading: reading, word: word)
-            phrases[key] = max(lexicon[reading]?.first(where: { $0.word == word })?.logp ?? -7, -7) + 1
-            phraseIndex[reading, default: [:]][word] = WordEntry(word: word, logp: phrases[key]!, wordID: resolveID(word))
+            addPhrase(word: word, reading: reading)
             revision &+= 1
             rebuildReadingIndex()
             scheduleWrite()
         }
+    }
+
+    // Called under lock.
+    private func addPhrase(word: String, reading: String) {
+        let key = PhraseKey(reading: reading, word: word)
+        phrases[key] = max(lexicon[reading]?.first(where: { $0.word == word })?.logp ?? -7, -7) + 1
+        phraseIndex[reading, default: [:]][word] = WordEntry(word: word, logp: phrases[key]!, wordID: resolveID(word))
     }
 
     public func removeUserPhrase(word: String, reading: String) {
@@ -460,6 +529,77 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// Forgets `word` and never learns it again, until `includeInLearning`.
+    public func excludeFromLearning(word: String, reading: String) {
+        synchronized { excluded.insert(PhraseKey(reading: reading, word: word)) }
+        forgetLearned(word: word, reading: reading)
+    }
+
+    public func includeInLearning(word: String, reading: String) {
+        synchronized {
+            excluded.remove(PhraseKey(reading: reading, word: word))
+            scheduleWrite()
+        }
+    }
+
+    public func excludedEntries() -> [(reading: String, word: String)] {
+        synchronized { excluded.map { ($0.reading, $0.word) }.sorted { ($0.0, $0.1) < ($1.0, $1.1) } }
+    }
+
+    /// Everything personal in one text file: user phrases, what was learned, and the words never to learn.
+    public func exportPersonalData() -> Data {
+        synchronized {
+            var text = "# ZhuyinType personal data 1\n[phrases]\n" + Self.phraseText(phrases.keys)
+            text += "[learned]\n" + Self.learnedText(learned)
+            text += "[ngrams]\n" + personal.serialized()
+            text += "[excluded]\n" + Self.phraseText(excluded)
+            return Data(text.utf8)
+        }
+    }
+
+    /// Adds an export to what is here; for anything both have, the stronger memory stays.  Returns the rows read.
+    @discardableResult
+    public func importPersonalData(_ data: Data) throws -> Int {
+        guard let text = String(data: data, encoding: .utf8), text.hasPrefix("# ZhuyinType personal data 1") else {
+            throw NSError(domain: "ZhuyinCore", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "This file is not a ZhuyinType personal data export."])
+        }
+        var sections: [String: String] = [:]
+        var current = ""
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("[") && line.hasSuffix("]") { current = String(line.dropFirst().dropLast()); continue }
+            if line.hasPrefix("#") || line.isEmpty { continue }
+            sections[current, default: ""] += line + "\n"
+        }
+        return synchronized {
+            var rows = 0
+            scanTSV(Data((sections["phrases"] ?? "").utf8)) { fields in
+                guard fields.count == 2, Self.validPhrase(word: fields[1], reading: fields[0]) else { return }
+                addPhrase(word: fields[1], reading: fields[0])
+                rows += 1
+            }
+            scanTSV(Data((sections["learned"] ?? "").utf8)) { fields in
+                guard let (key, value) = Self.learnedRow(fields) else { return }
+                let now = personal.clock()
+                if let old = learned[key], old.value(at: now) >= value.value(at: now) { return }
+                learned[key] = value
+                learnedWords[key.reading, default: []].insert(key.word)
+                rows += 1
+            }
+            rows += personal.load(Data((sections["ngrams"] ?? "").utf8), merging: true) { resolveID($0)! }
+            scanTSV(Data((sections["excluded"] ?? "").utf8)) { fields in
+                guard fields.count == 2 else { return }
+                excluded.insert(PhraseKey(reading: fields[0], word: fields[1]))
+                rows += 1
+            }
+            revision &+= 1
+            rebuildReadingIndex()
+            trimLearned(now: personal.clock())
+            learnedChanged()
+            return rows
+        }
+    }
+
     public func forgetAllLearned() {
         synchronized {
             learned.removeAll(); learnedWords.removeAll()
@@ -470,18 +610,23 @@ public final class Engine: @unchecked Sendable {
 
     /// Learns from one committed composition.  Literal words split it into stretches for the personal n-grams;
     /// corrections also become recalls of their exact typed readings.
-    func learn(commit words: [CommittedWord], syllableCount: Int) {
+    /// `context` holds up to two words committed just before, which the personal n-grams continue from.
+    func learn(commit words: [CommittedWord], syllableCount: Int, context: [CommittedWord] = []) {
         synchronized {
             let now = personal.clock()
-            var stretch: [PersonalLanguageModel.Word] = []
+            var stretch: [PersonalLanguageModel.Word] = context.compactMap { word in
+                resolveID(word.text).map { .init(id: word.wordID ?? $0, text: word.text, reading: word.reading, picked: false) }
+            }
+            var leading = stretch.count
             var syllables: [(reading: String, text: String, picked: Bool)] = []
             var wholeIsPlain = true
             func flush() {
-                personal.learn(stretch)
+                personal.learn(stretch, context: leading)
                 stretch.removeAll()
+                leading = 0
             }
             for word in words {
-                guard !word.reading.isEmpty else {
+                guard !word.reading.isEmpty, !excluded.contains(PhraseKey(reading: word.reading, word: word.text)) else {
                     flush(); wholeIsPlain = false
                     syllables.append(("", word.text, false))
                     continue
@@ -604,10 +749,12 @@ public final class Engine: @unchecked Sendable {
         if let data = try? Data(contentsOf: directory.appendingPathComponent("user_phrases.tsv")) {
             scanTSV(data) { fields in
                 guard fields.count == 2, Self.validPhrase(word: fields[1], reading: fields[0]) else { return }
-                let base = lexicon[fields[0]]?.first(where: { $0.word == fields[1] })?.logp ?? -7
-                phrases[PhraseKey(reading: fields[0], word: fields[1])] = max(base, -7) + 1
-                phraseIndex[fields[0], default: [:]][fields[1]] = WordEntry(
-                    word: fields[1], logp: max(base, -7) + 1, wordID: resolveID(fields[1]))
+                addPhrase(word: fields[1], reading: fields[0])
+            }
+        }
+        if let data = try? Data(contentsOf: directory.appendingPathComponent("excluded.tsv")) {
+            scanTSV(data) { fields in
+                if fields.count == 2 { excluded.insert(PhraseKey(reading: fields[0], word: fields[1])) }
             }
         }
         if let data = try? Data(contentsOf: directory.appendingPathComponent("learned.tsv")) {
@@ -624,17 +771,9 @@ public final class Engine: @unchecked Sendable {
                     learnedWords[fields[0], default: []].insert(fields[1])
                     return
                 }
-                guard fields.count == 8, let kind = RecallKind(rawValue: fields[0]),
-                      Self.validPhrase(word: fields[2], reading: fields[1]),
-                      let shortValue = Double(fields[3]), let shortTime = Double(fields[4]),
-                      let longValue = Double(fields[5]), let longTime = Double(fields[6]), let picks = Int(fields[7]),
-                      [shortValue, shortTime, longValue, longTime].allSatisfy({ $0.isFinite && $0 >= 0 }) else { return }
-                var value = RecallValue(kind: kind)
-                value.short = DecayingCount(value: shortValue, time: shortTime)
-                value.long = DecayingCount(value: longValue, time: longTime)
-                value.picks = max(0, picks)
-                learned[PhraseKey(reading: fields[1], word: fields[2])] = value
-                learnedWords[fields[1], default: []].insert(fields[2])
+                guard let (key, value) = Self.learnedRow(fields) else { return }
+                learned[key] = value
+                learnedWords[key.reading, default: []].insert(key.word)
             }
         }
         if let data = try? Data(contentsOf: directory.appendingPathComponent(PersonalLanguageModel.fileName)) {
@@ -644,25 +783,45 @@ public final class Engine: @unchecked Sendable {
         trimLearned(now: personal.clock())
     }
 
+    private static func phraseText<S: Sequence>(_ keys: S) -> String where S.Element == PhraseKey {
+        keys.sorted { ($0.reading, $0.word) < ($1.reading, $1.word) }.map { "\($0.reading)\t\($0.word)\n" }.joined()
+    }
+
+    private static func learnedText(_ learned: [PhraseKey: RecallValue]) -> String {
+        learned.sorted { ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) }.map { key, value in
+            [value.kind.rawValue, key.reading, key.word, "\(value.short.value)", "\(value.short.time)",
+             "\(value.long.value)", "\(value.long.time)", "\(value.picks)"].joined(separator: "\t") + "\n"
+        }.joined()
+    }
+
+    /// One row of learned.tsv: kind, reading, word, short value and time, long value and time, picks.
+    private static func learnedRow(_ fields: [String]) -> (PhraseKey, RecallValue)? {
+        guard fields.count == 8, let kind = RecallKind(rawValue: fields[0]),
+              validPhrase(word: fields[2], reading: fields[1]),
+              let shortValue = Double(fields[3]), let shortTime = Double(fields[4]),
+              let longValue = Double(fields[5]), let longTime = Double(fields[6]), let picks = Int(fields[7]),
+              [shortValue, shortTime, longValue, longTime].allSatisfy({ $0.isFinite && $0 >= 0 }) else { return nil }
+        var value = RecallValue(kind: kind)
+        value.short = DecayingCount(value: shortValue, time: shortTime)
+        value.long = DecayingCount(value: longValue, time: longTime)
+        value.picks = max(0, picks)
+        return (PhraseKey(reading: fields[1], word: fields[2]), value)
+    }
+
     // Called under lock. Snapshots survive Engine teardown and are serialized before atomically replacing each file.
     private func scheduleWrite() {
         guard let directory else { return }
         pendingWrite?.cancel()
-        let phraseSnapshot = phrases
-        let learnedSnapshot = learned
+        let phraseText = Self.phraseText(phrases.keys)
+        let learnedText = Self.learnedText(learned)
+        let excludedText = Self.phraseText(excluded)
         let personalText = personal.serialized()
         let work = DispatchWorkItem {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let phraseText = phraseSnapshot.keys.sorted { ($0.reading, $0.word) < ($1.reading, $1.word) }
-                    .map { "\($0.reading)\t\($0.word)\n" }.joined()
-                let learnedText = learnedSnapshot.sorted { ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) }
-                    .map { key, value in
-                        [value.kind.rawValue, key.reading, key.word, "\(value.short.value)", "\(value.short.time)",
-                         "\(value.long.value)", "\(value.long.time)", "\(value.picks)"].joined(separator: "\t") + "\n"
-                    }.joined()
                 try Data(phraseText.utf8).write(to: directory.appendingPathComponent("user_phrases.tsv"), options: .atomic)
                 try Data(learnedText.utf8).write(to: directory.appendingPathComponent("learned.tsv"), options: .atomic)
+                try Data(excludedText.utf8).write(to: directory.appendingPathComponent("excluded.tsv"), options: .atomic)
                 try Data(personalText.utf8).write(to: directory.appendingPathComponent(PersonalLanguageModel.fileName),
                                                   options: .atomic)
             } catch {

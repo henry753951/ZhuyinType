@@ -30,10 +30,13 @@ private func binding<Value>(_ preferences: Preferences, _ keyPath: ReferenceWrit
 
 private struct GeneralPane: View {
     @ObservedObject var preferences: Preferences
+    static let fuzzyPairs: [(label: String, set: FuzzySounds)] = [
+        ("ㄗ 與 ㄓ", .zZh), ("ㄘ 與 ㄔ", .cCh), ("ㄙ 與 ㄕ", .sSh), ("ㄣ 與 ㄥ", .enEng), ("ㄢ 與 ㄤ", .anAng),
+    ]
 
     var body: some View {
         Form {
-            Section("按鍵") {
+            Section {
                 Picker("空白鍵", selection: binding(preferences, \.spaceOpensCandidates)) {
                     Text("開啟候選字視窗").tag(true)
                     Text("送出文字").tag(false)
@@ -42,6 +45,10 @@ private struct GeneralPane: View {
                     Text("清除整段組字").tag(true)
                     Text("只清除注音").tag(false)
                 }
+            } header: {
+                Text("按鍵")
+            } footer: {
+                FooterText("Shift 加符號鍵打出中文標點，例如 Shift-句號是「。」。Option 加數字或符號鍵打出鍵上印的符號：Option-句號是「.」，Option-Shift-句號是「>」。")
             }
             Section {
                 Picker("選字位置", selection: binding(preferences, \.candidateAnchor)) {
@@ -57,6 +64,21 @@ private struct GeneralPane: View {
                 Text("選字")
             } footer: {
                 FooterText("游標在句尾時，選字一律改最後的字詞。按錯相鄰的鍵或聲調鍵時，自動找出原本要打的字。")
+            }
+            Section {
+                ForEach(Self.fuzzyPairs, id: \.label) { pair in
+                    Toggle(pair.label, isOn: Binding(
+                        get: { preferences.fuzzySounds.contains(pair.set) },
+                        set: { on in
+                            var sounds = preferences.fuzzySounds
+                            if on { sounds.insert(pair.set) } else { sounds.remove(pair.set) }
+                            preferences.fuzzySounds = sounds
+                        }))
+                }
+            } header: {
+                Text("模糊音")
+            } footer: {
+                FooterText("開啟的兩個音互相通用。讀音完全符合的字詞仍排在前面，除非另一個詞明顯更常用。")
             }
             Section("中英切換") {
                 Picker("切換鍵", selection: binding(preferences, \.shiftToggle)) {

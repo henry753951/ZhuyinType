@@ -75,8 +75,11 @@ def select_runs(path, lexicon, count, seed):
     raise ValueError(f"{path}: only {len(selected)} readable runs, need {count}")
 
 
+EXTRA = []  # further zhuyin-cli options, e.g. the reranker
+
+
 def convert(cli, lexicon, mode, scripts):
-    result = subprocess.run([cli, "--lexicon", lexicon, "--typo", mode, "--batch"],
+    result = subprocess.run([cli, "--lexicon", lexicon, "--typo", mode, "--batch"] + EXTRA,
                             input="\n".join(scripts) + "\n", capture_output=True, text=True, check=True)
     outputs = result.stdout.splitlines()
     if len(outputs) != len(scripts):
@@ -123,7 +126,16 @@ def main():
     parser.add_argument("-n", type=int, default=400)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--json", help="write full numerical results")
+    parser.add_argument("--reranker", help="directory with Reranker.mlmodelc and vocab.json")
+    parser.add_argument("--rerank-weight", type=float, default=1.0)
+    parser.add_argument("--rerank-count", type=int, default=16)
+    parser.add_argument("--exact-margin", type=float)
     args = parser.parse_args()
+    if args.reranker:
+        EXTRA.extend(["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight),
+                      "--rerank-count", str(args.rerank_count)])
+        if args.exact_margin is not None:
+            EXTRA.extend(["--exact-margin", str(args.exact_margin)])
     if args.n < 1 or any(not 0 <= rate <= 1 for rate in args.rates):
         parser.error("n must be positive and rates must be between 0 and 1")
     if args.lm_dir and not os.path.isdir(args.lm_dir):

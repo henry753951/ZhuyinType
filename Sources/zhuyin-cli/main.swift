@@ -14,13 +14,15 @@ var keepMemory = false
 var rerankerPath: String?
 var rerankWeight = 0.5
 var rerankCount = 8
+var exactMargin: Double?
 var nbest = 0
 var context = ""
 /// Text committed so far by the line being typed (batch mode) or by the keys (single run).
 var committed = ""
 var timing = false
+var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--reranker DIR [--rerank-weight W] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -41,6 +43,10 @@ while let option = arguments.first, option.hasPrefix("--") {
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         rerankCount = count
         arguments.removeFirst(2)
+    case "--exact-margin":
+        guard arguments.count >= 2, let margin = Double(arguments[1]) else { fail(usage) }
+        exactMargin = margin
+        arguments.removeFirst(2)
     case "--rerank-weight":
         guard arguments.count >= 2, let weight = Double(arguments[1]) else { fail(usage) }
         rerankWeight = weight
@@ -58,6 +64,14 @@ while let option = arguments.first, option.hasPrefix("--") {
         context = arguments[1]
         arguments.removeFirst(2)
     case "--timing": timing = true; arguments.removeFirst()
+    case "--fuzzy":
+        let names: [String: FuzzySounds] = ["zh": .zZh, "ch": .cCh, "sh": .sSh, "en": .enEng, "an": .anAng]
+        guard arguments.count >= 2 else { fail(usage) }
+        for name in arguments[1].split(separator: ",") {
+            guard let set = names[String(name)] else { fail(usage) }
+            fuzzy.insert(set)
+        }
+        arguments.removeFirst(2)
     case "--nbest":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         nbest = count
@@ -83,6 +97,8 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
             if let key = specials[name] { result.append(("<\(name)>", key)) }
             else if name.hasPrefix("S-"), name.dropFirst(2).count == 1, let key = name.last {
                 result.append(("<\(name)>", .shiftedChar(key)))
+            } else if name.hasPrefix("O-"), name.dropFirst(2).count == 1, let key = name.last {
+                result.append(("<\(name)>", .printed(key)))
             } else {
                 throw NSError(domain: "zhuyin-cli", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown key escape <\(name)>"])
             }
@@ -100,12 +116,14 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
 assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
+    engine.fuzzySounds = fuzzy
     // ZHUYIN_UNITS=all|gpu|ane compares Core ML compute units with --timing.
     let units: MLComputeUnits = ["all": .all, "gpu": .cpuAndGPU, "ane": .cpuAndNeuralEngine][ProcessInfo.processInfo.environment["ZHUYIN_UNITS"] ?? ""] ?? .cpuOnly
     let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight, computeUnits: units) }
     func attach(_ composer: Composer) {
         guard let reranker else { return }
         composer.rerankingCount = rerankCount
+        if let exactMargin { reranker.exactMargin = exactMargin }
         func timed<T>(_ label: String, _ body: () -> T) -> T {
             let start = DispatchTime.now().uptimeNanoseconds
             defer {

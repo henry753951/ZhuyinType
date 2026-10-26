@@ -123,12 +123,13 @@ final class PersonalLanguageModel: @unchecked Sendable {
         var picked: Bool
     }
 
-    /// Learns one committed stretch of words (no literals inside).
-    func learn(_ words: [Word]) {
-        guard !words.isEmpty else { return }
+    /// Learns one committed stretch of words (no literals inside).  The first `context` words were committed earlier:
+    /// they are history only, so n-grams ending in them are not counted again.
+    func learn(_ words: [Word], context: Int = 0) {
+        guard words.count > context else { return }
         lock.withLock {
             let now = clock()
-            for end in words.indices {
+            for end in words.indices where end >= context {
                 for order in 1...3 where end - order + 1 >= 0 {
                     let gram = Array(words[(end - order + 1)...end])
                     let picked = gram.contains(where: \.picked)
@@ -239,9 +240,13 @@ final class PersonalLanguageModel: @unchecked Sendable {
         }
     }
 
-    /// Loads rows written by `serialized()`, resolving words to IDs.
-    func load(_ data: Data, resolve: (String) -> UInt32) {
+    /// Loads rows written by `serialized()`, resolving words to IDs.  Merging keeps an n-gram already here when its
+    /// long-term count is the larger one.  Returns the rows taken.
+    @discardableResult
+    func load(_ data: Data, merging: Bool = false, resolve: (String) -> UInt32) -> Int {
         lock.withLock {
+            var taken = 0
+            let now = clock()
             scanTSV(data) { fields in
                 guard fields.count == 10 else { return }
                 let texts = fields[0].components(separatedBy: "\u{1F}")
@@ -260,10 +265,16 @@ final class PersonalLanguageModel: @unchecked Sendable {
                 entry.firstDay = firstDay < 0 ? Int.max : firstDay
                 entry.longDay = longDay
                 entry.longDayAmount = longDayAmount
-                entries[Key(words: texts.map(resolve))] = entry
+                let key = Key(words: texts.map(resolve))
+                if merging, let old = entries[key],
+                   old.long.at(now, halfLife: options.longHalfLife) >= entry.long.at(now, halfLife: options.longHalfLife) { return }
+                entries[key] = entry
+                taken += 1
             }
+            trim(now: now)
             rebuildTotals()
             hasData = !entries.isEmpty
+            return taken
         }
     }
 }

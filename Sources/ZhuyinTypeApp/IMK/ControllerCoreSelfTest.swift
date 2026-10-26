@@ -161,6 +161,14 @@ enum ControllerCoreSelfTest {
                 try expect(client.inserts == [visible], "pass-through key \(key): visible=\(visible), inserted=\(client.inserts)")
             }
         }
+        test("Option types the symbol printed on a key into the composition") {
+            let (core, client) = session()
+            type("su3", into: core)
+            try expect(core.keyDown(keyCode: 47, modifiers: .option), "Option-. was not consumed")
+            try expect(core.keyDown(keyCode: 47, modifiers: [.option, .shift]), "Option-Shift-. was not consumed")
+            core.commit()
+            try expect(client.inserts == ["你.>"], "inserted \(client.inserts)")
+        }
         test("popup app receives preview without marked text") {
             let (core, client) = session()
             core.popupCompositionApps = [client.bundleIdentifier]

@@ -25,7 +25,7 @@ public enum KeyChannel {
     public static func neighbours(of key: Character) -> [Character] { table[key] ?? [] }
 
     // Calibrated on 400 runs per dev set, seed 7: scales 1/3/4/5/6/10/16; 5 wins the clean-accuracy constraint.
-    static let tone34 = 3.5
+    static let tone34 = 5.0
     static let tone67 = 4.5
     static let substitution = 11.0
     static let transposition = 9.0
@@ -127,4 +127,6 @@ public enum KeyChannel {
 struct ReadingAlternative {
     var reading: String
     var cost: Double
+    /// A fuzzy-sound match: ranked by its cost but not counted as a typing error.
+    var fuzzy = false
 }
