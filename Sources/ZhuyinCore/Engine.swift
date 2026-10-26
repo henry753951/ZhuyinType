@@ -8,6 +8,8 @@ struct WordEntry {
     // A user-confirmed correction is an exact typed-reading recall on subsequent input.
     var recalled = false
     var wordID: UInt32? = nil
+    /// A recall of a whole earlier composition: offered only when it covers the whole current one.
+    var wholeOnly = false
 }
 
 struct PhraseKey: Hashable {
@@ -15,12 +17,42 @@ struct PhraseKey: Hashable {
     var word: String
 }
 
-struct LearnedValue {
-    var count: Double
-    var lastUsed: Double
-    func boost(now: Double) -> Double {
-        2 * log1p(count * pow(0.5, max(0, now - lastUsed) / (90 * 86400)))
+/// What a recall entry remembers: exact typed readings mapped to what the user committed for them.
+enum RecallKind: String {
+    /// A whole composition with a correction in it; offered only for an identical whole composition.
+    case whole
+    /// A correction together with the syllables around it (3–6 syllables).
+    case span
+    /// A word picked under a reading it does not have in the lexicon (a typo the user corrected).
+    case typo
+    /// A multi-word phrase the user picked as one unit.
+    case phrase
+}
+
+struct RecallValue {
+    var kind: RecallKind
+    var short = DecayingCount()
+    var long = DecayingCount()
+    var picks = 0
+    static let shortHalfLife: Double = 8 * 3600
+    static let longHalfLife: Double = 90 * 86400
+    /// Picked this many times, a recall keeps a floor and is never forgotten.
+    static let floorPicks = 3
+    func value(at now: Double) -> Double {
+        let long = self.long.at(now, halfLife: Self.longHalfLife)
+        return short.at(now, halfLife: Self.shortHalfLife) + (picks >= Self.floorPicks ? max(long, 1) : long)
     }
+    /// One pick stays active for about two months unless used again.
+    func isActive(at now: Double) -> Bool { value(at: now) >= 0.6 }
+}
+
+/// One word of a committed composition, as the composer hands it to the engine for learning.
+struct CommittedWord {
+    var range: Range<Int>
+    var text: String
+    var reading: String
+    var wordID: UInt32?
+    var picked: Bool
 }
 
 /// Lexicon and personal data are shared safely by composers. Disk writes never run on the calling thread.
@@ -38,7 +70,15 @@ public final class Engine: @unchecked Sendable {
     private var readingPrefixes = Set<String>()
     private var alternativeCache: [String: [ReadingAlternative]] = [:]
     private var entryCache: [String: [WordEntry]] = [:]
-    private var learned: [PhraseKey: LearnedValue] = [:]
+    private var learned: [PhraseKey: RecallValue] = [:]
+    let personal = PersonalLanguageModel()
+    /// The time the personal memory decays by (seconds since 1970); replaceable for tests.
+    public var clock: () -> Double {
+        get { personal.clock }
+        set { personal.clock = newValue }
+    }
+    private var nextPersonalID: UInt32 = 0x4000_0000
+    private var cacheDay = Int.min
     private var validCodes: [Int: String] = [:]
     private var learnedSyllables = Set<String>()
     private var learnedWords: [String: Set<String>] = [:]
@@ -84,7 +124,8 @@ public final class Engine: @unchecked Sendable {
         } else {
             model = UnigramLanguageModel()
         }
-        languageModel = Engine.sentenceBoundaries || model.order == 1 ? model : BoundaryFreeLanguageModel(base: model)
+        let base = Engine.sentenceBoundaries || model.order == 1 ? model : BoundaryFreeLanguageModel(base: model)
+        languageModel = PersonalizedLanguageModel(base: base, personal: personal)
         lexicon.reserveCapacity(50000)
         reverse.reserveCapacity(125000)
         scanTSV(data) { fields in
@@ -97,11 +138,15 @@ public final class Engine: @unchecked Sendable {
         rebuildReadingIndex()
     }
 
+    /// Every word gets an ID: the language model's, or a personal one above its vocabulary, so the user's statistics
+    /// can follow words the model does not know.
     private func resolveID(_ word: String) -> UInt32? {
-        guard languageModel.order > 1 else { return nil }
-        if let id = wordIDs[word] { return id == UInt32.max ? nil : id }
-        let id = languageModel.wordID(for: word)
-        wordIDs[word] = id ?? UInt32.max
+        if let id = wordIDs[word] { return id }
+        let id = languageModel.wordID(for: word) ?? {
+            defer { nextPersonalID += 1 }
+            return nextPersonalID
+        }()
+        wordIDs[word] = id
         return id
     }
 
@@ -113,6 +158,7 @@ public final class Engine: @unchecked Sendable {
 
     func entries(for reading: String) -> [WordEntry] {
         synchronized {
+            expireCachesOnNewDay()
             if let cached = entryCache[reading] { return cached }
             let typed = reading.split(separator: " ")
             var result: [WordEntry] = []
@@ -147,14 +193,26 @@ public final class Engine: @unchecked Sendable {
                     result.append(entry)
                 }
             }
-            for word in learnedWords[reading] ?? [] where !result.contains(where: { $0.word == word }) {
+            let now = personal.clock()
+            for word in learnedWords[reading] ?? [] {
+                guard let value = learned[PhraseKey(reading: reading, word: word)], value.isActive(at: now) else { continue }
                 let source = reverse[word]?.max(by: { $0.1 < $1.1 })
-                result.append(WordEntry(word: word, logp: source?.1 ?? -7, recalled: true, wordID: resolveID(word)))
+                result.append(WordEntry(word: word, logp: source?.1 ?? -7, recalled: true, wordID: resolveID(word),
+                                        wholeOnly: value.kind == .whole))
             }
             if entryCache.count >= 4096 { entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true) }
             entryCache[reading] = result
             return result
         }
+    }
+
+    /// Memories decay, so cached lookups live for at most a day.  Called under lock.
+    private func expireCachesOnNewDay() {
+        let today = Int(personal.clock() / 86400)
+        guard today != cacheDay else { return }
+        cacheDay = today
+        entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
+        revision &+= 1
     }
 
     private static func withoutTones(_ reading: String) -> String {
@@ -246,7 +304,10 @@ public final class Engine: @unchecked Sendable {
             span.append(token)
             key += "\t" + keys
         }
-        let (cached, cacheRevision) = synchronized { (matchCache[key], revision) }
+        let (cached, cacheRevision) = synchronized { () -> ([Match]?, UInt64) in
+            expireCachesOnNewDay()
+            return (matchCache[key], revision)
+        }
         let matches: [Match]
         if let cached { matches = cached }
         else {
@@ -257,9 +318,10 @@ public final class Engine: @unchecked Sendable {
                 matchCache[key] = matches
             }
         }
-        return matches.map {
+        return matches.compactMap {
             var match = $0
             match.range = (match.range.lowerBound + start)..<(match.range.upperBound + start)
+            if match.entry.wholeOnly && match.range != 0..<tokens.count { return nil }
             return match
         }
     }
@@ -301,7 +363,7 @@ public final class Engine: @unchecked Sendable {
         // The LM sees the same word ID on duplicate paths; retain its best channel/lexicon score once.
         var best: [PhraseKey: (Match, Double)] = [:]
         for match in result {
-            let key = PhraseKey(reading: match.typedReading, word: match.entry.word)
+            let key = PhraseKey(reading: match.typedReading + (match.entry.wholeOnly ? "\u{1}" : ""), word: match.entry.word)
             let values = scoring(match.entry, reading: match.typedReading)
             let value = values.adjustment + (!match.entry.recalled && (languageModel.order == 1 || match.entry.wordID == nil) ? values.unigram : 0)
             if let old = best[key], old.1 > value || (old.1 == value && old.0.annotation == nil) { continue }
@@ -316,13 +378,11 @@ public final class Engine: @unchecked Sendable {
 
     func scoring(_ entry: WordEntry, reading: String) -> (unigram: Double, adjustment: Double) {
         synchronized {
-            let key = PhraseKey(reading: reading, word: entry.word)
             let source = entry.reading ?? reading
             let phrase = phrases[PhraseKey(reading: source, word: entry.word)]
             let original = phrase == nil ? entry.logp
                 : (lexicon[source]?.first(where: { $0.word == entry.word })?.logp ?? -7)
-            return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty
-                + (learned[key]?.boost(now: Date().timeIntervalSince1970) ?? 0))
+            return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty)
         }
     }
 
@@ -376,9 +436,18 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// What the engine remembers, one row per word or phrase: recalls and picked words of the personal model.
     public func learnedEntries() -> [(reading: String, word: String, count: Double)] {
         synchronized {
-            learned.map { ($0.key.reading, $0.key.word, $0.value.count) }.sorted { ($0.0, $0.1) < ($1.0, $1.1) }
+            let now = personal.clock()
+            var rows: [PhraseKey: Double] = [:]
+            for (key, value) in learned where value.isActive(at: now) { rows[key] = value.value(at: now) }
+            for row in personal.pickedWords() {
+                let key = PhraseKey(reading: row.reading, word: row.word)
+                rows[key] = max(rows[key] ?? 0, row.count)
+            }
+            return rows.map { ($0.key.reading, $0.key.word, ($0.value * 10).rounded() / 10) }
+                .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
         }
     }
 
@@ -386,57 +455,126 @@ public final class Engine: @unchecked Sendable {
         synchronized {
             learned.removeValue(forKey: PhraseKey(reading: reading, word: word))
             learnedWords[reading]?.remove(word)
-            learnedSyllables = Set(learned.keys.flatMap { $0.reading.split(separator: " ").map(String.init) })
-            rebuildValidCodes()
-            alternativeCache.removeAll(keepingCapacity: true)
-            entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
-            revision &+= 1
-            scheduleWrite()
+            if let id = resolveID(word) { personal.forget(id) }
+            learnedChanged()
         }
     }
 
     public func forgetAllLearned() {
         synchronized {
-            guard !learned.isEmpty else { return }
-            learned.removeAll(); learnedWords.removeAll(); learnedSyllables.removeAll()
-            rebuildValidCodes()
-            entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
-            alternativeCache.removeAll(keepingCapacity: true)
-            revision &+= 1
-            scheduleWrite()
+            learned.removeAll(); learnedWords.removeAll()
+            personal.forgetAll()
+            learnedChanged()
         }
     }
 
-    func learn(reading: String, word: String, amount: Double) {
+    /// Learns from one committed composition.  Literal words split it into stretches for the personal n-grams;
+    /// corrections also become recalls of their exact typed readings.
+    func learn(commit words: [CommittedWord], syllableCount: Int) {
         synchronized {
-            let now = Date().timeIntervalSince1970
-            let key = PhraseKey(reading: reading, word: word)
-            learned[key] = LearnedValue(count: (learned[key]?.count ?? 0) + amount, lastUsed: now)
-            learnedWords[reading, default: []].insert(word)
-            for part in reading.split(separator: " ") {
-                let part = String(part)
-                learnedSyllables.insert(part)
-                validCodes[KeyChannel.code(for: part)] = part
+            let now = personal.clock()
+            var stretch: [PersonalLanguageModel.Word] = []
+            var syllables: [(reading: String, text: String, picked: Bool)] = []
+            var wholeIsPlain = true
+            func flush() {
+                personal.learn(stretch)
+                stretch.removeAll()
             }
-            alternativeCache.removeAll(keepingCapacity: true)
-            entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
-            addPrefixes(reading)
-            revision &+= 1
-            trimLearned(now: now)
-            scheduleWrite()
+            for word in words {
+                guard !word.reading.isEmpty else {
+                    flush(); wholeIsPlain = false
+                    syllables.append(("", word.text, false))
+                    continue
+                }
+                let id = (word.picked ? resolveID(word.text) : (word.wordID ?? resolveID(word.text)))!
+                stretch.append(.init(id: id, text: word.text, reading: word.reading, picked: word.picked))
+                let parts = word.reading.split(separator: " ").map(String.init)
+                for (part, character) in zip(parts, word.text) { syllables.append((part, String(character), word.picked)) }
+                guard word.picked else { continue }
+                let lexical = lexicon[word.reading]?.contains(where: { $0.word == word.text }) == true
+                    || phrases[PhraseKey(reading: word.reading, word: word.text)] != nil
+                if !lexical {
+                    let typo = reverse[word.text] != nil
+                    remember(.init(reading: word.reading, word: word.text), kind: typo ? .typo : .phrase, at: now)
+                }
+            }
+            flush()
+            let picked = syllables.indices.filter { syllables[$0].picked }
+            guard !picked.isEmpty else { return persistLearned() }
+            // The whole composition, when it is short enough to be looked up as one unit.
+            if wholeIsPlain, (1...6).contains(syllableCount), syllables.count == syllableCount {
+                remember(.init(reading: syllables.map(\.reading).joined(separator: " "),
+                               word: syllables.map(\.text).joined()), kind: .whole, at: now)
+            }
+            // Each correction with up to two syllables of context on its left (its right at the start).
+            for index in picked {
+                var lower = index, upper = index + 1
+                while lower > 0, index - lower < 2, !syllables[lower - 1].reading.isEmpty { lower -= 1 }
+                if lower == index {
+                    while upper < syllables.count, upper - index < 3, !syllables[upper].reading.isEmpty { upper += 1 }
+                }
+                guard upper - lower >= 3, upper - lower < syllables.count || !wholeIsPlain || syllableCount > 6 else { continue }
+                let window = syllables[lower..<upper]
+                remember(.init(reading: window.map(\.reading).joined(separator: " "), word: window.map(\.text).joined()),
+                         kind: .span, at: now)
+            }
+            persistLearned()
         }
+    }
+
+    /// The user picked something else where `text` was shown: weaken what made it the first choice.
+    func weaken(text: String, reading: String, wordID: UInt32?, history: LanguageModelHistory?) {
+        synchronized {
+            let now = personal.clock()
+            if var value = learned[PhraseKey(reading: reading, word: text)] {
+                value.short.scale(0.5, at: now, halfLife: RecallValue.shortHalfLife)
+                value.long.scale(0.5, at: now, halfLife: RecallValue.longHalfLife)
+                value.picks = 0
+                learned[PhraseKey(reading: reading, word: text)] = value
+            }
+            if let id = wordID ?? resolveID(text), let history { personal.weaken(word: id, history: history) }
+            learnedChanged()
+        }
+    }
+
+    // Called under lock.
+    private func remember(_ key: PhraseKey, kind: RecallKind, at now: Double) {
+        var value = learned[key] ?? RecallValue(kind: kind)
+        value.short.add(1, at: now, halfLife: RecallValue.shortHalfLife)
+        value.long.add(1, at: now, halfLife: RecallValue.longHalfLife)
+        value.picks += 1
+        learned[key] = value
+        learnedWords[key.reading, default: []].insert(key.word)
+        for part in key.reading.split(separator: " ") where !syllables.contains(String(part)) {
+            learnedSyllables.insert(String(part))
+        }
+        addPrefixes(key.reading)
+    }
+
+    // Called under lock.
+    private func persistLearned() {
+        trimLearned(now: personal.clock())
+        learnedChanged()
+    }
+
+    // Called under lock.
+    private func learnedChanged() {
+        learnedSyllables = Set(learned.keys.flatMap { $0.reading.split(separator: " ").map(String.init) })
+        rebuildValidCodes()
+        alternativeCache.removeAll(keepingCapacity: true)
+        entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
+        revision &+= 1
+        scheduleWrite()
     }
 
     private func trimLearned(now: Double) {
         guard learned.count > 20000 else { return }
-        let keep = learned.map { (key: $0.key, value: $0.value, boost: $0.value.boost(now: now)) }.sorted {
-            return $0.boost == $1.boost ? ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) : $0.boost > $1.boost
+        let keep = learned.map { (key: $0.key, value: $0.value, score: $0.value.value(at: now)) }.sorted {
+            return $0.score == $1.score ? ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) : $0.score > $1.score
         }.prefix(20000)
         learned = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
-        learnedSyllables = Set(learned.keys.flatMap { $0.reading.split(separator: " ").map(String.init) })
         learnedWords.removeAll(keepingCapacity: true)
         for key in learned.keys { learnedWords[key.reading, default: []].insert(key.word) }
-        rebuildValidCodes()
     }
 
     private static func validPhrase(word: String, reading: String) -> Bool {
@@ -474,15 +612,36 @@ public final class Engine: @unchecked Sendable {
         }
         if let data = try? Data(contentsOf: directory.appendingPathComponent("learned.tsv")) {
             scanTSV(data) { fields in
-                guard fields.count == 4, Self.validPhrase(word: fields[1], reading: fields[0]),
-                      let count = Double(fields[2]), count.isFinite, count > 0,
-                      let date = Double(fields[3]), date.isFinite, date >= 0 else { return }
-                learned[PhraseKey(reading: fields[0], word: fields[1])] = LearnedValue(count: count, lastUsed: date)
-                learnedWords[fields[0], default: []].insert(fields[1])
+                if fields.count == 4 {
+                    // Earlier format: reading, word, count, last used.  Kept as whole-composition recalls.
+                    guard Self.validPhrase(word: fields[1], reading: fields[0]),
+                          let count = Double(fields[2]), count.isFinite, count > 0,
+                          let date = Double(fields[3]), date.isFinite, date >= 0 else { return }
+                    var value = RecallValue(kind: .whole)
+                    value.long = DecayingCount(value: count, time: date)
+                    value.picks = Int(count.rounded(.down))
+                    learned[PhraseKey(reading: fields[0], word: fields[1])] = value
+                    learnedWords[fields[0], default: []].insert(fields[1])
+                    return
+                }
+                guard fields.count == 8, let kind = RecallKind(rawValue: fields[0]),
+                      Self.validPhrase(word: fields[2], reading: fields[1]),
+                      let shortValue = Double(fields[3]), let shortTime = Double(fields[4]),
+                      let longValue = Double(fields[5]), let longTime = Double(fields[6]), let picks = Int(fields[7]),
+                      [shortValue, shortTime, longValue, longTime].allSatisfy({ $0.isFinite && $0 >= 0 }) else { return }
+                var value = RecallValue(kind: kind)
+                value.short = DecayingCount(value: shortValue, time: shortTime)
+                value.long = DecayingCount(value: longValue, time: longTime)
+                value.picks = max(0, picks)
+                learned[PhraseKey(reading: fields[1], word: fields[2])] = value
+                learnedWords[fields[1], default: []].insert(fields[2])
             }
         }
+        if let data = try? Data(contentsOf: directory.appendingPathComponent(PersonalLanguageModel.fileName)) {
+            personal.load(data) { resolveID($0)! }
+        }
         learnedSyllables = Set(learned.keys.flatMap { $0.reading.split(separator: " ").map(String.init) })
-        trimLearned(now: Date().timeIntervalSince1970)
+        trimLearned(now: personal.clock())
     }
 
     // Called under lock. Snapshots survive Engine teardown and are serialized before atomically replacing each file.
@@ -491,15 +650,21 @@ public final class Engine: @unchecked Sendable {
         pendingWrite?.cancel()
         let phraseSnapshot = phrases
         let learnedSnapshot = learned
+        let personalText = personal.serialized()
         let work = DispatchWorkItem {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 let phraseText = phraseSnapshot.keys.sorted { ($0.reading, $0.word) < ($1.reading, $1.word) }
                     .map { "\($0.reading)\t\($0.word)\n" }.joined()
                 let learnedText = learnedSnapshot.sorted { ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) }
-                    .map { "\($0.key.reading)\t\($0.key.word)\t\($0.value.count)\t\($0.value.lastUsed)\n" }.joined()
+                    .map { key, value in
+                        [value.kind.rawValue, key.reading, key.word, "\(value.short.value)", "\(value.short.time)",
+                         "\(value.long.value)", "\(value.long.time)", "\(value.picks)"].joined(separator: "\t") + "\n"
+                    }.joined()
                 try Data(phraseText.utf8).write(to: directory.appendingPathComponent("user_phrases.tsv"), options: .atomic)
                 try Data(learnedText.utf8).write(to: directory.appendingPathComponent("learned.tsv"), options: .atomic)
+                try Data(personalText.utf8).write(to: directory.appendingPathComponent(PersonalLanguageModel.fileName),
+                                                  options: .atomic)
             } catch {
                 NSLog("ZhuyinCore: could not save personal data: %@", error.localizedDescription)
             }

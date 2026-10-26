@@ -160,8 +160,8 @@ _ = tolerantPick.selectCandidate(at: 0)
 _ = tolerantPick.handle(.left)
 check(tolerantPick.presentation.text == "謝謝", "tolerant pick fixed through navigation")
 check(tolerantPick.commitAll() == "謝謝", "tolerant pick commits")
-check(phraseOnly.learnedEntries().contains { $0.reading == "ㄒㄧㄝˋ ㄒㄧㄝˋ" && $0.word == "謝謝" && $0.count == 1.5 },
-      "tolerant picks and commits learn under typed reading")
+check(phraseOnly.learnedEntries().contains { $0.reading == "ㄒㄧㄝˋ ㄒㄧㄝˋ" && $0.word == "謝謝" },
+      "a committed tolerant pick is recalled under its typed reading")
 check(!phraseOnly.learnedEntries().contains { $0.reading.contains("˙") }, "learning does not leak into lexicon reading")
 
 let endWords = try Engine(lexiconText: "ㄏㄣˇ\t很\t-2\nㄏㄠˇ\t好\t-2\nㄏㄠˇ\t郝\t-3\nㄏㄣˇ ㄏㄠˇ\t很好\t-1\n")
@@ -407,14 +407,14 @@ let overlap = fixedPair(engine)
 _ = overlap.handle(.backspace)
 check(overlap.presentation.text == "八", "deleting fixed token removes constraint")
 
-// Learning affects later conversions, picks count +1, commits count +0.5, reset does not learn.
+// Learning happens on commit; an identical composition recalls the correction; reset does not learn.
 let learnedEngine = try Engine(lexiconText: tiny)
 let learnedComposer = composer(learnedEngine, "18 ")
 _ = learnedComposer.handle(.down)
 _ = learnedComposer.selectCandidate(at: learnedComposer.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
-check(learnedEngine.learnedEntries().first?.count == 1, "pick learns +1")
+check(learnedEngine.learnedEntries().isEmpty, "a pick alone does not learn")
 check(learnedComposer.commitAll() == "巴", "picked word committed")
-check(learnedEngine.learnedEntries().first?.count == 1.5, "fixed commit learns +0.5")
+check(learnedEngine.learnedEntries().contains { $0.reading == "ㄅㄚ" && $0.word == "巴" }, "commit learns the correction")
 check(composer(learnedEngine, "18 ").presentation.text == "巴", "learning boosts next conversion")
 let beforeReset = learnedEngine.learnedEntries().first!.count
 let resetter = composer(learnedEngine, "18 ")
@@ -480,7 +480,7 @@ var roundTrip: Engine?
 let deadline = Date().addingTimeInterval(3)
 while Date() < deadline {
     let loaded = try Engine(lexiconText: tiny, userDataDirectory: temp)
-    if loaded.learnedEntries().first?.count == 1.5 && loaded.userPhrases().count == 1 { roundTrip = loaded; break }
+    if loaded.learnedEntries().contains(where: { $0.word == "巴" }) && loaded.userPhrases().count == 1 { roundTrip = loaded; break }
     Thread.sleep(forTimeInterval: 0.02)
 }
 check(roundTrip != nil, "debounced persistence round-trip")
@@ -723,6 +723,7 @@ check(liveCache.presentation.text == "八", "phrase removal invalidates live con
 let learner = composer(cacheEngine, "18 ")
 _ = learner.handle(.down)
 _ = learner.selectCandidate(at: learner.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
+_ = learner.commitAll()
 _ = liveCache.handle(.left)
 check(liveCache.presentation.text == "巴", "learning invalidates another composer's conversion cache")
 cacheEngine.forgetAllLearned()
@@ -780,8 +781,8 @@ check(acceptedTypo.presentation.text == "特", "invalid exact syllable accepted 
 _ = acceptedTypo.handle(.down)
 check(acceptedTypo.presentation.candidates?.items.first { $0.text == "特" }?.annotation == "ㄊㄜˋ", "corrected candidate annotates actual reading")
 _ = acceptedTypo.selectCandidate(at: acceptedTypo.presentation.candidates!.items.firstIndex { $0.text == "特" }!)
-check(invalidTypoEngine.learnedEntries().contains { $0.reading == "ㄍㄜˋ" && $0.word == "特" }, "correction learns typed reading")
 check(acceptedTypo.commitAll() == "特", "picked correction fixed and committed")
+check(invalidTypoEngine.learnedEntries().contains { $0.reading == "ㄍㄜˋ" && $0.word == "特" }, "correction learns typed reading")
 let recalledTypo = composer(invalidTypoEngine, "ek4", options: ComposerOptions())
 check(recalledTypo.presentation.text == "特", "repeat typed error recalls learned word directly")
 _ = recalledTypo.handle(.down)
@@ -933,6 +934,7 @@ _ = grouped.handle(.home); type("q8 ", into: grouped)
 check(grouped.presentation.text == "趴你好啊八", "fixed phrase survives insertion before it")
 _ = grouped.handle(.backspace)
 check(grouped.presentation.text == "你好啊八", "fixed phrase survives deletion elsewhere")
+_ = grouped.commitAll()
 check(groupEngine.learnedEntries().contains { $0.reading == "ㄋㄧˇ ㄏㄠˇ ㄚ" && $0.word == "你好啊" }, "whole phrase learned under typed reading")
 let recalledGroup = composer(groupEngine, "su3cl38 ")
 check(recalledGroup.presentation.text == "你好啊" && recalledGroup.presentation.clauses == [0..<3], "learned phrase recalled as a direct entry")
@@ -1249,5 +1251,51 @@ if FileManager.default.fileExists(atPath: realURL.path) {
         measureLatency(candidate, name: "lm2")
     }
 } else { print("WARNING real lexicon absent; skipped real-data checks") }
+
+// Personal language model: one correction settles its own context and stays out of others.
+do {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("zhuyin-personal-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try "肏\t-9\n操\t-10\n你\t-5\n我\t-5\n嗎\t-7\n媽\t-8\n</s>\t-3\n".write(
+        to: directory.appendingPathComponent("unigram.tsv"), atomically: true, encoding: .utf8)
+    try "你\t嗎\t-0.5\n你\t媽\t-7\n".write(to: directory.appendingPathComponent("bigram.tsv"), atomically: true, encoding: .utf8)
+    try "你\t-1\n".write(to: directory.appendingPathComponent("backoff.tsv"), atomically: true, encoding: .utf8)
+    let lexicon = "ㄘㄠˋ\t肏\t-9\nㄘㄠˋ\t操\t-10\nㄋㄧˇ\t你\t-5\nㄨㄛˇ\t我\t-5\nㄇㄚ\t嗎\t-7\nㄇㄚ\t媽\t-8\n"
+    let personal = try Engine(lexiconText: lexicon, languageModelDirectory: directory)
+    var clock = Date().timeIntervalSince1970
+    personal.clock = { clock }
+    var plain = ComposerOptions(); plain.typoTolerance = .off
+    check(composer(personal, "hl4su3a8 ", options: plain).presentation.text == "肏你嗎", "base model prefers 嗎 after 你")
+    let correcting = composer(personal, "hl4su3a8 ", options: plain)
+    _ = correcting.handle(.down)
+    _ = correcting.selectCandidate(at: correcting.presentation.candidates!.items.firstIndex { $0.text == "媽" }!)
+    _ = correcting.handle(.home); _ = correcting.handle(.down)
+    _ = correcting.selectCandidate(at: correcting.presentation.candidates!.items.firstIndex { $0.text == "操" }!)
+    check(correcting.commitAll() == "操你媽", "corrections committed")
+    check(composer(personal, "hl4su3a8 ", options: plain).presentation.text == "操你媽", "one correction settles the same input")
+    check(composer(personal, "ji3hl4su3a8 ", options: plain).presentation.text.hasSuffix("操你媽"), "and the same words inside a longer input")
+    check(composer(personal, "su3a8 ", options: plain).presentation.text == "你嗎", "but not 你ㄇㄚ elsewhere")
+    check(composer(personal, "ji3su3a8 ", options: plain).presentation.text == "我你嗎", "nor after another word")
+    clock += 7 * 86400
+    check(composer(personal, "hl4su3a8 ", options: plain).presentation.text == "操你媽", "still remembered a week later")
+    let back = composer(personal, "hl4su3a8 ", options: plain)
+    _ = back.handle(.down)
+    _ = back.selectCandidate(at: back.presentation.candidates!.items.firstIndex { $0.text == "嗎" }!)
+    _ = back.commitAll()
+    check(composer(personal, "hl4su3a8 ", options: plain).presentation.text.hasSuffix("你嗎"), "the newest pick wins")
+    let fading = try Engine(lexiconText: lexicon, languageModelDirectory: directory)
+    var fadingClock = Date().timeIntervalSince1970
+    fading.clock = { fadingClock }
+    let once = composer(fading, "su3a8 ", options: plain)
+    _ = once.handle(.down)
+    _ = once.selectCandidate(at: once.presentation.candidates!.items.firstIndex { $0.text == "媽" }!)
+    _ = once.commitAll()
+    check(composer(fading, "su3a8 ", options: plain).presentation.text == "你媽", "a correction of a whole input is recalled")
+    fadingClock += 120 * 86400
+    check(composer(fading, "su3a8 ", options: plain).presentation.text == "你嗎", "an unused single correction fades in months")
+    let fresh = try Engine(lexiconText: lexicon, languageModelDirectory: directory)
+    check(composer(fresh, "hl4su3a8 ", options: plain).presentation.text == "肏你嗎", "empty memory leaves conversions unchanged")
+} catch { check(false, "personal model fixture: \(error)") }
+
 print("\(checks - failures)/\(checks) checks passed; \(failures) failures")
 exit(failures == 0 ? 0 : 1)

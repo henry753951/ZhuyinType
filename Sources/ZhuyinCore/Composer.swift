@@ -176,8 +176,13 @@ public final class Composer {
             fixed.removeAll { $0.range.overlaps(choice.range) }
             tokens[choice.range.lowerBound] = .literal(choice.text)
         } else {
+            if options.learningEnabled {
+                // What was shown there loses some of the user's evidence in its context.
+                for word in conversion where word.range.overlaps(choice.range) && word.text != choice.text && !word.reading.isEmpty {
+                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: word.history)
+                }
+            }
             fix(choice)
-            if options.learningEnabled { engine.learn(reading: choice.reading, word: choice.text, amount: 1) }
         }
         conversionDirty = true
         closeCandidates()
@@ -199,8 +204,12 @@ public final class Composer {
         }
         refresh()
         let text = presentation.text
-        if options.learningEnabled {
-            for word in fixed { engine.learn(reading: word.reading, word: word.text, amount: 0.5) }
+        if options.learningEnabled, !text.isEmpty {
+            let committed = conversion.map { word in
+                CommittedWord(range: word.range, text: word.text, reading: word.reading, wordID: word.wordID,
+                              picked: fixed.contains { $0.range == word.range && $0.text == word.text })
+            }
+            engine.learn(commit: committed, syllableCount: tokens.filter { $0.reading != nil }.count)
         }
         reset()
         return text

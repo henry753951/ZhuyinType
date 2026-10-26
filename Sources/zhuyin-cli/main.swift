@@ -8,9 +8,10 @@ func fail(_ message: String) -> Never {
 var arguments = Array(CommandLine.arguments.dropFirst())
 var lexiconPath = "data/build/lexicon.tsv"
 var batch = false
+var keepMemory = false
 var nbest = 0
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--batch | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -22,6 +23,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         options.typoTolerance = typo
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
+    case "--keep-memory": keepMemory = true; arguments.removeFirst()
     case "--sentence-boundaries":
         guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
         Engine.sentenceBoundaries = arguments[1] == "on"
@@ -76,7 +78,7 @@ do {
         let composer = Composer(engine: engine, options: options)
         while let line = readLine() {
             composer.reset()
-            engine.forgetAllLearned()
+            if !keepMemory { engine.forgetAllLearned() }
             var committed = ""
             for (_, key) in try parse(line) { committed += composer.handle(key).commit ?? "" }
             print(committed)
