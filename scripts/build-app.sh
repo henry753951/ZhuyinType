@@ -5,7 +5,7 @@ configuration=${1:-release}
 case "$configuration" in debug|release) ;; *) echo '用法：scripts/build-app.sh [debug|release]' >&2; exit 2 ;; esac
 scratch=${SWIFT_SCRATCH_PATH:-.build}
 scripts/build-lexicon.sh
-if [[ ! -f Resources/Assets.car || ! -f Resources/AppIcon.icns || ! -f Resources/InputSourceTemplate.tiff ]]; then
+if [[ ! -f Resources/Assets.car || ! -f Resources/AppIcon.icns || ! -f Resources/InputSourceTemplate.pdf ]]; then
     swift scripts/make_icons.swift
 fi
 # Record the SDK the app is built with, so macOS draws it with the current system design rather than in the
@@ -23,7 +23,7 @@ mkdir -p "$contents/MacOS" "$contents/Resources/Licenses"
 cp -X "$bin_dir/ZhuyinType" "$contents/MacOS/"
 cp -X Resources/Info.plist "$contents/"
 printf 'APPL????' > "$contents/PkgInfo"
-cp -X Resources/Assets.car Resources/AppIcon.icns Resources/InputSourceTemplate.tiff data/build/lexicon.tsv "$contents/Resources/"
+cp -X Resources/Assets.car Resources/AppIcon.icns Resources/InputSourceTemplate.pdf data/build/lexicon.tsv "$contents/Resources/"
 cp -R -X Resources/*.lproj "$contents/Resources/"
 cp -R -X Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"

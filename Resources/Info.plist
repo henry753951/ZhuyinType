@@ -26,8 +26,8 @@
     <key>TISIntendedLanguage</key><string>zh-Hant</string>
     <key>TISIconIsTemplate</key><true/>
     <key>tsInputMethodCharacterRepertoireKey</key><array><string>Hant</string></array>
-    <key>tsInputMethodIconFileKey</key><string>InputSourceTemplate.tiff</string>
-    <key>tsInputMethodAlternateIconFileKey</key><string>InputSourceTemplate.tiff</string>
+    <key>tsInputMethodIconFileKey</key><string>InputSourceTemplate.pdf</string>
+    <key>tsInputMethodAlternateIconFileKey</key><string>InputSourceTemplate.pdf</string>
     <key>ComponentInputModeDict</key>
     <dict>
         <key>tsInputModeListKey</key>
@@ -40,9 +40,9 @@
                 <key>tsInputModeCharacterRepertoireKey</key><array><string>Hant</string></array>
                 <key>tsInputModeScriptKey</key><string>smTradChinese</string>
                 <key>tsInputModePrimaryInScriptKey</key><true/>
-                <key>tsInputModeMenuIconFileKey</key><string>InputSourceTemplate.tiff</string>
-                <key>tsInputModeAlternateMenuIconFileKey</key><string>InputSourceTemplate.tiff</string>
-                <key>tsInputModePaletteIconFileKey</key><string>InputSourceTemplate.tiff</string>
+                <key>tsInputModeMenuIconFileKey</key><string>InputSourceTemplate.pdf</string>
+                <key>tsInputModeAlternateMenuIconFileKey</key><string>InputSourceTemplate.pdf</string>
+                <key>tsInputModePaletteIconFileKey</key><string>InputSourceTemplate.pdf</string>
                 <key>tsInputModeDefaultStateKey</key><true/>
                 <key>tsInputModeIsVisibleKey</key><true/>
             </dict>

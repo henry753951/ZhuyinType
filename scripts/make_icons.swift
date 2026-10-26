@@ -120,32 +120,22 @@ try? fileManager.removeItem(at: resources.appendingPathComponent("AppIcon.iconse
 
 // MARK: - Menu bar icon
 
-/// A filled rounded square with ㄓ cut out, black on clear, which macOS tints as a template image.
-func menuIcon(points: CGFloat, scale: CGFloat) -> Data {
-    let pixels = Int(points * scale)
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels, bitsPerSample: 8,
-                               samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .calibratedRGB,
-                               bytesPerRow: 0, bitsPerPixel: 0)!
-    rep.size = NSSize(width: points, height: points)
-    let context = NSGraphicsContext(bitmapImageRep: rep)!
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = context
-    let box = NSRect(x: 1, y: 1, width: points - 2, height: points - 2)
-    NSColor.black.setFill()
-    NSBezierPath(roundedRect: box, xRadius: 3.5, yRadius: 3.5).fill()
-    let cg = context.cgContext
-    cg.setBlendMode(.destinationOut)
-    cg.addPath(glyphPath(height: points * 0.58, center: CGPoint(x: box.midX, y: box.midY)))
-    cg.fillPath()
-    NSGraphicsContext.restoreGraphicsState()
-    return rep.representation(using: .png, properties: [:])!
-}
-
-let menuFiles = [(1, "InputSource.png"), (2, "InputSource@2x.png")].map { scale, name -> String in
-    let url = compiled.appendingPathComponent(name)
-    try! menuIcon(points: 16, scale: CGFloat(scale)).write(to: url)
-    return url.path
-}
-try run("/usr/bin/tiffutil", ["-cathidpicheck"] + menuFiles + ["-out", resources.appendingPathComponent("InputSourceTemplate.tiff").path])
+/// The input-source badge, drawn like the system's: a 22 × 16 pt rounded rectangle with ㄓ cut out, as a vector PDF.
+/// Black on clear; Info.plist marks it as a template so macOS tints it for the menu bar and the input menu.
+let badgeSize = CGSize(width: 22, height: 16)
+let badgeURL = resources.appendingPathComponent("InputSourceTemplate.pdf")
+var mediaBox = CGRect(origin: .zero, size: badgeSize)
+let pdf = CGContext(badgeURL as CFURL, mediaBox: &mediaBox, nil)!
+pdf.beginPDFPage(nil)
+let badge = CGMutablePath()
+badge.addRoundedRect(in: mediaBox, cornerWidth: 4.5, cornerHeight: 4.5)
+// Union the glyph's contours first, so the even-odd fill cuts it out cleanly where strokes overlap.
+badge.addPath(glyphPath(height: 9, center: CGPoint(x: mediaBox.midX, y: mediaBox.midY)).normalized(using: .winding))
+pdf.addPath(badge)
+pdf.setFillColor(CGColor(gray: 0, alpha: 1))
+pdf.fillPath(using: .evenOdd)
+pdf.endPDFPage()
+pdf.closePDF()
+try? fileManager.removeItem(at: resources.appendingPathComponent("InputSourceTemplate.tiff"))
 try? fileManager.removeItem(at: compiled)
-print("Generated AppIcon.icon, Assets.car, AppIcon.icns and InputSourceTemplate.tiff")
+print("Generated AppIcon.icon, Assets.car, AppIcon.icns and InputSourceTemplate.pdf")
