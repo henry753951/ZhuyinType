@@ -74,10 +74,11 @@ final class Preferences: ObservableObject {
         static let candidateAnchor = "candidateAnchor"
         static let fuzzySounds = "fuzzySounds"
         static let usesPrecedingText = "usesPrecedingText"
+        static let shortcuts = "shortcuts"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
                           shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText]
+                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts]
     }
 
     func resetToDefaults() {
@@ -138,6 +139,37 @@ final class Preferences: ObservableObject {
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
+    }
+
+    /// Every rebindable command's shortcut: the user's where set, otherwise the default.
+    var shortcuts: [ShortcutCommand: Shortcut] {
+        get {
+            var result = ShortcutCommand.defaults
+            if let data = defaults.data(forKey: Key.shortcuts),
+               let stored = try? JSONDecoder().decode([String: Shortcut].self, from: data) {
+                for (name, shortcut) in stored {
+                    if let command = ShortcutCommand(rawValue: name) { result[command] = shortcut }
+                }
+            }
+            return result
+        }
+        set {
+            let stored = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
+            defaults.set(try? JSONEncoder().encode(stored), forKey: Key.shortcuts)
+            changed()
+        }
+    }
+
+    var candidateKeyLabels: CandidateKeyLabels {
+        let all = shortcuts
+        return CandidateKeyLabels(zhuyin: all[.typeZhuyin]?.compact ?? "`",
+                                  single: all[.singleCharacterList]?.compact ?? "⇧↓",
+                                  corrections: all[.correctionsList]?.compact ?? "⇧↑")
+    }
+
+    func resetShortcuts() {
+        defaults.removeObject(forKey: Key.shortcuts)
+        changed()
     }
 
     var usesPrecedingText: Bool {

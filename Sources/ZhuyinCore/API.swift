@@ -5,7 +5,7 @@ import Foundation
 
 /// A key as the composer sees it.  The app maps hardware key codes on the US layout to these, so a character is the
 /// key's unshifted ASCII character whatever keyboard layout the user has selected.
-public enum KeyInput: Equatable, Sendable {
+public enum KeyInput: Hashable, Sendable {
     /// A printable ASCII key with no modifier: "a", "1", ",", "-", "/", "`", "[", ...
     case char(Character)
     /// A printable ASCII key with Shift held, named by its unshifted character: Shift+1 is `.shiftedChar("1")`.

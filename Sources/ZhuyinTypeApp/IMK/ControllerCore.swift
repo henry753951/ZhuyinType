@@ -64,6 +64,8 @@ final class ControllerCore {
     }
 
     private var capsLock = false
+    /// Rebindable shortcuts, by key.
+    var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(uniqueKeysWithValues: ShortcutCommand.defaults.map { ($1, $0) })
 
     func update(options: ComposerOptions, shiftToggle: ShiftToggle, popupCompositionApps: [String]) {
         composer.options = options
@@ -83,7 +85,12 @@ final class ControllerCore {
             breakContext()
             return false
         }
-        guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers) else {
+        if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
+            return handle(command.input)
+        }
+        // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
+        guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
+              !ShortcutCommand.commandInputs.contains(key) else {
             commit()
             breakContext()
             return false

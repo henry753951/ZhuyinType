@@ -96,7 +96,8 @@ private struct GeneralPane: View {
     }
 }
 
-/// Every key, most used first, in the words of what it does.  Follows the settings that change keys.
+/// Every key, most used first, in the words of what it does.  Typing keys are fixed; the commands below them can be
+/// rebound (click the keycaps, press the new keys) and restored to their defaults.
 private struct KeysPane: View {
     @ObservedObject var preferences: Preferences
 
@@ -111,7 +112,9 @@ private struct KeysPane: View {
         }
         Form {
             Section("打字") {
-                KeyRow("拼注音，空白是一聲", ["注音鍵"], ["6", "3", "4", "7"], joiner: "+")
+                KeyRow("拼注音", ["注音鍵"])
+                KeyRow("聲調：二聲、三聲、四聲、輕聲", ["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"])
+                KeyRow("一聲（完成這個音）", ["空白"])
                 KeyRow("送出", ["Return"])
                 KeyRow("刪掉注音符號，或游標前的字", ["⌫"])
                 KeyRow("在組字中移動游標", ["←"], ["→"], joiner: "")
@@ -121,29 +124,103 @@ private struct KeysPane: View {
                 KeyRow("選字", [keys])
                 KeyRow("移動選取", vertical ? ["↑"] : ["←"], vertical ? ["↓"] : ["→"], joiner: "")
                 if vertical { KeyRow("改前一個或後一個字", ["←"], ["→"], joiner: "") }
-                KeyRow("翻頁", ["空白"], ["Tab"])
+                KeyRow("翻頁", ["空白"], vertical ? [] : ["↑", "↓"], joiner: "")
                 KeyRow("關閉候選字", ["Esc"])
             } header: {
                 Text("改字")
             } footer: {
                 FooterText("游標在句尾時改最後的字詞；在句中時改有底線的字。")
             }
-            Section("候選字視窗的其他清單") {
-                KeyRow("只列一個字，再按一次還原", ["⇧", "↓"])
-                KeyRow("列出按錯修正的字，再按一次還原", ["⇧", "↑"])
-                KeyRow("打出注音本身", ["`"])
+            Section {
+                ForEach(ShortcutCommand.allCases) { command in
+                    ShortcutRecorder(preferences: preferences, command: command)
+                }
+            } header: {
+                Text("可以自訂的按鍵")
+            } footer: {
+                HStack(alignment: .firstTextBaseline) {
+                    FooterText("點按鍵，再按下新的組合；Esc 取消。沒有指定給功能的按鍵交給 App。")
+                    Spacer()
+                    Button("還原預設值") { preferences.resetShortcuts() }
+                        .disabled(preferences.shortcuts == ShortcutCommand.defaults)
+                }
             }
             Section("其他") {
                 if !shift.isEmpty { KeyRow("中英切換", shift.map { "單按 " + $0 }) }
-                KeyRow("加入自訂詞：選取後按 Return", ["⇧", "←"], ["⇧", "→"], joiner: "")
                 KeyRow(preferences.escapeClearsComposition ? "清除組字" : "清除注音", ["Esc"])
-                KeyRow("刪掉一個詞", ["⌥", "⌫"])
-                KeyRow("送出並換行", ["⇧", "Return"])
                 KeyRow("中文標點：，。？！「」", ["⇧", "符號鍵"])
                 KeyRow("鍵上印的符號：. / ; < >", ["⌥", "數字或符號鍵"])
                 KeyRow("英文", ["Caps Lock"])
             }
         }
+    }
+}
+
+/// A rebindable command: its keycaps are a button that records the next key pressed.
+private struct ShortcutRecorder: View {
+    @ObservedObject var preferences: Preferences
+    let command: ShortcutCommand
+    @State private var recording = false
+    @State private var problem: String?
+    @State private var monitor: Any?
+
+    var body: some View {
+        let shortcut = preferences.shortcuts[command] ?? command.defaultShortcut
+        LabeledContent {
+            HStack(spacing: 8) {
+                if let problem { Text(problem).font(.callout).foregroundStyle(.red) }
+                Button(action: toggle) {
+                    if recording {
+                        Text("按下新的按鍵…")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 8)
+                            .frame(minHeight: 20)
+                            .background(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.accentColor, lineWidth: 1))
+                    } else {
+                        KeyCombo(keys: shortcut.keycaps)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("點一下，再按下新的按鍵")
+                .accessibilityLabel("\(command.title)：\(shortcut.keycaps.joined(separator: " "))")
+            }
+        } label: {
+            Text(command.title)
+        }
+        .onDisappear(perform: stop)
+    }
+
+    private func toggle() { recording ? stop() : start() }
+
+    private func start() {
+        problem = nil
+        recording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            defer { stop() }
+            let flags = event.modifierFlags.intersection([.control, .option, .shift, .command])
+            if event.keyCode == 53 && flags.isEmpty { return nil }
+            guard let shortcut = Shortcut(keyCode: event.keyCode, modifiers: event.modifierFlags) else {
+                problem = "這個鍵不能用"
+                return nil
+            }
+            if let reason = shortcut.reservedReason {
+                problem = reason
+            } else if let other = preferences.shortcuts.first(where: { $0.key != command && $0.value == shortcut })?.key {
+                problem = "已用於「\(other.title)」"
+            } else {
+                var all = preferences.shortcuts
+                all[command] = shortcut
+                preferences.shortcuts = all
+            }
+            return nil
+        }
+    }
+
+    private func stop() {
+        recording = false
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
     }
 }
 
@@ -220,7 +297,8 @@ private struct CandidatesPane: View {
             Section("預覽") {
                 HStack {
                     CandidatePreview(layout: preferences.candidateLayout, fontSize: preferences.candidateFontSize,
-                                     keys: Array(preferences.selectionKeys.rawValue))
+                                     keys: Array(preferences.selectionKeys.rawValue),
+                                     keyLabels: preferences.candidateKeyLabels)
                     Spacer(minLength: 0)
                 }
                 .padding(.vertical, 6)
@@ -230,12 +308,15 @@ private struct CandidatesPane: View {
 }
 
 /// The real candidate window surface, so the preview matches what appears while typing.
+/// The candidate window as it looks while typing: the same header, rows and footer, with the current keys.
 private struct CandidatePreview: NSViewRepresentable {
     let layout: CandidateLayout
     let fontSize: Double
     let keys: [Character]
+    let keyLabels: CandidateKeyLabels
 
-    private static let list = CandidateList(items: ["今天", "金天", "今", "斤", "巾"].map { Candidate(text: $0) }, pageSize: 9)
+    private static let list = CandidateList(items: ["今天", "金天", "今", "斤", "巾"].map { Candidate(text: $0) },
+                                            pageSize: 9, tolerant: false)
 
     func makeNSView(context: Context) -> InputSurface { InputSurface(content: CandidateContentView(frame: .zero)) }
 
@@ -249,8 +330,10 @@ private struct CandidatePreview: NSViewRepresentable {
 
     @discardableResult
     private func layOut(_ surface: InputSurface) -> CGSize {
-        let size = (surface.content as! CandidateContentView)
-            .update(list: Self.list, preview: nil, keys: keys, layout: layout, fontSize: fontSize, maxWidth: 460)
+        let content = surface.content as! CandidateContentView
+        content.keyLabels = keyLabels
+        let size = content.update(list: Self.list, preview: nil, keys: keys, layout: layout, fontSize: fontSize,
+                                  maxWidth: 460, zhuyinHint: "ㄐㄧㄣ ㄊㄧㄢ")
         surface.fitContent()
         return size
     }

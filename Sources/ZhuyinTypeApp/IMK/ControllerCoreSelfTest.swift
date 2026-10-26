@@ -197,6 +197,21 @@ enum ControllerCoreSelfTest {
             type("ji3ap7", into: core)
             try expect(core.keyDown(keyCode: 126, modifiers: .shift) && tolerant == true, "⇧↑ did not open the corrections list")
         }
+        test("a rebound shortcut runs its command; the old default key goes to the app") {
+            let (core, client) = session()
+            core.shortcuts = [Shortcut("s", control: true): .singleCharacterList]
+            type("ji3ap7", into: core)
+            _ = core.handle(.home)
+            try expect(core.keyDown(keyCode: 1, modifiers: .control), "⌃S was not handled")
+            try expect(core.composer.presentation.candidates?.singleCharacter == true, "⌃S did not open the single list")
+            let visible = core.composer.presentation.text
+            try expect(!core.keyDown(keyCode: 125, modifiers: .shift), "unbound ⇧↓ was taken from the app")
+            try expect(client.inserts.last == visible, "unbound ⇧↓ did not commit first")
+            try expect(Shortcut("↓").reservedReason != nil && Shortcut("a").reservedReason != nil
+                       && Shortcut("1", shift: true).reservedReason != nil && Shortcut("s", command: true).reservedReason != nil
+                       && Shortcut("s", control: true).reservedReason == nil && Shortcut("`").reservedReason == nil,
+                       "reserved keys")
+        }
         test("the character ↓ would change is underlined once the cursor moves into the composition") {
             let (core, client) = session()
             type("ji3ap7g4", into: core)

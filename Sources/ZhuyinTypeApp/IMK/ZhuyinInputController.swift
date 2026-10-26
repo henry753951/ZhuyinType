@@ -233,6 +233,7 @@ final class ZhuyinInputController: IMKInputController {
         let p = Preferences.shared
         showModeToast = p.showModeToast
         core?.usesPrecedingText = p.usesPrecedingText
+        core?.shortcuts = Dictionary(p.shortcuts.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         EngineHost.engine?.fuzzySounds = p.fuzzySounds
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
     }

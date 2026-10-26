@@ -146,10 +146,13 @@ private final class CandidateRow: NSView {
 
 private final class ZhuyinHintButton: NSButton {
     var hint = ""
+    /// The key that types the reading as Zhuyin.
+    var key = "`"
     private let hintFont = NSFont.systemFont(ofSize: 12)
-    var preferredWidth: CGFloat { 28 + (hint as NSString).size(withAttributes: [.font: hintFont]).width }
+    private var keycapWidth: CGFloat { max(19, ceil((key as NSString).size(withAttributes: [.font: hintFont]).width) + 9) }
+    var preferredWidth: CGFloat { keycapWidth + 9 + (hint as NSString).size(withAttributes: [.font: hintFont]).width }
     override func draw(_ dirtyRect: NSRect) {
-        let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: 19, height: 19)
+        let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: keycapWidth, height: 19)
         let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
         border.lineWidth = 1
         NSColor.quaternaryLabelColor.setStroke()
@@ -159,9 +162,11 @@ private final class ZhuyinHintButton: NSButton {
         let attributes: [NSAttributedString.Key: Any] = [.font: hintFont, .foregroundColor: NSColor.secondaryLabelColor,
                                                          .paragraphStyle: paragraph]
         let height = (hint as NSString).size(withAttributes: attributes).height
-        ("`" as NSString).draw(at: NSPoint(x: 7, y: (bounds.height - height) / 2), withAttributes: attributes)
-        (hint as NSString).draw(in: NSRect(x: 27, y: (bounds.height - height) / 2,
-                                          width: max(0, bounds.width - 27), height: height), withAttributes: attributes)
+        let keyWidth = (key as NSString).size(withAttributes: attributes).width
+        (key as NSString).draw(at: NSPoint(x: keycap.midX - keyWidth / 2, y: (bounds.height - height) / 2), withAttributes: attributes)
+        let textX = keycap.maxX + 8
+        (hint as NSString).draw(in: NSRect(x: textX, y: (bounds.height - height) / 2,
+                                          width: max(0, bounds.width - textX), height: height), withAttributes: attributes)
     }
 }
 
@@ -169,7 +174,8 @@ private final class ZhuyinHintButton: NSButton {
 /// target) and ⇧↑ 修正 (typing corrections and fuzzy matches first).
 private final class KeycapToggle: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
-    private let key: String
+    /// The key shown on the keycap: the command's current shortcut.
+    var key: String { didSet { needsDisplay = true } }
     private let label: String
     private let labelFont = NSFont.systemFont(ofSize: 12)
     init(key: String, label: String, help: String) {
@@ -210,8 +216,8 @@ final class CandidateContentView: InputMaterialView {
     private let previewLabel = NSTextField(labelWithString: "")
     private let noticeLabel = NSTextField(labelWithString: "")
     private let zhuyinButton = ZhuyinHintButton()
-    private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字（Shift-↓）")
-    private let correctionButton = KeycapToggle(key: "⇧↑", label: "修正", help: "列出按錯修正的字（Shift-↑）")
+    private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字")
+    private let correctionButton = KeycapToggle(key: "⇧↑", label: "修正", help: "列出按錯修正的字")
     private let pageLabel = NSTextField(labelWithString: "")
     private let previous = NSButton()
     private let next = NSButton()
@@ -220,6 +226,8 @@ final class CandidateContentView: InputMaterialView {
     var onZhuyin: (() -> Void)?
     var onCorrections: (() -> Void)?
     var onSingleCharacter: (() -> Void)?
+    /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
+    var keyLabels = CandidateKeyLabels()
     private(set) var candidateTextInset: CGFloat = 36
 
     override init(frame: NSRect) {
@@ -287,7 +295,10 @@ final class CandidateContentView: InputMaterialView {
         let hasFooter = hasPages || hasToggle || hasSingle
         let pageWidth: CGFloat = hasFooter ? 90 : 0
         zhuyinButton.hint = zhuyinHint ?? ""
-        zhuyinButton.setAccessibilityLabel("`，" + (zhuyinHint ?? ""))
+        zhuyinButton.key = keyLabels.zhuyin
+        singleButton.key = keyLabels.single
+        correctionButton.key = keyLabels.corrections
+        zhuyinButton.setAccessibilityLabel(keyLabels.zhuyin + "，" + (zhuyinHint ?? ""))
         zhuyinButton.needsDisplay = true
         correctionButton.on = list?.tolerant == true
         singleButton.on = list?.singleCharacter == true
@@ -411,6 +422,7 @@ final class CandidatePanelController {
         content.onZhuyin = { [weak self] in self?.onZhuyin?() }
         content.onCorrections = { [weak self] in self?.onCorrections?() }
         content.onSingleCharacter = { [weak self] in self?.onSingleCharacter?() }
+        content.keyLabels = Preferences.shared.candidateKeyLabels
         let preferences = Preferences.shared
         let size = content.update(list: list, preview: preview, keys: keys, layout: preferences.candidateLayout,
                                   fontSize: preferences.candidateFontSize, maxWidth: visible.width,
