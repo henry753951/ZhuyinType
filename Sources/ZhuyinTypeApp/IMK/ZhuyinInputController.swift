@@ -22,15 +22,17 @@ final class IMKTextClient: TextClient {
         input.setMarkedText(text, selectionRange: selectionRange, replacementRange: replacementRange)
     }
 
-    /// The caret in screen coordinates: a zero-width rectangle as tall as the line.  Sources, most reliable first:
-    /// the attributes query (answered correctly by Cocoa and web-engine clients alike), the composed text's own
+    /// Where the candidate window goes: a zero-width rectangle as tall as the line.  Sources, most reliable first:
+    /// the attributes query at the composition start (answered by Cocoa and web-engine clients alike), the composed text's own
     /// rectangle, the selection, the last caret found for this client, and finally the mouse.  Rectangles returned
     /// through the client proxy can arrive garbled (subnormal numbers), so every one is checked before use.
     func caretRect(cursorIndex: Int) -> NSRect {
         let marked = markedRange
         var sources: [(String, NSRect)] = []
+        // Index 0 is the start of the composition, the one index every client answers; the candidate window lines
+        // up with it.  (Web-engine clients return nothing for an index at the end of the composition.)
         var line = NSRect.zero
-        _ = input.attributes(forCharacterIndex: max(0, cursorIndex), lineHeightRectangle: &line)
+        _ = input.attributes(forCharacterIndex: 0, lineHeightRectangle: &line)
         sources.append(("attributes", line.standardized))
         if marked.location != NSNotFound {
             let cursor = min(max(0, cursorIndex), marked.length)
@@ -115,6 +117,9 @@ final class ZhuyinInputController: IMKInputController {
         if Self.activeController === self { CandidatePanelController.shared.hide() }
     }
 
+    private var lastKeyDown: (keyCode: UInt16, timestamp: TimeInterval, handled: Bool)?
+    private static let keyLog = Logger(subsystem: "org.zhuyintype", category: "key")
+
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, bind(sender) else { return false }
         makeCoreIfReady()
@@ -127,7 +132,16 @@ final class ZhuyinInputController: IMKInputController {
         }
         switch event.type {
         case .keyDown:
-            return core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
+            // Some web-engine clients hand the same key event to the input method twice; the copy carries the
+            // original's timestamp, while a real repeat or a second press never does.
+            if let last = lastKeyDown, last.keyCode == event.keyCode, last.timestamp == event.timestamp {
+                Self.keyLog.debug("key \(event.keyCode) duplicate ignored")
+                return last.handled
+            }
+            let handled = core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
+            lastKeyDown = (event.keyCode, event.timestamp, handled)
+            Self.keyLog.debug("key \(event.keyCode) t=\(event.timestamp) repeat=\(event.isARepeat) handled=\(handled)")
+            return handled
         case .flagsChanged:
             return core.flagsChanged(keyCode: event.keyCode, modifiers: event.modifierFlags,
                                      physicallyDown: CGEventSource.keyState(.combinedSessionState, key: event.keyCode),
