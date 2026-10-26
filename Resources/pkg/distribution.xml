@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>ZhuyinType 注音 0.2.3</title>
+    <title>ZhuyinType 注音 0.2.4</title>
     <welcome file="welcome.html" mime-type="text/html"/>
     <license file="license.txt" mime-type="text/plain"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
@@ -11,5 +11,5 @@
     <choice id="default" title="ZhuyinType 注音" visible="false">
         <pkg-ref id="org.zhuyintype.pkg"/>
     </choice>
-    <pkg-ref id="org.zhuyintype.pkg" version="0.2.3" onConclusion="none">ZhuyinType-component.pkg</pkg-ref>
+    <pkg-ref id="org.zhuyintype.pkg" version="0.2.4" onConclusion="none">ZhuyinType-component.pkg</pkg-ref>
 </installer-gui-script>
