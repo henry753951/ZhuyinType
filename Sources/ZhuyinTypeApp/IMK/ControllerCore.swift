@@ -51,8 +51,12 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         shiftTap = nil
-        // Caps Lock types English, every key of it, until it is released.
-        guard !rendering, !isEnglish, !modifiers.contains(.capsLock) else { return false }
+        guard !rendering, !isEnglish else { return false }
+        // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
+        if modifiers.contains(.capsLock) {
+            commit()
+            return false
+        }
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers) else {
             commit()
             return false
