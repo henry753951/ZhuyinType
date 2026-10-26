@@ -74,7 +74,8 @@ def main():
     parser.add_argument("--sentence-boundaries", choices=["on", "off"], default=None,
                         help="override the engine default for scoring a composition as a whole sentence")
     parser.add_argument("--reranker", help="directory with Reranker.mlmodelc and vocab.json")
-    parser.add_argument("--rerank-weight", type=float, default=0.5)
+    parser.add_argument("--rerank-weight", type=float, default=1.0)
+    parser.add_argument("--rerank-count", type=int, default=8)
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -113,7 +114,8 @@ def evaluate(test, args, lexicon, lexicon_path):
         scripts.append(keys_for(readings) + "<enter>")
     command = [args.cli, "--lexicon", lexicon_path, "--typo", args.typo, "--batch"]
     if args.reranker:
-        command += ["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight)]
+        command += ["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight),
+                    "--rerank-count", str(args.rerank_count)]
     if args.sentence_boundaries:
         command += ["--sentence-boundaries", args.sentence_boundaries]
     result = subprocess.run(command,

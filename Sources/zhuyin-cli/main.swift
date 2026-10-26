@@ -12,6 +12,7 @@ var batch = false
 var keepMemory = false
 var rerankerPath: String?
 var rerankWeight = 0.5
+var rerankCount = 8
 var nbest = 0
 var options = ComposerOptions()
 let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--reranker DIR [--rerank-weight W]] [--batch [--keep-memory] | \"<keys>\"]"
@@ -30,6 +31,10 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--reranker":
         guard arguments.count >= 2 else { fail(usage) }
         rerankerPath = arguments[1]
+        arguments.removeFirst(2)
+    case "--rerank-count":
+        guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
+        rerankCount = count
         arguments.removeFirst(2)
     case "--rerank-weight":
         guard arguments.count >= 2, let weight = Double(arguments[1]) else { fail(usage) }
@@ -88,6 +93,7 @@ do {
     let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight) }
     func attach(_ composer: Composer) {
         guard let reranker else { return }
+        composer.rerankingCount = rerankCount
         composer.reranker = { reranker.choose($0, context: "") }
     }
     if batch {

@@ -42,6 +42,7 @@ final class ControllerCore {
         self.client = client
         self.isEnglish = isEnglish
         if let reranker {
+            composer.rerankingCount = reranker.candidateCount
             composer.reranker = { [weak self] in reranker.choose($0, context: self?.recentText ?? "") }
         }
     }

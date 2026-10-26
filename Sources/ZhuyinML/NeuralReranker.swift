@@ -9,6 +9,8 @@ import ZhuyinCore
 /// `Reranker.mlmodelc` (or `Reranker.mlpackage`, compiled on first use) and `vocab.json`.
 public final class NeuralReranker: @unchecked Sendable {
     public var weight: Double
+    /// How many of the engine's best conversions to choose among.
+    public var candidateCount = 16
     /// Characters of preceding text given to the model.
     public var contextLength = 24
     private let model: MLModel

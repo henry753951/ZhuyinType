@@ -50,6 +50,9 @@ enum EngineHost {
                let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let value = config["weight"] as? Double { weight = value }
             let reranker = try NeuralReranker(directory: directory, weight: weight)
+            if let data = try? Data(contentsOf: directory.appendingPathComponent("config.json")),
+               let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let count = config["count"] as? Int, count > 0 { reranker.candidateCount = count }
             logger.info("Reranker loaded in \(Date().timeIntervalSince(start), privacy: .public) seconds")
             return reranker
         } catch {
