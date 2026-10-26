@@ -10,7 +10,7 @@ var lexiconPath = "data/build/lexicon.tsv"
 var batch = false
 var nbest = 0
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--batch | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--batch | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -22,6 +22,10 @@ while let option = arguments.first, option.hasPrefix("--") {
         options.typoTolerance = typo
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
+    case "--sentence-boundaries":
+        guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
+        Engine.sentenceBoundaries = arguments[1] == "on"
+        arguments.removeFirst(2)
     case "--anchor":
         guard arguments.count >= 2, ["after", "before"].contains(arguments[1]) else { fail(usage) }
         options.candidateAnchor = arguments[1] == "after" ? .afterCursor : .beforeCursor

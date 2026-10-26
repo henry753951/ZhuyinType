@@ -116,6 +116,9 @@ public struct NGramLanguageModel: LanguageModel {
                 }
                 return low < end && Self.uint(raw, next + low * 4) == word ? low : nil
             }
+            if history.previous == LanguageModelHistory.noContext {
+                return Self.float(raw, unigrams + Int(wordID) * 4)
+            }
             var backoff = 0.0
             if order == 3, let older = history.older,
                let context = find(bigrams, vocabularyCount, older, history.previous) {

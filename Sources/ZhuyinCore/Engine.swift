@@ -69,15 +69,22 @@ public final class Engine: @unchecked Sendable {
                   languageModelDirectory: languageModelDirectory)
     }
 
+    /// Score a composition as a whole sentence (`<s>` … `</s>`).  On by default: measured on held-out Wikipedia and
+    /// colloquial text, dropping either boundary costs whole-run accuracy (most compositions are a clause typed from
+    /// its start and committed at its end).  Read when an Engine is created.
+    public static var sentenceBoundaries = true
+
     private init(data: Data, userDataDirectory: URL?, languageModelDirectory: URL?) {
         directory = userDataDirectory
-        if let url = languageModelDirectory, let model = try? NGramLanguageModel(directory: url) {
-            languageModel = model
-        } else if let url = languageModelDirectory, let model = try? BigramLanguageModel(directory: url) {
-            languageModel = model
+        let model: any LanguageModel
+        if let url = languageModelDirectory, let ngram = try? NGramLanguageModel(directory: url) {
+            model = ngram
+        } else if let url = languageModelDirectory, let bigram = try? BigramLanguageModel(directory: url) {
+            model = bigram
         } else {
-            languageModel = UnigramLanguageModel()
+            model = UnigramLanguageModel()
         }
+        languageModel = Engine.sentenceBoundaries || model.order == 1 ? model : BoundaryFreeLanguageModel(base: model)
         lexicon.reserveCapacity(50000)
         reverse.reserveCapacity(125000)
         scanTSV(data) { fields in

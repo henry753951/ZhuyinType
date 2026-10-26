@@ -2,6 +2,8 @@ import Foundation
 
 /// IDs 0, 1 and 2 are </s>, <s> and <unk>. A nil word ID uses the lexicon probability.
 public struct LanguageModelHistory: Hashable, Sendable {
+    /// No context: the word is scored by its unigram probability.
+    public static let noContext: UInt32 = .max
     public var older: UInt32?
     public var previous: UInt32
     public init(older: UInt32? = nil, previous: UInt32 = 1) {
@@ -75,6 +77,22 @@ public struct BigramLanguageModel: LanguageModel {
         let word = wordID ?? UInt32.max
         return bigrams[history.previous]?[word]
             ?? ((backoffs[history.previous] ?? 0) + (unigrams[word] ?? unigram))
+    }
+}
+
+/// Treats a composition as a stretch of a sentence rather than a whole one: what would be scored after `<s>` is
+/// scored with no context, and nothing is added for `</s>`.  A composition starts and stops wherever the user starts
+/// and stops typing, which is rarely a sentence boundary.
+struct BoundaryFreeLanguageModel: LanguageModel {
+    let base: any LanguageModel
+    var order: Int { base.order }
+    func wordID(for word: String) -> UInt32? { base.wordID(for: word) }
+    func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double {
+        if wordID == 0 { return 0 }
+        var history = history
+        if history.previous == 1 { history.previous = LanguageModelHistory.noContext; history.older = nil }
+        if history.older == 1 { history.older = nil }
+        return base.score(wordID: wordID, history: history, unigram: unigram)
     }
 }
 

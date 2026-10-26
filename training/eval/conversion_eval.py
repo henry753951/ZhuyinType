@@ -71,6 +71,8 @@ def main():
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--cli", default=".build-engine/release/zhuyin-cli")
     parser.add_argument("--typo", choices=["off", "standard", "aggressive"], default="standard")
+    parser.add_argument("--sentence-boundaries", choices=["on", "off"], default=None,
+                        help="override the engine default for scoring a composition as a whole sentence")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -107,7 +109,10 @@ def evaluate(test, args, lexicon, lexicon_path):
             continue
         selected.append(run)
         scripts.append(keys_for(readings) + "<enter>")
-    result = subprocess.run([args.cli, "--lexicon", lexicon_path, "--typo", args.typo, "--batch"],
+    command = [args.cli, "--lexicon", lexicon_path, "--typo", args.typo, "--batch"]
+    if args.sentence_boundaries:
+        command += ["--sentence-boundaries", args.sentence_boundaries]
+    result = subprocess.run(command,
                             input="".join(script + "\n" for script in scripts),
                             capture_output=True, text=True, check=True)
     outputs = result.stdout.splitlines()
