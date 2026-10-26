@@ -112,6 +112,18 @@ final class ZhuyinInputController: IMKInputController {
         CandidatePanelController.shared.hide()
     }
 
+    /// Keys come only to the controller of the focused text, so it owns the candidate window even when
+    /// `activateServer` never ran for it: the input method restarted (an update) while the app kept focus.  Without
+    /// this, typing and inline text work but the candidate window stays hidden.
+    private func claimActive() {
+        guard !active || Self.activeController !== self else { return }
+        EngineHost.logger.info("Claimed the candidate window for \(self.textClient?.bundleIdentifier ?? "?", privacy: .public) without activateServer")
+        Self.activeController = self
+        active = true
+        installObservers()
+        setPanelCallbacks()
+    }
+
     override func deactivateServer(_ sender: Any!) {
         core?.endSession()
         active = false
@@ -134,6 +146,7 @@ final class ZhuyinInputController: IMKInputController {
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, bind(sender) else { return false }
+        claimActive()
         makeCoreIfReady()
         guard let core else {
             if !loggedNotReady {
