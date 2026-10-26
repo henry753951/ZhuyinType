@@ -48,7 +48,7 @@ private struct GeneralPane: View {
             } header: {
                 Text("按鍵")
             } footer: {
-                FooterText("Shift 加符號鍵打出中文標點，例如 Shift-句號是「。」。Option 加數字或符號鍵打出鍵上印的符號：Option-句號是「.」，Option-Shift-句號是「>」。")
+                FooterText("↓ 列出游標處的詞與字，Shift-↓ 只列游標處的單字。Shift 加符號鍵打出中文標點，例如 Shift-句號是「。」。Option 加數字或符號鍵打出鍵上印的符號：Option-句號是「.」，Option-Shift-句號是「>」。")
             }
             Section {
                 Picker("選字位置", selection: binding(preferences, \.candidateAnchor)) {

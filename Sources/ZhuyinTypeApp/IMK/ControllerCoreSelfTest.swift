@@ -161,6 +161,10 @@ enum ControllerCoreSelfTest {
                 try expect(client.inserts == [visible], "pass-through key \(key): visible=\(visible), inserted=\(client.inserts)")
             }
         }
+        test("Shift-Down opens the single-character list") {
+            try expect(KeyMapping.input(keyCode: 125, modifiers: .shift) == .shiftDown, "Shift-↓ mapping")
+            try expect(KeyMapping.input(keyCode: 125, modifiers: []) == .down, "↓ mapping")
+        }
         test("Option types the symbol printed on a key into the composition") {
             let (core, client) = session()
             type("su3", into: core)

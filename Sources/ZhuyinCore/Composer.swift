@@ -19,6 +19,8 @@ public final class Composer {
     private var conversionRevision: UInt64 = 0
     private var choices: [FixedWord] = []
     private var candidateSelection = 0
+    /// The open list holds only the character at the cursor (Shift-↓), not every span.
+    private var singleCharacterList = false
     private var selectionAnchor: Int?
     private var notice: String?
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
@@ -213,9 +215,9 @@ public final class Composer {
             case .home, .end:
                 result = hasComposition ? .consumed : .passThrough
                 if hasComposition { cursor = key == .home ? 0 : tokens.count }
-            case .down:
+            case .down, .shiftDown:
                 result = hasComposition ? .consumed : .passThrough
-                if hasComposition { finishBuffer(); refresh(); openCandidates() }
+                if hasComposition { finishBuffer(); refresh(); openCandidates(singleCharacter: key == .shiftDown) }
             case .up, .pageUp, .pageDown, .tab, .shiftTab:
                 result = hasComposition ? .consumed : .passThrough
             case .escape:
@@ -393,6 +395,7 @@ public final class Composer {
             insert(.literal(text))
             closeCandidates()
         case .enter: return selectCandidate(at: candidateSelection)
+        case .shiftDown: openCandidates(singleCharacter: !singleCharacterList)
         case .escape, .backspace: closeCandidates()
         case .up: candidateSelection = max(0, candidateSelection - 1)
         case .down: candidateSelection = min(choices.count - 1, candidateSelection + 1)
@@ -439,8 +442,10 @@ public final class Composer {
         return FixedWord(range: range, text: text, reading: reading, wordID: parts.last?.wordID, components: parts)
     }
 
-    private func openCandidates() {
+    /// `singleCharacter`: only the character at the cursor, only for the keys as typed (no phrases, no corrections).
+    private func openCandidates(singleCharacter: Bool = false) {
         guard !tokens.isEmpty, !hasBuffer else { return }
+        singleCharacterList = singleCharacter
         let forward = cursor == 0 || (options.candidateAnchor == .afterCursor && cursor < tokens.count)
         let target = forward ? cursor : cursor - 1
         if case .literal(let text) = tokens[target] {
@@ -451,12 +456,15 @@ public final class Composer {
             return
         }
         var ranges: [Range<Int>] = []
-        for length in 1...min(6, forward ? tokens.count - cursor : cursor) {
+        for length in 1...(singleCharacter ? 1 : min(6, forward ? tokens.count - cursor : cursor)) {
             let range = forward ? cursor..<(cursor + length) : (cursor - length)..<cursor
             guard tokens[range].allSatisfy({ $0.reading != nil }) else { break }
             ranges.append(range)
         }
         choices.removeAll(keepingCapacity: true)
+        // Words for other keys than the ones typed (typing corrections, fuzzy sounds) come after every word for the
+        // keys as typed, unless one is clearly likelier than all of those.
+        var corrections: [FixedWord] = []
         // The displayed conversion, which the reranker may have chosen over the decoder's best.
         let decoded = conversion
         for range in ranges.reversed() {
@@ -481,7 +489,18 @@ public final class Composer {
                     ranked[..<head].sort(by: order)
                 }
             }
-            let matches = ranked.map(\.match)
+            let bestExact = ranked.first { $0.match.annotation == nil }?.score ?? -.infinity
+            var promoted = 0
+            let matches = ranked.filter { item in
+                guard item.match.annotation != nil else { return true }
+                guard !singleCharacter else { return false }
+                guard promoted < Self.promotedCorrections, item.score >= bestExact + Self.correctionMargin else { return false }
+                promoted += 1
+                return true
+            }.map(\.match)
+            let deferred = ranked.filter { $0.match.annotation != nil }.map(\.match).filter { match in
+                !matches.contains { $0.entry.word == match.entry.word && $0.annotation != nil }
+            }
             var seen = Set<String>()
             func add(_ word: FixedWord) {
                 if choices.count < 60 && seen.insert(word.text).inserted { choices.append(word) }
@@ -516,10 +535,22 @@ public final class Composer {
                 add(FixedWord(range: range, text: match.entry.word, reading: reading, wordID: match.entry.wordID,
                               annotation: match.annotation))
             }
+            if !singleCharacter { corrections += deferred.map {
+                FixedWord(range: range, text: $0.entry.word, reading: reading, wordID: $0.entry.wordID, annotation: $0.annotation)
+            } }
             if choices.count == 60 { break }
+        }
+        for word in corrections where choices.count < 60
+            && !choices.contains(where: { $0.range == word.range && $0.text == word.text }) {
+            choices.append(word)
         }
         candidateSelection = 0
     }
+
+    /// A correction listed among the words for the keys as typed must score this much better than the best of them.
+    static let correctionMargin = 2.0
+    /// At most this many corrections per span are listed there; the rest follow every word for the keys as typed.
+    static let promotedCorrections = 2
 
     private func refresh() {
         let revision = engine.conversionRevision

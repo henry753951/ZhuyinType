@@ -85,7 +85,7 @@ let specials: [String: KeyInput] = [
     "left": .left, "right": .right, "home": .home, "end": .end, "up": .up, "down": .down,
     "enter": .enter, "senter": .shiftEnter, "esc": .escape, "tab": .tab,
     "stab": .shiftTab, "sspace": .shiftSpace, "pgup": .pageUp, "pgdown": .pageDown,
-    "sleft": .shiftLeft, "sright": .shiftRight
+    "sleft": .shiftLeft, "sright": .shiftRight, "sdown": .shiftDown
 ]
 func parse(_ input: String) throws -> [(String, KeyInput)] {
     var result: [(String, KeyInput)] = []
@@ -173,6 +173,7 @@ do {
         if let list = p.candidates {
             let items = list.pageRange.map { index in
                 "\(index == list.selection ? ">" : "")\(index - list.page * list.pageSize + 1):\(list.items[index].text)"
+                    + (list.items[index].annotation == nil ? "" : "*")
             }.joined(separator: "  ")
             print("  candidates \(list.page + 1)/\(list.pageCount): \(items)")
         }

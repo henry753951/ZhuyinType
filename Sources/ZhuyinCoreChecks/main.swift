@@ -1162,6 +1162,25 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     _ = corrector.selectCandidate(at: other)
     _ = corrector.commitAll()
     check(composer(correcting, "ek4").presentation.text == picked, "a deleted and retyped word is remembered")
+    // Words for the keys as typed come before corrections; Shift-↓ lists only the character at the cursor.
+    let listing = composer(real, "ji3ap7", options: unlearned)
+    _ = listing.handle(.home)
+    _ = listing.handle(.down)
+    let full = listing.presentation.candidates!.items
+    let firstCorrection = full.firstIndex { $0.annotation != nil } ?? full.count
+    check(full[firstCorrection...].allSatisfy { $0.annotation != nil } || full.prefix(1).contains { $0.annotation != nil },
+          "corrections follow every word for the keys as typed")
+    check(full.contains { $0.text == "我們" } && full.contains { $0.text == "我" }, "the full list has phrases and characters")
+    _ = listing.handle(.shiftDown)
+    let single = listing.presentation.candidates!.items
+    check(single.allSatisfy { $0.text.count == 1 && $0.annotation == nil } && single.first?.text == "我",
+          "Shift-↓ in the window lists only the character, for the keys as typed")
+    _ = listing.handle(.shiftDown)
+    check(listing.presentation.candidates!.items == full, "Shift-↓ again returns to the full list")
+    listing.reset()
+    type("su3cl3", into: listing)
+    _ = listing.handle(.shiftDown)
+    check(listing.presentation.candidates?.items.map(\.text) == ["好", "郝"], "Shift-↓ opens the single-character list")
     // Export and import carry what was learned to another engine; excluded words are never learned again.
     let receiving = try Engine(lexiconURL: realURL, userDataDirectory: nil)
     let rows = try receiving.importPersonalData(correcting.exportPersonalData())
