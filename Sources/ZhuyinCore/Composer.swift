@@ -221,9 +221,12 @@ public final class Composer {
             case .home, .end:
                 result = hasComposition ? .consumed : .passThrough
                 if hasComposition { cursor = key == .home ? 0 : tokens.count }
-            case .down, .shiftDown:
+            case .down, .shiftDown, .shiftUp:
                 result = hasComposition ? .consumed : .passThrough
-                if hasComposition { finishBuffer(); refresh(); openCandidates(singleCharacter: key == .shiftDown) }
+                if hasComposition {
+                    finishBuffer(); refresh()
+                    openCandidates(singleCharacter: key == .shiftDown, tolerant: key == .shiftUp && correctionsAvailable)
+                }
             case .up, .pageUp, .pageDown, .tab, .shiftTab:
                 result = hasComposition ? .consumed : .passThrough
             case .escape:
@@ -401,10 +404,6 @@ public final class Composer {
         if case .char(let character) = key, character != "`", let number = options.selectionKeys.firstIndex(of: character) {
             return selectCandidate(at: page * pageSize + number)
         }
-        // Selection keys with Option held, while the window shows corrections.
-        if case .printed(let character) = key, let number = options.selectionKeys.firstIndex(of: character) {
-            return selectCandidate(at: page * pageSize + number)
-        }
         switch key {
         case .char("`"):
             let range = choices[candidateSelection].range
@@ -416,6 +415,9 @@ public final class Composer {
             closeCandidates()
         case .enter: return selectCandidate(at: candidateSelection)
         case .shiftDown: openCandidates(singleCharacter: !singleCharacterList, tolerant: tolerantList)
+        case .shiftUp:
+            guard !literalList, correctionsAvailable else { return .consumed }
+            openCandidates(singleCharacter: singleCharacterList, tolerant: !tolerantList)
         case .escape, .backspace: closeCandidates()
         // Along the list moves the highlight; across it moves to the neighbouring character (vertical) or turns
         // the page (horizontal).

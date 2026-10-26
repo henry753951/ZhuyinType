@@ -21,8 +21,6 @@ var context = ""
 var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
-/// `<opt>`: an Option tap, which switches the open candidate window between exact and tolerant lists.
-let optionTap = "<opt>"
 var options = ComposerOptions()
 let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
@@ -87,7 +85,7 @@ let specials: [String: KeyInput] = [
     "left": .left, "right": .right, "home": .home, "end": .end, "up": .up, "down": .down,
     "enter": .enter, "senter": .shiftEnter, "esc": .escape, "tab": .tab,
     "stab": .shiftTab, "sspace": .shiftSpace, "pgup": .pageUp, "pgdown": .pageDown,
-    "sleft": .shiftLeft, "sright": .shiftRight, "sdown": .shiftDown
+    "sleft": .shiftLeft, "sright": .shiftRight, "sdown": .shiftDown, "sup": .shiftUp
 ]
 func parse(_ input: String) throws -> [(String, KeyInput)] {
     var result: [(String, KeyInput)] = []
@@ -97,7 +95,6 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
         if character == "<", let end = input[index...].firstIndex(of: ">") {
             let name = String(input[input.index(after: index)..<end])
             if let key = specials[name] { result.append(("<\(name)>", key)) }
-            else if name == "opt" { result.append(("<opt>", .shiftDown)) }  // Option tap: see `optionTap`
             else if name.hasPrefix("S-"), name.dropFirst(2).count == 1, let key = name.last {
                 result.append(("<\(name)>", .shiftedChar(key)))
             } else if name.hasPrefix("O-"), name.dropFirst(2).count == 1, let key = name.last {
@@ -159,10 +156,7 @@ do {
                 keys = line[line.index(after: tab)...]
             }
             composer.setPrecedingText(context)
-            for (label, key) in try parse(String(keys)) {
-                if label == optionTap { composer.toggleCorrections(); continue }
-                committed += composer.handle(key).commit ?? ""
-            }
+            for (_, key) in try parse(String(keys)) { committed += composer.handle(key).commit ?? "" }
             print(committed)
         }
         exit(0)
@@ -171,7 +165,7 @@ do {
     attach(composer)
     composer.setPrecedingText(context)
     for (label, key) in try parse(arguments[0]) {
-        let result = label == optionTap ? { composer.toggleCorrections(); return KeyResult.consumed }() : composer.handle(key)
+        let result = composer.handle(key)
         let p = composer.presentation
         let string = p.text as NSString
         let focus = p.focusedClause.map { p.clauses[$0] }

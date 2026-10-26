@@ -19,8 +19,10 @@ public enum KeyInput: Equatable, Sendable {
     case escape, tab, shiftTab
     case left, right, up, down, home, end, pageUp, pageDown
     case shiftLeft, shiftRight
-    /// Candidates for the one character at the cursor, for the keys as typed; in the window, switches lists.
+    /// Candidates for the one character at the target; in the window, switches the single-character list.
     case shiftDown
+    /// Typing corrections and fuzzy matches first; in the window, switches the corrections list.
+    case shiftUp
 }
 
 public struct KeyResult: Equatable, Sendable {

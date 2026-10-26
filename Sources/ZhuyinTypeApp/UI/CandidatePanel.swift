@@ -154,7 +154,10 @@ private final class ZhuyinHintButton: NSButton {
         border.lineWidth = 1
         NSColor.quaternaryLabelColor.setStroke()
         border.stroke()
-        let attributes: [NSAttributedString.Key: Any] = [.font: hintFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        let attributes: [NSAttributedString.Key: Any] = [.font: hintFont, .foregroundColor: NSColor.secondaryLabelColor,
+                                                         .paragraphStyle: paragraph]
         let height = (hint as NSString).size(withAttributes: attributes).height
         ("`" as NSString).draw(at: NSPoint(x: 7, y: (bounds.height - height) / 2), withAttributes: attributes)
         (hint as NSString).draw(in: NSRect(x: 27, y: (bounds.height - height) / 2,
@@ -163,7 +166,7 @@ private final class ZhuyinHintButton: NSButton {
 }
 
 /// A footer switch drawn as its keyboard key and a short name, accented while on: ⇧↓ 單字 (only the character at the
-/// target) and ⌥ 修正 (typing corrections; Option held shows them until released, Option tapped keeps them).
+/// target) and ⇧↑ 修正 (typing corrections and fuzzy matches first).
 private final class KeycapToggle: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
     private let key: String
@@ -208,7 +211,7 @@ final class CandidateContentView: InputMaterialView {
     private let noticeLabel = NSTextField(labelWithString: "")
     private let zhuyinButton = ZhuyinHintButton()
     private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字（Shift-↓）")
-    private let correctionButton = KeycapToggle(key: "⌥", label: "修正", help: "列出按錯修正的字（按住 Option 看，單按 Option 固定）")
+    private let correctionButton = KeycapToggle(key: "⇧↑", label: "修正", help: "列出按錯修正的字（Shift-↑）")
     private let pageLabel = NSTextField(labelWithString: "")
     private let previous = NSButton()
     private let next = NSButton()
@@ -276,20 +279,21 @@ final class CandidateContentView: InputMaterialView {
         let spacing: CGFloat = 10
         let hasPreview = !(preview ?? "").isEmpty
         let hasPages = (list?.pageCount ?? 1) > 1 && !indices.isEmpty
-        let hasHint = !(zhuyinHint ?? "").isEmpty
+        // The reading being changed heads the list and never sets the width; the footer holds only fixed-width
+        // controls, so nothing moves as the reading grows or the page count changes.
+        let hasHint = !(zhuyinHint ?? "").isEmpty && !indices.isEmpty
         let hasToggle = list?.tolerant != nil && !indices.isEmpty
-        let hasSingle = hasHint && !indices.isEmpty
-        let hasFooter = hasPages || hasHint || hasToggle
-        let pageWidth: CGFloat = hasPages ? 90 : (hasFooter ? 50 : 0)
+        let hasSingle = hasHint
+        let hasFooter = hasPages || hasToggle || hasSingle
+        let pageWidth: CGFloat = hasFooter ? 90 : 0
         zhuyinButton.hint = zhuyinHint ?? ""
         zhuyinButton.setAccessibilityLabel("`，" + (zhuyinHint ?? ""))
         zhuyinButton.needsDisplay = true
         correctionButton.on = list?.tolerant == true
         singleButton.on = list?.singleCharacter == true
-        let hintWidth: CGFloat = hasHint ? ceil(zhuyinButton.preferredWidth) + 8 : 0
         let singleWidth: CGFloat = hasSingle ? ceil(singleButton.preferredWidth) + 8 : 0
         let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
-        let footerWidth = pageWidth + hintWidth + singleWidth + toggleWidth
+        let footerWidth = pageWidth + singleWidth + toggleWidth
         var width: CGFloat = 160
         var y: CGFloat = padding
         noticeLabel.isHidden = notice == nil
@@ -309,6 +313,8 @@ final class CandidateContentView: InputMaterialView {
             width = max(width, previewLabel.intrinsicContentSize.width + 28)
             y += rowHeight + (indices.isEmpty ? 0 : 5)
         }
+        let hintY = y
+        if hasHint { y += 26 }
         for (offset, row) in rows.enumerated() {
             row.isHidden = offset >= indices.count
             guard offset < indices.count, let list else { row.action = nil; continue }
@@ -338,21 +344,23 @@ final class CandidateContentView: InputMaterialView {
         if layout == .horizontal && !indices.isEmpty { y += rowHeight }
         candidateTextInset = indices.isEmpty ? 14 : padding + (activeRows.first?.textInset ?? 29)
         pageLabel.isHidden = !hasFooter
-        previous.isHidden = !hasPages
-        next.isHidden = !hasPages
+        previous.isHidden = !hasFooter
+        next.isHidden = !hasFooter
         zhuyinButton.isHidden = !hasHint
         correctionButton.isHidden = !hasToggle
         singleButton.isHidden = !hasSingle
+        if hasHint {
+            zhuyinButton.frame = NSRect(x: padding + 4, y: hintY + 2,
+                                        width: min(ceil(zhuyinButton.preferredWidth), width - padding * 2 - 8), height: 22)
+        }
         if hasFooter {
             let footerX = layout == .horizontal ? width - footerWidth : padding + 4
-            zhuyinButton.frame = NSRect(x: footerX, y: pageY, width: max(0, hintWidth - 8), height: 22)
-            singleButton.frame = NSRect(x: footerX + hintWidth, y: pageY, width: max(0, singleWidth - 8), height: 22)
-            correctionButton.frame = NSRect(x: footerX + hintWidth + singleWidth, y: pageY,
-                                            width: max(0, toggleWidth - 8), height: 22)
+            singleButton.frame = NSRect(x: footerX, y: pageY, width: max(0, singleWidth - 8), height: 22)
+            correctionButton.frame = NSRect(x: footerX + singleWidth, y: pageY, width: max(0, toggleWidth - 8), height: 22)
         }
         if hasFooter, let list {
             pageLabel.stringValue = "\(list.page + 1) / \(list.pageCount)"
-            pageLabel.frame = NSRect(x: width - (hasPages ? 65 : 46), y: pageY + 3, width: 40, height: 16)
+            pageLabel.frame = NSRect(x: width - 65, y: pageY + 3, width: 40, height: 16)
             previous.frame = NSRect(x: width - 89, y: pageY, width: 22, height: 22)
             next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
             previous.isEnabled = list.page > 0

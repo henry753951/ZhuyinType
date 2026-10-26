@@ -175,35 +175,27 @@ enum ControllerCoreSelfTest {
                        "after 我們: \(core.composer.presentation.text), alone: \(alone)")
             try expect(core.recentText == "我們", "reranker context \(core.recentText)")
         }
-        test("Option held shows corrections until released; tapped, it keeps them for plain arrows") {
+        test("Shift-Up switches the corrections list; Option combinations stay the app's") {
             let (core, client) = session()
             type("ji3ap7", into: core)
-            _ = core.handle(.down)
-            func option(_ down: Bool, _ time: TimeInterval) {
-                _ = core.flagsChanged(keyCode: 58, modifiers: down ? .option : [], physicallyDown: down, timestamp: time)
-            }
+            try expect(core.keyDown(keyCode: 125, modifiers: []), "↓ was not handled")
             var tolerant: Bool? { core.composer.presentation.candidates?.tolerant }
             try expect(tolerant == false, "list does not start exact")
-            // Held: shown while down, gone when released.
-            option(true, 1)
+            try expect(core.keyDown(keyCode: 126, modifiers: .shift), "⇧↑ was not handled")
             try expect(tolerant == true && core.composer.presentation.candidates?.items.dropFirst().first?.annotation != nil,
-                       "holding Option did not list corrections first")
-            option(false, 2)
-            try expect(tolerant == false, "releasing a held Option did not restore the list")
-            // Tapped: kept, browsed with plain ↓, and tapped off again.
-            option(true, 3); option(false, 3.1)
-            try expect(tolerant == true, "a tap did not keep the corrections")
-            try expect(core.keyDown(keyCode: 125, modifiers: []), "plain ↓ was not handled")
-            try expect(tolerant == true && core.composer.presentation.candidates?.selection == 1, "↓ did not move in the kept list")
-            option(true, 4); option(false, 4.1)
-            try expect(tolerant == false, "a second tap did not turn the corrections off")
-            // Held with a digit: picks from the corrections, and the key up does not switch anything.
-            option(true, 5)
-            let picked = core.composer.presentation.candidates!.items[1].text
-            try expect(core.keyDown(keyCode: 19, modifiers: .option), "Option-2 was not handled")
-            option(false, 5.1)
-            core.commit()
-            try expect(client.inserts.last?.hasSuffix(picked) == true, "Option-2 did not pick \(picked): \(client.inserts)")
+                       "⇧↑ did not list corrections first")
+            try expect(core.keyDown(keyCode: 125, modifiers: []) && core.composer.presentation.candidates?.selection == 1,
+                       "plain ↓ did not move in the corrections list")
+            try expect(core.keyDown(keyCode: 126, modifiers: .shift) && tolerant == false, "⇧↑ again did not restore the list")
+            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 1)
+            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 1.1)
+            try expect(tolerant == false, "Option alone changed the list")
+            let visible = core.composer.presentation.text
+            try expect(!core.keyDown(keyCode: 126, modifiers: .option), "Option-↑ was taken from the app")
+            try expect(client.inserts.last == visible, "Option-↑ did not commit before passing: \(client.inserts)")
+            // ⇧↑ with no list open opens the corrections list directly.
+            type("ji3ap7", into: core)
+            try expect(core.keyDown(keyCode: 126, modifiers: .shift) && tolerant == true, "⇧↑ did not open the corrections list")
         }
         test("the character ↓ would change is underlined once the cursor moves into the composition") {
             let (core, client) = session()
