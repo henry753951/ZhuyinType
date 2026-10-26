@@ -15,6 +15,7 @@
     <key>CFBundleIconName</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSBackgroundOnly</key><false/>
+    <key>TICapsLockLanguageSwitchCapable</key><true/>
     <key>LSUIElement</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>NSHighResolutionCapable</key><true/>
@@ -38,6 +39,7 @@
                 <key>TISIntendedLanguage</key><string>zh-Hant</string>
                 <key>TISIconIsTemplate</key><true/>
                 <key>tsInputModeCharacterRepertoireKey</key><array><string>Hant</string></array>
+                <key>TICapsLockLanguageSwitchCapable</key><true/>
                 <key>tsInputModeScriptKey</key><string>smTradChinese</string>
                 <key>tsInputModePrimaryInScriptKey</key><true/>
                 <key>tsInputModeMenuIconFileKey</key><string>InputSourceTemplate.pdf</string>
