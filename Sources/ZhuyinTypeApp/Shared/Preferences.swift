@@ -14,6 +14,17 @@ enum ShiftToggle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum TypoSetting: String, CaseIterable, Identifiable {
+    case off, standard, aggressive
+    var id: String { rawValue }
+    var tolerance: TypoTolerance { TypoTolerance(rawValue: rawValue) ?? .standard }
+}
+
+enum AnchorSetting: String, CaseIterable, Identifiable {
+    case after, before
+    var id: String { rawValue }
+}
+
 enum SelectionKeySet: String, CaseIterable, Identifiable {
     case digits = "123456789"
     case homeRow = "asdfghjkl"
@@ -39,6 +50,8 @@ final class Preferences: ObservableObject {
             Key.startInEnglish: false,
             Key.learningEnabled: true,
             Key.popupCompositionApps: [String](),
+            Key.typoTolerance: TypoSetting.standard.rawValue,
+            Key.candidateAnchor: AnchorSetting.after.rawValue,
         ])
     }
 
@@ -55,9 +68,12 @@ final class Preferences: ObservableObject {
         /// Bundle identifiers of apps that get the composition in the candidate window instead of inline.  Empty by
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"
+        static let typoTolerance = "typoTolerance"
+        static let candidateAnchor = "candidateAnchor"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
-                          shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps]
+                          shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
+                          typoTolerance, candidateAnchor]
     }
 
     func resetToDefaults() {
@@ -111,12 +127,23 @@ final class Preferences: ObservableObject {
         set { defaults.set(newValue, forKey: Key.popupCompositionApps); changed() }
     }
 
+    var typoTolerance: TypoSetting {
+        get { TypoSetting(rawValue: defaults.string(forKey: Key.typoTolerance) ?? "") ?? .standard }
+        set { defaults.set(newValue.rawValue, forKey: Key.typoTolerance); changed() }
+    }
+    var candidateAnchor: AnchorSetting {
+        get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
+        set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
+    }
+
     var composerOptions: ComposerOptions {
         var o = ComposerOptions()
         o.selectionKeys = Array(selectionKeys.rawValue)
         o.spaceOpensCandidates = spaceOpensCandidates
         o.escapeClearsComposition = escapeClearsComposition
         o.learningEnabled = learningEnabled
+        o.typoTolerance = typoTolerance.tolerance
+        o.candidateAnchor = candidateAnchor == .after ? .afterCursor : .beforeCursor
         return o
     }
 }

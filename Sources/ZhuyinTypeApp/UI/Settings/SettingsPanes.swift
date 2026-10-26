@@ -43,6 +43,21 @@ private struct GeneralPane: View {
                     Text("只清除注音").tag(false)
                 }
             }
+            Section {
+                Picker("選字位置", selection: binding(preferences, \.candidateAnchor)) {
+                    Text("游標後的字").tag(AnchorSetting.after)
+                    Text("游標前的字").tag(AnchorSetting.before)
+                }
+                Picker("按錯鍵修正", selection: binding(preferences, \.typoTolerance)) {
+                    Text("關閉").tag(TypoSetting.off)
+                    Text("標準").tag(TypoSetting.standard)
+                    Text("積極").tag(TypoSetting.aggressive)
+                }
+            } header: {
+                Text("選字")
+            } footer: {
+                FooterText("游標在句尾時，選字一律改最後的字詞。按錯相鄰的鍵或聲調鍵時，自動找出原本要打的字。")
+            }
             Section("中英切換") {
                 Picker("切換鍵", selection: binding(preferences, \.shiftToggle)) {
                     Text("左右 Shift").tag(ShiftToggle.both)
