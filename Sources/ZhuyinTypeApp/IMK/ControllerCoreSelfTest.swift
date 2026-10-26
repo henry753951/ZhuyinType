@@ -167,7 +167,7 @@ enum ControllerCoreSelfTest {
             var preview: String?
             var list: CandidateList?
             var hidden = false
-            core.showPanel = { candidates, text, _ in list = candidates; preview = text }
+            core.showPanel = { candidates, text, _, _, _ in list = candidates; preview = text }
             core.hidePanel = { hidden = true }
             type("su", into: core)
             try expect(client.marks.isEmpty && preview == core.composer.presentation.text && list == nil,
@@ -263,9 +263,49 @@ enum ControllerCoreSelfTest {
             try expect(KeyMapping.input(keyCode: 49, modifiers: .shift) == .shiftSpace, "Shift+Space")
             try expect(KeyMapping.input(keyCode: 36, modifiers: .shift) == .shiftEnter, "Shift+Return")
             try expect(KeyMapping.input(keyCode: 48, modifiers: .shift) == .shiftTab, "Shift+Tab")
+            try expect(KeyMapping.input(keyCode: 123, modifiers: .shift) == .shiftLeft, "Shift+Left")
+            try expect(KeyMapping.input(keyCode: 124, modifiers: .shift) == .shiftRight, "Shift+Right")
             for code: UInt16 in [82, 83, 84, 85, 86, 87, 88, 89, 91, 92] {
                 try expect(KeyMapping.input(keyCode: code, modifiers: []) == nil, "keypad \(code)")
             }
+        }
+
+        test("Shift selection shows notice-only panel and never commits") {
+            let (core, client) = session()
+            var notice: String?
+            var candidates: CandidateList?
+            core.showPanel = { list, _, _, message, _ in candidates = list; notice = message }
+            type("su3cl3", into: core)
+            _ = core.keyDown(keyCode: 123, modifiers: .shift)
+            try expect(candidates == nil && notice == "Enter 加入自訂詞：好", "missing selection notice")
+            try expect(client.selections.last == NSRange(location: 1, length: 1), "client selection missed focus")
+            _ = core.handle(.enter)
+            try expect(client.inserts.isEmpty && core.composer.isComposing && notice == "已加入自訂詞：好", "phrase save committed")
+            let panel = CandidatePanelController.shared
+            panel.show(list: nil, preview: nil, caret: client.caretRect(cursorIndex: 1), keys: [],
+                       windowLevel: .popUpMenu, notice: notice)
+            try expect(panel.isVisible, "notice-only panel hidden")
+            panel.hide()
+        }
+        test("Zhuyin footer click reaches composer") {
+            let (core, client) = session()
+            type("su3cl3", into: core)
+            _ = core.handle(.down)
+            let hint = core.composer.presentation.zhuyinHint
+            let content = CandidateContentView(frame: .zero)
+            let panel = CandidatePanelController.shared
+            panel.onZhuyin = { core.selectZhuyin() }
+            content.onZhuyin = { panel.onZhuyin?() }
+            _ = content.update(list: core.composer.presentation.candidates, preview: nil, keys: [],
+                               layout: .vertical, fontSize: 18, zhuyinHint: hint)
+            guard let button = content.subviews.compactMap({ $0 as? NSButton }).first(where: {
+                $0.accessibilityLabel()?.hasPrefix("`，") == true
+            }) else { throw Failure(description: "missing hint button") }
+            button.performClick(nil)
+            try expect(core.composer.presentation.text == hint && core.composer.presentation.candidates == nil,
+                       "footer click missed highlighted span")
+            try expect(client.inserts.isEmpty, "footer click committed")
+            panel.onZhuyin = nil
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")

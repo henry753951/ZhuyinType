@@ -49,7 +49,7 @@ public final class Engine: @unchecked Sendable {
     private var revision: UInt64 = 0
     var conversionRevision: UInt64 { synchronized { revision } }
     let languageModel: any LanguageModel
-    /// Maximum distinct histories retained at each position in the decoder.
+    /// Default beam width; N-best decoding widens it when K is larger.
     public static let decodingBeamWidth = 12
 
     public convenience init(lexiconURL: URL, userDataDirectory: URL?) throws {
@@ -125,8 +125,11 @@ public final class Engine: @unchecked Sendable {
                 for (word, phrase) in phraseIndex[source] ?? [:] {
                     if let index = entries.firstIndex(where: { $0.word == word }) {
                         entries[index].logp = phrase.logp
+                        entries[index].recalled = source == reading
                     } else {
-                        entries.append(phrase)
+                        var entry = phrase
+                        entry.recalled = source == reading
+                        entries.append(entry)
                     }
                 }
                 for var entry in entries {

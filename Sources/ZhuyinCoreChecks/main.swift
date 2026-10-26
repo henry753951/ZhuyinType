@@ -77,7 +77,7 @@ let engine = try Engine(lexiconText: tiny)
 // Empty state and pass-through contract.
 let empty = composer(engine)
 for key: KeyInput in [.space, .shiftSpace, .enter, .shiftEnter, .backspace, .optionBackspace, .forwardDelete,
-                      .left, .right, .home, .end, .up, .down, .pageUp, .pageDown, .tab, .shiftTab, .escape, .char("?")] {
+                      .left, .right, .shiftLeft, .shiftRight, .home, .end, .up, .down, .pageUp, .pageDown, .tab, .shiftTab, .escape, .char("?")] {
     check(empty.handle(key) == .passThrough, "empty pass-through \(key)")
 }
 for key in "6347" { check(empty.handle(.char(key)) == .consumed && !empty.isComposing, "empty tone ignored") }
@@ -152,7 +152,7 @@ let exactPreferred = try Engine(lexiconText: "ㄅㄚ\t甲\t-5\nㄅㄚ˙\t甲\t0\
 let exactChoice = composer(exactPreferred, "18 ")
 check(exactChoice.presentation.text == "乙", "exact same-word entry wins over a higher scoring tolerant entry")
 _ = exactChoice.handle(.down)
-check(exactChoice.presentation.candidates?.items.map(\.text) == ["乙", "甲", "ㄅㄚ"], "same-word exact wins and candidates deduplicate")
+check(exactChoice.presentation.candidates?.items.map(\.text) == ["乙", "甲"], "same-word exact wins and candidates deduplicate")
 let tolerantPick = composer(phraseOnly, "vu,4vu,4")
 _ = tolerantPick.handle(.down)
 check(tolerantPick.presentation.candidates?.items.first?.text == "謝謝", "tolerant phrase offered at end cursor")
@@ -167,7 +167,7 @@ check(!phraseOnly.learnedEntries().contains { $0.reading.contains("˙") }, "lear
 let endWords = try Engine(lexiconText: "ㄏㄣˇ\t很\t-2\nㄏㄠˇ\t好\t-2\nㄏㄠˇ\t郝\t-3\nㄏㄣˇ ㄏㄠˇ\t很好\t-1\n")
 let endCandidates = composer(endWords, "cp3cl3")
 _ = endCandidates.handle(.down)
-check(endCandidates.presentation.candidates?.items.map(\.text) == ["很好", "好", "郝", "ㄏㄠˇ"], "end cursor offers phrase before final syllable")
+check(endCandidates.presentation.candidates?.items.map(\.text) == ["很好", "好", "郝"], "end cursor offers phrase before final syllable")
 
 // Backspace edits one symbol/token; option-delete edits a converted word, including from its interior.
 let deletion = composer(engine, "1u0")
@@ -371,15 +371,18 @@ check(deduped.presentation.candidates!.items.filter { $0.text == "八" }.count =
 let interiorEngine = try Engine(lexiconText: tiny + "\nㄅㄚ ㄆㄚ\t巴趴\t-0.1\n")
 let interior = composer(interiorEngine, "18 q8 a8 ")
 _ = interior.handle(.left); _ = interior.handle(.down)
-check(interior.presentation.candidates!.items.first?.text == "八趴", "shown text first when cursor is inside a longer word")
+check(interior.presentation.candidates!.items.first?.text == "媽", "after-cursor candidates start inside a longer word")
+interior.options.candidateAnchor = .beforeCursor
+_ = interior.handle(.down)
+check(interior.presentation.candidates!.items.first?.text == "八趴", "before-cursor shown text first inside a longer word")
 let sixEngine = try Engine(lexiconText: tiny + "\nㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ\t八八八八八八\t-0.1\nㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ\t巴巴巴巴巴巴巴\t0\n")
 let six = composer(sixEngine, String(repeating: "18 ", count: 7))
 check(six.presentation.clauses.count == 2 && !six.presentation.text.contains("巴"), "word spans capped at six syllables")
 _ = six.handle(.down)
 _ = six.selectCandidate(at: six.presentation.candidates!.items.firstIndex { $0.text == "八" }!)
 _ = six.handle(.down)
-check(six.presentation.candidates!.items.first?.text == "八", "current single word precedes longer candidates")
-check(six.presentation.candidates!.items[1].text == "八八八八八八", "six-syllable candidate ordered before shorter spans")
+check(six.presentation.candidates!.items.first?.text == "八八八八八八", "longest span precedes current single word")
+check(six.presentation.candidates!.items.last?.text.count == 1, "single-syllable spans come after all longer spans")
 
 // Hard spans survive edits before/after them and are discarded on overlapping edits.
 func fixedPair(_ e: Engine) -> Composer {
@@ -536,7 +539,7 @@ let neutralLM = try Engine(lexiconText: "ㄅㄚ\t八\t-2\nㄅㄚ˙\t巴\t-9\n", 
 let neutralLMChoice = composer(neutralLM, "187")
 check(neutralLMChoice.presentation.text == "巴", "neutral penalty is subtracted after bigram scoring")
 _ = neutralLMChoice.handle(.down)
-check(neutralLMChoice.presentation.candidates?.items.map(\.text) == ["巴", "八", "˙ㄅㄚ"], "candidate scoring retains penalty with bigram model")
+check(neutralLMChoice.presentation.candidates?.items.map(\.text) == ["巴", "八"], "candidate scoring retains penalty with bigram model")
 let lexiconURL = temp.appendingPathComponent("lexicon.tsv")
 try Data(lmLexicon.utf8).write(to: lexiconURL)
 let discoveredLM = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
@@ -863,10 +866,10 @@ for size in [0, 1, 2, 9, 30] {
     let c = composer(engine, "18 ", options: opts)
     _ = c.handle(.down)
     let list = c.presentation.candidates!
-    let index = min(list.items.count - 1, max(1, size) - 1)
-    check(list.items[index].text == "ㄅㄚ", "plain candidate last on first page of size \(size)")
-    _ = c.selectCandidate(at: index)
-    check(c.presentation.text == "ㄅㄚ", "selecting plain candidate fixes literal")
+    check(!list.items.contains { $0.text == "ㄅㄚ" }, "plain Zhuyin absent from list of size \(size)")
+    check(c.presentation.zhuyinHint == "ㄅㄚ", "plain hint independent of page size \(size)")
+    _ = c.handle(.char("`"))
+    check(c.presentation.text == "ㄅㄚ" && c.presentation.zhuyinHint == nil, "footer action fixes literal")
 }
 
 // Compare every incremental edit with a forced full decode, including EOS/history and word-boundary edits.
@@ -884,6 +887,220 @@ for model in [sixEngine, contextTypo, trigramEngine] {
         check(c.presentation == incremental, "incremental/full decode equivalence after \(key)")
     }
 }
+
+// Anchors, generated multi-word phrases and the exact highlighted replacement range.
+func focusedRange(_ c: Composer) -> Range<Int>? {
+    c.presentation.focusedClause.map { c.presentation.clauses[$0] }
+}
+let groupLexicon = tiny + "\nㄚ\t啊\t-2\nㄏㄠˇ ㄚ\t好啊\t-5\n"
+let groupEngine = try Engine(lexiconText: groupLexicon)
+check(ComposerOptions().candidateAnchor == .afterCursor, "after-cursor anchor is default")
+for anchor: CandidateAnchor in [.afterCursor, .beforeCursor] {
+    for position in 0...3 {
+        var opts = legacyOptions; opts.candidateAnchor = anchor; opts.learningEnabled = false
+        let c = composer(groupEngine, "su3cl38 ", options: opts)
+        _ = c.handle(.home)
+        for _ in 0..<position { _ = c.handle(.right) }
+        _ = c.handle(.down)
+        let forward = position == 0 || (anchor == .afterCursor && position < 3)
+        let expected = forward ? position..<3 : 0..<position
+        check(focusedRange(c) == expected, "anchor \(anchor) at \(position) focuses \(expected)")
+        check(c.presentation.candidates?.items.first?.text == String("你好啊".dropFirst(expected.lowerBound).prefix(expected.count)),
+              "anchor current text at \(position)")
+        var previousLength = 7
+        let count = c.presentation.candidates!.items.count
+        for index in 0..<count {
+            let range = focusedRange(c)!
+            check(range.count <= previousLength, "candidate lengths descend")
+            check(forward ? range.lowerBound == position : range.upperBound == position, "candidate follows anchor direction")
+            check(c.presentation.zhuyinHint?.split(separator: " ").count == range.count, "hint tracks highlighted span length")
+            validPresentation(c, "candidate length \(range.count)")
+            previousLength = range.count
+            if index + 1 < count { _ = c.handle(.down) }
+        }
+    }
+}
+let grouped = composer(groupEngine, "su3cl38 ")
+check(grouped.presentation.clauses == [0..<2, 2..<3], "three-syllable fixture decodes as two words")
+_ = grouped.handle(.down)
+check(grouped.presentation.candidates!.items.map(\.text) == ["你好啊", "好啊", "啊"], "generated phrase then two-syllable word then single")
+check(focusedRange(grouped) == 0..<3, "multi-word phrase is one focused clause")
+_ = grouped.selectCandidate(at: 0)
+check(grouped.presentation.clauses == [0..<3], "picked phrase is one fixed span")
+type("18 ", into: grouped)
+check(grouped.presentation.text == "你好啊八", "fixed phrase survives insertion after it")
+_ = grouped.handle(.home); type("q8 ", into: grouped)
+check(grouped.presentation.text == "趴你好啊八", "fixed phrase survives insertion before it")
+_ = grouped.handle(.backspace)
+check(grouped.presentation.text == "你好啊八", "fixed phrase survives deletion elsewhere")
+check(groupEngine.learnedEntries().contains { $0.reading == "ㄋㄧˇ ㄏㄠˇ ㄚ" && $0.word == "你好啊" }, "whole phrase learned under typed reading")
+let recalledGroup = composer(groupEngine, "su3cl38 ")
+check(recalledGroup.presentation.text == "你好啊" && recalledGroup.presentation.clauses == [0..<3], "learned phrase recalled as a direct entry")
+_ = recalledGroup.handle(.down)
+check(recalledGroup.presentation.candidates?.items.first?.text == "你好啊", "learned phrase appears first")
+
+let contextualGroup = composer(trigramEngine, "18 q8 a8 ", options: fixedOptions)
+contextualGroup.options.candidateAnchor = .beforeCursor
+_ = contextualGroup.handle(.left); _ = contextualGroup.handle(.down)
+_ = contextualGroup.selectCandidate(at: 0)
+check(contextualGroup.presentation.text == "八趴麻", "fixed multi-word phrase scores its internal words and last-word history")
+check(contextualGroup.nBest().allSatisfy { $0.text.hasPrefix("八趴") }, "N-best keeps fixed multi-word phrase verbatim")
+let historyCandidatesEngine = try Engine(lexiconText: binaryLexicon + "ㄇㄚ\t碼\t1\n", languageModelDirectory: binaryDirectory)
+let historyCandidates = composer(historyCandidatesEngine, "18 q8 a8 ", options: fixedOptions)
+historyCandidates.options.candidateAnchor = .beforeCursor
+_ = historyCandidates.handle(.left); _ = historyCandidates.handle(.down)
+_ = historyCandidates.selectCandidate(at: 0)
+historyCandidates.options.candidateAnchor = .afterCursor
+_ = historyCandidates.handle(.down)
+check(historyCandidates.presentation.candidates?.items.prefix(3).map(\.text) == ["麻", "碼", "媽"],
+      "candidate scores after a fixed phrase retain both words of trigram history")
+
+let constrained = composer(interiorEngine, "18 q8 a8 ")
+constrained.options.candidateAnchor = .beforeCursor
+_ = constrained.handle(.left); _ = constrained.handle(.down)
+check(constrained.presentation.candidates!.items.prefix(2).map(\.text) == ["八趴", "巴趴"], "current span precedes best constrained conversion")
+let brokenGroup = composer(groupEngine, "su3cl3")
+_ = brokenGroup.handle(.shiftedChar(",")); type("8 ", into: brokenGroup)
+_ = brokenGroup.handle(.down)
+check(focusedRange(brokenGroup) == 3..<4 && brokenGroup.presentation.zhuyinHint == "ㄚ", "candidates never cross a literal")
+
+// Shift selection, permanent phrase persistence, cancellation, and no accidental commits.
+let selectionDirectory = temp.appendingPathComponent("quick-phrase")
+let selectionEngine = try Engine(lexiconText: groupLexicon, userDataDirectory: selectionDirectory)
+let selected = composer(selectionEngine, "su3cl38 ")
+_ = selected.handle(.shiftLeft); _ = selected.handle(.shiftLeft)
+check(focusedRange(selected) == 1..<3 && selected.presentation.notice == "Enter 加入自訂詞：好啊", "backward selection notice")
+check(selected.presentation.candidates == nil && selected.presentation.zhuyinHint == nil, "selection closes candidate window")
+_ = selected.handle(.shiftRight); _ = selected.handle(.shiftRight)
+check(selected.presentation.focusedClause == nil && selected.presentation.notice == nil, "returning to selection anchor clears visible selection")
+_ = selected.handle(.shiftLeft); _ = selected.handle(.shiftLeft); _ = selected.handle(.shiftLeft)
+let savedSelection = selected.handle(.enter)
+check(savedSelection == .consumed && selected.presentation.text == "你好啊", "Enter saves without commit")
+check(selected.presentation.notice == "已加入自訂詞：你好啊" && focusedRange(selected) == nil, "saved notice clears selection")
+check(selected.presentation.clauses == [0..<3], "quick phrase fixes whole span")
+check(selectionEngine.userPhrases().contains { $0.word == "你好啊" && $0.reading == "ㄋㄧˇ ㄏㄠˇ ㄚ" }, "quick phrase permanent entry")
+_ = selected.handle(.end); type("18 ", into: selected)
+check(selected.presentation.text == "你好啊八" && selected.presentation.notice == nil, "saved notice lasts until next key; fixed phrase survives edit")
+var loadedSelection: Engine?
+let selectionDeadline = Date().addingTimeInterval(3)
+while Date() < selectionDeadline {
+    let loaded = try Engine(lexiconText: groupLexicon, userDataDirectory: selectionDirectory)
+    if loaded.userPhrases().contains(where: { $0.word == "你好啊" }) { loadedSelection = loaded; break }
+    Thread.sleep(forTimeInterval: 0.02)
+}
+check(loadedSelection != nil, "quick phrase persisted")
+if let loadedSelection {
+    let c = composer(loadedSelection, "su3cl38 ")
+    check(c.presentation.clauses == [0..<3], "permanent phrase recalled directly after reload")
+    _ = c.handle(.down)
+    check(c.presentation.candidates?.items.first?.text == "你好啊", "saved phrase offered first next time")
+}
+let crossed = composer(groupEngine, "su3cl38 ")
+_ = crossed.handle(.left); _ = crossed.handle(.shiftLeft)
+check(focusedRange(crossed) == 1..<2, "selection left from middle")
+_ = crossed.handle(.shiftRight); _ = crossed.handle(.shiftRight)
+check(focusedRange(crossed) == 2..<3 && crossed.presentation.notice == "Enter 加入自訂詞：啊", "selection crosses anchor to right")
+_ = crossed.handle(.escape)
+check(crossed.presentation.text == "你好啊" && crossed.presentation.focusedClause == nil && crossed.presentation.notice == nil, "Escape clears selection only")
+_ = crossed.handle(.home); _ = crossed.handle(.shiftRight); _ = crossed.handle(.shiftRight)
+check(focusedRange(crossed) == 0..<2, "forward selection")
+for key: KeyInput in [.left, .right, .down, .char("1"), .shiftEnter] {
+    let c = composer(groupEngine, "su3cl38 ")
+    _ = c.handle(.shiftLeft)
+    let result = c.handle(key)
+    check(c.presentation.notice == nil, "other key clears selection notice \(key)")
+    if key == .shiftEnter { check(result.commit == "你好啊" && !result.handled, "Shift+Enter retains commit/pass-through semantics") }
+    if key == .left || key == .right { check(c.presentation.focusedClause == nil, "plain arrow clears selection") }
+}
+for withLiteral in [false, true] {
+    let c = composer(groupEngine, withLiteral ? "su3cl3" : String(repeating: "18 ", count: 7))
+    if withLiteral { _ = c.handle(.shiftedChar(",")) }
+    let original = c.presentation.text
+    for _ in 0..<(withLiteral ? 3 : 7) { _ = c.handle(.shiftLeft) }
+    check(c.handle(.enter) == .consumed && c.presentation.text == original, "invalid selection does not commit")
+    check(c.presentation.notice == "自訂詞需為 1 到 6 個字" && focusedRange(c) != nil, "invalid selection remains with error notice")
+    _ = c.handle(.escape)
+    check(c.presentation.notice == nil && c.presentation.text == original, "invalid selection escape")
+}
+
+// Footer hint formats every tone, and replaces the highlighted span rather than the cursor's preceding token.
+for (keys, hint) in [("18 ", "ㄅㄚ"), ("186", "ㄅㄚˊ"), ("183", "ㄅㄚˇ"), ("184", "ㄅㄚˋ"), ("187", "˙ㄅㄚ")] {
+    let c = composer(engine, keys)
+    _ = c.handle(.down)
+    check(c.presentation.zhuyinHint == hint, "footer tone notation \(hint)")
+}
+let hintGroup = composer(groupEngine, "su3cl38 ")
+_ = hintGroup.handle(.home); _ = hintGroup.handle(.right); _ = hintGroup.handle(.down)
+check(hintGroup.presentation.zhuyinHint == "ㄏㄠˇ ㄚ", "multi-syllable hint uses spaces and unmarked first tone")
+check(hintGroup.handle(.char("`")) == .consumed && hintGroup.presentation.text == "你ㄏㄠˇ ㄚ", "window backtick replaces exact after-cursor span")
+check(hintGroup.presentation.candidates == nil && hintGroup.presentation.zhuyinHint == nil, "backtick closes window without commit")
+validPresentation(hintGroup, "multi-syllable literal")
+let neutralHint = composer(phraseOnly, "vu,4vu,7")
+_ = neutralHint.handle(.down)
+check(neutralHint.presentation.zhuyinHint == "ㄒㄧㄝˋ ˙ㄒㄧㄝ", "multi-syllable neutral hint")
+
+// N-best stays internal, distinct by full text, score ordered, segmented, and rerankable.
+let nbestEngine = try Engine(lexiconText: "ㄅㄚ\t八\t-1\nㄅㄚ\t巴\t-2\nㄆㄚ\t趴\t-1\nㄆㄚ\t啪\t-3\nㄅㄚ ㄆㄚ\t八趴\t-1.5\n")
+let nbestComposer = composer(nbestEngine, "18 q8 ")
+let pendingReranker = composer(nbestEngine)
+var rerankerCalls = 0
+pendingReranker.reranker = { _ in rerankerCalls += 1; return 0 }
+type("18", into: pendingReranker)
+check(rerankerCalls == 0, "reranker never receives an empty completed sentence list")
+_ = pendingReranker.handle(.space)
+check(rerankerCalls == 1, "reranker runs when a syllable completes")
+let sentences = nbestComposer.nBest()
+check(sentences.map(\.text) == ["八趴", "巴趴", "八啪", "巴啪"], "distinct N-best includes alternate histories and removes duplicate segmentations")
+check(sentences.map(\.score) == [-1.5, -3, -4, -5], "N-best scores ordered")
+check(sentences.first?.words.map(\.range) == [0..<2] && sentences[1].words.map(\.range) == [0..<1, 1..<2], "N-best carries segmentation and token spans")
+check(nbestComposer.nBest(2).count == 2 && nbestComposer.nBest(0).isEmpty && nbestComposer.nBest(-1).isEmpty, "N-best K bounds")
+check(nbestComposer.presentation.text == sentences.first?.text, "default display stays top decoder result")
+nbestComposer.reranker = { $0.count - 1 }
+check(nbestComposer.presentation.text == "巴啪", "reranker chooses displayed sentence")
+_ = nbestComposer.handle(.down)
+check(nbestComposer.presentation.candidates?.items.first?.text == "巴啪", "candidate list starts with current span under reranking")
+check(nbestComposer.nBest().map(\.score) == [-1.5, -3, -4, -5], "reranker leaves statistical scores ordered")
+nbestComposer.reranker = { _ in Int.max }
+check(nbestComposer.presentation.text == "八趴", "invalid reranker choice falls back")
+nbestComposer.reranker = nil
+let nbestFixed = composer(nbestEngine, "18 ")
+_ = nbestFixed.handle(.down)
+_ = nbestFixed.selectCandidate(at: nbestFixed.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
+type("q8 ", into: nbestFixed)
+check(nbestFixed.nBest().count == 2 && nbestFixed.nBest().allSatisfy { $0.text.hasPrefix("巴") }, "N-best respects fixed spans")
+_ = nbestFixed.handle(.shiftedChar(",")); type("18 ", into: nbestFixed)
+check(nbestFixed.nBest().allSatisfy { $0.words.contains { $0.text == "，" && $0.reading.isEmpty && $0.range == 2..<3 } }, "N-best preserves literals and spans")
+let wideDirectory = temp.appendingPathComponent("wide-beam")
+try FileManager.default.createDirectory(at: wideDirectory, withIntermediateDirectories: true)
+let wideWords = (0..<80).map { String(UnicodeScalar(0x4e00 + $0)!) }
+try Data((wideWords.map { "\($0)\t-2\n" }.joined() + "</s>\t0\n").utf8)
+    .write(to: wideDirectory.appendingPathComponent("unigram.tsv"))
+try Data((wideWords.map { "<s>\t\($0)\t0\n" }.joined() + "一\t</s>\t-100\n").utf8)
+    .write(to: wideDirectory.appendingPathComponent("bigram.tsv"))
+try Data().write(to: wideDirectory.appendingPathComponent("backoff.tsv"))
+let wideEngine = try Engine(lexiconText: wideWords.map { "ㄅㄚ\t\($0)\t-2\n" }.joined(), languageModelDirectory: wideDirectory)
+let wide = composer(wideEngine, "18 ")
+check(wide.presentation.text == "丁", "wide beam ranks EOS before pruning and resolves score ties")
+check(wide.nBest(20).count == 20 && wide.nBest(20).first?.text == "丁", "N-best K widens beyond the default beam")
+_ = wide.handle(.down)
+check(wide.presentation.candidates?.items.count == 60, "candidate list cap at 60 even for wide lexicon")
+_ = wide.handle(.escape); type("18 ", into: wide)
+check(wide.presentation.text == "一丁", "cached final-position scores never leak into an interior position")
+let wideSixWords = wideWords.map { String(repeating: "八", count: 5) + $0 }
+try Data((wideSixWords.map { "\($0)\t-2\n" }.joined() + "</s>\t0\n").utf8)
+    .write(to: wideDirectory.appendingPathComponent("unigram.tsv"))
+try Data((wideSixWords.map { "<s>\t\($0)\t0\n" }.joined() + "\(wideSixWords[0])\t</s>\t-100\n").utf8)
+    .write(to: wideDirectory.appendingPathComponent("bigram.tsv"))
+let sixReading = Array(repeating: "ㄅㄚ", count: 6).joined(separator: " ")
+let wideSixEngine = try Engine(lexiconText: "ㄅㄚ\t八\t-100\n" + wideSixWords.map { "\(sixReading)\t\($0)\t-2\n" }.joined(),
+                               languageModelDirectory: wideDirectory)
+let wideSix = composer(wideSixEngine, String(repeating: "18 ", count: 6))
+check(wideSix.presentation.text == wideSixWords[1], "six-syllable edge prunes with EOS")
+type("18 ", into: wideSix)
+check(wideSix.presentation.text == wideSixWords[0] + "八", "six-syllable edge at old EOS is rebuilt before prefix reuse")
+let invalidWindowBuffer = composer(try Engine(lexiconText: tiny), "18 1u")
+_ = invalidWindowBuffer.handle(.down)
+check(invalidWindowBuffer.presentation.candidates == nil && invalidWindowBuffer.presentation.text == "八ㄅㄧ", "invalid unfinished buffer cannot enter a candidate replacement span")
 
 // Real lexicon regression checks and release-mode latency measurement.
 let realURL = URL(fileURLWithPath: "data/build/lexicon.tsv")
@@ -915,15 +1132,46 @@ if FileManager.default.fileExists(atPath: realURL.path) {
         print("REAL \(word) → \(actual) [\(keys)]")
         check(actual == word, "real conversion \(word) [\(keys)]")
     }
+    for (label, keys) in [("你好啊", "su3cl38 "), ("今天天氣很好", "rup wu0 wu0 fu4cp3cl3")] {
+        let c = composer(real, keys, options: ComposerOptions())
+        _ = c.handle(.down)
+        let list = c.presentation.candidates!
+        print("CANDIDATES \(label) → \(c.presentation.text): \(list.items.map(\.text).joined(separator: " / "))")
+        check(list.items.count <= 60, "real candidate list capped at 60")
+    }
+    let candidateLong = composer(real, String(repeating: "rup wu0 wu0 fu4cp3cl3", count: 6) + "su3cl3su3cl3", options: ComposerOptions())
+    var openSamples: [Double] = []
+    var highlightSamples: [Double] = []
+    for _ in 0..<30 {
+        openSamples.append(timed { _ = candidateLong.handle(.down) }.1)
+        for _ in 0..<12 { highlightSamples.append(timed { _ = candidateLong.handle(.down) }.1) }
+        _ = candidateLong.handle(.escape)
+    }
+    print(String(format: "TIMING candidates on 40 syllables: open median %.3f ms max %.3f ms; highlight median %.3f ms max %.3f ms",
+                 openSamples.sorted()[openSamples.count / 2], openSamples.max()!,
+                 highlightSamples.sorted()[highlightSamples.count / 2], highlightSamples.max()!))
+    check(openSamples.max()! < 5 && highlightSamples.max()! < 5, "40-syllable candidate opening and highlight under 5 ms")
+    for position in [0, 20] {
+        _ = candidateLong.handle(.home)
+        for _ in 0..<position { _ = candidateLong.handle(.right) }
+        let sample = timed { _ = candidateLong.handle(.down) }.1
+        print(String(format: "TIMING candidates on 40 syllables at %d: open %.3f ms", position, sample))
+        check(sample < 5, "40-syllable candidate opening at \(position) under 5 ms")
+        _ = candidateLong.handle(.escape)
+    }
+    let nbestLong = composer(real, String(repeating: "rup wu0 wu0 fu4cp3cl3", count: 3) + "su3cl3", options: ComposerOptions())
+    let nbestSamples = (0..<30).map { _ in timed { nbestLong.nBest(8) }.1 }
+    print(String(format: "TIMING 8-best on 20 syllables: median %.3f ms max %.3f ms", nbestSamples.sorted()[nbestSamples.count / 2], nbestSamples.max()!))
+    check(nbestLong.nBest(8).count == 8 && nbestSamples.max()! < 10, "20-syllable 8-best under 10 ms")
     let realEnd = composer(real, "cp3cl3")
     _ = realEnd.handle(.down)
     let hasVeryGood = try String(contentsOf: realURL, encoding: .utf8).split(separator: "\n")
         .contains { $0.hasPrefix("ㄏㄣˇ ㄏㄠˇ\t很好\t") }
     if hasVeryGood {
-        check(realEnd.presentation.candidates?.items.prefix(3).map(\.text) == ["很好", "好", "郝", "ㄏㄠˇ"], "real end-cursor phrase candidates")
+        check(realEnd.presentation.candidates?.items.prefix(3).map(\.text) == ["很好", "好", "郝"], "real end-cursor phrase candidates")
     } else {
         print("WARNING 很好 has no word entry in the real lexicon; conversion uses 很 + 好 (fixture checks phrase-first candidates)")
-        check(realEnd.presentation.candidates?.items.prefix(2).map(\.text) == ["好", "郝"], "real end-cursor singles when phrase is absent")
+        check(realEnd.presentation.candidates?.items.prefix(3).map(\.text) == ["很好", "好", "郝"], "real generated phrase precedes singles without lexicon entry")
     }
     let realPhraseEnd = composer(real, "vu,4vu,4")
     _ = realPhraseEnd.handle(.down)

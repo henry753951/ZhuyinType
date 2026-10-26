@@ -2,7 +2,10 @@ import Foundation
 
 public final class Composer {
     public var options: ComposerOptions {
-        didSet { if options.typoTolerance != oldValue.typoTolerance { conversionDirty = true; closeCandidates() } }
+        didSet {
+            if options.typoTolerance != oldValue.typoTolerance { conversionDirty = true }
+            if options != oldValue { closeCandidates(); refresh() }
+        }
     }
     private let engine: Engine
     private var tokens: [CompositionToken] = []
@@ -16,6 +19,21 @@ public final class Composer {
     private var conversionRevision: UInt64 = 0
     private var choices: [FixedWord] = []
     private var candidateSelection = 0
+    private var selectionAnchor: Int?
+    private var notice: String?
+    /// Return an index into the score-ordered N-best list. Invalid indices fall back to the decoder's first choice.
+    /// Called synchronously only when conversion changes; keep the hook within the typing latency budget.
+    public var reranker: (([ScoredSentence]) -> Int)? {
+        didSet { conversionDirty = true; closeCandidates(); refresh() }
+    }
+    public var rerankingCount: Int = 8 {
+        didSet { conversionDirty = true; closeCandidates(); refresh() }
+    }
+
+    /// Beam-bounded alternatives for completed tokens, excluding the unfinished syllable buffer.
+    public func nBest(_ k: Int = 8) -> [ScoredSentence] {
+        engine.sentences(tokens, fixed: fixed, typo: options.typoTolerance, k: k)
+    }
 
     public init(engine: Engine, options: ComposerOptions = ComposerOptions()) {
         self.engine = engine
@@ -27,8 +45,43 @@ public final class Composer {
     private var bufferText: String { String(buffer.compactMap { $0 }) }
     private var hasBuffer: Bool { buffer.contains { $0 != nil } }
     private var hasComposition: Bool { !tokens.isEmpty || hasBuffer }
+    private var selection: Range<Int>? {
+        guard let anchor = selectionAnchor, anchor != cursor else { return nil }
+        return min(anchor, cursor)..<max(anchor, cursor)
+    }
 
     public func handle(_ key: KeyInput) -> KeyResult {
+        notice = nil
+        if key == .shiftLeft || key == .shiftRight {
+            guard hasComposition else { return .passThrough }
+            finishBuffer()
+            closeCandidates()
+            if !hasBuffer {
+                if selectionAnchor == nil { selectionAnchor = cursor }
+                cursor = min(tokens.count, max(0, cursor + (key == .shiftLeft ? -1 : 1)))
+            }
+            refresh()
+            return .consumed
+        }
+        if let range = selection, key == .enter {
+            let parts = tokens[range].compactMap(\.reading)
+            let text = shown(in: range)
+            do {
+                guard (1...6).contains(range.count), parts.count == range.count else {
+                    throw NSError(domain: "ZhuyinCore", code: 1)
+                }
+                try engine.addUserPhrase(word: text, reading: parts.joined(separator: " "))
+                fix(choice(range: range, text: text, reading: parts.joined(separator: " ")))
+                selectionAnchor = nil
+                notice = "已加入自訂詞：" + text
+            } catch { notice = "自訂詞需為 1 到 6 個字" }
+            refresh()
+            return .consumed
+        }
+        if selectionAnchor != nil {
+            selectionAnchor = nil
+            if key == .escape { refresh(); return .consumed }
+        }
         if !choices.isEmpty, let result = handleCandidateKey(key) { return result }
         let result: KeyResult
         if key == .char("`") {
@@ -109,7 +162,7 @@ public final class Composer {
                     if options.escapeClearsComposition { reset() }
                     result = .consumed
                 } else { result = .passThrough }
-            case .shiftedChar: result = .passThrough
+            case .shiftedChar, .shiftLeft, .shiftRight: result = .passThrough
             }
         }
         refresh()
@@ -119,11 +172,11 @@ public final class Composer {
     public func selectCandidate(at index: Int) -> KeyResult {
         guard choices.indices.contains(index) else { return .consumed }
         let choice = choices[index]
-        fixed.removeAll { $0.range.overlaps(choice.range) }
         if choice.reading.isEmpty {
+            fixed.removeAll { $0.range.overlaps(choice.range) }
             tokens[choice.range.lowerBound] = .literal(choice.text)
         } else {
-            fixed.append(choice)
+            fix(choice)
             if options.learningEnabled { engine.learn(reading: choice.reading, word: choice.text, amount: 1) }
         }
         conversionDirty = true
@@ -132,8 +185,14 @@ public final class Composer {
         return .consumed
     }
 
+    private func fix(_ choice: FixedWord) {
+        fixed.removeAll { $0.range.overlaps(choice.range) }
+        fixed.append(choice)
+        conversionDirty = true
+    }
+
     public func commitAll() -> String {
-        finishBuffer(droppingInvalid: true)
+        finishBuffer(droppingInvalid: true, allowingTypo: false)
         refresh()
         let text = presentation.text
         if options.learningEnabled {
@@ -150,6 +209,8 @@ public final class Composer {
         fixed.removeAll()
         conversion.removeAll()
         conversionCache = nil
+        selectionAnchor = nil
+        notice = nil
         conversionDirty = true
         closeCandidates()
         presentation = .empty
@@ -158,11 +219,12 @@ public final class Composer {
     private func clearBuffer() { buffer = [nil, nil, nil]; bufferKeys = "" }
 
     @discardableResult
-    private func finishBuffer(tone: String = "", toneKey: Character = " ", droppingInvalid: Bool = false) -> Bool {
+    private func finishBuffer(tone: String = "", toneKey: Character = " ", droppingInvalid: Bool = false,
+                              allowingTypo: Bool = true) -> Bool {
         guard hasBuffer else { return false }
         let reading = bufferText + tone
         let keys = bufferKeys + String(toneKey)
-        if engine.isValidSyllable(reading) || (options.typoTolerance != .off && !engine.alternatives(for: keys).isEmpty) {
+        if engine.isValidSyllable(reading) || (allowingTypo && options.typoTolerance != .off && !engine.alternatives(for: keys).isEmpty) {
             insert(.syllable(reading, keys: keys))
             clearBuffer()
             return true
@@ -204,10 +266,18 @@ public final class Composer {
         let pageSize = max(1, options.selectionKeys.count)
         let page = candidateSelection / pageSize
         let pageCount = (choices.count + pageSize - 1) / pageSize
-        if case .char(let character) = key, let number = options.selectionKeys.firstIndex(of: character) {
+        if case .char(let character) = key, character != "`", let number = options.selectionKeys.firstIndex(of: character) {
             return selectCandidate(at: page * pageSize + number)
         }
         switch key {
+        case .char("`"):
+            let range = choices[candidateSelection].range
+            guard tokens[range].allSatisfy({ $0.reading != nil }) else { closeCandidates(); refresh(); return .consumed }
+            let text = ZhuyinKeyboard.plain(tokens[range].compactMap(\.reading).joined(separator: " "))
+            delete(range)
+            cursor = range.lowerBound
+            insert(.literal(text))
+            closeCandidates()
         case .enter: return selectCandidate(at: candidateSelection)
         case .escape, .backspace: closeCandidates()
         case .up: candidateSelection = max(0, candidateSelection - 1)
@@ -223,10 +293,42 @@ public final class Composer {
         return .consumed
     }
 
+    /// Text at token boundaries, including partial words and multi-character literal tokens.
+    private func shown(in range: Range<Int>) -> String {
+        conversion.filter { $0.range.overlaps(range) }.map { word in
+            if range.lowerBound <= word.range.lowerBound && range.upperBound >= word.range.upperBound { return word.text }
+            return String(word.text.dropFirst(max(0, range.lowerBound - word.range.lowerBound))
+                .prefix(min(word.range.upperBound, range.upperBound) - max(word.range.lowerBound, range.lowerBound)))
+        }.joined()
+    }
+
+    private func choice(range: Range<Int>, text: String, reading: String,
+                        words: [ConvertedWord]? = nil) -> FixedWord {
+        let source = (words ?? conversion).flatMap { word -> [ConvertedWord] in
+            guard let existing = fixed.first(where: { $0.range == word.range && $0.text == word.text }),
+                  let first = existing.components.first else { return [word] }
+            let delta = word.range.lowerBound - first.range.lowerBound
+            return existing.components.map {
+                var part = $0
+                part.range = (part.range.lowerBound + delta)..<(part.range.upperBound + delta)
+                return part
+            }
+        }
+        let parts = source.filter { $0.range.overlaps(range) }.map { word -> ConvertedWord in
+            let overlap = max(word.range.lowerBound, range.lowerBound)..<min(word.range.upperBound, range.upperBound)
+            if overlap == word.range { return word }
+            let value = String(word.text.dropFirst(overlap.lowerBound - word.range.lowerBound).prefix(overlap.count))
+            return ConvertedWord(range: overlap, text: value,
+                                 reading: tokens[overlap].compactMap(\.reading).joined(separator: " "),
+                                 wordID: engine.languageModel.wordID(for: value))
+        }
+        return FixedWord(range: range, text: text, reading: reading, wordID: parts.last?.wordID, components: parts)
+    }
+
     private func openCandidates() {
-        guard !tokens.isEmpty else { return }
-        var ranked: [(FixedWord, Double)] = []
-        let target = cursor > 0 ? cursor - 1 : 0
+        guard !tokens.isEmpty, !hasBuffer else { return }
+        let forward = cursor == 0 || (options.candidateAnchor == .afterCursor && cursor < tokens.count)
+        let target = forward ? cursor : cursor - 1
         if case .literal(let text) = tokens[target] {
             choices = ZhuyinKeyboard.alternatives(for: text).map {
                 FixedWord(range: target..<(target + 1), text: $0, reading: "")
@@ -234,53 +336,62 @@ public final class Composer {
             candidateSelection = 0
             return
         }
-        var currentWord = conversion.first { cursor > 0 ? $0.range.upperBound == cursor : $0.range.lowerBound == 0 }
-        for length in 1...min(6, cursor > 0 ? cursor : tokens.count) {
-            let start = cursor > 0 ? cursor - length : 0
-            let end = start + length
-            let parts = tokens[start..<end].compactMap(\.reading)
-            guard parts.count == length else { continue }
-            let reading = parts.joined(separator: " ")
+        var ranges: [Range<Int>] = []
+        for length in 1...min(6, forward ? tokens.count - cursor : cursor) {
+            let range = forward ? cursor..<(cursor + length) : (cursor - length)..<cursor
+            guard tokens[range].allSatisfy({ $0.reading != nil }) else { break }
+            ranges.append(range)
+        }
+        choices.removeAll(keepingCapacity: true)
+        let decoded = engine.cachedWords(conversionCache)
+        for range in ranges.reversed() {
+            let reading = tokens[range].compactMap(\.reading).joined(separator: " ")
             var history = LanguageModelHistory()
-            for word in conversion where word.range.upperBound <= start {
+            for word in conversion where word.range.upperBound <= range.lowerBound {
                 history = word.reading.isEmpty ? .init()
-                    : history.appending(word.wordID, order: engine.languageModel.order)
+                    : (word.history ?? history.appending(word.wordID, order: engine.languageModel.order))
             }
-            for match in engine.matches(tokens, start: start, typo: options.typoTolerance) where match.range.upperBound == end {
-                let entry = match.entry
-                ranked.append((FixedWord(range: start..<end, text: entry.word, reading: reading,
-                    wordID: entry.wordID, annotation: match.annotation),
-                    engine.score(entry, reading: reading, history: history)))
+            let matchesInRange = engine.matches(tokens, start: range.lowerBound, typo: options.typoTolerance)
+                .filter { $0.range == range }
+            let ranked = matchesInRange.map { (match: $0, score: engine.score($0.entry, reading: reading, history: history)) }
+            let matches = ranked.sorted {
+                $0.score == $1.score ? $0.match.entry.word < $1.match.entry.word : $0.score > $1.score
+            }.map(\.match)
+            var seen = Set<String>()
+            func add(_ word: FixedWord) {
+                if choices.count < 60 && seen.insert(word.text).inserted { choices.append(word) }
             }
-        }
-        if currentWord == nil {
-            let matching = ranked.filter { choice, _ in
-                let shown = conversion.filter { $0.range.overlaps(choice.range) }.map { word in
-                    String(word.text.dropFirst(max(0, choice.range.lowerBound - word.range.lowerBound))
-                        .prefix(min(word.range.upperBound, choice.range.upperBound)
-                                - max(word.range.lowerBound, choice.range.lowerBound)))
-                }.joined()
-                return shown == choice.text
+            let current = shown(in: range)
+            if let existing = fixed.first(where: { $0.range == range && $0.text == current }) {
+                add(existing)
+            } else {
+                var word = choice(range: range, text: current, reading: reading)
+                word.annotation = matches.first(where: { $0.entry.word == current })?.annotation
+                add(word)
             }
-            if let best = matching.max(by: { $0.0.range.count < $1.0.range.count })?.0 {
-                currentWord = ConvertedWord(range: best.range, text: best.text, reading: best.reading)
+            // Boundaries make the entire span one selectable unit, while allowing internal word segmentation.
+            var cache = conversionCache
+            let words: [ConvertedWord]
+            if !decoded.contains(where: { word in
+                (word.range.lowerBound < range.lowerBound && range.lowerBound < word.range.upperBound)
+                    || (word.range.lowerBound < range.upperBound && range.upperBound < word.range.upperBound)
+            }) {
+                words = decoded
+            } else {
+                let constraints = fixed.filter { word in
+                    !word.range.overlaps(range) || (range.lowerBound <= word.range.lowerBound && word.range.upperBound <= range.upperBound)
+                }
+                words = engine.convert(tokens, fixed: constraints,
+                                       typo: options.typoTolerance, cache: &cache, group: range)
             }
-        }
-        ranked.sort {
-            let aCurrent = $0.0.range == currentWord?.range && $0.0.text == currentWord?.text
-            let bCurrent = $1.0.range == currentWord?.range && $1.0.text == currentWord?.text
-            if aCurrent != bCurrent { return aCurrent }
-            if $0.0.range.count != $1.0.range.count { return $0.0.range.count > $1.0.range.count }
-            if $0.1 != $1.1 { return $0.1 > $1.1 }
-            return $0.0.text < $1.0.text
-        }
-        var seen = Set<String>()
-        choices = ranked.compactMap { seen.insert($0.0.text).inserted ? $0.0 : nil }
-        if let reading = tokens[target].reading {
-            let plain = ZhuyinKeyboard.plain(reading)
-            choices.removeAll { $0.text == plain && $0.range == target..<(target + 1) }
-            choices.insert(FixedWord(range: target..<(target + 1), text: plain, reading: ""),
-                           at: min(choices.count, max(1, options.selectionKeys.count) - 1))
+            let parts = words.filter { range.overlaps($0.range) }
+            let text = parts.map(\.text).joined()
+            if !text.isEmpty { add(choice(range: range, text: text, reading: reading, words: parts)) }
+            for match in matches {
+                add(FixedWord(range: range, text: match.entry.word, reading: reading, wordID: match.entry.wordID,
+                              annotation: match.annotation))
+            }
+            if choices.count == 60 { break }
         }
         candidateSelection = 0
     }
@@ -289,51 +400,71 @@ public final class Composer {
         let revision = engine.conversionRevision
         if conversionDirty || conversionRevision != revision {
             conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache)
+            if let reranker, !tokens.isEmpty {
+                let sentences = nBest(max(1, rerankingCount))
+                let index = reranker(sentences)
+                if sentences.indices.contains(index) {
+                    var history = LanguageModelHistory()
+                    conversion = sentences[index].words.map { word in
+                        let constraint = fixed.first { $0.range == word.range && $0.text == word.text }
+                        let wordID = constraint?.wordID ?? engine.languageModel.wordID(for: word.text)
+                        if word.reading.isEmpty { history = .init() }
+                        else if let parts = constraint?.components, !parts.isEmpty {
+                            for part in parts { history = history.appending(part.wordID, order: engine.languageModel.order) }
+                        } else { history = history.appending(wordID, order: engine.languageModel.order) }
+                        return ConvertedWord(range: word.range, text: word.text, reading: word.reading,
+                                             wordID: wordID, history: history)
+                    }
+                }
+            }
             conversionDirty = false
             conversionRevision = revision
         }
+        let focusRange = selection ?? (choices.isEmpty ? nil : choices[candidateSelection].range)
         var text = ""
-        var clauses: [Range<Int>] = []
+        var offsets = Array(repeating: 0, count: tokens.count + 1)
+        var boundaries = Set<Int>()
         var caret = 0
         var insertedBuffer = false
-        var focused: Int?
-        let focusToken = !choices.isEmpty ? (cursor > 0 ? cursor - 1 : 0) : nil
-        func append(_ value: String, focus: Bool = false) {
-            guard !value.isEmpty else { return }
-            let start = text.utf16.count
-            text += value
-            if focus { focused = clauses.count }
-            clauses.append(start..<text.utf16.count)
-        }
         func appendBuffer() {
             guard !insertedBuffer else { return }
-            append(bufferText)
+            if hasBuffer { boundaries.insert(text.utf16.count); text += bufferText; boundaries.insert(text.utf16.count) }
             caret = text.utf16.count
             insertedBuffer = true
         }
         for word in conversion {
-            if cursor == word.range.lowerBound { appendBuffer() }
-            let isFocus = focusToken.map { word.range.contains($0) } ?? false
-            let cursorInside = cursor > word.range.lowerBound && cursor < word.range.upperBound
-            if cursorInside && hasBuffer {
-                let split = word.text.index(word.text.startIndex, offsetBy: min(word.text.count, cursor - word.range.lowerBound))
-                append(String(word.text[..<split]), focus: isFocus && (focusToken ?? 0) < cursor)
-                appendBuffer()
-                append(String(word.text[split...]), focus: isFocus && (focusToken ?? 0) >= cursor)
-            } else {
-                let start = text.utf16.count
-                append(word.text, focus: isFocus)
-                if cursorInside {
-                    caret = start + word.text.prefix(cursor - word.range.lowerBound).utf16.count
-                    insertedBuffer = true
-                }
+            boundaries.insert(text.utf16.count)
+            for token in word.range {
+                if cursor == token { appendBuffer() }
+                offsets[token] = text.utf16.count
+                if word.range.count == 1 { text += word.text }
+                else { text += String(word.text.dropFirst(token - word.range.lowerBound).prefix(1)) }
             }
+            offsets[word.range.upperBound] = text.utf16.count
+            boundaries.insert(text.utf16.count)
             if cursor == word.range.upperBound { appendBuffer() }
         }
         if !insertedBuffer { appendBuffer() }
+        var focus: Range<Int>?
+        if let range = focusRange {
+            let focused = offsets[range.lowerBound]..<offsets[range.upperBound]
+            focus = focused
+            boundaries = boundaries.filter { !focused.contains($0) }
+            boundaries.insert(focused.lowerBound)
+            boundaries.insert(focused.upperBound)
+        }
+        let sorted = boundaries.sorted()
+        let clauses = zip(sorted, sorted.dropFirst()).compactMap { start, end in start < end ? start..<end : nil }
+        if let range = selection, notice == nil { notice = "Enter 加入自訂詞：" + shown(in: range) }
         let candidates: CandidateList? = choices.isEmpty ? nil : CandidateList(
             items: choices.map { Candidate(text: $0.text, annotation: $0.annotation) }, selection: candidateSelection,
             pageSize: max(1, options.selectionKeys.count))
-        presentation = Presentation(text: text, cursor: caret, clauses: clauses, focusedClause: focused, candidates: candidates)
+        let hint = choices.isEmpty ? nil : tokens[choices[candidateSelection].range].map(\.reading)
+        let zhuyin = hint.flatMap { parts in
+            parts.allSatisfy { $0 != nil } ? ZhuyinKeyboard.plain(parts.compactMap { $0 }.joined(separator: " ")) : nil
+        }
+        presentation = Presentation(text: text, cursor: caret, clauses: clauses,
+                                    focusedClause: focus.flatMap { clauses.firstIndex(of: $0) }, candidates: candidates,
+                                    notice: notice, zhuyinHint: zhuyin)
     }
 }

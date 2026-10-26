@@ -28,8 +28,8 @@ enum KeyMapping {
         case 117: return .forwardDelete
         case 53: return .escape
         case 48: return modifiers.contains(.shift) ? .shiftTab : .tab
-        case 123: return .left
-        case 124: return .right
+        case 123: return modifiers.contains(.shift) ? .shiftLeft : .left
+        case 124: return modifiers.contains(.shift) ? .shiftRight : .right
         case 125: return .down
         case 126: return .up
         case 115: return .home

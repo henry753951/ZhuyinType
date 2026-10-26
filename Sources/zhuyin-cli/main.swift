@@ -8,8 +8,9 @@ func fail(_ message: String) -> Never {
 var arguments = Array(CommandLine.arguments.dropFirst())
 var lexiconPath = "data/build/lexicon.tsv"
 var batch = false
+var nbest = 0
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--batch | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--batch | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -21,6 +22,14 @@ while let option = arguments.first, option.hasPrefix("--") {
         options.typoTolerance = typo
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
+    case "--anchor":
+        guard arguments.count >= 2, ["after", "before"].contains(arguments[1]) else { fail(usage) }
+        options.candidateAnchor = arguments[1] == "after" ? .afterCursor : .beforeCursor
+        arguments.removeFirst(2)
+    case "--nbest":
+        guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
+        nbest = count
+        arguments.removeFirst(2)
     default: fail(usage)
     }
 }
@@ -29,7 +38,8 @@ let specials: [String: KeyInput] = [
     "space": .space, "bs": .backspace, "obs": .optionBackspace, "del": .forwardDelete,
     "left": .left, "right": .right, "home": .home, "end": .end, "up": .up, "down": .down,
     "enter": .enter, "senter": .shiftEnter, "esc": .escape, "tab": .tab,
-    "stab": .shiftTab, "sspace": .shiftSpace, "pgup": .pageUp, "pgdown": .pageDown
+    "stab": .shiftTab, "sspace": .shiftSpace, "pgup": .pageUp, "pgdown": .pageDown,
+    "sleft": .shiftLeft, "sright": .shiftRight
 ]
 func parse(_ input: String) throws -> [(String, KeyInput)] {
     var result: [(String, KeyInput)] = []
@@ -52,9 +62,9 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
     }
     return result
 }
-assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><enter><senter><esc><tab><S-x>"))?.map(\.1)
+assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><enter><senter><esc><tab><S-x><sleft><sright>"))?.map(\.1)
        == [.char("a"), .space, .backspace, .optionBackspace, .forwardDelete, .left, .right,
-           .home, .end, .up, .down, .enter, .shiftEnter, .escape, .tab, .shiftedChar("x")])
+           .home, .end, .up, .down, .enter, .shiftEnter, .escape, .tab, .shiftedChar("x"), .shiftLeft, .shiftRight])
 assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
@@ -74,15 +84,30 @@ do {
         let result = composer.handle(key)
         let p = composer.presentation
         let string = p.text as NSString
-        let before = string.substring(to: p.cursor)
-        let after = string.substring(from: p.cursor)
-        print("\(label) → \(before)|\(after)\(result.handled ? "" : " [pass]")")
+        let focus = p.focusedClause.map { p.clauses[$0] }
+        var display = ""
+        let cuts = Set([0, p.cursor, string.length] + (focus.map { [$0.lowerBound, $0.upperBound] } ?? [])).sorted()
+        for (index, offset) in cuts.enumerated() {
+            if offset == focus?.upperBound { display += "]" }
+            if offset == focus?.lowerBound { display += "[" }
+            if offset == p.cursor { display += "|" }
+            if index + 1 < cuts.count {
+                display += string.substring(with: NSRange(location: offset, length: cuts[index + 1] - offset))
+            }
+        }
+        print("\(label) → \(display)\(result.handled ? "" : " [pass]")")
         if let list = p.candidates {
             let items = list.pageRange.map { index in
                 "\(index == list.selection ? ">" : "")\(index - list.page * list.pageSize + 1):\(list.items[index].text)"
             }.joined(separator: "  ")
             print("  candidates \(list.page + 1)/\(list.pageCount): \(items)")
         }
+        if let hint = p.zhuyinHint { print("  ` \(hint)") }
+        if let notice = p.notice { print("  \(notice)") }
         if let text = result.commit { print("  committed: \(text)") }
+    }
+    for (index, sentence) in composer.nBest(nbest).enumerated() {
+        print(String(format: "  nbest %d: %.6f %@ [%@]", index + 1, sentence.score, sentence.text,
+                     sentence.words.map { "\($0.text):\($0.range)" }.joined(separator: ", ")))
     }
 } catch { fail(error.localizedDescription) }

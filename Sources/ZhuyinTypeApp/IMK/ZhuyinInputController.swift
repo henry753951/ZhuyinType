@@ -185,11 +185,11 @@ final class ZhuyinInputController: IMKInputController {
         self.core = core
         EngineHost.lastEnglishMode = core.isEnglish
         loggedNotReady = false
-        core.showPanel = { [weak self] list, preview, caret in
+        core.showPanel = { [weak self] list, preview, caret, notice, zhuyinHint in
             guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
             CandidatePanelController.shared.show(list: list, preview: preview, caret: caret,
                                                 keys: self.core?.composer.options.selectionKeys ?? [],
-                                                windowLevel: client.windowLevel)
+                                                windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint)
         }
         core.hidePanel = { [weak self] in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.hide() }
@@ -210,6 +210,10 @@ final class ZhuyinInputController: IMKInputController {
     }
 
     private func setPanelCallbacks() {
+        CandidatePanelController.shared.onZhuyin = { [weak self] in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.selectZhuyin()
+        }
         CandidatePanelController.shared.onSelect = { [weak self] index in
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.selectCandidate(at: index)

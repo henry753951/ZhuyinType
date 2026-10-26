@@ -16,7 +16,7 @@ final class ControllerCore {
     private(set) var isEnglish: Bool
     var shiftToggle: ShiftToggle = .both
     var popupCompositionApps: [String] = []
-    var showPanel: ((CandidateList?, String?, NSRect) -> Void)?
+    var showPanel: ((CandidateList?, String?, NSRect, String?, String?) -> Void)?
     var hidePanel: (() -> Void)?
     var modeChanged: ((Bool, NSRect) -> Void)?
 
@@ -79,6 +79,11 @@ final class ControllerCore {
         let visible = composer.presentation.text
         let result = composer.selectCandidate(at: index)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+    }
+
+    func selectZhuyin() {
+        guard composer.presentation.zhuyinHint != nil else { return }
+        _ = handle(.char("`"))
     }
 
     // Physical state rejects Chromium's synthetic Shift-down events; remembered state rejects duplicates.
@@ -202,8 +207,8 @@ final class ControllerCore {
                 lastMark = mark
             }
         }
-        if !p.text.isEmpty, p.candidates != nil || popup {
-            showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor))
+        if !p.text.isEmpty, p.candidates != nil || popup || p.notice != nil {
+            showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor), p.notice, p.zhuyinHint)
         } else {
             hidePanel?()
         }

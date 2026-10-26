@@ -144,20 +144,49 @@ private final class CandidateRow: NSView {
     func resetHover() { hovered = false; needsDisplay = true }
 }
 
+private final class ZhuyinHintButton: NSButton {
+    var hint = ""
+    private let hintFont = NSFont.systemFont(ofSize: 12)
+    var preferredWidth: CGFloat { 28 + (hint as NSString).size(withAttributes: [.font: hintFont]).width }
+    override func draw(_ dirtyRect: NSRect) {
+        let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: 19, height: 19)
+        let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
+        border.lineWidth = 1
+        NSColor.quaternaryLabelColor.setStroke()
+        border.stroke()
+        let attributes: [NSAttributedString.Key: Any] = [.font: hintFont, .foregroundColor: NSColor.secondaryLabelColor]
+        let height = (hint as NSString).size(withAttributes: attributes).height
+        ("`" as NSString).draw(at: NSPoint(x: 7, y: (bounds.height - height) / 2), withAttributes: attributes)
+        (hint as NSString).draw(in: NSRect(x: 27, y: (bounds.height - height) / 2,
+                                          width: max(0, bounds.width - 27), height: height), withAttributes: attributes)
+    }
+}
+
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
     private var rows: [CandidateRow] = []
     private let previewLabel = NSTextField(labelWithString: "")
+    private let noticeLabel = NSTextField(labelWithString: "")
+    private let zhuyinButton = ZhuyinHintButton()
     private let pageLabel = NSTextField(labelWithString: "")
     private let previous = NSButton()
     private let next = NSButton()
     var onSelect: ((Int) -> Void)?
     var onPage: ((Int) -> Void)?
+    var onZhuyin: (() -> Void)?
     private(set) var candidateTextInset: CGFloat = 36
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         addSubview(previewLabel)
+        noticeLabel.maximumNumberOfLines = 1
+        noticeLabel.lineBreakMode = .byTruncatingTail
+        noticeLabel.textColor = .secondaryLabelColor
+        addSubview(noticeLabel)
+        zhuyinButton.isBordered = false
+        zhuyinButton.target = self
+        zhuyinButton.action = #selector(chooseZhuyin)
+        addSubview(zhuyinButton)
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.maximumNumberOfLines = 1
         pageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -179,10 +208,11 @@ final class CandidateContentView: InputMaterialView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     @objc private func pageBack() { onPage?(-1) }
     @objc private func pageForward() { onPage?(1) }
+    @objc private func chooseZhuyin() { onZhuyin?() }
 
     @discardableResult
     func update(list: CandidateList?, preview: String?, keys: [Character], layout: CandidateLayout,
-                fontSize: CGFloat, maxWidth: CGFloat = 1200) -> NSSize {
+                fontSize: CGFloat, maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil) -> NSSize {
         let indices: [Int]
         if let list, list.items.indices.contains(list.selection) { indices = Array(list.pageRange) }
         else { indices = [] }
@@ -196,9 +226,25 @@ final class CandidateContentView: InputMaterialView {
         let spacing: CGFloat = 10
         let hasPreview = !(preview ?? "").isEmpty
         let hasPages = (list?.pageCount ?? 1) > 1 && !indices.isEmpty
-        let pageWidth: CGFloat = hasPages ? 90 : 0
+        let hasHint = !(zhuyinHint ?? "").isEmpty
+        let hasFooter = hasPages || hasHint
+        let pageWidth: CGFloat = hasPages ? 90 : (hasHint ? 50 : 0)
+        zhuyinButton.hint = zhuyinHint ?? ""
+        zhuyinButton.setAccessibilityLabel("`，" + (zhuyinHint ?? ""))
+        zhuyinButton.needsDisplay = true
+        let hintWidth: CGFloat = hasHint ? ceil(zhuyinButton.preferredWidth) + 8 : 0
+        let footerWidth = pageWidth + hintWidth
         var width: CGFloat = 160
         var y: CGFloat = padding
+        noticeLabel.isHidden = notice == nil
+        noticeLabel.stringValue = notice ?? ""
+        noticeLabel.font = .systemFont(ofSize: fontSize * 0.75)
+        if notice != nil {
+            width = max(width, noticeLabel.intrinsicContentSize.width + 28)
+            noticeLabel.frame = NSRect(x: 14, y: y, width: width - 28, height: ceil(fontSize * 1.2))
+            y += ceil(fontSize * 1.2) + 3
+        }
+        let previewY = y
         previewLabel.isHidden = !hasPreview
         if let preview, hasPreview {
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: fontSize),
@@ -219,11 +265,13 @@ final class CandidateContentView: InputMaterialView {
         let gaps = CGFloat(max(0, indices.count - 1)) * spacing
         let naturalRowWidth = activeRows.reduce(0) { $0 + $1.preferredWidth }
         if layout == .vertical { width = max(width, (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2) }
-        else { width = max(width, naturalRowWidth + gaps + padding * 2 + pageWidth) }
+        else { width = max(width, naturalRowWidth + gaps + padding * 2 + footerWidth) }
+        width = max(width, footerWidth + padding * 2)
         width = min(maxWidth, ceil(width))
-        previewLabel.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: rowHeight)
+        noticeLabel.frame.size.width = max(0, width - 28)
+        previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
         var x = padding
-        let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? pageWidth : 0))
+        let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? footerWidth : 0))
         let scale = min(1, availableWidth / max(1, naturalRowWidth))
         for row in activeRows {
             let rowWidth = layout == .vertical ? width - padding * 2 : floor(row.preferredWidth * scale)
@@ -233,10 +281,17 @@ final class CandidateContentView: InputMaterialView {
         let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + 3
         if layout == .horizontal && !indices.isEmpty { y += rowHeight }
         candidateTextInset = indices.isEmpty ? 14 : padding + (activeRows.first?.textInset ?? 29)
-        for view in [pageLabel, previous, next] { view.isHidden = !hasPages }
-        if hasPages, let list {
+        pageLabel.isHidden = !hasFooter
+        previous.isHidden = !hasPages
+        next.isHidden = !hasPages
+        zhuyinButton.isHidden = !hasHint
+        if hasFooter {
+            zhuyinButton.frame = NSRect(x: layout == .horizontal ? width - footerWidth : padding + 4,
+                                       y: pageY, width: max(0, hintWidth - 8), height: 22)
+        }
+        if hasFooter, let list {
             pageLabel.stringValue = "\(list.page + 1) / \(list.pageCount)"
-            pageLabel.frame = NSRect(x: width - 65, y: pageY + 3, width: 40, height: 16)
+            pageLabel.frame = NSRect(x: width - (hasPages ? 65 : 46), y: pageY + 3, width: 40, height: 16)
             previous.frame = NSRect(x: width - 89, y: pageY, width: 22, height: 22)
             next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
             previous.isEnabled = list.page > 0
@@ -269,20 +324,24 @@ final class CandidatePanelController {
     static let shared = CandidatePanelController()
     var onSelect: ((Int) -> Void)?
     var onPage: ((Int) -> Void)?
+    var onZhuyin: (() -> Void)?
     private let content = CandidateContentView(frame: .zero)
     private lazy var surface = InputSurface(content: content)
     private lazy var panel = InputPanel(content: surface)
     private var lastCaret: NSRect?
     private var lastScreen: NSRect?
 
-    func show(list: CandidateList?, preview: String?, caret: NSRect, keys: [Character], windowLevel: NSWindow.Level) {
-        guard list?.items.isEmpty == false || !(preview ?? "").isEmpty else { hide(); return }
+    func show(list: CandidateList?, preview: String?, caret: NSRect, keys: [Character], windowLevel: NSWindow.Level,
+              notice: String? = nil, zhuyinHint: String? = nil) {
+        guard list?.items.isEmpty == false || !(preview ?? "").isEmpty || notice != nil else { hide(); return }
         let visible = InputPanelPlacement.screen(at: caret)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         content.onSelect = { [weak self] in self?.onSelect?($0) }
         content.onPage = { [weak self] in self?.onPage?($0) }
+        content.onZhuyin = { [weak self] in self?.onZhuyin?() }
         let preferences = Preferences.shared
         let size = content.update(list: list, preview: preview, keys: keys, layout: preferences.candidateLayout,
-                                  fontSize: preferences.candidateFontSize, maxWidth: visible.width)
+                                  fontSize: preferences.candidateFontSize, maxWidth: visible.width,
+                                  notice: notice, zhuyinHint: zhuyinHint)
         let sameLine = panel.isVisible && lastScreen == visible && lastCaret.map { abs($0.minY - caret.minY) < 2 && abs($0.maxY - caret.maxY) < 2 } == true
         let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: visible, textInset: content.candidateTextInset,
                                              previousX: sameLine ? panel.frame.minX : nil)

@@ -15,6 +15,7 @@ public enum KeyInput: Equatable, Sendable {
     case backspace, optionBackspace, forwardDelete
     case escape, tab, shiftTab
     case left, right, up, down, home, end, pageUp, pageDown
+    case shiftLeft, shiftRight
 }
 
 public struct KeyResult: Equatable, Sendable {
@@ -68,18 +69,23 @@ public struct Presentation: Equatable, Sendable {
     public var cursor: Int
     /// UTF-16 ranges of the words in `text`, for clause underlines.  Covers `text` without gaps.
     public var clauses: [Range<Int>]
-    /// Index into `clauses` that the open candidate window replaces; nil when no candidate window is open.
+    /// Index into `clauses` replaced by the highlighted candidate, or selected for adding a user phrase.
     public var focusedClause: Int?
     /// The open candidate window, or nil.
     public var candidates: CandidateList?
+    public var notice: String?
+    /// Standard plain Zhuyin for the highlighted span; the backtick action in the window footer.
+    public var zhuyinHint: String?
 
     public init(text: String = "", cursor: Int = 0, clauses: [Range<Int>] = [], focusedClause: Int? = nil,
-                candidates: CandidateList? = nil) {
+                candidates: CandidateList? = nil, notice: String? = nil, zhuyinHint: String? = nil) {
         self.text = text
         self.cursor = cursor
         self.clauses = clauses
         self.focusedClause = focusedClause
         self.candidates = candidates
+        self.notice = notice
+        self.zhuyinHint = zhuyinHint
     }
 
     public static let empty = Presentation()
@@ -90,6 +96,27 @@ public struct Presentation: Equatable, Sendable {
 public enum TypoTolerance: String, Sendable, CaseIterable {
     case off, standard, aggressive
     var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
+}
+
+public enum CandidateAnchor: Sendable {
+    /// Spans start at the cursor, except at the composition end where they end at the cursor.
+    case afterCursor
+    /// Spans end at the cursor, except at the composition start where they start at zero.
+    case beforeCursor
+}
+
+/// Ranges are composition token offsets, not UTF-16 offsets. Literals have an empty reading.
+public struct SentenceWord: Equatable, Sendable {
+    public var range: Range<Int>
+    public var text: String
+    public var reading: String
+}
+
+public struct ScoredSentence: Equatable, Sendable {
+    public var words: [SentenceWord]
+    /// Natural-log decoder score, including sentence boundaries.
+    public var score: Double
+    public var text: String { words.map(\.text).joined() }
 }
 
 public struct ComposerOptions: Equatable, Sendable {
@@ -105,6 +132,7 @@ public struct ComposerOptions: Equatable, Sendable {
     public var maxSyllables: Int = 60
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     public var typoTolerance: TypoTolerance = .standard
+    public var candidateAnchor: CandidateAnchor = .afterCursor
 
     public init() {}
 }
