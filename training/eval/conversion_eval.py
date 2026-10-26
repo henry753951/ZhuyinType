@@ -86,6 +86,9 @@ def main():
                         "so two lexicons are compared on the same keys")
     parser.add_argument("--fuzzy", help="fuzzy sound pairs, e.g. zh,ch,sh,en,an")
     parser.add_argument("--split", choices=["none", "continue", "restart"], default="none")
+    parser.add_argument("--line-context", action="store_true",
+                        help="type each run after the text before it on its line (earlier clauses of the sentence), "
+                        "as text already in the document")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -109,8 +112,10 @@ def main():
 
 def evaluate(test, args, lexicon, lexicon_path):
     with open(test, encoding="utf-8") as f:
-        runs = [r for line in f for r in re.findall(r"[\u4e00-\u9fff]{4,20}", line)]
-    random.Random(args.seed).shuffle(runs)
+        found = [(m.group(), line[:m.start()][-32:]) for line in f for m in re.finditer(r"[\u4e00-\u9fff]{4,20}", line)]
+    random.Random(args.seed).shuffle(found)
+    runs = [run for run, _ in found]
+    before = dict(found)
     total = correct = whole = tested = 0
     misses = []
     selected, scripts = [], []
@@ -121,9 +126,10 @@ def evaluate(test, args, lexicon, lexicon_path):
         readings = readings_for(run, lexicon, cuts)
         if not readings:
             continue
+        prefix = before[run].replace("\t", " ").replace("\n", " ") + "\t" if args.line_context else ""
         if args.split == "none":
             selected.append(run)
-            scripts.append(keys_for(readings) + "<enter>")
+            scripts.append(prefix + keys_for(readings) + "<enter>")
             continue
         cuts = [c for c in cuts[:-1] if 2 <= c <= len(run) - 2]
         if not cuts:
@@ -131,7 +137,7 @@ def evaluate(test, args, lexicon, lexicon_path):
         cut = min(cuts, key=lambda c: abs(c - len(run) / 2))
         between = "<enter><left>" if args.split == "restart" else "<enter>"
         selected.append(run)
-        scripts.append(keys_for(readings[:cut]) + between + keys_for(readings[cut:]) + "<enter>")
+        scripts.append(prefix + keys_for(readings[:cut]) + between + keys_for(readings[cut:]) + "<enter>")
     command = [args.cli, "--lexicon", lexicon_path, "--typo", args.typo, "--batch"]
     if args.reranker:
         command += ["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight),

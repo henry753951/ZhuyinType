@@ -18,6 +18,16 @@ final class IMKTextClient: TextClient {
         input.insertText(text, replacementRange: replacementRange)
     }
 
+    func textBeforeInsertion(maxLength: Int) -> String? {
+        let selection = input.selectedRange()
+        guard selection.location != NSNotFound, selection.location < Int(Int32.max) else { return nil }
+        guard selection.location > 0 else { return "" }
+        let start = max(0, selection.location - maxLength)
+        guard let text = input.attributedSubstring(from: NSRange(location: start, length: selection.location - start))?.string,
+              text.utf16.count <= maxLength else { return nil }
+        return text
+    }
+
     func setMarkedText(_ text: NSAttributedString, selectionRange: NSRange, replacementRange: NSRange) {
         input.setMarkedText(text, selectionRange: selectionRange, replacementRange: replacementRange)
     }
@@ -209,6 +219,7 @@ final class ZhuyinInputController: IMKInputController {
     private func refreshPreferences() {
         let p = Preferences.shared
         showModeToast = p.showModeToast
+        core?.usesPrecedingText = p.usesPrecedingText
         EngineHost.engine?.fuzzySounds = p.fuzzySounds
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
     }
@@ -217,6 +228,10 @@ final class ZhuyinInputController: IMKInputController {
         CandidatePanelController.shared.onZhuyin = { [weak self] in
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.selectZhuyin()
+        }
+        CandidatePanelController.shared.onCorrections = { [weak self] in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.toggleCorrections()
         }
         CandidatePanelController.shared.onSelect = { [weak self] index in
             guard let self, self.active, Self.activeController === self else { return }

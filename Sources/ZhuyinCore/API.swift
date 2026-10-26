@@ -55,10 +55,15 @@ public struct CandidateList: Equatable, Sendable {
     public var selection: Int
     public var pageSize: Int
 
-    public init(items: [Candidate], selection: Int = 0, pageSize: Int = 9) {
+    /// Whether the list shows typing corrections (true) or only words for the keys as typed (false); nil when the
+    /// list cannot have corrections (punctuation, correction off).
+    public var tolerant: Bool?
+
+    public init(items: [Candidate], selection: Int = 0, pageSize: Int = 9, tolerant: Bool? = nil) {
         self.items = items
         self.selection = selection
         self.pageSize = max(1, pageSize)
+        self.tolerant = tolerant
     }
 
     public var page: Int { selection / pageSize }

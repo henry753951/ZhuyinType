@@ -53,6 +53,7 @@ final class Preferences: ObservableObject {
             Key.typoTolerance: TypoSetting.standard.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
             Key.fuzzySounds: 0,
+            Key.usesPrecedingText: true,
         ])
     }
 
@@ -72,10 +73,11 @@ final class Preferences: ObservableObject {
         static let typoTolerance = "typoTolerance"
         static let candidateAnchor = "candidateAnchor"
         static let fuzzySounds = "fuzzySounds"
+        static let usesPrecedingText = "usesPrecedingText"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
                           shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor, fuzzySounds]
+                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText]
     }
 
     func resetToDefaults() {
@@ -136,6 +138,11 @@ final class Preferences: ObservableObject {
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
+    }
+
+    var usesPrecedingText: Bool {
+        get { defaults.bool(forKey: Key.usesPrecedingText) }
+        set { defaults.set(newValue, forKey: Key.usesPrecedingText); changed() }
     }
 
     var fuzzySounds: FuzzySounds {

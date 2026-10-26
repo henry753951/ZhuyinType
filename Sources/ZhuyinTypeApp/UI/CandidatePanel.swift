@@ -162,18 +162,49 @@ private final class ZhuyinHintButton: NSButton {
     }
 }
 
+/// The footer switch between words for the keys as typed and typing corrections: an ⌥ keycap and 修正, accented
+/// while corrections are shown.  Option tapped on the keyboard does the same.
+private final class CorrectionToggleButton: NSButton {
+    var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
+    private let labelFont = NSFont.systemFont(ofSize: 12)
+    private let label = "修正"
+    var preferredWidth: CGFloat { 28 + (label as NSString).size(withAttributes: [.font: labelFont]).width }
+    override func draw(_ dirtyRect: NSRect) {
+        let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: 19, height: 19)
+        let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
+        if on {
+            NSColor.controlAccentColor.setFill()
+            border.fill()
+        } else {
+            border.lineWidth = 1
+            NSColor.quaternaryLabelColor.setStroke()
+            border.stroke()
+        }
+        let color: NSColor = on ? .controlAccentColor : .secondaryLabelColor
+        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: on ? NSColor.white : color]
+        let attributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: color]
+        let height = (label as NSString).size(withAttributes: attributes).height
+        let key = "⌥" as NSString
+        let keyWidth = key.size(withAttributes: keyAttributes).width
+        key.draw(at: NSPoint(x: keycap.midX - keyWidth / 2, y: (bounds.height - height) / 2), withAttributes: keyAttributes)
+        (label as NSString).draw(at: NSPoint(x: 27, y: (bounds.height - height) / 2), withAttributes: attributes)
+    }
+}
+
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
     private var rows: [CandidateRow] = []
     private let previewLabel = NSTextField(labelWithString: "")
     private let noticeLabel = NSTextField(labelWithString: "")
     private let zhuyinButton = ZhuyinHintButton()
+    private let correctionButton = CorrectionToggleButton()
     private let pageLabel = NSTextField(labelWithString: "")
     private let previous = NSButton()
     private let next = NSButton()
     var onSelect: ((Int) -> Void)?
     var onPage: ((Int) -> Void)?
     var onZhuyin: (() -> Void)?
+    var onCorrections: (() -> Void)?
     private(set) var candidateTextInset: CGFloat = 36
 
     override init(frame: NSRect) {
@@ -187,6 +218,12 @@ final class CandidateContentView: InputMaterialView {
         zhuyinButton.target = self
         zhuyinButton.action = #selector(chooseZhuyin)
         addSubview(zhuyinButton)
+        correctionButton.isBordered = false
+        correctionButton.target = self
+        correctionButton.action = #selector(toggleCorrections)
+        correctionButton.setAccessibilityLabel("按錯修正，Option")
+        correctionButton.toolTip = "顯示按錯修正的候選（Option）"
+        addSubview(correctionButton)
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.maximumNumberOfLines = 1
         pageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
@@ -209,6 +246,7 @@ final class CandidateContentView: InputMaterialView {
     @objc private func pageBack() { onPage?(-1) }
     @objc private func pageForward() { onPage?(1) }
     @objc private func chooseZhuyin() { onZhuyin?() }
+    @objc private func toggleCorrections() { onCorrections?() }
 
     @discardableResult
     func update(list: CandidateList?, preview: String?, keys: [Character], layout: CandidateLayout,
@@ -227,13 +265,16 @@ final class CandidateContentView: InputMaterialView {
         let hasPreview = !(preview ?? "").isEmpty
         let hasPages = (list?.pageCount ?? 1) > 1 && !indices.isEmpty
         let hasHint = !(zhuyinHint ?? "").isEmpty
-        let hasFooter = hasPages || hasHint
-        let pageWidth: CGFloat = hasPages ? 90 : (hasHint ? 50 : 0)
+        let hasToggle = list?.tolerant != nil && !indices.isEmpty
+        let hasFooter = hasPages || hasHint || hasToggle
+        let pageWidth: CGFloat = hasPages ? 90 : (hasFooter ? 50 : 0)
         zhuyinButton.hint = zhuyinHint ?? ""
         zhuyinButton.setAccessibilityLabel("`，" + (zhuyinHint ?? ""))
         zhuyinButton.needsDisplay = true
+        correctionButton.on = list?.tolerant == true
         let hintWidth: CGFloat = hasHint ? ceil(zhuyinButton.preferredWidth) + 8 : 0
-        let footerWidth = pageWidth + hintWidth
+        let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
+        let footerWidth = pageWidth + hintWidth + toggleWidth
         var width: CGFloat = 160
         var y: CGFloat = padding
         noticeLabel.isHidden = notice == nil
@@ -285,9 +326,11 @@ final class CandidateContentView: InputMaterialView {
         previous.isHidden = !hasPages
         next.isHidden = !hasPages
         zhuyinButton.isHidden = !hasHint
+        correctionButton.isHidden = !hasToggle
         if hasFooter {
-            zhuyinButton.frame = NSRect(x: layout == .horizontal ? width - footerWidth : padding + 4,
-                                       y: pageY, width: max(0, hintWidth - 8), height: 22)
+            let footerX = layout == .horizontal ? width - footerWidth : padding + 4
+            zhuyinButton.frame = NSRect(x: footerX, y: pageY, width: max(0, hintWidth - 8), height: 22)
+            correctionButton.frame = NSRect(x: footerX + hintWidth, y: pageY, width: max(0, toggleWidth - 8), height: 22)
         }
         if hasFooter, let list {
             pageLabel.stringValue = "\(list.page + 1) / \(list.pageCount)"
@@ -325,6 +368,7 @@ final class CandidatePanelController {
     var onSelect: ((Int) -> Void)?
     var onPage: ((Int) -> Void)?
     var onZhuyin: (() -> Void)?
+    var onCorrections: (() -> Void)?
     private let content = CandidateContentView(frame: .zero)
     private lazy var surface = InputSurface(content: content)
     private lazy var panel = InputPanel(content: surface)
@@ -338,6 +382,7 @@ final class CandidatePanelController {
         content.onSelect = { [weak self] in self?.onSelect?($0) }
         content.onPage = { [weak self] in self?.onPage?($0) }
         content.onZhuyin = { [weak self] in self?.onZhuyin?() }
+        content.onCorrections = { [weak self] in self?.onCorrections?() }
         let preferences = Preferences.shared
         let size = content.update(list: list, preview: preview, keys: keys, layout: preferences.candidateLayout,
                                   fontSize: preferences.candidateFontSize, maxWidth: visible.width,

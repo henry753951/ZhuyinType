@@ -21,6 +21,8 @@ var context = ""
 var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
+/// `<opt>`: an Option tap, which switches the open candidate window between exact and tolerant lists.
+let optionTap = "<opt>"
 var options = ComposerOptions()
 let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
@@ -95,6 +97,7 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
         if character == "<", let end = input[index...].firstIndex(of: ">") {
             let name = String(input[input.index(after: index)..<end])
             if let key = specials[name] { result.append(("<\(name)>", key)) }
+            else if name == "opt" { result.append(("<opt>", .shiftDown)) }  // Option tap: see `optionTap`
             else if name.hasPrefix("S-"), name.dropFirst(2).count == 1, let key = name.last {
                 result.append(("<\(name)>", .shiftedChar(key)))
             } else if name.hasPrefix("O-"), name.dropFirst(2).count == 1, let key = name.last {
@@ -141,21 +144,34 @@ do {
     if batch {
         let composer = Composer(engine: engine, options: options)
         attach(composer)
-        // One line is one stretch of typing: what it commits is the context of the rest of the line.
+        // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line
+        // "TEXT<tab>KEYS" types KEYS after TEXT, as if TEXT were in the document before the insertion point.
+        let baseContext = context
         while let line = readLine() {
             composer.reset()
             composer.breakContext()
             if !keepMemory { engine.forgetAllLearned() }
             committed = ""
-            for (_, key) in try parse(line) { committed += composer.handle(key).commit ?? "" }
+            var keys = Substring(line)
+            context = baseContext
+            if let tab = line.firstIndex(of: "\t") {
+                context = String(line[..<tab])
+                keys = line[line.index(after: tab)...]
+            }
+            composer.setPrecedingText(context)
+            for (label, key) in try parse(String(keys)) {
+                if label == optionTap { composer.toggleCorrections(); continue }
+                committed += composer.handle(key).commit ?? ""
+            }
             print(committed)
         }
         exit(0)
     }
     let composer = Composer(engine: engine, options: options)
     attach(composer)
+    composer.setPrecedingText(context)
     for (label, key) in try parse(arguments[0]) {
-        let result = composer.handle(key)
+        let result = label == optionTap ? { composer.toggleCorrections(); return KeyResult.consumed }() : composer.handle(key)
         let p = composer.presentation
         let string = p.text as NSString
         let focus = p.focusedClause.map { p.clauses[$0] }
@@ -185,7 +201,7 @@ do {
     let neural = reranker?.scores(context: context, candidates: sentences.map(\.text))
     for (index, sentence) in sentences.enumerated() {
         let rerank = neural.map { String(format: " neural %.3f", $0[index]) } ?? ""
-        print(String(format: "  nbest %d: %.6f%@ %@ [%@]", index + 1, sentence.score, rerank, sentence.text,
+        print(String(format: "  nbest %d: %.6f%@ %@%@ [%@]", index + 1, sentence.score, rerank, sentence.text, sentence.corrected ? "*" : "",
                      sentence.words.map { "\($0.text):\($0.range)" }.joined(separator: ", ")))
     }
 } catch { fail(error.localizedDescription) }

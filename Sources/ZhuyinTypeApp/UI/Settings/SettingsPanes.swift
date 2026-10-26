@@ -60,10 +60,11 @@ private struct GeneralPane: View {
                     Text("標準").tag(TypoSetting.standard)
                     Text("積極").tag(TypoSetting.aggressive)
                 }
+                Toggle("參考游標前的文字", isOn: binding(preferences, \.usesPrecedingText))
             } header: {
                 Text("選字")
             } footer: {
-                FooterText("游標在句尾時，選字一律改最後的字詞。按錯相鄰的鍵或聲調鍵時，自動找出原本要打的字。")
+                FooterText("游標在句尾時，選字一律改最後的字詞。按錯相鄰的鍵或聲調鍵時，自動找出原本要打的字；候選字視窗先列照按鍵打出的字，按 Option 或「⌥ 修正」列出修正的字。參考游標前約 30 個字選字，包括同一個 App 裡 10 分鐘內打的字，只在這台 Mac 上使用。")
             }
             Section {
                 ForEach(Self.fuzzyPairs, id: \.label) { pair in

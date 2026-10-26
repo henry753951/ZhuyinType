@@ -82,7 +82,7 @@ public final class NeuralReranker: @unchecked Sendable {
     }
 
     /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.
-    public var exactMargin = 2.0
+    public var exactMargin = 4.0
 
     /// The index of the sentence to display.  The keys as typed win unless a correction scores clearly better.
     public func choose(_ sentences: [ScoredSentence], context: String) -> Int {

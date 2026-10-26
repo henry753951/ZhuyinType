@@ -21,6 +21,10 @@ public final class Composer {
     private var candidateSelection = 0
     /// The open list holds only the character at the cursor (Shift-↓), not every span.
     private var singleCharacterList = false
+    /// The open list shows typing corrections and fuzzy matches (Option), not only words for the keys as typed.
+    private var tolerantList = false
+    /// The open list is for a literal (punctuation), which has no corrections.
+    private var literalList = false
     private var selectionAnchor: Int?
     private var notice: String?
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
@@ -312,6 +316,16 @@ public final class Composer {
         return retyped == deletedWords.map(\.text).joined() ? 0 : readings.count
     }
 
+    /// The text before the insertion point, read from the app: the next composition continues its last words (or
+    /// starts a sentence after punctuation, a space or a line break).  Ignored while composing.
+    public func setPrecedingText(_ text: String) {
+        guard !hasComposition else { return }
+        let words = engine.trailingWords(of: text)
+        leadingWords = words
+        leadingHistory = words.last?.history ?? .init()
+        conversionDirty = true
+    }
+
     /// The next composition starts a sentence: call when the text before the insertion point is unknown.
     public func breakContext() {
         forgetContext()
@@ -395,7 +409,7 @@ public final class Composer {
             insert(.literal(text))
             closeCandidates()
         case .enter: return selectCandidate(at: candidateSelection)
-        case .shiftDown: openCandidates(singleCharacter: !singleCharacterList)
+        case .shiftDown: openCandidates(singleCharacter: !singleCharacterList, tolerant: tolerantList)
         case .escape, .backspace: closeCandidates()
         case .up: candidateSelection = max(0, candidateSelection - 1)
         case .down: candidateSelection = min(choices.count - 1, candidateSelection + 1)
@@ -442,13 +456,28 @@ public final class Composer {
         return FixedWord(range: range, text: text, reading: reading, wordID: parts.last?.wordID, components: parts)
     }
 
-    /// `singleCharacter`: only the character at the cursor, only for the keys as typed (no phrases, no corrections).
-    private func openCandidates(singleCharacter: Bool = false) {
+    /// Switches the open candidate window between words for the keys as typed and typing corrections.
+    public func toggleCorrections() {
+        guard !choices.isEmpty, !literalList, correctionsAvailable else { return }
+        openCandidates(singleCharacter: singleCharacterList, tolerant: !tolerantList)
+        refresh()
+    }
+
+    private var correctionsAvailable: Bool { options.typoTolerance != .off || !engine.fuzzySounds.isEmpty }
+
+    /// The list for the span at the cursor.  Words for the keys as typed, longest spans first, each span ranked in
+    /// context; only dictionary words and single characters, never pieces of the conversion joined together.
+    /// `singleCharacter`: only the character at the cursor.  `tolerant`: typing corrections and fuzzy matches first,
+    /// then the rest.
+    private func openCandidates(singleCharacter: Bool = false, tolerant: Bool = false) {
         guard !tokens.isEmpty, !hasBuffer else { return }
         singleCharacterList = singleCharacter
+        tolerantList = tolerant
+        literalList = false
         let forward = cursor == 0 || (options.candidateAnchor == .afterCursor && cursor < tokens.count)
         let target = forward ? cursor : cursor - 1
         if case .literal(let text) = tokens[target] {
+            literalList = true
             choices = ZhuyinKeyboard.alternatives(for: text).map {
                 FixedWord(range: target..<(target + 1), text: $0, reading: "")
             }
@@ -462,11 +491,10 @@ public final class Composer {
             ranges.append(range)
         }
         choices.removeAll(keepingCapacity: true)
-        // Words for other keys than the ones typed (typing corrections, fuzzy sounds) come after every word for the
-        // keys as typed, unless one is clearly likelier than all of those.
-        var corrections: [FixedWord] = []
-        // The displayed conversion, which the reranker may have chosen over the decoder's best.
-        let decoded = conversion
+        var head: FixedWord?
+        var exact: [FixedWord] = []
+        var corrected: [FixedWord] = []
+        let longest = ranges.last
         for range in ranges.reversed() {
             let reading = tokens[range].compactMap(\.reading).joined(separator: " ")
             var history = leadingHistory
@@ -474,8 +502,9 @@ public final class Composer {
                 history = word.reading.isEmpty ? .init()
                     : (word.history ?? history.appending(word.wordID, order: engine.languageModel.order))
             }
-            let matchesInRange = engine.matches(tokens, start: range.lowerBound, typo: options.typoTolerance)
+            let allMatches = engine.matches(tokens, start: range.lowerBound, typo: options.typoTolerance)
                 .filter { $0.range == range }
+            let matchesInRange = allMatches.filter { tolerant || $0.annotation == nil }
             var ranked = matchesInRange.map { (match: $0, score: engine.score($0.entry, reading: reading, history: history)) }
             let order: ((match: Engine.Match, score: Double), (match: Engine.Match, score: Double)) -> Bool = { a, b in
                 a.score == b.score ? a.match.entry.word < b.match.entry.word : a.score > b.score
@@ -489,68 +518,28 @@ public final class Composer {
                     ranked[..<head].sort(by: order)
                 }
             }
-            let bestExact = ranked.first { $0.match.annotation == nil }?.score ?? -.infinity
-            var promoted = 0
-            let matches = ranked.filter { item in
-                guard item.match.annotation != nil else { return true }
-                guard !singleCharacter else { return false }
-                guard promoted < Self.promotedCorrections, item.score >= bestExact + Self.correctionMargin else { return false }
-                promoted += 1
-                return true
-            }.map(\.match)
-            let deferred = ranked.filter { $0.match.annotation != nil }.map(\.match).filter { match in
-                !matches.contains { $0.entry.word == match.entry.word && $0.annotation != nil }
-            }
-            var seen = Set<String>()
-            func add(_ word: FixedWord) {
-                if choices.count < 60 && seen.insert(word.text).inserted { choices.append(word) }
-            }
+            // What is shown there: first for the whole span; for a shorter span only when it is one word or a pick.
             let current = shown(in: range)
             if let existing = fixed.first(where: { $0.range == range && $0.text == current }) {
-                add(existing)
-            } else {
+                exact.append(existing)
+            } else if range == longest || conversion.contains(where: { $0.range == range }) {
                 var word = choice(range: range, text: current, reading: reading)
-                word.annotation = matches.first(where: { $0.entry.word == current })?.annotation
-                add(word)
+                word.annotation = allMatches.first(where: { $0.entry.word == current && $0.annotation == nil })
+                    .map { _ in nil } ?? allMatches.first(where: { $0.entry.word == current })?.annotation
+                if range == longest { head = word } else { exact.append(word) }
             }
-            // Boundaries make the entire span one selectable unit, while allowing internal word segmentation.
-            var cache = conversionCache
-            let words: [ConvertedWord]
-            if !decoded.contains(where: { word in
-                (word.range.lowerBound < range.lowerBound && range.lowerBound < word.range.upperBound)
-                    || (word.range.lowerBound < range.upperBound && range.upperBound < word.range.upperBound)
-            }) {
-                words = decoded
-            } else {
-                let constraints = fixed.filter { word in
-                    !word.range.overlaps(range) || (range.lowerBound <= word.range.lowerBound && word.range.upperBound <= range.upperBound)
-                }
-                words = engine.convert(tokens, fixed: constraints,
-                                       typo: options.typoTolerance, cache: &cache, group: range, start: leadingHistory)
+            for match in ranked.map(\.match) {
+                let word = FixedWord(range: range, text: match.entry.word, reading: reading, wordID: match.entry.wordID,
+                                     annotation: match.annotation)
+                if match.annotation == nil { exact.append(word) } else { corrected.append(word) }
             }
-            let parts = words.filter { range.overlaps($0.range) }
-            let text = parts.map(\.text).joined()
-            if !text.isEmpty { add(choice(range: range, text: text, reading: reading, words: parts)) }
-            for match in matches {
-                add(FixedWord(range: range, text: match.entry.word, reading: reading, wordID: match.entry.wordID,
-                              annotation: match.annotation))
-            }
-            if !singleCharacter { corrections += deferred.map {
-                FixedWord(range: range, text: $0.entry.word, reading: reading, wordID: $0.entry.wordID, annotation: $0.annotation)
-            } }
-            if choices.count == 60 { break }
         }
-        for word in corrections where choices.count < 60
+        for word in [head].compactMap({ $0 }) + (tolerant ? corrected + exact : exact) where choices.count < 60
             && !choices.contains(where: { $0.range == word.range && $0.text == word.text }) {
             choices.append(word)
         }
         candidateSelection = 0
     }
-
-    /// A correction listed among the words for the keys as typed must score this much better than the best of them.
-    static let correctionMargin = 2.0
-    /// At most this many corrections per span are listed there; the rest follow every word for the keys as typed.
-    static let promotedCorrections = 2
 
     private func refresh() {
         let revision = engine.conversionRevision
@@ -615,7 +604,8 @@ public final class Composer {
         if let range = selection, notice == nil { notice = "Enter 加入自訂詞：" + shown(in: range) }
         let candidates: CandidateList? = choices.isEmpty ? nil : CandidateList(
             items: choices.map { Candidate(text: $0.text, annotation: $0.annotation) }, selection: candidateSelection,
-            pageSize: max(1, options.selectionKeys.count))
+            pageSize: max(1, options.selectionKeys.count),
+            tolerant: literalList || !correctionsAvailable ? nil : tolerantList)
         let hint = choices.isEmpty ? nil : tokens[choices[candidateSelection].range].map(\.reading)
         let zhuyin = hint.flatMap { parts in
             parts.allSatisfy { $0 != nil } ? ZhuyinKeyboard.plain(parts.compactMap { $0 }.joined(separator: " ")) : nil

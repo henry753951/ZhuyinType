@@ -529,6 +529,36 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// The last words of `text` (at most two, within its final run of Han characters) by longest dictionary match from
+    /// the end, each with its most common reading and the LM history after it.
+    func trailingWords(of text: String) -> [ConvertedWord] {
+        let run = Array(text.reversed().prefix(while: Self.isHan).reversed().suffix(12))
+        guard !run.isEmpty else { return [] }
+        return synchronized {
+            var words: [String] = []
+            var end = run.count
+            while end > 0 && words.count < 2 {
+                var length = min(6, end)
+                while length > 1 && reverse[String(run[(end - length)..<end])] == nil { length -= 1 }
+                words.insert(String(run[(end - length)..<end]), at: 0)
+                end -= length
+            }
+            var history = LanguageModelHistory()
+            return words.map { word in
+                let id = resolveID(word)
+                history = history.appending(id, order: languageModel.order)
+                let reading = reverse[word]?.max(by: { $0.1 < $1.1 })?.0 ?? ""
+                return ConvertedWord(range: 0..<0, text: word, reading: reading, wordID: id, history: history)
+            }
+        }
+    }
+
+    private static func isHan(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy {
+            (0x3400...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value) || (0x20000...0x3134F).contains($0.value)
+        }
+    }
+
     /// Forgets `word` and never learns it again, until `includeInLearning`.
     public func excludeFromLearning(word: String, reading: String) {
         synchronized { excluded.insert(PhraseKey(reading: reading, word: word)) }

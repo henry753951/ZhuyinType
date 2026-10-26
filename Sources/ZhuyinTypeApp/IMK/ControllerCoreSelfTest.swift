@@ -25,6 +25,9 @@ private final class FakeTextClient: TextClient {
     }
 
     func caretRect(cursorIndex: Int) -> NSRect { NSRect(x: 100, y: 100, width: 1, height: 20) }
+    /// The document before the insertion point, or nil for an app that does not say.
+    var documentText: String?
+    func textBeforeInsertion(maxLength: Int) -> String? { documentText.map { String($0.suffix(maxLength)) } }
 }
 
 enum ControllerCoreSelfTest {
@@ -160,6 +163,33 @@ enum ControllerCoreSelfTest {
                 try expect(!core.keyDown(keyCode: key, modifiers: modifiers), "key \(key) was consumed")
                 try expect(client.inserts == [visible], "pass-through key \(key): visible=\(visible), inserted=\(client.inserts)")
             }
+        }
+        test("a composition continues the app's text before the insertion point") {
+            let (fresh, _) = session()
+            type("g4", into: fresh)
+            let alone = fresh.composer.presentation.text
+            let (core, client) = session()
+            client.documentText = "我們"
+            type("g4", into: core)
+            try expect(core.composer.presentation.text == "是" && alone != "是",
+                       "after 我們: \(core.composer.presentation.text), alone: \(alone)")
+            try expect(core.recentText == "我們", "reranker context \(core.recentText)")
+        }
+        test("Option tapped in the candidate window switches to corrections and back") {
+            let (core, _) = session()
+            type("ji3ap7", into: core)
+            _ = core.handle(.down)
+            try expect(core.composer.presentation.candidates?.tolerant == false, "list does not start exact")
+            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 1)
+            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 1.1)
+            let tolerant = core.composer.presentation.candidates
+            try expect(tolerant?.tolerant == true && tolerant?.items.dropFirst().first?.annotation != nil,
+                       "Option tap did not list corrections first")
+            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 2)
+            _ = core.flagsChanged(keyCode: 56, modifiers: [.option, .shift], physicallyDown: true, timestamp: 2.05)
+            _ = core.flagsChanged(keyCode: 56, modifiers: .option, physicallyDown: false, timestamp: 2.07)
+            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 2.1)
+            try expect(core.composer.presentation.candidates?.tolerant == true, "Option with another key is not a tap")
         }
         test("Shift-Down opens the single-character list") {
             try expect(KeyMapping.input(keyCode: 125, modifiers: .shift) == .shiftDown, "Shift-↓ mapping")

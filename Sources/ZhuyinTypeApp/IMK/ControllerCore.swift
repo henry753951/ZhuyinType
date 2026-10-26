@@ -9,6 +9,9 @@ protocol TextClient: AnyObject {
     var selectedRange: NSRange { get }
     var bundleIdentifier: String { get }
     func caretRect(cursorIndex: Int) -> NSRect
+    /// Up to `maxLength` UTF-16 units of the document before the insertion point; "" at its start, nil when the app
+    /// does not say.
+    func textBeforeInsertion(maxLength: Int) -> String?
 }
 
 final class ControllerCore {
@@ -30,11 +33,22 @@ final class ControllerCore {
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
     private var shiftTap: (key: UInt16, time: TimeInterval)?
+    /// When Option went down with nothing else held: released quickly, it switches the candidate list.
+    private var optionTap: TimeInterval?
     private var rendering = false
     private let insertionRange = NSRange(location: NSNotFound, length: 0)
 
-    /// The last characters committed into this client: the context the reranker reads.
+    /// The text before the insertion point as far as the input method knows it, which the reranker reads: the app's own
+    /// text when a composition starts, otherwise what was committed in this app within `contextWindow`.
     private(set) var recentText = ""
+    private var recentTime = Date.distantPast
+    /// Read the app's text before the insertion point and remember commits per app (a setting).
+    var usesPrecedingText = true
+    /// How long what was committed in an app stays context once typing there stops.
+    static let contextWindow: TimeInterval = 600
+    /// Per app, what was last committed there: context across fields and focus changes, for `contextWindow`.
+    private static var appContext: [String: (text: String, time: Date)] = [:]
+    var now: () -> Date = Date.init
 
     init(engine: Engine, client: TextClient, options: ComposerOptions, isEnglish: Bool,
          reranker: NeuralReranker? = nil) {
@@ -63,6 +77,7 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         shiftTap = nil
+        optionTap = nil
         guard !rendering, !isEnglish else { return false }
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
         if modifiers.contains(.capsLock) {
@@ -81,12 +96,51 @@ final class ControllerCore {
     @discardableResult
     func handle(_ key: KeyInput) -> Bool {
         guard !rendering else { return false }
+        if !composer.isComposing, Self.startsComposition(key) { prepareContext() }
         let visible = composer.presentation.text
         let result = composer.handle(key)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
-        // Backspace passed to the app deletes the last committed character; other keys may move away from it.
-        if !result.handled { recentText = key == .backspace ? String(recentText.dropLast()) : "" }
+        if !result.handled {
+            // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)
+            // may move it; the next composition reads the app again, or the remembered text ages out.
+            switch key {
+            case .backspace: recentText = String(recentText.dropLast())
+            case .space: recentText += " "
+            case .enter, .shiftEnter: recentText += "\n"
+            default: break
+            }
+            remember()
+        }
         return result.handled
+    }
+
+    private static func startsComposition(_ key: KeyInput) -> Bool {
+        switch key {
+        case .char, .shiftedChar, .printed: return true
+        default: return false
+        }
+    }
+
+    /// Before a composition starts: the app's text before the insertion point, or what was committed in this app
+    /// recently.  The composer continues its last words; the reranker reads all of it.
+    private func prepareContext() {
+        let time = now()
+        if time.timeIntervalSince(recentTime) > Self.contextWindow { recentText = "" }
+        guard usesPrecedingText else { return }
+        if let text = client.textBeforeInsertion(maxLength: 32) {
+            recentText = text
+            composer.setPrecedingText(text)
+        } else if recentText.isEmpty, let saved = Self.appContext[client.bundleIdentifier],
+                  time.timeIntervalSince(saved.time) <= Self.contextWindow {
+            recentText = saved.text
+        }
+        recentTime = time
+    }
+
+    private func remember() {
+        recentText = String(recentText.suffix(32))
+        recentTime = now()
+        if usesPrecedingText { Self.appContext[client.bundleIdentifier] = (recentText, recentTime) }
     }
 
     func selectCandidate(at index: Int) {
@@ -95,6 +149,13 @@ final class ControllerCore {
         let visible = composer.presentation.text
         let result = composer.selectCandidate(at: index)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+    }
+
+    /// The candidate window switches between words for the keys as typed and typing corrections.
+    func toggleCorrections() {
+        guard !rendering else { return }
+        composer.toggleCorrections()
+        render()
     }
 
     func selectZhuyin() {
@@ -116,6 +177,21 @@ final class ControllerCore {
             }
             return false
         }
+        if keyCode == 58 || keyCode == 61 {
+            shiftTap = nil
+            let others = modifiers.intersection([.command, .control, .shift, .capsLock, .function])
+            if modifiers.contains(.option) {
+                optionTap = others.isEmpty ? timestamp : nil
+            } else if let tap = optionTap, others.isEmpty, timestamp >= tap, timestamp - tap <= 0.35,
+                      composer.presentation.candidates?.tolerant != nil {
+                optionTap = nil
+                toggleCorrections()
+            } else {
+                optionTap = nil
+            }
+            return false
+        }
+        optionTap = nil
         guard keyCode == 56 || keyCode == 60 else {
             shiftTap = nil
             return false
@@ -157,10 +233,9 @@ final class ControllerCore {
         hidePanel?()
     }
 
-    /// The text before the insertion point is no longer what this controller committed (a click, a shortcut, a key
-    /// passed to the app): the reranker and the next composition stop reading it.
+    /// The insertion point may have moved (a click, switching to English): the next composition starts a sentence.
+    /// The reranker keeps the recent text as loose context until the app is read again or it ages out.
     func breakContext() {
-        recentText = ""
         composer.breakContext()
     }
 
@@ -183,7 +258,8 @@ final class ControllerCore {
         defer { rendering = false }
         if let commit, !commit.isEmpty {
             client.insertText(commit, replacementRange: insertionRange)
-            recentText = String((recentText + commit).suffix(32))
+            recentText += commit
+            remember()
             lastMark = nil // insertText replaces the old marked range, even if the next string is identical.
         }
 

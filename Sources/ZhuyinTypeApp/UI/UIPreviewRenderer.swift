@@ -11,7 +11,10 @@ enum UIPreviewRenderer {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let words = ["今天", "金天", "今", "斤", "巾", "筋", "津", "襟", "矜"]
-            let candidates = CandidateList(items: (0..<3).flatMap { _ in words.map { Candidate(text: $0) } })
+            let candidates = CandidateList(items: (0..<3).flatMap { _ in words.map { Candidate(text: $0) } }, tolerant: false)
+            let corrections = CandidateList(items: [Candidate(text: "今天"), Candidate(text: "經天", annotation: "ㄐㄧㄥ ㄊㄧㄢ"),
+                                                    Candidate(text: "親天", annotation: "ㄑㄧㄣ ㄊㄧㄢ")] + candidates.items,
+                                            tolerant: true)
             let settings = SettingsWindowController.shared
             settings.engine = try sampleEngine()
             for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
@@ -19,8 +22,14 @@ enum UIPreviewRenderer {
                 NSApp.appearance = appearance
                 for layout in CandidateLayout.allCases {
                     let content = CandidateContentView(frame: .zero)
-                    content.update(list: candidates, preview: nil, keys: Array("123456789"), layout: layout, fontSize: 18)
+                    content.update(list: candidates, preview: nil, keys: Array("123456789"), layout: layout, fontSize: 18,
+                                   zhuyinHint: "ㄐㄧㄣ ㄊㄧㄢ")
                     try capture(view: InputSurface(content: content), to: directory.appendingPathComponent("candidate-\(layout.rawValue)-\(name).png"))
+                    let tolerant = CandidateContentView(frame: .zero)
+                    tolerant.update(list: corrections, preview: nil, keys: Array("123456789"), layout: layout, fontSize: 18,
+                                    zhuyinHint: "ㄐㄧㄣ ㄊㄧㄢ")
+                    try capture(view: InputSurface(content: tolerant),
+                                to: directory.appendingPathComponent("candidate-\(layout.rawValue)-corrections-\(name).png"))
                 }
                 let toast = ModeBadgeView(frame: .zero)
                 try capture(view: InputSurface(content: toast), to: directory.appendingPathComponent("mode-toast-\(name).png"))
