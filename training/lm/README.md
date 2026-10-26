@@ -228,3 +228,94 @@ Wikipedia converted to Taiwan orthography remains encyclopedic, mixed-origin
 language: these counts do not establish representative Taiwanese conversational
 usage. No typing accuracy, macOS integration, or mmap-size claim follows from
 held-out Wikipedia perplexity.
+
+## Mixed-corpus trigram (`lm2`)
+
+The successor pipeline is `run2.sh` / `train2.py`; it leaves the old pipeline and
+its fixed Wikipedia test untouched. See [../corpus/README.md](../corpus/README.md)
+for the pinned CC0 source, exact Apache-2.0 generator checkpoint, cleaning rules,
+and stop/resume commands. Run it on the existing Linux host from `~/zhuyintype`:
+
+```sh
+bash training/lm/build_kenlm.sh  # only if work2/kenlm/build/bin/lmplz is absent
+nohup bash training/lm/run2.sh > logs/pipeline2.log 2>&1 < /dev/null &
+```
+
+The script waits for the frozen 1.5M synthetic phase, mines only reading-certain
+lexicon additions, excludes every dev/test 8-gram from both sources, and reuses
+`pipeline.py`'s exact lexicon Viterbi segmenter. An initial segmentation plus two
+hard-EM updates uses Wikipedia + colloquial **once each**. This tokenizer then
+stays frozen across all candidate LMs and all evaluation sets.
+
+To train before phase one finishes, copy the current synthetic file to a temporary
+file, truncate any incomplete final line, then atomically rename it to a frozen
+snapshot. Leave generation and cleaning running. Pass that snapshot explicitly:
+
+```sh
+bash training/lm/run2.sh data/build/corpus/synthetic_snapshot1.txt
+```
+
+This skips the `PHASE1_READY` wait. Both mining and training accept the same
+`--synthetic PATH` (relative to the project root); defaults are unchanged. The
+audit and report read the selected input from `stats.json` and verify its hash
+and complete sentence count instead of requiring 1.5M lines. Training config
+includes the snapshot and Common Voice input hashes; changing inputs still
+requires fresh training checkpoints. The prepared Wikipedia shards may be reused
+when the frozen holdouts and preparation code are unchanged.
+
+KenLM (pinned commit `4cb443e60b7bf2c0ddf3c745378f76cb59e254e5`) estimates modified
+Kneser–Ney order 3. Candidates repeat the colloquial corpus **k=1,4,12** times,
+keeping Wikipedia once. `--discount_fallback` is explicit because corpus
+repetition can empty count-of-count bins. Select the minimum **token-weighted
+union dev perplexity**, including EOS and excluding BOS; retain source-specific
+dev scores. Neither test set selects model parameters. Unigram, bigram, and
+trigram test perplexities use the selected model's identical frozen word tokens;
+they are not directly comparable to the predecessor's different-tokenizer score.
+
+Count pruning is `--prune 0 8 12` (KenLM removes counts <= thresholds), followed
+if necessary by a global explicit-trigram log-probability cap. The cap accounts
+for every bigram's trigram pointer and targets <148 decimal MB with headroom.
+`lmbin.py` recomputes lower-order and trigram backoffs after pruning so deleted
+probabilities return to the fallback distribution. Float32 scores are natural
+logs, as specified in **unchanged** [FORMAT.md](FORMAT.md).
+
+The old `prefer_tai.py` increases probability mass after estimation. The new
+pipeline instead maps 臺→台 for **90% of training sentences**, only when the 台
+word exists in the augmented lexicon, and leaves 10% as originally written.
+This preserves both spellings without breaking normalization. Held-out spellings
+are unchanged. Check the actual trained preference in the model report.
+
+FORMAT.md requires both UTF-8 byte ordering and reserved IDs 0–2. ASCII
+punctuation/whitespace from fallback segmentation would precede those reserved
+spellings. Such tokens map to **U+FFFD** during training and evaluation; Chinese
+vocabulary is unchanged, and the original corpus text is retained. The three
+special spellings then really do sort first; the writer rejects an incompatible
+ARPA rather than quietly violating the format.
+
+The delivered `data/build/lm2/lexicon.tsv` preserves seed `(reading,word)` order
+and polyphone ratios, then appends mined entries. Seen entries use the model's
+unigram mass; unseen entries keep their seed scale. `unknown_word_shift` is the
+median model-minus-seed word logp over seen shared words, so the engine can
+calibrate the fallback for unseen lexicon entries. It is added **once**, at the
+engine's unknown-word path. Do not also shift the unseen lexicon rows.
+
+`lm2` contains `lm.bin`, `lm.json`, the recalibrated `lexicon.tsv`,
+`new_words.tsv`, `stats.json`, `NOTICE.md`, article attribution, generator LICENSE,
+and validation/sampling receipts. `stats.json` reports candidate dev perplexities,
+selected test perplexities/OOV, pruning sizes, corpus counts, timings and hashes.
+No Swift conversion-accuracy claim is made by this Python pipeline.
+
+Writer/verifier and small regression tests:
+
+```sh
+.venv/bin/python training/lm/lmbin.py write model.arpa lm.bin
+.venv/bin/python training/lm/lmbin.py verify lm.bin --samples 256
+.venv/bin/python training/lm/test_lmbin.py
+```
+
+The verifier checks header/counts/length, section alignment and zero padding,
+UTF-8 vocabulary ordering/reserved IDs, every pointer and sorted successor group,
+finite log probabilities, empty-context backoffs, unigram normalization, sampled
+bigram/trigram conditional normalization, and scalar/vector backoff agreement.
+Writing uses a flushed temporary file and atomic rename after verification.
+It does not run the Swift reader or measure IME conversion accuracy.
