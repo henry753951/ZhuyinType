@@ -1,3 +1,4 @@
+import CoreML
 import Foundation
 import ZhuyinCore
 import ZhuyinML
@@ -14,8 +15,12 @@ var rerankerPath: String?
 var rerankWeight = 0.5
 var rerankCount = 8
 var nbest = 0
+var context = ""
+/// Text committed so far by the line being typed (batch mode) or by the keys (single run).
+var committed = ""
+var timing = false
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--reranker DIR [--rerank-weight W]] [--batch [--keep-memory] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--reranker DIR [--rerank-weight W] [--context TEXT] [--timing]] [--batch [--keep-memory] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -48,6 +53,11 @@ while let option = arguments.first, option.hasPrefix("--") {
         guard arguments.count >= 2, ["after", "before"].contains(arguments[1]) else { fail(usage) }
         options.candidateAnchor = arguments[1] == "after" ? .afterCursor : .beforeCursor
         arguments.removeFirst(2)
+    case "--context":
+        guard arguments.count >= 2 else { fail(usage) }
+        context = arguments[1]
+        arguments.removeFirst(2)
+    case "--timing": timing = true; arguments.removeFirst()
     case "--nbest":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         nbest = count
@@ -90,19 +100,35 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
 assert((try? parse("<unknown>")) == nil)
 do {
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
-    let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight) }
+    // ZHUYIN_UNITS=all|gpu|ane compares Core ML compute units with --timing.
+    let units: MLComputeUnits = ["all": .all, "gpu": .cpuAndGPU, "ane": .cpuAndNeuralEngine][ProcessInfo.processInfo.environment["ZHUYIN_UNITS"] ?? ""] ?? .cpuOnly
+    let reranker = try rerankerPath.map { try NeuralReranker(directory: URL(fileURLWithPath: $0), weight: rerankWeight, computeUnits: units) }
     func attach(_ composer: Composer) {
         guard let reranker else { return }
         composer.rerankingCount = rerankCount
-        composer.reranker = { reranker.choose($0, context: "") }
+        func timed<T>(_ label: String, _ body: () -> T) -> T {
+            let start = DispatchTime.now().uptimeNanoseconds
+            defer {
+                if timing { print(String(format: "  [%@ %.1f ms]", label, Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)) }
+            }
+            return body()
+        }
+        composer.reranker = { sentences in timed("rerank \(sentences.count)") { reranker.choose(sentences, context: context + committed) } }
+        composer.candidateScorer = { before, candidates in
+            timed("candidates \(candidates.count)") {
+                reranker.candidateScores(context: context + committed + before, candidates: candidates)
+            }
+        }
     }
     if batch {
         let composer = Composer(engine: engine, options: options)
         attach(composer)
+        // One line is one stretch of typing: what it commits is the context of the rest of the line.
         while let line = readLine() {
             composer.reset()
+            composer.breakContext()
             if !keepMemory { engine.forgetAllLearned() }
-            var committed = ""
+            committed = ""
             for (_, key) in try parse(line) { committed += composer.handle(key).commit ?? "" }
             print(committed)
         }
@@ -134,10 +160,13 @@ do {
         }
         if let hint = p.zhuyinHint { print("  ` \(hint)") }
         if let notice = p.notice { print("  \(notice)") }
-        if let text = result.commit { print("  committed: \(text)") }
+        if let text = result.commit { committed += text; print("  committed: \(text)") }
     }
-    for (index, sentence) in composer.nBest(nbest).enumerated() {
-        print(String(format: "  nbest %d: %.6f %@ [%@]", index + 1, sentence.score, sentence.text,
+    let sentences = composer.nBest(nbest)
+    let neural = reranker?.scores(context: context, candidates: sentences.map(\.text))
+    for (index, sentence) in sentences.enumerated() {
+        let rerank = neural.map { String(format: " neural %.3f", $0[index]) } ?? ""
+        print(String(format: "  nbest %d: %.6f%@ %@ [%@]", index + 1, sentence.score, rerank, sentence.text,
                      sentence.words.map { "\($0.text):\($0.range)" }.joined(separator: ", ")))
     }
 } catch { fail(error.localizedDescription) }

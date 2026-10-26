@@ -44,6 +44,9 @@ final class ControllerCore {
         if let reranker {
             composer.rerankingCount = reranker.candidateCount
             composer.reranker = { [weak self] in reranker.choose($0, context: self?.recentText ?? "") }
+            composer.candidateScorer = { [weak self] before, candidates in
+                reranker.candidateScores(context: (self?.recentText ?? "") + before, candidates: candidates)
+            }
         }
     }
 
@@ -64,10 +67,12 @@ final class ControllerCore {
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
         if modifiers.contains(.capsLock) {
             commit()
+            breakContext()
             return false
         }
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers) else {
             commit()
+            breakContext()
             return false
         }
         return handle(key)
@@ -79,6 +84,7 @@ final class ControllerCore {
         let visible = composer.presentation.text
         let result = composer.handle(key)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+        if !result.handled { recentText = "" }
         return result.handled
     }
 
@@ -147,6 +153,13 @@ final class ControllerCore {
         heldShifts.removeAll()
         shiftTap = nil
         hidePanel?()
+    }
+
+    /// The text before the insertion point is no longer what this controller committed (a click, a shortcut, a key
+    /// passed to the app): the reranker and the next composition stop reading it.
+    func breakContext() {
+        recentText = ""
+        composer.breakContext()
     }
 
     func commit() {

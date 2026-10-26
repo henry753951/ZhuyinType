@@ -113,7 +113,9 @@ final class ZhuyinInputController: IMKInputController {
     }
 
     override func commitComposition(_ sender: Any!) {
+        // The client asks for this when the user clicks into the text or it moves the insertion point.
         core?.commit()
+        core?.breakContext()
         if Self.activeController === self { CandidatePanelController.shared.hide() }
     }
 

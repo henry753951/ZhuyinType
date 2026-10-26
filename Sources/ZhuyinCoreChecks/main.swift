@@ -1119,6 +1119,23 @@ if FileManager.default.fileExists(atPath: realURL.path) {
             return toneKeys[syllable.last!] == nil ? keys + " " : keys
         }.joined()
     }
+    // A composition continues the words committed before it, until a key passes to the app or the host breaks it.
+    var unlearned = legacyOptions; unlearned.learningEnabled = false
+    let fresh = composer(real, "g4", options: unlearned)
+    let continuing = composer(real, "ji3ap7", options: unlearned)
+    check(continuing.commitAll() == "我們", "context commit")
+    type("g4", into: continuing)
+    check(continuing.presentation.text == "是", "ㄕˋ after committed 我們 reads 是")
+    check(fresh.presentation.text != "是", "the continuation check needs a reading the sentence start converts differently")
+    continuing.reset()
+    check(continuing.handle(.left).handled == false, "left passes through with nothing composed")
+    type("g4", into: continuing)
+    check(continuing.presentation.text == fresh.presentation.text, "a passed-through key restarts the sentence")
+    let restarted = composer(real, "ji3ap7", options: unlearned)
+    _ = restarted.commitAll()
+    restarted.breakContext()
+    type("g4", into: restarted)
+    check(restarted.presentation.text == fresh.presentation.text, "breakContext restarts the sentence")
     var conversions = [("謝謝", "vu,4vu,7"), ("謝謝", "vu,4vu,4"),
                        ("我們", "ji3ap7"), ("我們", "ji3ap "),
                        ("東西", "2j/ vu "), ("東西", "2j/ vu7"),

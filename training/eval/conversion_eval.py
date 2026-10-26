@@ -7,6 +7,10 @@ Sentences come from held-out test files (default: data/build/lm/test_sentences.t
 data/build/corpus/test_colloquial.txt when it exists), each reported separately.  Each sentence is cut into its Han
 runs; each run is given readings by longest-match against the lexicon (the most likely reading of each word), turned
 into standard-layout keys, typed, and committed with Enter.
+
+`--split continue|restart` types each run as two commits, cut at the word boundary nearest its middle, the way
+people commit part of a clause and keep typing.  `continue` lets the second composition follow the committed words;
+`restart` passes a key to the app in between, so it starts like a new sentence.
 """
 import argparse
 import os
@@ -39,7 +43,7 @@ def load_lexicon(path):
     return {w: r for w, (r, _) in best.items()}
 
 
-def readings_for(text, lexicon):
+def readings_for(text, lexicon, cuts=None):
     out, i = [], 0
     while i < len(text):
         for length in range(min(6, len(text) - i), 0, -1):
@@ -47,6 +51,8 @@ def readings_for(text, lexicon):
             if word in lexicon:
                 out += lexicon[word].split(" ")
                 i += length
+                if cuts is not None:
+                    cuts.append(i)
                 break
         else:
             return None
@@ -76,6 +82,7 @@ def main():
     parser.add_argument("--reranker", help="directory with Reranker.mlmodelc and vocab.json")
     parser.add_argument("--rerank-weight", type=float, default=1.0)
     parser.add_argument("--rerank-count", type=int, default=8)
+    parser.add_argument("--split", choices=["none", "continue", "restart"], default="none")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -107,11 +114,21 @@ def evaluate(test, args, lexicon, lexicon_path):
     for run in runs:
         if len(selected) >= args.n:
             break
-        readings = readings_for(run, lexicon)
+        cuts = []
+        readings = readings_for(run, lexicon, cuts)
         if not readings:
             continue
+        if args.split == "none":
+            selected.append(run)
+            scripts.append(keys_for(readings) + "<enter>")
+            continue
+        cuts = [c for c in cuts[:-1] if 2 <= c <= len(run) - 2]
+        if not cuts:
+            continue
+        cut = min(cuts, key=lambda c: abs(c - len(run) / 2))
+        between = "<enter><left>" if args.split == "restart" else "<enter>"
         selected.append(run)
-        scripts.append(keys_for(readings) + "<enter>")
+        scripts.append(keys_for(readings[:cut]) + between + keys_for(readings[cut:]) + "<enter>")
     command = [args.cli, "--lexicon", lexicon_path, "--typo", args.typo, "--batch"]
     if args.reranker:
         command += ["--reranker", args.reranker, "--rerank-weight", str(args.rerank_weight),

@@ -18,7 +18,9 @@ public final class NeuralReranker: @unchecked Sendable {
     private let maxLength: Int
     private let lock = NSLock()
 
-    public init(directory: URL, weight: Double = 0.5, computeUnits: MLComputeUnits = .all) throws {
+    /// `computeUnits` defaults to the CPU: for batches this small it answers in 2–11 ms, while the GPU path costs
+    /// about 30 ms per call in dispatch overhead and the first call pays a 130 ms warm-up.
+    public init(directory: URL, weight: Double = 0.5, computeUnits: MLComputeUnits = .cpuOnly) throws {
         self.weight = weight
         let vocabulary = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("vocab.json")))
         var index: [Character: Int32] = [:]
@@ -43,7 +45,8 @@ public final class NeuralReranker: @unchecked Sendable {
         let longest = encoded.map(\.count).max() ?? 0
         guard longest > 0, longest < maxLength else { return nil }
         let prefix = [Int32(1)] + encode(String(context.suffix(min(contextLength, maxLength - 1 - longest))))
-        let length = prefix.count - 1 + longest
+        // The model accepts sequences of 2 or more; a lone character after <bos> is padded.
+        let length = max(2, prefix.count - 1 + longest)
         guard let ids = try? MLMultiArray(shape: [NSNumber(value: candidates.count), NSNumber(value: length)], dataType: .int32),
               let targets = try? MLMultiArray(shape: ids.shape, dataType: .int32) else { return nil }
         for (row, candidate) in encoded.enumerated() {
@@ -65,6 +68,17 @@ public final class NeuralReranker: @unchecked Sendable {
         return encoded.enumerated().map { row, candidate in
             (start..<(start + candidate.count)).reduce(0.0) { $0 + logprob[row * length + $1].doubleValue }
         }
+    }
+
+    /// `weight` × log P(candidate | context) for candidate-list ordering, scored in batches the model accepts.
+    public func candidateScores(context: String, candidates: [String]) -> [Double]? {
+        var result: [Double] = []
+        for start in stride(from: 0, to: candidates.count, by: 32) {
+            guard let part = scores(context: context, candidates: Array(candidates[start..<min(candidates.count, start + 32)]))
+            else { return nil }
+            result += part.map { weight * $0 }
+        }
+        return result
     }
 
     /// The index of the sentence to display.

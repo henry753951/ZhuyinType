@@ -21,6 +21,9 @@ public final class Composer {
     private var candidateSelection = 0
     private var selectionAnchor: Int?
     private var notice: String?
+    /// LM history of the words committed just before this composition; the sentence start after punctuation, a
+    /// passed-through key or `breakContext()`.
+    private var leadingHistory = LanguageModelHistory()
     /// Return an index into the score-ordered N-best list. Invalid indices fall back to the decoder's first choice.
     /// Called synchronously only when conversion changes; keep the hook within the typing latency budget.
     public var reranker: (([ScoredSentence]) -> Int)? {
@@ -29,10 +32,15 @@ public final class Composer {
     public var rerankingCount: Int = 8 {
         didSet { conversionDirty = true; closeCandidates(); refresh() }
     }
+    /// Scores to add to the best candidates for a span, given the composed text before it; nil leaves the order as is.
+    /// Called once per span length when the candidate window opens.
+    public var candidateScorer: ((_ before: String, _ candidates: [String]) -> [Double]?)?
+    /// How many of a span's best-scoring candidates the scorer reorders.
+    public var candidateScoringCount = 24
 
     /// Beam-bounded alternatives for completed tokens, excluding the unfinished syllable buffer.
     public func nBest(_ k: Int = 8) -> [ScoredSentence] {
-        engine.sentences(tokens, fixed: fixed, typo: options.typoTolerance, k: k)
+        engine.sentences(tokens, fixed: fixed, typo: options.typoTolerance, k: k, start: leadingHistory)
     }
 
     public init(engine: Engine, options: ComposerOptions = ComposerOptions()) {
@@ -51,6 +59,13 @@ public final class Composer {
     }
 
     public func handle(_ key: KeyInput) -> KeyResult {
+        let result = process(key)
+        // A key the app receives may move the insertion point or edit the text before it.
+        if !result.handled { leadingHistory = .init() }
+        return result
+    }
+
+    private func process(_ key: KeyInput) -> KeyResult {
         notice = nil
         if key == .shiftLeft || key == .shiftRight {
             guard hasComposition else { return .passThrough }
@@ -211,8 +226,16 @@ public final class Composer {
             }
             engine.learn(commit: committed, syllableCount: tokens.filter { $0.reading != nil }.count)
         }
+        // A literal at the end (punctuation, symbols as typed) leaves the sentence-start history.
+        if !text.isEmpty { leadingHistory = conversion.last?.history ?? .init() }
         reset()
         return text
+    }
+
+    /// The next composition starts a sentence: call when the text before the insertion point is unknown.
+    public func breakContext() {
+        leadingHistory = .init()
+        if !tokens.isEmpty { conversionDirty = true; refresh() }
     }
 
     public func reset() {
@@ -356,20 +379,31 @@ public final class Composer {
             ranges.append(range)
         }
         choices.removeAll(keepingCapacity: true)
-        let decoded = engine.cachedWords(conversionCache)
+        // The displayed conversion, which the reranker may have chosen over the decoder's best.
+        let decoded = conversion
         for range in ranges.reversed() {
             let reading = tokens[range].compactMap(\.reading).joined(separator: " ")
-            var history = LanguageModelHistory()
+            var history = leadingHistory
             for word in conversion where word.range.upperBound <= range.lowerBound {
                 history = word.reading.isEmpty ? .init()
                     : (word.history ?? history.appending(word.wordID, order: engine.languageModel.order))
             }
             let matchesInRange = engine.matches(tokens, start: range.lowerBound, typo: options.typoTolerance)
                 .filter { $0.range == range }
-            let ranked = matchesInRange.map { (match: $0, score: engine.score($0.entry, reading: reading, history: history)) }
-            let matches = ranked.sorted {
-                $0.score == $1.score ? $0.match.entry.word < $1.match.entry.word : $0.score > $1.score
-            }.map(\.match)
+            var ranked = matchesInRange.map { (match: $0, score: engine.score($0.entry, reading: reading, history: history)) }
+            let order: ((match: Engine.Match, score: Double), (match: Engine.Match, score: Double)) -> Bool = { a, b in
+                a.score == b.score ? a.match.entry.word < b.match.entry.word : a.score > b.score
+            }
+            ranked.sort(by: order)
+            if let candidateScorer, ranked.count > 1 {
+                let head = min(ranked.count, candidateScoringCount)
+                let before = conversion.filter { $0.range.upperBound <= range.lowerBound }.map(\.text).joined()
+                if let extra = candidateScorer(before, ranked[..<head].map(\.match.entry.word)), extra.count == head {
+                    for index in 0..<head { ranked[index].score += extra[index] }
+                    ranked[..<head].sort(by: order)
+                }
+            }
+            let matches = ranked.map(\.match)
             var seen = Set<String>()
             func add(_ word: FixedWord) {
                 if choices.count < 60 && seen.insert(word.text).inserted { choices.append(word) }
@@ -395,7 +429,7 @@ public final class Composer {
                     !word.range.overlaps(range) || (range.lowerBound <= word.range.lowerBound && word.range.upperBound <= range.upperBound)
                 }
                 words = engine.convert(tokens, fixed: constraints,
-                                       typo: options.typoTolerance, cache: &cache, group: range)
+                                       typo: options.typoTolerance, cache: &cache, group: range, start: leadingHistory)
             }
             let parts = words.filter { range.overlaps($0.range) }
             let text = parts.map(\.text).joined()
@@ -412,12 +446,13 @@ public final class Composer {
     private func refresh() {
         let revision = engine.conversionRevision
         if conversionDirty || conversionRevision != revision {
-            conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache)
+            conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache,
+                                        start: leadingHistory)
             if let reranker, !tokens.isEmpty {
                 let sentences = nBest(max(1, rerankingCount))
                 let index = reranker(sentences)
                 if sentences.indices.contains(index) {
-                    var history = LanguageModelHistory()
+                    var history = leadingHistory
                     conversion = sentences[index].words.map { word in
                         let constraint = fixed.first { $0.range == word.range && $0.text == word.text }
                         let wordID = constraint?.wordID ?? engine.languageModel.wordID(for: word.text)

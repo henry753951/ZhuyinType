@@ -122,24 +122,23 @@ struct ConversionCache {
     var typo: TypoTolerance
     var revision: UInt64
     var group: Range<Int>?
+    var start: LanguageModelHistory
     fileprivate var states: [[PathNode]]
     fileprivate var edges: [DecodingPosition?]
 }
 
 extension Engine {
-    func cachedWords(_ cache: ConversionCache?) -> [ConvertedWord] {
-        path(cache?.states.last?.first)
-    }
-
+    /// `start` is the LM history before the first token: the sentence start, or the words committed just before.
     func convert(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, cache: inout ConversionCache?,
-                 group: Range<Int>? = nil) -> [ConvertedWord] {
-        path(decode(tokens, fixed: fixed, typo: typo, cache: &cache, group: group).first)
+                 group: Range<Int>? = nil, start: LanguageModelHistory = .init()) -> [ConvertedWord] {
+        path(decode(tokens, fixed: fixed, typo: typo, cache: &cache, group: group, start: start).first)
     }
 
-    func sentences(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, k: Int) -> [ScoredSentence] {
+    func sentences(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, k: Int,
+                   start: LanguageModelHistory = .init()) -> [ScoredSentence] {
         guard k > 0 else { return [] }
         var cache: ConversionCache?
-        let nodes = decode(tokens, fixed: fixed, typo: typo, cache: &cache, k: k)
+        let nodes = decode(tokens, fixed: fixed, typo: typo, cache: &cache, start: start, k: k)
         var seen = Set<String>()
         return nodes.compactMap { node in
             let words = path(node)
@@ -150,13 +149,14 @@ extension Engine {
     }
 
     private func decode(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance,
-                        cache: inout ConversionCache?, group: Range<Int>? = nil, k: Int = 1) -> [PathNode] {
+                        cache: inout ConversionCache?, group: Range<Int>? = nil, start: LanguageModelHistory = .init(),
+                        k: Int = 1) -> [PathNode] {
         guard !tokens.isEmpty else { return [] }
         let distinct = k > 1
         let width = max(Self.decodingBeamWidth, k)
         let revision = conversionRevision
         var reused = 0
-        if !distinct, let old = cache, old.fixed == fixed, old.typo == typo, old.revision == revision,
+        if !distinct, let old = cache, old.fixed == fixed, old.typo == typo, old.revision == revision, old.start == start,
            old.group == group || (old.group == nil && group != nil) {
             let common = zip(old.tokens, tokens).prefix { $0 == $1 }.count
             // Final-position beams include EOS scores; only reuse strictly interior positions.
@@ -175,7 +175,7 @@ extension Engine {
         }
         if reused > 0, let old = cache {
             states.replaceSubrange(0...reused, with: old.states[0...reused])
-        } else { states[0] = [PathNode(score: 0, word: nil, previous: nil, history: .init())] }
+        } else { states[0] = [PathNode(score: 0, word: nil, previous: nil, history: start)] }
         // Only words of at most six syllables can cross the reusable prefix boundary.
         for start in max(0, reused - 5)..<tokens.count where !states[start].isEmpty {
             let beam = states[start]
@@ -257,7 +257,7 @@ extension Engine {
                 }
             }
         }
-        cache = ConversionCache(tokens: tokens, fixed: fixed, typo: typo, revision: revision, group: group,
+        cache = ConversionCache(tokens: tokens, fixed: fixed, typo: typo, revision: revision, group: group, start: start,
                                 states: states, edges: edgeCache)
         return states[tokens.count]
     }
