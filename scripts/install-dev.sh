@@ -12,4 +12,4 @@ if ! "$destination/Contents/MacOS/ZhuyinType" --install; then
     echo '清單尚未出現時，請登出再登入。'
 fi
 echo '已安裝至 ~/Library/Input Methods/ZhuyinType.app。從選單列選擇「注音 ZhuyinType」，或按 Control-Space 切換（依系統快捷鍵設定）。'
-killall TextInputMenuAgent 2>/dev/null || true
+killall TextInputMenuAgent TextInputSwitcher 2>/dev/null || true
