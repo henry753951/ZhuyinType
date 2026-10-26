@@ -38,6 +38,8 @@ final class ControllerCore {
         self.isEnglish = isEnglish
     }
 
+    private var capsLock = false
+
     func update(options: ComposerOptions, shiftToggle: ShiftToggle, popupCompositionApps: [String]) {
         composer.options = options
         self.shiftToggle = shiftToggle
@@ -49,7 +51,8 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         shiftTap = nil
-        guard !rendering, !isEnglish else { return false }
+        // Caps Lock types English, every key of it, until it is released.
+        guard !rendering, !isEnglish, !modifiers.contains(.capsLock) else { return false }
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers) else {
             commit()
             return false
@@ -79,6 +82,15 @@ final class ControllerCore {
     func flagsChanged(keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
                       physicallyDown: Bool, timestamp: TimeInterval) -> Bool {
         guard !rendering else { return false }
+        if keyCode == 57 {
+            let on = modifiers.contains(.capsLock)
+            if on != capsLock {
+                capsLock = on
+                commit()
+                if !isEnglish { modeChanged?(on, client.caretRect(cursorIndex: 0)) }
+            }
+            return false
+        }
         guard keyCode == 56 || keyCode == 60 else {
             shiftTap = nil
             return false
