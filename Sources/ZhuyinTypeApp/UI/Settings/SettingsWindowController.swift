@@ -122,11 +122,12 @@ final class SettingsModel: ObservableObject {
 }
 
 enum SettingsPane: String, CaseIterable {
-    case general, candidates, phrases, learned, advanced, about
+    case general, keys, candidates, phrases, learned, advanced, about
 
     var title: String {
         switch self {
         case .general: return "一般"
+        case .keys: return "快捷鍵"
         case .candidates: return "候選字視窗"
         case .phrases: return "自訂詞"
         case .learned: return "記住的字詞"
@@ -138,6 +139,7 @@ enum SettingsPane: String, CaseIterable {
     var symbol: String {
         switch self {
         case .general: return "gearshape.fill"
+        case .keys: return "keyboard.fill"
         case .candidates: return "list.bullet.rectangle.fill"
         case .phrases: return "character.book.closed.fill"
         case .learned: return "clock.arrow.circlepath"
@@ -149,6 +151,7 @@ enum SettingsPane: String, CaseIterable {
     var tint: NSColor {
         switch self {
         case .general: return .systemGray
+        case .keys: return .systemIndigo
         case .candidates: return .systemBlue
         case .phrases: return .systemOrange
         case .learned: return .systemPurple

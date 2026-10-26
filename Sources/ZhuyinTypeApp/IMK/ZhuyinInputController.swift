@@ -242,6 +242,10 @@ final class ZhuyinInputController: IMKInputController {
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.selectZhuyin()
         }
+        CandidatePanelController.shared.onSingleCharacter = { [weak self] in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.toggleSingleCharacter()
+        }
         CandidatePanelController.shared.onCorrections = { [weak self] in
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.toggleCorrections()

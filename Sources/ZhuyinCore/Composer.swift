@@ -25,6 +25,8 @@ public final class Composer {
     private var tolerantList = false
     /// The open list is for a literal (punctuation), which has no corrections.
     private var literalList = false
+    /// The token the open list starts from (its anchor character).
+    private var listTarget = 0
     private var selectionAnchor: Int?
     private var notice: String?
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
@@ -415,10 +417,14 @@ public final class Composer {
         case .enter: return selectCandidate(at: candidateSelection)
         case .shiftDown: openCandidates(singleCharacter: !singleCharacterList, tolerant: tolerantList)
         case .escape, .backspace: closeCandidates()
-        case .up: candidateSelection = max(0, candidateSelection - 1)
-        case .down: candidateSelection = min(choices.count - 1, candidateSelection + 1)
-        case .left, .pageUp, .shiftTab: candidateSelection = max(0, page - 1) * pageSize
-        case .right, .pageDown, .tab: candidateSelection = min(pageCount - 1, page + 1) * pageSize
+        // Along the list moves the highlight; across it moves to the neighbouring character (vertical) or turns
+        // the page (horizontal).
+        case .left where options.verticalList: moveListTarget(by: -1)
+        case .right where options.verticalList: moveListTarget(by: 1)
+        case .up where !options.verticalList, .pageUp, .shiftTab: candidateSelection = max(0, page - 1) * pageSize
+        case .down where !options.verticalList, .pageDown, .tab: candidateSelection = min(pageCount - 1, page + 1) * pageSize
+        case .up, .left: candidateSelection = max(0, candidateSelection - 1)
+        case .down, .right: candidateSelection = min(choices.count - 1, candidateSelection + 1)
         case .space: candidateSelection = ((page + 1) % pageCount) * pageSize
         default:
             closeCandidates()
@@ -426,6 +432,14 @@ public final class Composer {
         }
         refresh()
         return .consumed
+    }
+
+    /// The open list moves to the previous or next character, in the same mode.
+    private func moveListTarget(by delta: Int) {
+        let target = min(tokens.count - 1, max(0, listTarget + delta))
+        guard target != listTarget else { return }
+        cursor = options.candidateAnchor == .afterCursor ? target : target + 1
+        openCandidates(singleCharacter: singleCharacterList, tolerant: tolerantList)
     }
 
     /// Text at token boundaries, including partial words and multi-character literal tokens.
@@ -480,6 +494,7 @@ public final class Composer {
         literalList = false
         let forward = cursor == 0 || (options.candidateAnchor == .afterCursor && cursor < tokens.count)
         let target = forward ? cursor : cursor - 1
+        listTarget = target
         if case .literal(let text) = tokens[target] {
             literalList = true
             choices = ZhuyinKeyboard.alternatives(for: text).map {
@@ -603,19 +618,33 @@ public final class Composer {
             boundaries.insert(focused.lowerBound)
             boundaries.insert(focused.upperBound)
         }
+        // With the cursor moved inside the composition, the character ↓ would change.
+        var targetRange: Range<Int>?
+        if focusRange == nil, !hasBuffer, cursor < tokens.count {
+            let forward = cursor == 0 || options.candidateAnchor == .afterCursor
+            let target = forward ? cursor : cursor - 1
+            let range = offsets[target]..<offsets[target + 1]
+            if !range.isEmpty {
+                targetRange = range
+                boundaries.insert(range.lowerBound)
+                boundaries.insert(range.upperBound)
+            }
+        }
         let sorted = boundaries.sorted()
         let clauses = zip(sorted, sorted.dropFirst()).compactMap { start, end in start < end ? start..<end : nil }
         if let range = selection, notice == nil { notice = "Enter 加入自訂詞：" + shown(in: range) }
         let candidates: CandidateList? = choices.isEmpty ? nil : CandidateList(
             items: choices.map { Candidate(text: $0.text, annotation: $0.annotation) }, selection: candidateSelection,
             pageSize: max(1, options.selectionKeys.count),
-            tolerant: literalList || !correctionsAvailable ? nil : tolerantList)
+            tolerant: literalList || !correctionsAvailable ? nil : tolerantList,
+            singleCharacter: singleCharacterList)
         let hint = choices.isEmpty ? nil : tokens[choices[candidateSelection].range].map(\.reading)
         let zhuyin = hint.flatMap { parts in
             parts.allSatisfy { $0 != nil } ? ZhuyinKeyboard.plain(parts.compactMap { $0 }.joined(separator: " ")) : nil
         }
         presentation = Presentation(text: text, cursor: caret, clauses: clauses,
-                                    focusedClause: focus.flatMap { clauses.firstIndex(of: $0) }, candidates: candidates,
+                                    focusedClause: focus.flatMap { clauses.firstIndex(of: $0) },
+                                    targetClause: targetRange.flatMap { clauses.firstIndex(of: $0) }, candidates: candidates,
                                     notice: notice, zhuyinHint: zhuyin)
     }
 }

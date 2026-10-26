@@ -58,12 +58,16 @@ public struct CandidateList: Equatable, Sendable {
     /// Whether the list shows typing corrections (true) or only words for the keys as typed (false); nil when the
     /// list cannot have corrections (punctuation, correction off).
     public var tolerant: Bool?
+    /// Only the one character at the target (Shift-↓), not every span from it.
+    public var singleCharacter: Bool
 
-    public init(items: [Candidate], selection: Int = 0, pageSize: Int = 9, tolerant: Bool? = nil) {
+    public init(items: [Candidate], selection: Int = 0, pageSize: Int = 9, tolerant: Bool? = nil,
+                singleCharacter: Bool = false) {
         self.items = items
         self.selection = selection
         self.pageSize = max(1, pageSize)
         self.tolerant = tolerant
+        self.singleCharacter = singleCharacter
     }
 
     public var page: Int { selection / pageSize }
@@ -81,6 +85,9 @@ public struct Presentation: Equatable, Sendable {
     public var clauses: [Range<Int>]
     /// Index into `clauses` replaced by the highlighted candidate, or selected for adding a user phrase.
     public var focusedClause: Int?
+    /// Index into `clauses` of the character ↓ would change, while the cursor is inside the composition and no list
+    /// is open: shows which side of the cursor the list is for.
+    public var targetClause: Int?
     /// The open candidate window, or nil.
     public var candidates: CandidateList?
     public var notice: String?
@@ -88,11 +95,13 @@ public struct Presentation: Equatable, Sendable {
     public var zhuyinHint: String?
 
     public init(text: String = "", cursor: Int = 0, clauses: [Range<Int>] = [], focusedClause: Int? = nil,
-                candidates: CandidateList? = nil, notice: String? = nil, zhuyinHint: String? = nil) {
+                targetClause: Int? = nil, candidates: CandidateList? = nil, notice: String? = nil,
+                zhuyinHint: String? = nil) {
         self.text = text
         self.cursor = cursor
         self.clauses = clauses
         self.focusedClause = focusedClause
+        self.targetClause = targetClause
         self.candidates = candidates
         self.notice = notice
         self.zhuyinHint = zhuyinHint
@@ -170,6 +179,9 @@ public struct ComposerOptions: Equatable, Sendable {
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     public var typoTolerance: TypoTolerance = .standard
     public var candidateAnchor: CandidateAnchor = .afterCursor
+    /// The candidate window lists top to bottom: ↑↓ move the highlight and ←→ move to the neighbouring character.
+    /// Left to right, ←→ move the highlight and ↑↓ turn pages.
+    public var verticalList: Bool = true
 
     public init() {}
 }

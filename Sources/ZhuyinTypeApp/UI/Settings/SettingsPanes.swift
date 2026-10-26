@@ -11,6 +11,7 @@ struct SettingsPaneView: View {
         Group {
             switch pane {
             case .general: GeneralPane(preferences: preferences)
+            case .keys: KeysPane(preferences: preferences)
             case .candidates: CandidatesPane(preferences: preferences)
             case .phrases: PhrasesPane(model: model)
             case .learned: LearnedPane(model: model, preferences: preferences)
@@ -48,12 +49,12 @@ private struct GeneralPane: View {
             } header: {
                 Text("按鍵")
             } footer: {
-                FooterText("↓ 列出游標處的詞與字，Shift-↓ 只列游標處的單字。Shift 加符號鍵打出中文標點，例如 Shift-句號是「。」。Option 加數字或符號鍵打出鍵上印的符號：Option-句號是「.」，Option-Shift-句號是「>」。")
+                FooterText("所有按鍵列在「快捷鍵」。")
             }
             Section {
-                Picker("選字位置", selection: binding(preferences, \.candidateAnchor)) {
-                    Text("游標後的字").tag(AnchorSetting.after)
-                    Text("游標前的字").tag(AnchorSetting.before)
+                Picker("游標在句中時改", selection: binding(preferences, \.candidateAnchor)) {
+                    Text("游標右邊的字").tag(AnchorSetting.after)
+                    Text("游標左邊的字").tag(AnchorSetting.before)
                 }
                 Picker("按錯鍵修正", selection: binding(preferences, \.typoTolerance)) {
                     Text("關閉").tag(TypoSetting.off)
@@ -64,7 +65,7 @@ private struct GeneralPane: View {
             } header: {
                 Text("選字")
             } footer: {
-                FooterText("游標在句尾時，選字一律改最後的字詞。按錯相鄰的鍵或聲調鍵時，自動找出原本要打的字；候選字視窗先列照按鍵打出的字，按住 Option 或點「⌥ 修正」列出修正的字。參考游標前約 30 個字選字，包括同一個 App 裡 10 分鐘內打的字，只在這台 Mac 上使用。")
+                FooterText("游標在句尾時改最後的字詞；在句中時，要改的字有底線。按錯相鄰的鍵或聲調時自動修正，候選字視窗只列照按鍵打出的字，修正的字按住 Option 才列出。選字參考游標前約 30 個字（包括同一個 App 裡 10 分鐘內打的字），只在這台 Mac 上使用。")
             }
             Section {
                 ForEach(Self.fuzzyPairs, id: \.label) { pair in
@@ -90,6 +91,100 @@ private struct GeneralPane: View {
                 }
                 Toggle("切換時在游標旁顯示「中」或「英」", isOn: binding(preferences, \.showModeToast))
                 Toggle("開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
+            }
+        }
+    }
+}
+
+/// Every key, most used first, in the words of what it does.  Follows the settings that change keys.
+private struct KeysPane: View {
+    @ObservedObject var preferences: Preferences
+
+    var body: some View {
+        let vertical = preferences.candidateLayout == .vertical
+        let keys = preferences.selectionKeys == .digits ? "1–9" : "A S D F…"
+        let shift: [String] = switch preferences.shiftToggle {
+        case .both: ["Shift"]
+        case .left: ["左 Shift"]
+        case .right: ["右 Shift"]
+        case .none: []
+        }
+        Form {
+            Section("打字") {
+                KeyRow("拼注音，空白是一聲", ["注音鍵"], ["6", "3", "4", "7"], joiner: "+")
+                KeyRow("送出", ["Return"])
+                KeyRow("刪掉注音符號，或游標前的字", ["⌫"])
+                KeyRow("在組字中移動游標", ["←"], ["→"], joiner: "")
+            }
+            Section {
+                KeyRow("開啟候選字", ["↓"], preferences.spaceOpensCandidates ? ["空白"] : [])
+                KeyRow("選字", [keys])
+                KeyRow("移動選取", vertical ? ["↑"] : ["←"], vertical ? ["↓"] : ["→"], joiner: "")
+                if vertical { KeyRow("改前一個或後一個字", ["←"], ["→"], joiner: "") }
+                KeyRow("翻頁", ["空白"], ["Tab"])
+                KeyRow("關閉候選字", ["Esc"])
+            } header: {
+                Text("改字")
+            } footer: {
+                FooterText("游標在句尾時改最後的字詞；在句中時改有底線的字。")
+            }
+            Section("候選字視窗的其他清單") {
+                KeyRow("只列一個字", ["⇧", "↓"])
+                KeyRow("列出按錯修正的字（放開還原）", ["按住 ⌥"])
+                KeyRow("打出注音本身", ["`"])
+            }
+            Section("其他") {
+                if !shift.isEmpty { KeyRow("中英切換", shift.map { "單按 " + $0 }) }
+                KeyRow("加入自訂詞：選取後按 Return", ["⇧", "←"], ["⇧", "→"], joiner: "")
+                KeyRow(preferences.escapeClearsComposition ? "清除組字" : "清除注音", ["Esc"])
+                KeyRow("刪掉一個詞", ["⌥", "⌫"])
+                KeyRow("送出並換行", ["⇧", "Return"])
+                KeyRow("中文標點：，。？！「」", ["⇧", "符號鍵"])
+                KeyRow("鍵上印的符號：. / ; < >", ["⌥", "數字或符號鍵"])
+                KeyRow("英文", ["Caps Lock"])
+            }
+        }
+    }
+}
+
+/// What a key does on the leading side; its keys as keycaps on the trailing side.  A second group is an alternative.
+private struct KeyRow: View {
+    let action: String
+    let keys: [String]
+    let alternative: [String]
+    /// Between the two groups: "或" for alternatives, "" for a pair such as ← →, "+" for keys used together.
+    let joiner: String
+    init(_ action: String, _ keys: [String], _ alternative: [String] = [], joiner: String = "或") {
+        self.action = action
+        self.keys = keys
+        self.alternative = alternative
+        self.joiner = joiner
+    }
+    var body: some View {
+        LabeledContent(action) {
+            HStack(spacing: 6) {
+                KeyCombo(keys: keys)
+                if !alternative.isEmpty {
+                    if !joiner.isEmpty { Text(joiner).foregroundStyle(.tertiary) }
+                    KeyCombo(keys: alternative)
+                }
+            }
+        }
+    }
+}
+
+private struct KeyCombo: View {
+    let keys: [String]
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(keys, id: \.self) { key in
+                Text(key)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .frame(minWidth: 22, minHeight: 20)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.6)))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.quaternary, lineWidth: 0.5))
             }
         }
     }

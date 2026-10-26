@@ -195,6 +195,22 @@ enum ControllerCoreSelfTest {
             core.commit()
             try expect(client.inserts.last?.hasSuffix(picked) == true, "Option-2 did not pick \(picked): \(client.inserts)")
         }
+        test("the character ↓ would change is underlined once the cursor moves into the composition") {
+            let (core, client) = session()
+            type("ji3ap7g4", into: core)
+            _ = core.handle(.left)
+            guard let mark = client.marks.last, let target = core.composer.presentation.targetClause else {
+                throw Failure(description: "no target after ←")
+            }
+            let range = core.composer.presentation.clauses[target]
+            let attributes = mark.attributes(at: range.lowerBound, effectiveRange: nil)
+            try expect(mark.attributedSubstring(from: NSRange(location: range.lowerBound, length: range.count)).string == "是",
+                       "target is not the character right of the cursor")
+            try expect(attributes[.underlineStyle] as? Int == NSUnderlineStyle.thick.rawValue
+                       && attributes[.underlineColor] != nil, "target is not marked with the accent underline")
+            _ = core.handle(.end)
+            try expect(core.composer.presentation.targetClause == nil, "target still marked at the end")
+        }
         test("Shift-Down opens the single-character list") {
             try expect(KeyMapping.input(keyCode: 125, modifiers: .shift) == .shiftDown, "Shift-↓ mapping")
             try expect(KeyMapping.input(keyCode: 125, modifiers: []) == .down, "↓ mapping")

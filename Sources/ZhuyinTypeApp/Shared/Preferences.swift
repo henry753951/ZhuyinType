@@ -158,6 +158,7 @@ final class Preferences: ObservableObject {
         o.learningEnabled = learningEnabled
         o.typoTolerance = typoTolerance.tolerance
         o.candidateAnchor = candidateAnchor == .after ? .afterCursor : .beforeCursor
+        o.verticalList = candidateLayout == .vertical
         return o
     }
 }

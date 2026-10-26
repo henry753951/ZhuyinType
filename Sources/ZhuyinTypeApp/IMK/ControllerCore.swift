@@ -29,6 +29,7 @@ final class ControllerCore {
         var cursor: Int
         var clauses: [Range<Int>]
         var focus: Int?
+        var target: Int?
     }
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
@@ -148,6 +149,12 @@ final class ControllerCore {
         let visible = composer.presentation.text
         let result = composer.selectCandidate(at: index)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+    }
+
+    /// The candidate window switches between every span from the target and its single character (Shift-↓).
+    func toggleSingleCharacter() {
+        guard !rendering, composer.presentation.candidates != nil else { return }
+        _ = handle(.shiftDown)
     }
 
     /// The candidate window switches between words for the keys as typed and typing corrections.
@@ -281,7 +288,8 @@ final class ControllerCore {
         if popup || p.text.isEmpty {
             clearMark()
         } else {
-            let mark = Mark(text: p.text, cursor: p.cursor, clauses: p.clauses, focus: p.focusedClause)
+            let mark = Mark(text: p.text, cursor: p.cursor, clauses: p.clauses, focus: p.focusedClause,
+                            target: p.targetClause)
             if mark != lastMark {
                 let text = NSMutableAttributedString(string: p.text)
                 for (index, range) in p.clauses.enumerated() {
@@ -295,6 +303,11 @@ final class ControllerCore {
                         attributes[.underlineStyle] = NSUnderlineStyle.thick.rawValue
                         attributes[.underlineColor] = NSColor.controlAccentColor
                         attributes[.backgroundColor] = NSColor.controlAccentColor.withAlphaComponent(0.18)
+                    } else if p.targetClause == index {
+                        // The character ↓ would change, with the cursor inside the composition: the same accent
+                        // underline without the wash, so the side of the cursor is visible before the list opens.
+                        attributes[.underlineStyle] = NSUnderlineStyle.thick.rawValue
+                        attributes[.underlineColor] = NSColor.controlAccentColor
                     }
                     text.addAttributes(attributes, range: NSRange(location: range.lowerBound, length: range.count))
                 }

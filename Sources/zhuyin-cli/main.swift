@@ -175,12 +175,16 @@ do {
         let p = composer.presentation
         let string = p.text as NSString
         let focus = p.focusedClause.map { p.clauses[$0] }
+        let target = p.targetClause.map { p.clauses[$0] }
         var display = ""
-        let cuts = Set([0, p.cursor, string.length] + (focus.map { [$0.lowerBound, $0.upperBound] } ?? [])).sorted()
+        let cuts = Set([0, p.cursor, string.length] + (focus.map { [$0.lowerBound, $0.upperBound] } ?? [])
+                       + (target.map { [$0.lowerBound, $0.upperBound] } ?? [])).sorted()
         for (index, offset) in cuts.enumerated() {
             if offset == focus?.upperBound { display += "]" }
+            if offset == target?.upperBound { display += "⟩" }
             if offset == focus?.lowerBound { display += "[" }
             if offset == p.cursor { display += "|" }
+            if offset == target?.lowerBound { display += "⟨" }
             if index + 1 < cuts.count {
                 display += string.substring(with: NSRange(location: offset, length: cuts[index + 1] - offset))
             }
