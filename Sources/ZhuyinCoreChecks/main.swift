@@ -55,7 +55,8 @@ let tiny = """
 func type(_ keys: String, into composer: Composer) {
     for character in keys { _ = composer.handle(character == " " ? .space : .char(character)) }
 }
-func composer(_ engine: Engine, _ keys: String = "", options: ComposerOptions = ComposerOptions()) -> Composer {
+var legacyOptions = ComposerOptions(); legacyOptions.typoTolerance = .off
+func composer(_ engine: Engine, _ keys: String = "", options: ComposerOptions = legacyOptions) -> Composer {
     let result = Composer(engine: engine, options: options)
     type(keys, into: result)
     return result
@@ -151,7 +152,7 @@ let exactPreferred = try Engine(lexiconText: "ㄅㄚ\t甲\t-5\nㄅㄚ˙\t甲\t0\
 let exactChoice = composer(exactPreferred, "18 ")
 check(exactChoice.presentation.text == "乙", "exact same-word entry wins over a higher scoring tolerant entry")
 _ = exactChoice.handle(.down)
-check(exactChoice.presentation.candidates?.items.map(\.text) == ["乙", "甲"], "same-word exact wins and candidates deduplicate")
+check(exactChoice.presentation.candidates?.items.map(\.text) == ["乙", "甲", "ㄅㄚ"], "same-word exact wins and candidates deduplicate")
 let tolerantPick = composer(phraseOnly, "vu,4vu,4")
 _ = tolerantPick.handle(.down)
 check(tolerantPick.presentation.candidates?.items.first?.text == "謝謝", "tolerant phrase offered at end cursor")
@@ -166,7 +167,7 @@ check(!phraseOnly.learnedEntries().contains { $0.reading.contains("˙") }, "lear
 let endWords = try Engine(lexiconText: "ㄏㄣˇ\t很\t-2\nㄏㄠˇ\t好\t-2\nㄏㄠˇ\t郝\t-3\nㄏㄣˇ ㄏㄠˇ\t很好\t-1\n")
 let endCandidates = composer(endWords, "cp3cl3")
 _ = endCandidates.handle(.down)
-check(endCandidates.presentation.candidates?.items.map(\.text) == ["很好", "好", "郝"], "end cursor offers phrase before final syllable")
+check(endCandidates.presentation.candidates?.items.map(\.text) == ["很好", "好", "郝", "ㄏㄠˇ"], "end cursor offers phrase before final syllable")
 
 // Backspace edits one symbol/token; option-delete edits a converted word, including from its interior.
 let deletion = composer(engine, "1u0")
@@ -224,7 +225,7 @@ for key: KeyInput in [.up, .pageUp, .pageDown, .tab, .shiftTab] {
 }
 
 // Literal mappings begin composition, flush valid first tone, and discard invalid first tone.
-let plainPunctuation: [(Character, String)] = [("[", "「"), ("]", "」"), ("'", "、"), ("\\", "＼"), ("=", "＝"), ("`", "‵")]
+let plainPunctuation: [(Character, String)] = [("[", "「"), ("]", "」"), ("'", "、"), ("\\", "＼"), ("=", "＝")]
 let shiftedPunctuation: [(Character, String)] = [(",", "，"), (".", "。"), ("/", "？"), (";", "："), ("'", "；"),
     ("1", "！"), ("2", "＠"), ("3", "＃"), ("4", "＄"), ("5", "％"), ("6", "…"), ("7", "＆"),
     ("8", "＊"), ("9", "（"), ("0", "）"), ("-", "——"), ("=", "＋"), ("[", "『"), ("]", "』"), ("\\", "｜"), ("`", "～")]
@@ -275,7 +276,7 @@ var noEscape = ComposerOptions(); noEscape.escapeClearsComposition = false
 let kept = composer(engine, "18 ", options: noEscape)
 _ = kept.handle(.escape)
 check(kept.presentation.text == "八", "escape option retains composition")
-var limitedOptions = ComposerOptions(); limitedOptions.maxSyllables = 2
+var limitedOptions = legacyOptions; limitedOptions.maxSyllables = 2
 let limited = composer(engine, "18 q8 a8", options: limitedOptions)
 check(limited.presentation.text == "八趴", "maxSyllables refuses new symbols")
 check(limited.handle(.char("6")) == .consumed && limited.presentation.text == "八趴", "tone at limit empty ignored")
@@ -286,14 +287,14 @@ type("a8 ", into: limited)
 check(limited.presentation.text == "八媽", "deleting a syllable restores capacity")
 
 // Candidate ordering, selection keys, paging, clamping and normal processing after dismissal.
-var twoKeys = ComposerOptions(); twoKeys.selectionKeys = Array("as")
+var twoKeys = legacyOptions; twoKeys.selectionKeys = Array("as")
 let candidates = composer(engine, "18 q8 ", options: twoKeys)
 _ = candidates.handle(.space)
-check(candidates.presentation.candidates?.items.prefix(2).map(\.text) == ["八趴", "巴趴"], "current first, longer spans before singles")
+check(candidates.presentation.candidates?.items.filter { $0.text != "ㄆㄚ" }.prefix(2).map(\.text) == ["八趴", "巴趴"], "current first, longer spans before singles")
 check(candidates.presentation.candidates?.items.last?.text == "趴", "short span after long spans")
 check(candidates.presentation.focusedClause == 0, "focused converted word")
 validPresentation(candidates, "candidate window")
-_ = candidates.handle(.char("s"))
+_ = candidates.selectCandidate(at: candidates.presentation.candidates!.items.firstIndex { $0.text == "巴趴" }!)
 check(candidates.presentation.text == "巴趴" && candidates.presentation.candidates == nil && candidates.presentation.cursor == 2, "selection key picks and fixes, cursor unchanged")
 _ = candidates.handle(.space)
 check(candidates.presentation.candidates?.items.first?.text == "巴趴", "fixed current first despite lower score")
@@ -535,7 +536,7 @@ let neutralLM = try Engine(lexiconText: "ㄅㄚ\t八\t-2\nㄅㄚ˙\t巴\t-9\n", 
 let neutralLMChoice = composer(neutralLM, "187")
 check(neutralLMChoice.presentation.text == "巴", "neutral penalty is subtracted after bigram scoring")
 _ = neutralLMChoice.handle(.down)
-check(neutralLMChoice.presentation.candidates?.items.map(\.text) == ["巴", "八"], "candidate scoring retains penalty with bigram model")
+check(neutralLMChoice.presentation.candidates?.items.map(\.text) == ["巴", "八", "˙ㄅㄚ"], "candidate scoring retains penalty with bigram model")
 let lexiconURL = temp.appendingPathComponent("lexicon.tsv")
 try Data(lmLexicon.utf8).write(to: lexiconURL)
 let discoveredLM = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
@@ -747,6 +748,143 @@ let mixed: [KeyInput] = [.char("1"), .char("8"), .space, .char("q"), .char("8"),
     .shiftedChar("-"), .end, .backspace, .optionBackspace, .escape, .shiftSpace]
 for _ in 0..<4 { for key in mixed { _ = stress.handle(key); validPresentation(stress, "mixed editing") } }
 
+// Keyboard channel: physical geometry, bounded edits, dictionary validity and cached results.
+check(ComposerOptions().typoTolerance == .standard, "standard typo tolerance is the public default")
+for row in ["1234567890-=", "qwertyuiop[]", "asdfghjkl;'", "zxcvbnm,./"] {
+    for key in row {
+        for neighbour in KeyChannel.neighbours(of: key) {
+            check(KeyChannel.neighbours(of: neighbour).contains(key), "symmetric neighbours \(key)/\(neighbour)")
+        }
+    }
+}
+check(Set("2qea s".filter { $0 != " " }).isSubset(of: Set(KeyChannel.neighbours(of: "w"))), "staggered w neighbours")
+check(Set("23as").isSubset(of: Set(KeyChannel.neighbours(of: "w"))), "w straddles 2/3 above and a/s below")
+check(KeyChannel.neighbours(of: "3").contains("4") && KeyChannel.neighbours(of: "6").contains("7"), "adjacent tone pairs")
+check(!KeyChannel.neighbours(of: "4").contains("6"), "4 and 6 are separated by 5")
+check(KeyChannel.neighbours(of: "e").contains("w") && KeyChannel.neighbours(of: "a").contains("z"), "ordinary and staggered neighbours")
+let channelFixture = try Engine(lexiconText: "ㄊㄜˋ\t特\t-2\nㄊㄜˇ\t忑\t-2\nㄅㄧˇ\t筆\t-2\nㄊㄧㄢˇ\t舔\t-2\n")
+let toneAlternatives = channelFixture.typoAlternatives(for: "wk3")
+check(toneAlternatives.contains { $0.reading == "ㄊㄜˋ" }, "3/4 tone alternative")
+check(toneAlternatives.count <= 8 && zip(toneAlternatives, toneAlternatives.dropFirst()).allSatisfy { $0.cost <= $1.cost }, "eight cheapest sorted alternatives")
+check(channelFixture.typoAlternatives(for: "13u").contains { $0.reading == "ㄅㄧˇ" }, "adjacent transposition reparsed")
+check(channelFixture.typoAlternatives(for: "1u03").contains { $0.reading == "ㄅㄧˇ" }, "extra typed key deleted")
+check(channelFixture.typoAlternatives(for: "u3").contains { $0.reading == "ㄅㄧˇ" }, "missing key inserted")
+check(channelFixture.typoAlternatives(for: "su04").contains { $0.reading == "ㄊㄧㄢˇ" }, "four keys allow two edits")
+check(!channelFixture.typoAlternatives(for: "sk4").contains { $0.reading == "ㄊㄜˇ" }, "three keys forbid two edits")
+let invalidTypoEngine = try Engine(lexiconText: "ㄊㄜˋ\t特\t-2\n")
+let acceptedTypo = composer(invalidTypoEngine, "ek4", options: ComposerOptions())
+check(acceptedTypo.presentation.text == "特", "invalid exact syllable accepted via neighbour alternative")
+_ = acceptedTypo.handle(.down)
+check(acceptedTypo.presentation.candidates?.items.first { $0.text == "特" }?.annotation == "ㄊㄜˋ", "corrected candidate annotates actual reading")
+_ = acceptedTypo.selectCandidate(at: acceptedTypo.presentation.candidates!.items.firstIndex { $0.text == "特" }!)
+check(invalidTypoEngine.learnedEntries().contains { $0.reading == "ㄍㄜˋ" && $0.word == "特" }, "correction learns typed reading")
+check(acceptedTypo.commitAll() == "特", "picked correction fixed and committed")
+let recalledTypo = composer(invalidTypoEngine, "ek4", options: ComposerOptions())
+check(recalledTypo.presentation.text == "特", "repeat typed error recalls learned word directly")
+_ = recalledTypo.handle(.down)
+check(recalledTypo.presentation.candidates?.items.first { $0.text == "特" }?.annotation == nil, "learned typed reading no longer needs channel correction")
+invalidTypoEngine.forgetAllLearned()
+check(composer(invalidTypoEngine, "ek4").presentation.text == "ㄍㄜ", "off disables invalid acceptance")
+let tieTypo = try Engine(lexiconText: "ㄊㄜˇ\t甲\t-2\nㄊㄜˋ\t乙\t-2\n")
+check(composer(tieTypo, "wk3", options: ComposerOptions()).presentation.text == "甲", "exact beats corrected when LM scores tie")
+let toneCost = toneAlternatives.first { $0.reading == "ㄊㄜˋ" }!.cost
+let strengthFixture = try Engine(lexiconText: "ㄊㄜˇ\t甲\t\(-toneCost * 0.85)\nㄊㄜˋ\t乙\t0\n")
+var scaledOptions = ComposerOptions(); scaledOptions.typoTolerance = .aggressive
+check(composer(strengthFixture, "wk3", options: ComposerOptions()).presentation.text == "甲", "standard channel cost resists weaker evidence")
+check(composer(strengthFixture, "wk3", options: scaledOptions).presentation.text == "乙", "aggressive applies the 0.7 cost multiplier")
+let provenanceFixture = try Engine(lexiconText: "ㄊㄢˇ\t坦\t-2\n")
+check(composer(provenanceFixture, "we04", options: ComposerOptions()).presentation.text == "坦", "token retains overwritten raw keys and its tone for two-edit recovery")
+let contextDirectory = temp.appendingPathComponent("typo-context")
+try FileManager.default.createDirectory(at: contextDirectory, withIntermediateDirectories: true)
+try Data("八\t-2\n各\t-2\n特\t-2\n</s>\t0\n".utf8).write(to: contextDirectory.appendingPathComponent("unigram.tsv"))
+try Data("<s>\t八\t0\n<s>\t各\t0\n<s>\t特\t0\n八\t各\t-1000\n八\t特\t0\n".utf8).write(to: contextDirectory.appendingPathComponent("bigram.tsv"))
+try Data().write(to: contextDirectory.appendingPathComponent("backoff.tsv"))
+let contextTypo = try Engine(lexiconText: "ㄅㄚ\t八\t-2\nㄍㄜˋ\t各\t-2\nㄊㄜˋ\t特\t-2\n", languageModelDirectory: contextDirectory)
+check(composer(contextTypo, "ek4", options: ComposerOptions()).presentation.text == "各", "equal context retains exact reading")
+check(composer(contextTypo, "18 ek4", options: ComposerOptions()).presentation.text == "八特", "far likelier context overcomes neighbour cost")
+check(composer(contextTypo, "18 ek4").presentation.text == "八各", "off disables corrected conversion")
+var aggressiveOptions = ComposerOptions(); aggressiveOptions.typoTolerance = .aggressive
+check(composer(contextTypo, "18 ek4", options: aggressiveOptions).presentation.text == "八特", "aggressive uses correction path")
+let liveTypoOption = composer(contextTypo, "18 ek4", options: ComposerOptions())
+liveTypoOption.options.typoTolerance = .off
+_ = liveTypoOption.handle(.left)
+check(liveTypoOption.presentation.text == "八各", "changing typo option invalidates live conversion")
+
+// Explicit correction recall beats even a much more frequent exact word, and survives disk reload.
+let recallDirectory = temp.appendingPathComponent("typo-recall")
+let recallLexicon = "ㄊㄜˇ\t甲\t0\nㄊㄜˋ\t乙\t-100\n"
+let recallEngine = try Engine(lexiconText: recallLexicon, userDataDirectory: recallDirectory)
+let recallPick = composer(recallEngine, "wk3", options: ComposerOptions())
+_ = recallPick.handle(.down)
+_ = recallPick.selectCandidate(at: recallPick.presentation.candidates!.items.firstIndex { $0.text == "乙" }!)
+_ = recallPick.commitAll()
+check(composer(recallEngine, "wk3", options: ComposerOptions()).presentation.text == "乙", "explicit typo recall outranks a much more frequent exact word")
+var reloadedRecall: Engine?
+let recallDeadline = Date().addingTimeInterval(3)
+while Date() < recallDeadline {
+    let loaded = try Engine(lexiconText: recallLexicon, userDataDirectory: recallDirectory)
+    if !loaded.learnedEntries().isEmpty { reloadedRecall = loaded; break }
+    Thread.sleep(forTimeInterval: 0.02)
+}
+check(reloadedRecall.map { composer($0, "wk3", options: ComposerOptions()).presentation.text == "乙" } ?? false,
+      "corrected typed-reading recall persists")
+recallEngine.forgetAllLearned()
+check(composer(recallEngine, "wk3", options: ComposerOptions()).presentation.text == "甲", "forget invalidates corrected-reading recall")
+
+// At most one corrected token for short words; two for longer words.
+for (length, allowed) in [(3, false), (4, true), (6, true)] {
+    let reading = Array(repeating: "ㄊㄜˋ", count: length).joined(separator: " ")
+    let word = String(repeating: "特", count: length)
+    let e = try Engine(lexiconText: "ㄍㄜˋ\t各\t-100\nㄊㄜˋ\t特\t-100\n\(reading)\t\(word)\t1000\n")
+    let c = composer(e, "ek4ek4" + String(repeating: "wk4", count: length - 2), options: ComposerOptions())
+    _ = c.handle(.down)
+    check((c.presentation.candidates?.items.contains { $0.text == word && $0.annotation != nil } ?? false) == allowed,
+          "\(length)-token span correction budget")
+}
+
+// Backtick emits plain symbols, preserving standard tone placement and editing bounds.
+let plainEmpty = composer(engine)
+check(plainEmpty.handle(.char("`")) == .passThrough, "empty backtick passes through")
+let plainBuffer = composer(engine, "su")
+check(plainBuffer.handle(.char("`")) == .consumed && plainBuffer.presentation.text == "ㄋㄧ", "backtick literalises unfinished buffer")
+_ = plainBuffer.handle(.backspace)
+check(!plainBuffer.isComposing, "plain buffer is a single literal token")
+for (keys, plain) in [("18 ", "ㄅㄚ"), ("186", "ㄅㄚˊ"), ("183", "ㄅㄚˇ"), ("184", "ㄅㄚˋ"), ("187", "˙ㄅㄚ")] {
+    let c = composer(engine, keys)
+    _ = c.handle(.char("`"))
+    check(c.presentation.text == plain, "backtick standard plain formatting \(keys)")
+    validPresentation(c, "plain previous syllable")
+}
+let plainMiddle = composer(engine, "18 q8 ")
+_ = plainMiddle.handle(.left); _ = plainMiddle.handle(.char("`"))
+check(plainMiddle.presentation.text == "ㄅㄚ趴" && plainMiddle.presentation.cursor == 2, "backtick replaces token before interior cursor")
+for size in [0, 1, 2, 9, 30] {
+    var opts = legacyOptions; opts.selectionKeys = Array("123456789abcdefghijklmnopqrstu".prefix(size))
+    let c = composer(engine, "18 ", options: opts)
+    _ = c.handle(.down)
+    let list = c.presentation.candidates!
+    let index = min(list.items.count - 1, max(1, size) - 1)
+    check(list.items[index].text == "ㄅㄚ", "plain candidate last on first page of size \(size)")
+    _ = c.selectCandidate(at: index)
+    check(c.presentation.text == "ㄅㄚ", "selecting plain candidate fixes literal")
+}
+
+// Compare every incremental edit with a forced full decode, including EOS/history and word-boundary edits.
+let incrementalScript = "18 q8 a8 18 q8 a8 18 q8 a8 ".map { $0 == " " ? KeyInput.space : .char($0) }
+    + [.left, .left, .backspace, .char("1"), .char("8"), .space, .home, .forwardDelete,
+       .end, .backspace, .shiftedChar(","), .char("1"), .char("8"), .space, .char("e"), .char("k"), .char("4"), .char("`"), .backspace]
+for model in [sixEngine, contextTypo, trigramEngine] {
+    var opts = ComposerOptions(); opts.learningEnabled = false
+    let c = composer(model, options: opts)
+    for key in incrementalScript {
+        _ = c.handle(key)
+        let incremental = c.presentation
+        model.forgetLearned(word: "__full_decode_check__", reading: "ㄦ")
+        _ = c.handle(.up)
+        check(c.presentation == incremental, "incremental/full decode equivalence after \(key)")
+    }
+}
+
 // Real lexicon regression checks and release-mode latency measurement.
 let realURL = URL(fileURLWithPath: "data/build/lexicon.tsv")
 if FileManager.default.fileExists(atPath: realURL.path) {
@@ -773,7 +911,7 @@ if FileManager.default.fileExists(atPath: realURL.path) {
         conversions.append((word, reading.map(keysForReading) ?? ""))
     }
     for (word, keys) in conversions {
-        let actual = composer(real, keys).presentation.text
+        let actual = composer(real, keys, options: ComposerOptions()).presentation.text
         print("REAL \(word) → \(actual) [\(keys)]")
         check(actual == word, "real conversion \(word) [\(keys)]")
     }
@@ -782,7 +920,7 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     let hasVeryGood = try String(contentsOf: realURL, encoding: .utf8).split(separator: "\n")
         .contains { $0.hasPrefix("ㄏㄣˇ ㄏㄠˇ\t很好\t") }
     if hasVeryGood {
-        check(realEnd.presentation.candidates?.items.prefix(3).map(\.text) == ["很好", "好", "郝"], "real end-cursor phrase candidates")
+        check(realEnd.presentation.candidates?.items.prefix(3).map(\.text) == ["很好", "好", "郝", "ㄏㄠˇ"], "real end-cursor phrase candidates")
     } else {
         print("WARNING 很好 has no word entry in the real lexicon; conversion uses 很 + 好 (fixture checks phrase-first candidates)")
         check(realEnd.presentation.candidates?.items.prefix(2).map(\.text) == ["好", "郝"], "real end-cursor singles when phrase is absent")
@@ -790,12 +928,30 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     let realPhraseEnd = composer(real, "vu,4vu,4")
     _ = realPhraseEnd.handle(.down)
     check(realPhraseEnd.presentation.candidates?.items.first?.text == "謝謝", "real tolerant multi-syllable candidate at end cursor")
-    func measureLatency(_ model: Engine, name: String) {
+    // Previously unseen syllables at the 40-token limit exercise cold channel/span caches too.
+    let coldReadings = Array(Set(try String(contentsOf: realURL, encoding: .utf8).split(separator: "\n").compactMap { line -> String? in
+        let fields = line.split(separator: "\t")
+        return fields.count == 3 && !fields[0].contains(" ") && !line.hasPrefix("#") ? String(fields[0]) : nil
+    })).sorted()
+    let cold = composer(real, String(repeating: "wu0 ", count: 40), options: ComposerOptions())
+    var coldSamples: [Double] = []
+    for reading in coldReadings.enumerated().filter({ $0.offset % 37 == 0 }).prefix(80).map(\.element) {
+        for character in keysForReading(reading) {
+            let ms = timed { _ = cold.handle(character == " " ? .space : .char(character)) }.1
+            coldSamples.append(ms)
+        }
+        _ = cold.handle(.backspace)
+    }
+    let coldOrdered = coldSamples.sorted()
+    print(String(format: "TIMING cold channel on 40 syllables: median %.3f ms, p95 %.3f ms, max %.3f ms", coldOrdered[coldOrdered.count / 2], coldOrdered[Int(Double(coldOrdered.count - 1) * 0.95)], coldOrdered.last!))
+    check(coldOrdered.last! < 3, "cold channel at 40 syllables under 3 ms")
+    func measureLatency(_ model: Engine, name: String, typo: TypoTolerance = .standard) {
         for (label, keys, nextKeys) in [
             ("first-tone", String(repeating: "wu0 ", count: 40), "wu0 "),
             ("neutral-tolerant", String(repeating: "vu,4vu,4", count: 20), "vu,4"),
         ] {
-            let long = composer(model, keys)
+            var options = ComposerOptions(); options.typoTolerance = typo
+            let long = composer(model, keys, options: options)
             var samples: [Double] = []
             for _ in 0..<100 {
                 samples.append(timed { _ = long.handle(.left) }.1)
@@ -812,6 +968,7 @@ if FileManager.default.fileExists(atPath: realURL.path) {
         }
     }
     measureLatency(real, name: "discovered LM")
+    measureLatency(real, name: "discovered LM aggressive", typo: .aggressive)
     let benchmarkDirectory = temp.appendingPathComponent("150MB")
     try FileManager.default.createDirectory(at: benchmarkDirectory, withIntermediateDirectories: true)
     let realText = try String(contentsOf: realURL, encoding: .utf8)
@@ -832,6 +989,7 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     }
     print(String(format: "TIMING 150 MB synthetic LM complete Engine init: %.3f ms", fullBinaryMS))
     measureLatency(largeEngine, name: "150 MB synthetic trigram")
+    measureLatency(largeEngine, name: "150 MB synthetic trigram aggressive", typo: .aggressive)
     let candidateDirectory = URL(fileURLWithPath: "data/build/lm2")
     if FileManager.default.fileExists(atPath: candidateDirectory.appendingPathComponent("lm.bin").path) {
         let candidateLexicon = candidateDirectory.appendingPathComponent("lexicon.tsv")

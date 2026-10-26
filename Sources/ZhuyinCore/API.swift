@@ -86,6 +86,12 @@ public struct Presentation: Equatable, Sendable {
     public var isEmpty: Bool { text.isEmpty && candidates == nil }
 }
 
+/// Strength of the physical-keyboard error channel. Neutral-tone matching is independent.
+public enum TypoTolerance: String, Sendable, CaseIterable {
+    case off, standard, aggressive
+    var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
+}
+
 public struct ComposerOptions: Equatable, Sendable {
     /// Keys that pick candidates 1..n on the current page.  Also sets the page size.
     public var selectionKeys: [Character] = Array("123456789")
@@ -97,6 +103,8 @@ public struct ComposerOptions: Equatable, Sendable {
     public var learningEnabled: Bool = true
     /// Longest composition, in syllables; further Zhuyin keys are refused (the key is consumed, nothing changes).
     public var maxSyllables: Int = 60
+    /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
+    public var typoTolerance: TypoTolerance = .standard
 
     public init() {}
 }

@@ -1,13 +1,17 @@
 import Foundation
 
 public final class Composer {
-    public var options: ComposerOptions
+    public var options: ComposerOptions {
+        didSet { if options.typoTolerance != oldValue.typoTolerance { conversionDirty = true; closeCandidates() } }
+    }
     private let engine: Engine
     private var tokens: [CompositionToken] = []
     private var cursor = 0
     private var buffer: [Character?] = [nil, nil, nil]
+    private var bufferKeys = ""
     private var fixed: [FixedWord] = []
     private var conversion: [ConvertedWord] = []
+    private var conversionCache: ConversionCache?
     private var conversionDirty = true
     private var conversionRevision: UInt64 = 0
     private var choices: [FixedWord] = []
@@ -27,7 +31,19 @@ public final class Composer {
     public func handle(_ key: KeyInput) -> KeyResult {
         if !choices.isEmpty, let result = handleCandidateKey(key) { return result }
         let result: KeyResult
-        if let literal = ZhuyinKeyboard.literal(for: key) {
+        if key == .char("`") {
+            if hasBuffer {
+                let text = bufferText
+                clearBuffer()
+                insert(.literal(text))
+                result = .consumed
+            } else if cursor > 0, let reading = tokens[cursor - 1].reading {
+                let target = cursor - 1
+                delete(target..<cursor)
+                insert(.literal(ZhuyinKeyboard.plain(reading)))
+                result = .consumed
+            } else { result = hasComposition ? .consumed : .passThrough }
+        } else if let literal = ZhuyinKeyboard.literal(for: key) {
             finishBuffer(droppingInvalid: true)
             insert(.literal(literal))
             result = .consumed
@@ -36,10 +52,10 @@ public final class Composer {
             case .char(let character):
                 if let symbol = ZhuyinKeyboard.symbols[character], let slot = ZhuyinKeyboard.slot(of: symbol) {
                     let syllableCount = tokens.reduce(0) { $0 + ($1.reading == nil ? 0 : 1) }
-                    if syllableCount < options.maxSyllables { buffer[slot] = symbol }
+                    if syllableCount < options.maxSyllables { buffer[slot] = symbol; bufferKeys.append(character) }
                     result = .consumed
                 } else if let tone = ZhuyinKeyboard.tones[character] {
-                    finishBuffer(tone: tone)
+                    finishBuffer(tone: tone, toneKey: character)
                     result = .consumed
                 } else { result = .passThrough }
             case .space:
@@ -59,7 +75,10 @@ public final class Composer {
                 return KeyResult(handled: key == .enter, commit: commitAll())
             case .backspace:
                 if hasBuffer {
-                    if let last = buffer.lastIndex(where: { $0 != nil }) { buffer[last] = nil }
+                    if let last = buffer.lastIndex(where: { $0 != nil }) {
+                        buffer[last] = nil
+                        bufferKeys.removeAll { ZhuyinKeyboard.symbols[$0].flatMap(ZhuyinKeyboard.slot) == last }
+                    }
                     result = .consumed
                 } else if cursor > 0 { delete((cursor - 1)..<cursor); result = .consumed }
                 else { result = hasComposition ? .consumed : .passThrough }
@@ -130,19 +149,21 @@ public final class Composer {
         clearBuffer()
         fixed.removeAll()
         conversion.removeAll()
+        conversionCache = nil
         conversionDirty = true
         closeCandidates()
         presentation = .empty
     }
 
-    private func clearBuffer() { buffer = [nil, nil, nil] }
+    private func clearBuffer() { buffer = [nil, nil, nil]; bufferKeys = "" }
 
     @discardableResult
-    private func finishBuffer(tone: String = "", droppingInvalid: Bool = false) -> Bool {
+    private func finishBuffer(tone: String = "", toneKey: Character = " ", droppingInvalid: Bool = false) -> Bool {
         guard hasBuffer else { return false }
         let reading = bufferText + tone
-        if engine.isValidSyllable(reading) {
-            insert(.syllable(reading))
+        let keys = bufferKeys + String(toneKey)
+        if engine.isValidSyllable(reading) || (options.typoTolerance != .off && !engine.alternatives(for: keys).isEmpty) {
+            insert(.syllable(reading, keys: keys))
             clearBuffer()
             return true
         }
@@ -225,9 +246,11 @@ public final class Composer {
                 history = word.reading.isEmpty ? .init()
                     : history.appending(word.wordID, order: engine.languageModel.order)
             }
-            for entry in engine.entries(for: reading) {
-                ranked.append((FixedWord(range: start..<end, text: entry.word, reading: reading, wordID: entry.wordID),
-                               engine.score(entry, reading: reading, history: history)))
+            for match in engine.matches(tokens, start: start, typo: options.typoTolerance) where match.range.upperBound == end {
+                let entry = match.entry
+                ranked.append((FixedWord(range: start..<end, text: entry.word, reading: reading,
+                    wordID: entry.wordID, annotation: match.annotation),
+                    engine.score(entry, reading: reading, history: history)))
             }
         }
         if currentWord == nil {
@@ -253,13 +276,19 @@ public final class Composer {
         }
         var seen = Set<String>()
         choices = ranked.compactMap { seen.insert($0.0.text).inserted ? $0.0 : nil }
+        if let reading = tokens[target].reading {
+            let plain = ZhuyinKeyboard.plain(reading)
+            choices.removeAll { $0.text == plain && $0.range == target..<(target + 1) }
+            choices.insert(FixedWord(range: target..<(target + 1), text: plain, reading: ""),
+                           at: min(choices.count, max(1, options.selectionKeys.count) - 1))
+        }
         candidateSelection = 0
     }
 
     private func refresh() {
         let revision = engine.conversionRevision
         if conversionDirty || conversionRevision != revision {
-            conversion = engine.convert(tokens, fixed: fixed)
+            conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache)
             conversionDirty = false
             conversionRevision = revision
         }
@@ -303,7 +332,7 @@ public final class Composer {
         }
         if !insertedBuffer { appendBuffer() }
         let candidates: CandidateList? = choices.isEmpty ? nil : CandidateList(
-            items: choices.map { Candidate(text: $0.text) }, selection: candidateSelection,
+            items: choices.map { Candidate(text: $0.text, annotation: $0.annotation) }, selection: candidateSelection,
             pageSize: max(1, options.selectionKeys.count))
         presentation = Presentation(text: text, cursor: caret, clauses: clauses, focusedClause: focused, candidates: candidates)
     }

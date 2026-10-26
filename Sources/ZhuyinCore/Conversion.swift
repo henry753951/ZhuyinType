@@ -1,9 +1,9 @@
 import Foundation
 
-enum CompositionToken {
-    case syllable(String)
+enum CompositionToken: Equatable {
+    case syllable(String, keys: String)
     case literal(String)
-    var reading: String? { if case .syllable(let value) = self { return value }; return nil }
+    var reading: String? { if case .syllable(let value, _) = self { return value }; return nil }
 }
 
 struct ConvertedWord {
@@ -13,14 +13,15 @@ struct ConvertedWord {
     var wordID: UInt32? = nil
 }
 
-struct FixedWord {
+struct FixedWord: Equatable {
     var range: Range<Int>
     var text: String
     var reading: String
     var wordID: UInt32? = nil
+    var annotation: String? = nil
 }
 
-private final class PathNode {
+fileprivate final class PathNode {
     let score: Double
     let word: ConvertedWord?
     let previous: PathNode?
@@ -39,14 +40,31 @@ private final class PathNode {
     }
 }
 
+struct ConversionCache {
+    var tokens: [CompositionToken]
+    var fixed: [FixedWord]
+    var typo: TypoTolerance
+    var revision: UInt64
+    fileprivate var states: [[PathNode]]
+}
+
 extension Engine {
-    func convert(_ tokens: [CompositionToken], fixed: [FixedWord]) -> [ConvertedWord] {
+    func convert(_ tokens: [CompositionToken], fixed: [FixedWord], typo: TypoTolerance, cache: inout ConversionCache?) -> [ConvertedWord] {
         guard !tokens.isEmpty else { return [] }
+        let revision = conversionRevision
+        var reused = 0
+        if let old = cache, old.fixed == fixed, old.typo == typo, old.revision == revision {
+            let common = zip(old.tokens, tokens).prefix { $0 == $1 }.count
+            // Final-position beams include EOS scores; only reuse strictly interior positions.
+            reused = max(0, min(common, old.tokens.count - 1, tokens.count - 1))
+        }
         var states = Array(repeating: [PathNode](), count: tokens.count + 1)
-        states[0] = [PathNode(score: 0, word: nil, previous: nil, history: .init())]
-        for start in tokens.indices where !states[start].isEmpty {
+        if reused > 0, let old = cache {
+            states.replaceSubrange(0...reused, with: old.states[0...reused])
+        } else { states[0] = [PathNode(score: 0, word: nil, previous: nil, history: .init())] }
+        // Only words of at most six syllables can cross the reusable prefix boundary.
+        for start in max(0, reused - 5)..<tokens.count where !states[start].isEmpty {
             let beam = states[start]
-            states[start].removeAll(keepingCapacity: true)
             var edges: [(ConvertedWord, WordEntry?)] = []
             switch tokens[start] {
             case .literal(let text):
@@ -57,14 +75,9 @@ extension Engine {
                         ?? WordEntry(word: word.text, logp: -7, wordID: word.wordID)
                     edges.append((ConvertedWord(range: word.range, text: word.text, reading: word.reading), entry))
                 }
-                var reading = ""
-                for end in start..<min(tokens.count, start + 6) {
-                    guard let part = tokens[end].reading else { break }
-                    reading += (reading.isEmpty ? "" : " ") + part
-                    let span = start..<(end + 1)
-                    for entry in entries(for: reading) {
-                        edges.append((ConvertedWord(range: span, text: entry.word, reading: reading), entry))
-                    }
+                for match in matches(tokens, start: start, typo: typo) {
+                    edges.append((ConvertedWord(range: match.range, text: match.entry.word,
+                        reading: match.typedReading), match.entry))
                 }
                 // Preserve completed tokens if a user removes a phrase that supplied their only dictionary entry.
                 if !edges.contains(where: { $0.0.range.count == 1 }), let reading = tokens[start].reading {
@@ -75,15 +88,16 @@ extension Engine {
             for (var word, entry) in edges {
                 guard fixed.allSatisfy({ !$0.range.overlaps(word.range) || ($0.range == word.range && $0.text == word.text) }) else { continue }
                 word.wordID = entry?.wordID
+                let end = word.range.upperBound
+                guard end > reused else { continue }
                 let values = entry.map { scoring($0, reading: word.reading) }
                 for previous in beam {
                     let value = values.map {
-                        languageModel.score(wordID: entry?.wordID, history: previous.history, unigram: $0.unigram) + $0.adjustment
+                        (entry?.recalled == true ? 0 : languageModel.score(wordID: entry?.wordID, history: previous.history, unigram: $0.unigram)) + $0.adjustment
                     } ?? languageModel.endScore(history: previous.history)
                     let stateKey = entry == nil ? LanguageModelHistory()
                         : previous.history.appending(entry?.wordID, order: languageModel.order)
                     let total = previous.score + value
-                    let end = word.range.upperBound
                     let rank = total + (end == tokens.count ? languageModel.endScore(history: stateKey) : 0)
                     if states[end].count == Self.decodingBeamWidth, let worst = states[end].last {
                         let last = entry == nil ? "<s>" : word.text
@@ -103,6 +117,7 @@ extension Engine {
                 }
             }
         }
+        cache = ConversionCache(tokens: tokens, fixed: fixed, typo: typo, revision: revision, states: states)
         var node = states[tokens.count].first
         var result: [ConvertedWord] = []
         while let current = node, let word = current.word {

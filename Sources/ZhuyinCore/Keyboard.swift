@@ -5,7 +5,7 @@ enum ZhuyinKeyboard {
         zip(Array("1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-"),
             Array("ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦ")))
     static let tones: [Character: String] = ["6": "ˊ", "3": "ˇ", "4": "ˋ", "7": "˙"]
-    static let punctuation: [Character: String] = ["[": "「", "]": "」", "'": "、", "\\": "＼", "=": "＝", "`": "‵"]
+    static let punctuation: [Character: String] = ["[": "「", "]": "」", "'": "、", "\\": "＼", "=": "＝"]
     static let shiftedPunctuation: [Character: String] = [
         ",": "，", ".": "。", "/": "？", ";": "：", "'": "；", "1": "！", "2": "＠",
         "3": "＃", "4": "＄", "5": "％", "6": "…", "7": "＆", "8": "＊", "9": "（",
@@ -16,6 +16,11 @@ enum ZhuyinKeyboard {
         if "ㄧㄨㄩ".contains(symbol) { return 1 }
         if "ㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦ".contains(symbol) { return 2 }
         return nil
+    }
+    static func plain(_ reading: String) -> String {
+        reading.split(separator: " ").map { part in
+            part.last == "˙" ? "˙" + part.dropLast() : String(part)
+        }.joined(separator: " ")
     }
     static func literal(for key: KeyInput) -> String? {
         switch key {
