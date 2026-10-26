@@ -29,6 +29,12 @@ public final class Composer {
     private var listTarget = 0
     private var selectionAnchor: Int?
     private var notice: String?
+    /// When the key being handled went down, if the caller said.
+    private var keyTime: TimeInterval?
+    /// Keys typed at the end of the composition since anything else happened, split again into syllables on every key
+    /// (`KeyDecoder`), and how many tokens at the end they produced.
+    private var run: [KeyDecoder.Key] = []
+    private var runTokens = 0
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
     /// passed-through key or `breakContext()`.
     private var leadingHistory = LanguageModelHistory()
@@ -74,6 +80,13 @@ public final class Composer {
     private var selection: Range<Int>? {
         guard let anchor = selectionAnchor, anchor != cursor else { return nil }
         return min(anchor, cursor)..<max(anchor, cursor)
+    }
+
+    /// `time`: when the key went down, in seconds (`NSEvent.timestamp`); the decoder reads how close keys were.
+    public func handle(_ key: KeyInput, at time: TimeInterval) -> KeyResult {
+        keyTime = time
+        defer { keyTime = nil }
+        return handle(key)
     }
 
     public func handle(_ key: KeyInput) -> KeyResult {
@@ -122,6 +135,7 @@ public final class Composer {
 
     private func process(_ key: KeyInput) -> KeyResult {
         notice = nil
+        if !continuesRun(key) { settleRun() }
         if key == .shiftLeft || key == .shiftRight {
             guard hasComposition else { return .passThrough }
             finishBuffer()
@@ -172,6 +186,12 @@ public final class Composer {
             result = .consumed
         } else {
             switch key {
+            case .char(let character) where decodesRun && (ZhuyinKeyboard.symbols[character] != nil || ZhuyinKeyboard.tones[character] != nil):
+                result = typeIntoRun(character)
+            case .space where decodesRun && hasBuffer:
+                result = typeIntoRun(" ")
+            case .backspace where decodesRun && hasBuffer && !run.isEmpty:
+                result = eraseFromRun()
             case .char(let character):
                 if let symbol = ZhuyinKeyboard.symbols[character], let slot = ZhuyinKeyboard.slot(of: symbol) {
                     let syllableCount = tokens.reduce(0) { $0 + ($1.reading == nil ? 0 : 1) }
@@ -249,6 +269,17 @@ public final class Composer {
             fixed.removeAll { $0.range.overlaps(choice.range) }
             tokens[choice.range.lowerBound] = .literal(choice.text)
         } else {
+            if options.learningEnabled, let annotation = choice.annotation {
+                // A picked correction: the keys typed against the reading meant teach this user's slips.
+                let meant = annotation.split(separator: " ").map { part in
+                    part.first == "˙" ? String(part.dropFirst()) + "˙" : String(part)
+                }
+                let typed = tokens[choice.range].compactMap { token -> String? in
+                    if case .syllable(_, let keys) = token { return keys }
+                    return nil
+                }
+                if typed.count == meant.count { engine.recordTypos(Array(zip(typed, meant))) }
+            }
             if options.learningEnabled {
                 // What was shown there loses some of the user's evidence in its context.
                 for word in conversion where word.range.overlaps(choice.range) && word.text != choice.text && !word.reading.isEmpty {
@@ -338,6 +369,7 @@ public final class Composer {
     }
 
     public func reset() {
+        settleRun()
         tokens.removeAll()
         cursor = 0
         clearBuffer()
@@ -352,6 +384,70 @@ public final class Composer {
     }
 
     private func clearBuffer() { buffer = [nil, nil, nil]; bufferKeys = "" }
+
+    /// Typing at the end of the composition, with a decoder that splits key runs.
+    private var decodesRun: Bool {
+        options.keyDecoder != .slots && cursor == tokens.count && selectionAnchor == nil && choices.isEmpty
+    }
+
+    /// Keys that extend the run: Zhuyin and tone keys, Space finishing a syllable, Backspace inside the unfinished one.
+    private func continuesRun(_ key: KeyInput) -> Bool {
+        switch key {
+        case .char(let c): return ZhuyinKeyboard.symbols[c] != nil || ZhuyinKeyboard.tones[c] != nil
+        case .space, .backspace: return hasBuffer
+        default: return false
+        }
+    }
+
+    /// The run's tokens stay as they are; typing on starts a new run from the unfinished syllable.
+    private func settleRun() {
+        run = []
+        runTokens = 0
+    }
+
+    private var keyDecoder: KeyDecoder {
+        KeyDecoder(method: options.keyDecoder) { [engine, options] reading, keys in
+            if engine.isValidSyllable(reading) { return 0 }
+            guard options.typoTolerance != .off, let cheapest = engine.alternatives(for: keys).first else { return nil }
+            return cheapest.cost * options.typoTolerance.costMultiplier
+        }
+    }
+
+    private func typeIntoRun(_ character: Character) -> KeyResult {
+        if run.isEmpty {
+            run = bufferKeys.map { KeyDecoder.Key(character: $0, time: nil) }
+            runTokens = 0
+        }
+        run.append(KeyDecoder.Key(character: character, time: keyTime))
+        if !applyRun() { run.removeLast() }
+        return .consumed
+    }
+
+    private func eraseFromRun() -> KeyResult {
+        run.removeLast()
+        if !applyRun() { settleRun() }
+        return .consumed
+    }
+
+    /// Splits the run again and replaces the tokens it produced.  False when no split exists or it would make the
+    /// composition too long, and nothing changes.
+    @discardableResult
+    private func applyRun() -> Bool {
+        let decoded = keyDecoder.decode(run)
+        let settled = tokens.dropLast(runTokens).filter { $0.reading != nil }.count
+        guard decoded.cost.isFinite, settled + decoded.syllables.count <= options.maxSyllables else { return false }
+        if runTokens > 0 { delete((tokens.count - runTokens)..<tokens.count) }
+        for syllable in decoded.syllables { insert(.syllable(syllable.reading, keys: syllable.keys)) }
+        runTokens = decoded.syllables.count
+        buffer = decoded.buffer
+        bufferKeys = decoded.bufferKeys
+        // A long run is settled except for its unfinished syllable, which keeps the search short.
+        if run.count > 48 {
+            run = bufferKeys.map { KeyDecoder.Key(character: $0, time: nil) }
+            runTokens = 0
+        }
+        return true
+    }
 
     @discardableResult
     private func finishBuffer(tone: String = "", toneKey: Character = " ", droppingInvalid: Bool = false,

@@ -163,7 +163,7 @@ final class ZhuyinInputController: IMKInputController {
                 Self.keyLog.debug("key \(event.keyCode) duplicate ignored")
                 return last.handled
             }
-            let handled = core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
+            let handled = core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags, time: event.timestamp)
             lastKeyDown = (event.keyCode, event.timestamp, handled)
             Self.keyLog.debug("key \(event.keyCode) t=\(event.timestamp) repeat=\(event.isARepeat) handled=\(handled)")
             return handled

@@ -1206,6 +1206,37 @@ if FileManager.default.fileExists(atPath: realURL.path) {
     type("su3cl3", into: listing)
     _ = listing.handle(.shiftDown)
     check(listing.presentation.candidates?.items.map(\.text) == ["好", "郝"], "Shift-↓ opens the single-character list")
+    // Key-run decoding: first tone without Space, keys swapped across syllables, keys pressed together.
+    func decoded(_ method: KeyDecoderMethod, _ keys: String, gaps: [Int: Double] = [:]) -> String {
+        var options = unlearned; options.keyDecoder = method
+        let c = Composer(engine: real, options: options)
+        var time = 100.0
+        for (index, key) in keys.enumerated() {
+            time += gaps[index] ?? 0.12
+            _ = c.handle(key == " " ? .space : .char(key), at: time)
+        }
+        return c.presentation.text
+    }
+    check(decoded(.slots, "rupwu0 ") != "今天" && decoded(.boundaries, "rupwu0 ") == "今天", "first tone without Space before an initial")
+    for method in KeyDecoderMethod.allCases {
+        check(decoded(method, "ji3ap7g4") == "我們是" && decoded(method, "su3cl3") == "你好", "\(method) keeps exact typing")
+    }
+    check(decoded(.boundaries, "jia3p7g4") != "我們是" && decoded(.reorder, "jia3p7g4") == "我們是", "reorder repairs a swap across syllables")
+    check(decoded(.timed, "suc3l3", gaps: [3: 0.006]) == "你好", "timed repairs keys pressed together out of order")
+    let runEdit = Composer(engine: real, options: { var o = unlearned; o.keyDecoder = .reorder; return o }())
+    for key in "rupw" { _ = runEdit.handle(.char(key), at: 1) }
+    _ = runEdit.handle(.backspace)
+    for key in "wu0 " { _ = runEdit.handle(key == " " ? .space : .char(key), at: 2) }
+    check(runEdit.presentation.text == "今天", "Backspace inside the run, then typing on")
+    // Personal hit areas: a picked correction makes the same slip cheaper.
+    let slips = try Engine(lexiconURL: realURL, userDataDirectory: nil)
+    let before = slips.typoAlternatives(for: "ek4").first { $0.reading == "ㄍㄜˋ" }
+    slips.recordTypos([("rk4", "ㄍㄜˋ")])
+    let costBefore = slips.typoAlternatives(for: "rk4").first { $0.reading == "ㄍㄜˋ" }?.cost ?? .infinity
+    slips.recordTypos([("rk4", "ㄍㄜˋ"), ("rk4", "ㄍㄜˋ")])
+    let costAfter = slips.typoAlternatives(for: "rk4").first { $0.reading == "ㄍㄜˋ" }?.cost ?? .infinity
+    check(before == nil && costAfter < costBefore, "personal slips get cheaper with each correction")
+    check(String(decoding: slips.exportPersonalData(), as: UTF8.self).contains("[typos]\nr\te\t3"), "slips travel with an export")
     // Export and import carry what was learned to another engine; excluded words are never learned again.
     let receiving = try Engine(lexiconURL: realURL, userDataDirectory: nil)
     let rows = try receiving.importPersonalData(correcting.exportPersonalData())

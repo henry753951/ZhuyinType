@@ -24,7 +24,7 @@ var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
-let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -44,6 +44,16 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--rerank-count":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         rerankCount = count
+        arguments.removeFirst(2)
+    case "--decoder":
+        guard arguments.count >= 2, let method = KeyDecoderMethod(rawValue: arguments[1]) else {
+            fail("--decoder needs one of: " + KeyDecoderMethod.allCases.map(\.rawValue).joined(separator: ", "))
+        }
+        options.keyDecoder = method
+        arguments.removeFirst(2)
+    case "--hotspot":
+        guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail(usage) }
+        KeyChannel.hotspot = arguments[1] == "on"
         arguments.removeFirst(2)
     case "--report-nbest":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
@@ -93,6 +103,23 @@ let specials: [String: KeyInput] = [
     "stab": .shiftTab, "sspace": .shiftSpace, "pgup": .pageUp, "pgdown": .pageDown,
     "sleft": .shiftLeft, "sright": .shiftRight, "sdown": .shiftDown, "sup": .shiftUp
 ]
+/// Types parsed keys into a composer with key-down times: 0.12 s apart unless a `<dt:MS>` sets the gap before the next
+/// key.  Returns what was committed.
+var clock: TimeInterval = 1000
+func typed(_ keys: [(String, KeyInput)], into composer: Composer, each: ((String, KeyResult) -> Void)? = nil) -> String {
+    var committed = ""
+    var gap = 0.12
+    for (label, key) in keys {
+        if label.hasPrefix("<dt:") { gap = (Double(label.dropFirst(4).dropLast()) ?? 120) / 1000; continue }
+        clock += gap
+        gap = 0.12
+        let result = composer.handle(key, at: clock)
+        committed += result.commit ?? ""
+        each?(label, result)
+    }
+    return committed
+}
+
 func parse(_ input: String) throws -> [(String, KeyInput)] {
     var result: [(String, KeyInput)] = []
     var index = input.startIndex
@@ -105,6 +132,8 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
                 result.append(("<\(name)>", .shiftedChar(key)))
             } else if name.hasPrefix("O-"), name.dropFirst(2).count == 1, let key = name.last {
                 result.append(("<\(name)>", .printed(key)))
+            } else if name.hasPrefix("dt:"), let ms = Double(name.dropFirst(3)) {
+                result.append(("<dt:\(ms)>", .space))  // a delay, not a key: see `typed(_:into:)`
             } else {
                 throw NSError(domain: "zhuyin-cli", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown key escape <\(name)>"])
             }
@@ -162,7 +191,7 @@ do {
                 keys = line[line.index(after: tab)...]
             }
             composer.setPrecedingText(context)
-            for (_, key) in try parse(String(keys)) { committed += composer.handle(key).commit ?? "" }
+            committed = typed(try parse(String(keys)), into: composer)
             if reportNBest > 0 {
                 print(composer.nBest(reportNBest).map(\.text).joined(separator: "\t"))
                 composer.reset()
@@ -175,8 +204,7 @@ do {
     let composer = Composer(engine: engine, options: options)
     attach(composer)
     composer.setPrecedingText(context)
-    for (label, key) in try parse(arguments[0]) {
-        let result = composer.handle(key)
+    _ = typed(try parse(arguments[0]), into: composer) { label, result in
         let p = composer.presentation
         let string = p.text as NSString
         let focus = p.focusedClause.map { p.clauses[$0] }

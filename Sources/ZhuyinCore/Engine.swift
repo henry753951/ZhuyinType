@@ -76,6 +76,11 @@ public final class Engine: @unchecked Sendable {
     private var learned: [PhraseKey: RecallValue] = [:]
     /// Words the user asked never to remember.
     private var excluded = Set<PhraseKey>()
+    /// Personal hit areas: how often this user typed one key (first character) for another (second), learned from
+    /// picked corrections.
+    private var typoCounts: [String: Double] = [:]
+    /// The most a personal slip is discounted, and how fast: 1.5 × ln(1 + times seen).
+    static let typoDiscountCap = 4.0
     let personal = PersonalLanguageModel()
     /// The time the personal memory decays by (seconds since 1970); replaceable for tests.
     public var clock: () -> Double {
@@ -312,7 +317,11 @@ public final class Engine: @unchecked Sendable {
     func alternatives(for keys: String) -> [ReadingAlternative] {
         synchronized {
             if let cached = alternativeCache[keys] { return cached }
-            let result = KeyChannel.alternatives(for: keys) { validCodes[$0] }
+            let counts = typoCounts
+            let result = KeyChannel.alternatives(for: keys, discount: { typed, intended in
+                guard let n = counts[String(Character(UnicodeScalar(typed))) + String(Character(UnicodeScalar(intended)))] else { return 0 }
+                return min(Self.typoDiscountCap, 1.5 * log(1 + n))
+            }) { validCodes[$0] }
             if alternativeCache.count >= 4096 { alternativeCache.removeAll(keepingCapacity: true) }
             alternativeCache[keys] = result
             return result
@@ -559,6 +568,26 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// A correction was picked: the keys typed for each syllable against the reading meant.  Each key typed for
+    /// another makes that slip cheaper next time.
+    public func recordTypos(_ syllables: [(typedKeys: String, intendedReading: String)]) {
+        synchronized {
+            var changed = false
+            for syllable in syllables {
+                guard let intended = KeyChannel.keys(for: syllable.intendedReading) else { continue }
+                for pair in KeyChannel.substitutions(typed: syllable.typedKeys, intended: intended) {
+                    typoCounts[String(pair.typed) + String(pair.intended), default: 0] += 1
+                    changed = true
+                }
+            }
+            guard changed else { return }
+            alternativeCache.removeAll(keepingCapacity: true)
+            entryCache.removeAll(keepingCapacity: true); matchCache.removeAll(keepingCapacity: true)
+            revision &+= 1
+            scheduleWrite()
+        }
+    }
+
     /// Forgets `word` and never learns it again, until `includeInLearning`.
     public func excludeFromLearning(word: String, reading: String) {
         synchronized { excluded.insert(PhraseKey(reading: reading, word: word)) }
@@ -583,6 +612,7 @@ public final class Engine: @unchecked Sendable {
             text += "[learned]\n" + Self.learnedText(learned)
             text += "[ngrams]\n" + personal.serialized()
             text += "[excluded]\n" + Self.phraseText(excluded)
+            text += "[typos]\n" + Self.typoText(typoCounts)
             return Data(text.utf8)
         }
     }
@@ -617,6 +647,12 @@ public final class Engine: @unchecked Sendable {
                 rows += 1
             }
             rows += personal.load(Data((sections["ngrams"] ?? "").utf8), merging: true) { resolveID($0)! }
+            scanTSV(Data((sections["typos"] ?? "").utf8)) { fields in
+                guard fields.count == 3, fields[0].count == 1, fields[1].count == 1, let n = Double(fields[2]), n > 0 else { return }
+                typoCounts[fields[0] + fields[1]] = max(typoCounts[fields[0] + fields[1]] ?? 0, n)
+                rows += 1
+            }
+            alternativeCache.removeAll(keepingCapacity: true)
             scanTSV(Data((sections["excluded"] ?? "").utf8)) { fields in
                 guard fields.count == 2 else { return }
                 excluded.insert(PhraseKey(reading: fields[0], word: fields[1]))
@@ -633,6 +669,8 @@ public final class Engine: @unchecked Sendable {
     public func forgetAllLearned() {
         synchronized {
             learned.removeAll(); learnedWords.removeAll()
+            typoCounts.removeAll()
+            alternativeCache.removeAll(keepingCapacity: true)
             personal.forgetAll()
             learnedChanged()
         }
@@ -782,6 +820,12 @@ public final class Engine: @unchecked Sendable {
                 addPhrase(word: fields[1], reading: fields[0])
             }
         }
+        if let data = try? Data(contentsOf: directory.appendingPathComponent("typos.tsv")) {
+            scanTSV(data) { fields in
+                guard fields.count == 3, fields[0].count == 1, fields[1].count == 1, let n = Double(fields[2]), n > 0 else { return }
+                typoCounts[fields[0] + fields[1]] = n
+            }
+        }
         if let data = try? Data(contentsOf: directory.appendingPathComponent("excluded.tsv")) {
             scanTSV(data) { fields in
                 if fields.count == 2 { excluded.insert(PhraseKey(reading: fields[0], word: fields[1])) }
@@ -817,6 +861,12 @@ public final class Engine: @unchecked Sendable {
         keys.sorted { ($0.reading, $0.word) < ($1.reading, $1.word) }.map { "\($0.reading)\t\($0.word)\n" }.joined()
     }
 
+    private static func typoText(_ counts: [String: Double]) -> String {
+        counts.sorted { $0.key < $1.key }.map { key, n in
+            "\(key.first!)\t\(key.last!)\t\(n)\n"
+        }.joined()
+    }
+
     private static func learnedText(_ learned: [PhraseKey: RecallValue]) -> String {
         learned.sorted { ($0.key.reading, $0.key.word) < ($1.key.reading, $1.key.word) }.map { key, value in
             [value.kind.rawValue, key.reading, key.word, "\(value.short.value)", "\(value.short.time)",
@@ -845,6 +895,7 @@ public final class Engine: @unchecked Sendable {
         let phraseText = Self.phraseText(phrases.keys)
         let learnedText = Self.learnedText(learned)
         let excludedText = Self.phraseText(excluded)
+        let typoText = Self.typoText(typoCounts)
         let personalText = personal.serialized()
         let work = DispatchWorkItem {
             do {
@@ -852,6 +903,7 @@ public final class Engine: @unchecked Sendable {
                 try Data(phraseText.utf8).write(to: directory.appendingPathComponent("user_phrases.tsv"), options: .atomic)
                 try Data(learnedText.utf8).write(to: directory.appendingPathComponent("learned.tsv"), options: .atomic)
                 try Data(excludedText.utf8).write(to: directory.appendingPathComponent("excluded.tsv"), options: .atomic)
+                try Data(typoText.utf8).write(to: directory.appendingPathComponent("typos.tsv"), options: .atomic)
                 try Data(personalText.utf8).write(to: directory.appendingPathComponent(PersonalLanguageModel.fileName),
                                                   options: .atomic)
             } catch {

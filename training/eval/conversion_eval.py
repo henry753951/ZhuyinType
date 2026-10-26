@@ -85,6 +85,7 @@ def main():
     parser.add_argument("--typing-lexicon", help="derive the typed readings from this lexicon instead of --lexicon, "
                         "so two lexicons are compared on the same keys")
     parser.add_argument("--fuzzy", help="fuzzy sound pairs, e.g. zh,ch,sh,en,an")
+    parser.add_argument("--cli-arg", action="append", default=[], help="extra zhuyin-cli argument (repeatable)")
     parser.add_argument("--split", choices=["none", "continue", "restart"], default="none")
     parser.add_argument("--line-context", action="store_true",
                         help="type each run after the text before it on its line (earlier clauses of the sentence), "
@@ -144,6 +145,7 @@ def evaluate(test, args, lexicon, lexicon_path):
                     "--rerank-count", str(args.rerank_count)]
     if args.fuzzy:
         command += ["--fuzzy", args.fuzzy]
+    command += args.cli_arg
     if args.sentence_boundaries:
         command += ["--sentence-boundaries", args.sentence_boundaries]
     result = subprocess.run(command,

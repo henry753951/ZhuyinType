@@ -76,7 +76,7 @@ final class ControllerCore {
     }
 
     @discardableResult
-    func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+    func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval? = nil) -> Bool {
         shiftTap = nil
         guard !rendering, !isEnglish else { return false }
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
@@ -86,7 +86,7 @@ final class ControllerCore {
             return false
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
-            return handle(command.input)
+            return handle(command.input, time: time)
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
@@ -95,15 +95,15 @@ final class ControllerCore {
             breakContext()
             return false
         }
-        return handle(key)
+        return handle(key, time: time)
     }
 
     @discardableResult
-    func handle(_ key: KeyInput) -> Bool {
+    func handle(_ key: KeyInput, time: TimeInterval? = nil) -> Bool {
         guard !rendering else { return false }
         if !composer.isComposing, Self.startsComposition(key) { prepareContext() }
         let visible = composer.presentation.text
-        let result = composer.handle(key)
+        let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
         render(commit: preservingVisibleSuffix(result.commit, visible: visible))
         if !result.handled {
             // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)

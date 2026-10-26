@@ -24,6 +24,31 @@ public enum KeyChannel {
     }()
     public static func neighbours(of key: Character) -> [Character] { table[key] ?? [] }
 
+    /// Key centres in key widths: rows are staggered as on a Mac keyboard (number row at 0, Q row +0.5, A row +0.75,
+    /// Z row +1.25).
+    private static let centres: [Character: (x: Double, y: Double)] = {
+        let offsets = [0.0, 0.5, 0.75, 1.25]
+        var result: [Character: (x: Double, y: Double)] = [:]
+        for (row, keys) in rows.enumerated() {
+            for (index, key) in keys.enumerated() { result[key] = (Double(index) + offsets[row], Double(row)) }
+        }
+        return result
+    }()
+
+    /// Hit-area substitution costs instead of one cost for every neighbour (a setting for evaluation).
+    nonisolated(unsafe) public static var hotspot = false
+    static let hotspotBase = 9.0
+    static let hotspotSigmaX = 0.5
+    static let hotspotSigmaY = 0.4
+
+    /// −log of how likely a press meant for `intended` lands on `typed`, up to a constant: an anisotropic Gaussian
+    /// around the intended key's centre, wider across a row than between rows.
+    static func hotspotCost(_ intended: Character, _ typed: Character) -> Double {
+        guard let a = centres[intended], let b = centres[typed] else { return substitution }
+        let dx = b.x - a.x, dy = b.y - a.y
+        return hotspotBase + dx * dx / (2 * hotspotSigmaX * hotspotSigmaX) + dy * dy / (2 * hotspotSigmaY * hotspotSigmaY)
+    }
+
     // Calibrated on 400 runs per dev set, seed 7: scales 1/3/4/5/6/10/16; 5 wins the clean-accuracy constraint.
     static let tone34 = 5.0
     static let tone67 = 4.5
@@ -71,7 +96,43 @@ public enum KeyChannel {
         return hasSymbols ? code : nil
     }
 
-    private static func edits(_ keys: [UInt8], _ visit: ([UInt8], Double) -> Void) {
+    /// The keys that type `reading` on the standard layout: symbols, then the tone key or Space.
+    static func keys(for reading: String) -> String? {
+        var keys = ""
+        var tone: Character = " "
+        for symbol in reading {
+            if let key = keyForSymbol[symbol] { keys.append(key) }
+            else if let key = keyForTone[symbol] { tone = key }
+            else { return nil }
+        }
+        return keys + String(tone)
+    }
+    private static let keyForSymbol = Dictionary(uniqueKeysWithValues: ZhuyinKeyboard.symbols.map { ($1, $0) })
+    private static let keyForTone: [Character: Character] = ["ˊ": "6", "ˇ": "3", "ˋ": "4", "˙": "7"]
+
+    /// Keys typed in place of others, by a minimal edit alignment of what was typed with what was meant.
+    static func substitutions(typed: String, intended: String) -> [(typed: Character, intended: Character)] {
+        let a = Array(typed), b = Array(intended)
+        var cost = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in 0...a.count { cost[i][0] = i }
+        for j in 0...b.count { cost[0][j] = j }
+        for i in stride(from: 1, through: a.count, by: 1) {
+            for j in stride(from: 1, through: b.count, by: 1) {
+                cost[i][j] = min(cost[i - 1][j] + 1, cost[i][j - 1] + 1, cost[i - 1][j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1))
+            }
+        }
+        var pairs: [(Character, Character)] = []
+        var i = a.count, j = b.count
+        while i > 0 && j > 0 {
+            if cost[i][j] == cost[i - 1][j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1) {
+                if a[i - 1] != b[j - 1] { pairs.append((a[i - 1], b[j - 1])) }
+                i -= 1; j -= 1
+            } else if cost[i][j] == cost[i - 1][j] + 1 { i -= 1 } else { j -= 1 }
+        }
+        return pairs.reversed()
+    }
+
+    private static func edits(_ keys: [UInt8], discount: (UInt8, UInt8) -> Double, _ visit: ([UInt8], Double) -> Void) {
         var edited = keys
         for index in keys.indices {
             let old = keys[index]
@@ -79,8 +140,9 @@ public enum KeyChannel {
                 for key in neighbourBytes[Int(old)] {
                     edited[index] = key
                     let cost = (old == 51 && key == 52) || (old == 52 && key == 51) ? tone34
-                        : (old == 54 && key == 55) || (old == 55 && key == 54) ? tone67 : substitution
-                    visit(edited, cost)
+                        : (old == 54 && key == 55) || (old == 55 && key == 54) ? tone67
+                        : hotspot ? hotspotCost(Character(UnicodeScalar(key)), Character(UnicodeScalar(old))) : substitution
+                    visit(edited, cost - discount(old, key))
                 }
                 edited[index] = old
             }
@@ -96,7 +158,9 @@ public enum KeyChannel {
         }
     }
 
-    static func alternatives(for keys: String, valid: (Int) -> String?) -> [ReadingAlternative] {
+    /// `discount(typed, intended)`: how much cheaper this user's own slips are (personal hit areas).
+    static func alternatives(for keys: String, discount: (UInt8, UInt8) -> Double = { _, _ in 0 },
+                             valid: (Int) -> String?) -> [ReadingAlternative] {
         let keys = Array(keys.utf8), exact = code(for: keys)
         var best: [Int: Double] = [:]
         var first: [[UInt8]: Double] = [:]
@@ -104,7 +168,7 @@ public enum KeyChannel {
             guard let code = code(for: edited), code != exact, valid(code) != nil else { return }
             best[code] = min(best[code] ?? .infinity, cost)
         }
-        edits(keys) { edited, cost in
+        edits(keys, discount: discount) { edited, cost in
             first[edited] = min(first[edited] ?? .infinity, cost)
             accept(edited, cost)
         }
@@ -112,7 +176,7 @@ public enum KeyChannel {
             var cutoff = best.values.sorted().dropFirst(7).first ?? .infinity
             for (edited, cost) in first.sorted(by: { $0.value == $1.value ? $0.key.lexicographicallyPrecedes($1.key) : $0.value < $1.value }) {
                 if cost + min(tone34, tone67, substitution, transposition, deletion, insertion) > cutoff { break }
-                edits(edited) { twice, extra in
+                edits(edited, discount: discount) { twice, extra in
                     if cost + extra <= cutoff { accept(twice, cost + extra) }
                 }
                 cutoff = best.values.sorted().dropFirst(7).first ?? .infinity
