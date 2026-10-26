@@ -399,6 +399,10 @@ public final class Composer {
         if case .char(let character) = key, character != "`", let number = options.selectionKeys.firstIndex(of: character) {
             return selectCandidate(at: page * pageSize + number)
         }
+        // Selection keys with Option held, while the window shows corrections.
+        if case .printed(let character) = key, let number = options.selectionKeys.firstIndex(of: character) {
+            return selectCandidate(at: page * pageSize + number)
+        }
         switch key {
         case .char("`"):
             let range = choices[candidateSelection].range

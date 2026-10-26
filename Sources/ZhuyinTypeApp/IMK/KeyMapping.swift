@@ -20,9 +20,13 @@ enum KeyMapping {
         if !modifiers.intersection([.command, .control]).isEmpty { return nil }
         if modifiers.contains(.option) {
             if keyCode == 51 { return .optionBackspace }
-            // Digit and symbol keys type what is printed on them; Option-letter stays the app's (shortcuts).
-            guard let character = printable[keyCode], !character.isLetter else { return nil }
-            return .printed(modifiers.contains(.shift) ? shifted[character] ?? character : character)
+            // Digit and symbol keys type what is printed on them; Option-letter stays the app's (shortcuts).  Other
+            // keys act as without Option, so the candidate window works while Option is held; with nothing composed
+            // they pass through and the app sees its own Option shortcut.
+            if let character = printable[keyCode] {
+                guard !character.isLetter else { return nil }
+                return .printed(modifiers.contains(.shift) ? shifted[character] ?? character : character)
+            }
         }
         if let character = printable[keyCode] {
             if modifiers.contains(.capsLock), character.isLetter { return nil }

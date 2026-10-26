@@ -175,21 +175,25 @@ enum ControllerCoreSelfTest {
                        "after 我們: \(core.composer.presentation.text), alone: \(alone)")
             try expect(core.recentText == "我們", "reranker context \(core.recentText)")
         }
-        test("Option tapped in the candidate window switches to corrections and back") {
-            let (core, _) = session()
+        test("Option held in the candidate window shows corrections; released, the exact list") {
+            let (core, client) = session()
             type("ji3ap7", into: core)
             _ = core.handle(.down)
             try expect(core.composer.presentation.candidates?.tolerant == false, "list does not start exact")
             _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 1)
-            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 1.1)
             let tolerant = core.composer.presentation.candidates
             try expect(tolerant?.tolerant == true && tolerant?.items.dropFirst().first?.annotation != nil,
-                       "Option tap did not list corrections first")
-            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 2)
-            _ = core.flagsChanged(keyCode: 56, modifiers: [.option, .shift], physicallyDown: true, timestamp: 2.05)
-            _ = core.flagsChanged(keyCode: 56, modifiers: .option, physicallyDown: false, timestamp: 2.07)
-            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 2.1)
-            try expect(core.composer.presentation.candidates?.tolerant == true, "Option with another key is not a tap")
+                       "holding Option did not list corrections first")
+            try expect(core.keyDown(keyCode: 125, modifiers: .option), "↓ with Option held was not handled")
+            try expect(core.composer.presentation.candidates?.selection == 1, "↓ with Option held did not move")
+            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 2)
+            try expect(core.composer.presentation.candidates?.tolerant == false, "releasing Option did not restore the list")
+            _ = core.flagsChanged(keyCode: 58, modifiers: .option, physicallyDown: true, timestamp: 3)
+            let picked = core.composer.presentation.candidates!.items[1].text
+            try expect(core.keyDown(keyCode: 19, modifiers: .option), "Option-2 was not handled")
+            _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 4)
+            core.commit()
+            try expect(client.inserts.last?.hasSuffix(picked) == true, "Option-2 did not pick \(picked): \(client.inserts)")
         }
         test("Shift-Down opens the single-character list") {
             try expect(KeyMapping.input(keyCode: 125, modifiers: .shift) == .shiftDown, "Shift-↓ mapping")

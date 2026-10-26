@@ -107,6 +107,8 @@ VARIANT = re.compile(r"^(old |archaic |Japanese |ancient |erhua )?variant of ")
 
 
 COMMON = set()  # (trad, reading) with a lower-case (non-name) entry: surnames alone do not make a usual reading
+SENSE = set()  # (trad, reading) given as the Taiwan reading of one sense: "和 (and) (Taiwan pr. [han4])"
+SENSE_SHARE = 0.25  # the least share of a character's frequency such a reading gets; kHanyuPinlu counts mainland usage
 
 
 def read_cedict():
@@ -146,7 +148,8 @@ def read_cedict():
                 entries.append((trad, simp, reading, False, variant))
                 for sense in sense_readings:
                     if sense and sense != reading and len(sense.split()) == len(trad):
-                        entries.append((trad, simp, sense, True, True))  # one sense's Taiwan reading, demoted
+                        SENSE.add((trad, sense))
+                        entries.append((trad, simp, sense, True, False))
     return entries
 
 
@@ -212,6 +215,10 @@ def reading_shares(char_readings, pinlu, taiwan_of):
         known = {r: counts[r] for r in readings}
         if sum(known.values()) == 0:
             continue
+        floor = SENSE_SHARE * sum(known.values())
+        for r in readings:
+            if (ch, r) in SENSE:
+                known[r] = max(known[r], floor)
         total = sum(known.values()) + len(readings)
         shares[ch] = {r: (known[r] + 1) / total for r in readings}
     return shares
@@ -306,7 +313,7 @@ def main():
         if len(trad) == 1:
             by_char[trad].append((reading, taiwan, variant))
     for ch, items in by_char.items():
-        tw = sorted({r for r, t, v in items if t and not v})
+        tw = sorted({r for r, t, v in items if t and not v and (ch, r) not in SENSE})
         main = {r for r, t, v in items if not v and (ch, r) in COMMON}
         if len(tw) == 1:
             for r, t, v in items:

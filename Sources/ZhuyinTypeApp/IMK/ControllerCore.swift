@@ -33,8 +33,8 @@ final class ControllerCore {
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
     private var shiftTap: (key: UInt16, time: TimeInterval)?
-    /// When Option went down with nothing else held: released quickly, it switches the candidate list.
-    private var optionTap: TimeInterval?
+    /// Option is held and showed the corrections: releasing it shows the words for the keys as typed again.
+    private var correctionsHeld = false
     private var rendering = false
     private let insertionRange = NSRange(location: NSNotFound, length: 0)
 
@@ -77,7 +77,6 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         shiftTap = nil
-        optionTap = nil
         guard !rendering, !isEnglish else { return false }
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
         if modifiers.contains(.capsLock) {
@@ -177,21 +176,21 @@ final class ControllerCore {
             }
             return false
         }
+        // Option held in the candidate window shows the corrections; released, the words for the keys as typed.
         if keyCode == 58 || keyCode == 61 {
             shiftTap = nil
-            let others = modifiers.intersection([.command, .control, .shift, .capsLock, .function])
             if modifiers.contains(.option) {
-                optionTap = others.isEmpty ? timestamp : nil
-            } else if let tap = optionTap, others.isEmpty, timestamp >= tap, timestamp - tap <= 0.35,
-                      composer.presentation.candidates?.tolerant != nil {
-                optionTap = nil
-                toggleCorrections()
-            } else {
-                optionTap = nil
+                let others = modifiers.intersection([.command, .control, .shift, .function])
+                if others.isEmpty, !correctionsHeld, composer.presentation.candidates?.tolerant == false {
+                    correctionsHeld = true
+                    toggleCorrections()
+                }
+            } else if correctionsHeld {
+                correctionsHeld = false
+                if composer.presentation.candidates?.tolerant == true { toggleCorrections() }
             }
             return false
         }
-        optionTap = nil
         guard keyCode == 56 || keyCode == 60 else {
             shiftTap = nil
             return false

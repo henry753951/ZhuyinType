@@ -163,7 +163,7 @@ private final class ZhuyinHintButton: NSButton {
 }
 
 /// The footer switch between words for the keys as typed and typing corrections: an ⌥ keycap and 修正, accented
-/// while corrections are shown.  Option tapped on the keyboard does the same.
+/// while corrections are shown.  Holding Option shows them too, until it is released.
 private final class CorrectionToggleButton: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
     private let labelFont = NSFont.systemFont(ofSize: 12)
@@ -222,7 +222,7 @@ final class CandidateContentView: InputMaterialView {
         correctionButton.target = self
         correctionButton.action = #selector(toggleCorrections)
         correctionButton.setAccessibilityLabel("按錯修正，Option")
-        correctionButton.toolTip = "顯示按錯修正的候選（Option）"
+        correctionButton.toolTip = "顯示按錯修正的候選（按住 Option）"
         addSubview(correctionButton)
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.maximumNumberOfLines = 1

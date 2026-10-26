@@ -13,6 +13,9 @@ public final class NeuralReranker: @unchecked Sendable {
     public var candidateCount = 16
     /// Characters of preceding text given to the model.
     public var contextLength = 24
+    /// log of how many characters share the model's <unk> token (5,465 lexicon characters are outside its 12,000):
+    /// each gets its share of <unk>'s probability, not all of it, so rare characters do not outrank common ones.
+    public var unknownPenalty = log(5465.0)
     private let model: MLModel
     private let index: [Character: Int32]
     private let maxLength: Int
@@ -67,6 +70,7 @@ public final class NeuralReranker: @unchecked Sendable {
         let start = prefix.count - 1
         return encoded.enumerated().map { row, candidate in
             (start..<(start + candidate.count)).reduce(0.0) { $0 + logprob[row * length + $1].doubleValue }
+                - unknownPenalty * Double(candidate.filter { $0 == 2 }.count)
         }
     }
 
