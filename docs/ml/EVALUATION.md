@@ -61,6 +61,7 @@ v0.4.0 以前的 ZhuyinBench 紀錄，app 設定是直接列出模型選項，�
 | `zt eval rows` | 善解格式（`前文|答案|注音`）的評測集：整句全對率、CER、前 16 句命中，各以三種正規化計算（原文、善解的正規化、我們的寫法對照） |
 | `zt eval corrections FILE…` | App 的改字記錄（`corrections.jsonl`）重播：每一種改字，引擎現在不靠改字就打對的有幾筆（見下方） |
 | `zt eval latency` | 固定 10 句在這台機器上的每鍵延遲、CPU、能耗（macOS）、記憶體；只在 Mac 上執行 |
+| `zt eval losses` | 落後原因分析：收集 App 與只用引擎的前 64 句，把每一句錯誤分到出錯的階段（候選生成、引擎排序、重排、模型推翻）與根本原因（詞彙、讀音、候選、排序、異形詞），見 [research/loss-analysis.md](../research/loss-analysis.md)；`--reference FILE` 用另一份詞表判斷缺詞 |
 | `zt eval stats A B` | 兩份結果的成對比較：McNemar 精確檢定、成對 bootstrap 信賴區間、改對／改壞、改壞率上界、最小可偵測效果 |
 | `zt eval sweep MATRIX` | 多組設定 × 多個評測集，每個組合一份報告，最後列一張表；矩陣範例在 `ml/src/zhuyintype_ml/eval/matrices/` |
 | `zt bench run`、`zt bench history` | ZhuyinBench：每版固定的整套評測與歷代表，結果在 [benchmarks/](../benchmarks/) |
