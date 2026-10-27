@@ -8,12 +8,18 @@ them.  This set takes the same dev texts (never the test sets) and types each ru
 mechanism, so each subset answers "if a typist reads it this way here, is the sentence right at top-1?":
 
   taiwan        every syllable of the run whose character has a Taiwan reading (channel.py taiwan.tsv, strength >= 0.5)
-                is typed with it: a Taiwan typist reads 期中 ㄑㄧˊ, 成熟 ㄕㄡˊ wherever they occur (rate 1)
+                is typed with it: a Taiwan typist reads 成熟 ㄕㄡˊ wherever it occurs (rate 1).  With --standard the
+                Taiwan readings strong enough to be the standard (期中 ㄑㄧˊ) are the readings every set is typed with
+  mainland      with --standard: every syllable whose standard Taiwan reading replaced another is typed with the
+                reading it replaced (期中 ㄑㄧ), the typing of someone who learned the other reading
   neutral       one neutral-tone syllable of a word typed with its character's citation reading (陣子 ㄗˇ, 什麼 ㄇㄛˊ)
   colloquial    one word typed with a reading Wiktionary labels variant, colloquial or common misreading (什麼 ㄕㄜˊ)
   misread       one unfamiliar character typed with the most common reading of its phonetic series (有邊讀邊)
   interjection  one interjection typed with its first tone or neutral tone (呃 ㄜ), in the spoken dev texts
   examples      the users' reported cases, fixed rows
+
+Every subset has the reading state the engine gives its variant (resources/formats/reading-channel.md, 三種狀態):
+`misread` is a correction, the others are accepted readings, and `examples` mixes both; misread.json records them.
 
 Each run is a Han run of 4–20 characters (as `zt eval conversion` picks them) with one variant (all Taiwan readings
 for `taiwan`); a run is used once per subset; at most --per-subset rows per subset, seeded.  The rates above are
@@ -38,11 +44,20 @@ from pathlib import Path
 from zhuyintype_ml.core.zhuyin import HAN_RUN, Lexicon
 
 from . import wiktionary
-from .channel import load, mandarin_readings, variants
+from .channel import load, mandarin_readings, read_rows, variants
 from .merge import Builder
 from .phonology import split
 
-SUBSETS = ("taiwan", "neutral", "colloquial", "misread", "interjection", "examples")
+SUBSETS = ("taiwan", "mainland", "neutral", "colloquial", "misread", "interjection", "examples")
+STATES = {
+    "taiwan": "accepted",
+    "mainland": "accepted",
+    "neutral": "accepted",
+    "colloquial": "accepted",
+    "misread": "correction",
+    "interjection": "accepted",
+    "examples": "mixed",
+}
 EXAMPLES = [
     ("鮮蚵", "ㄒㄧㄢ ㄎㄜ"),
     ("鮮蚵", "ㄒㄧㄢ ㄜˊ"),
@@ -86,10 +101,22 @@ def words(text: str, cuts: list[int]) -> list[tuple[int, int]]:
 
 
 def build(
-    base: Path, channel_dir: Path, facts_path: Path, texts: list[Path], spoken: list[Path], per: int
+    base: Path,
+    channel_dir: Path,
+    facts_path: Path,
+    texts: list[Path],
+    spoken: list[Path],
+    per: int,
+    standard: bool = False,
 ) -> dict[str, list[tuple[str, str]]]:
-    lexicon = Lexicon(base)
     channel = load(channel_dir)
+    rows = read_rows(base)
+    original = Lexicon(rows=rows)  # the same words, so the same longest-match cuts
+    if standard:
+        standardizer = Builder(rows, channel, mechanisms=["standard"])
+        standardizer.standardize()
+        rows = [(r, w, p) for (r, w), p in standardizer.rows.items()]
+    lexicon = Lexicon(rows=rows)
     facts = wiktionary.read(facts_path)
     mandarin = mandarin_readings(facts)
     builder = Builder([], channel)
@@ -107,6 +134,7 @@ def build(
 
     for subset, files in (
         ("taiwan", texts),
+        ("mainland", texts if standard else []),
         ("neutral", texts),
         ("colloquial", texts),
         ("misread", texts),
@@ -122,6 +150,9 @@ def build(
                     pair = channel.taiwan.get((c, r))
                     if pair and pair[1] >= 0.5:
                         typed[i], changed = pair[0], True
+            elif subset == "mainland":
+                typed = original.readings(text) or readings
+                changed = typed != readings
             else:
                 for start, end in words(text, cuts):
                     word = text[start:end]
@@ -164,9 +195,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--channel", type=Path, required=True)
     parser.add_argument("--wiktionary", type=Path, required=True)
     parser.add_argument("--per-subset", type=int, default=200)
+    parser.add_argument(
+        "--standard", action="store_true", help="type with the Taiwan standard readings (merge.py standard class)"
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
-    subsets = build(args.base, args.channel, args.wiktionary, args.texts, args.spoken, args.per_subset)
+    subsets = build(args.base, args.channel, args.wiktionary, args.texts, args.spoken, args.per_subset, args.standard)
     args.out.mkdir(parents=True, exist_ok=True)
     every = []
     for name, rows in subsets.items():
@@ -174,7 +208,11 @@ def main(argv: list[str] | None = None) -> int:
         (args.out / f"{name}.rows.txt").write_text("".join(lines), encoding="utf-8")
         every += lines
     (args.out / "misread-dev.rows.txt").write_text("".join(every), encoding="utf-8")
-    summary = {name: len(rows) for name, rows in subsets.items()}
+    summary = {
+        "rows": {name: len(rows) for name, rows in subsets.items()},
+        "states": {name: STATES[name] for name in subsets},
+        "standard": args.standard,
+    }
     (args.out / "misread.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n")
     print(json.dumps(summary, ensure_ascii=False))
     return 0

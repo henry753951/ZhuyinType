@@ -80,6 +80,7 @@ SETS = [
 MISREAD = "lexicon_coverage/misread"
 MISREAD_SUBSETS = {
     "taiwan": "台灣讀音",
+    "mainland": "標準讀音改成台灣讀音前的讀音",
     "neutral": "輕聲打本調",
     "colloquial": "口語讀音",
     "misread": "有邊讀邊",
