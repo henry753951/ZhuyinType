@@ -17,7 +17,13 @@ enum KeyMapping {
         zip(Array("1234567890-=[]\\;',./`"), Array("!@#$%^&*()_+{}|:\"<>?~")))
 
     static func input(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> KeyInput? {
-        if !modifiers.intersection([.command, .control]).isEmpty { return nil }
+        if modifiers.contains(.command) { return nil }
+        if modifiers.contains(.control) {
+            // Control with a symbol key types Chinese punctuation (Control+, is "，"); everything else is the app's.
+            guard !modifiers.contains(.option), let character = printable[keyCode], !character.isLetter else { return nil }
+            let printed = modifiers.contains(.shift) ? shifted[character] ?? character : character
+            return printed.isNumber ? nil : .controlChar(printed)
+        }
         if modifiers.contains(.option) {
             if keyCode == 51 { return .optionBackspace }
             // Digit and symbol keys type what is printed on them; every other Option combination is the app's.

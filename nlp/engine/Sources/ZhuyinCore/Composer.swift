@@ -45,7 +45,8 @@ public final class Composer {
                              time: Double)?
     private var deletedCharacters = 0
     /// Whole words of the last commit deleted that way.  Retyping their readings as other words is a correction.
-    private var deletedWords: [ConvertedWord] = []
+    /// Words deleted from the last commit, each with the history it was scored after.
+    private var deletedWords: [(word: ConvertedWord, before: LanguageModelHistory)] = []
     /// Seconds after a commit in which deleting and retyping it counts as a correction.
     static let correctionWindow: Double = 30
     /// Return an index into the score-ordered N-best list. Invalid indices fall back to the decoder's first choice.
@@ -133,7 +134,8 @@ public final class Composer {
             kept -= 1
         }
         guard kept > 0 || remaining == 0 else { return false }
-        deletedWords = last.words[kept...].filter { !$0.reading.isEmpty }
+        let before = Self.historiesBefore(last.words, start: last.leading)
+        deletedWords = last.words.indices[kept...].filter { !last.words[$0].reading.isEmpty }.map { (last.words[$0], before[$0]) }
         if remaining > 0 {
             leadingHistory = .init(); leadingWords = []
         } else if kept == 0 {
@@ -144,6 +146,11 @@ public final class Composer {
             leadingWords = Self.trailingWords(before, after: last.leadingWords)
         }
         return true
+    }
+
+    /// The history each word was scored after (a converted word carries the history that follows it).
+    private static func historiesBefore(_ words: [ConvertedWord], start: LanguageModelHistory) -> [LanguageModelHistory] {
+        words.indices.map { $0 == 0 ? start : words[$0 - 1].history ?? .init() }
     }
 
     /// The last two syllable words of `words` after its last literal, continuing `earlier` when there is no literal.
@@ -199,7 +206,7 @@ public final class Composer {
                 insert(.literal(ZhuyinKeyboard.plain(reading)))
                 result = .consumed
             } else { result = hasComposition ? .consumed : .passThrough }
-        } else if let literal = ZhuyinKeyboard.literal(for: key) {
+        } else if let literal = ZhuyinKeyboard.literal(for: key, keys: options.punctuationKeys) {
             finishBuffer(droppingInvalid: true)
             insert(.literal(literal))
             result = .consumed
@@ -274,6 +281,11 @@ public final class Composer {
                     if options.escapeClearsComposition { reset() }
                     result = .consumed
                 } else { result = .passThrough }
+            case .controlChar:
+                // A Control combination with no punctuation (Control+[, Control+/) is the app's: send what is composed
+                // first.
+                guard hasComposition else { return .passThrough }
+                return KeyResult(handled: false, commit: commitAll())
             case .shiftedChar, .printed, .shiftLeft, .shiftRight: result = .passThrough
             }
         }
@@ -301,18 +313,32 @@ public final class Composer {
             }
             if learns {
                 // What was shown there loses some of the user's evidence in its context.
-                for word in conversion where word.range.overlaps(choice.range) && word.text != choice.text && !word.reading.isEmpty {
-                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: word.history)
+                let before = Self.historiesBefore(conversion, start: leadingHistory)
+                for (index, word) in conversion.enumerated()
+                where word.range.overlaps(choice.range) && word.text != choice.text && !word.reading.isEmpty {
+                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: before[index])
                 }
             }
             fix(choice)
             if freezesOnPick {
                 // The rest of what is shown stays as it is: picking one word must not change words the user has
-                // already read (as the system's own Zhuyin input does).
-                for word in conversion where !word.reading.isEmpty && !word.range.overlaps(choice.range)
-                    && !fixed.contains(where: { $0.range.overlaps(word.range) }) {
-                    fixed.append(FixedWord(range: word.range, text: word.text, reading: word.reading,
-                                           wordID: word.wordID, frozen: true))
+                // already read (as the system's own Zhuyin input does). A pick inside a longer word keeps that word's
+                // characters before it; those after it may still change with the pick.
+                for word in conversion where !word.reading.isEmpty {
+                    let pieces = word.range.overlaps(choice.range)
+                        ? [word.range.lowerBound..<max(word.range.lowerBound, choice.range.lowerBound)]
+                        : [word.range]
+                    for piece in pieces where !piece.isEmpty && !fixed.contains(where: { $0.range.overlaps(piece) }) {
+                        if piece == word.range {
+                            fixed.append(FixedWord(range: word.range, text: word.text, reading: word.reading,
+                                                   wordID: word.wordID, frozen: true))
+                            continue
+                        }
+                        let text = String(word.text.dropFirst(piece.lowerBound - word.range.lowerBound).prefix(piece.count))
+                        fixed.append(FixedWord(range: piece, text: text,
+                                               reading: tokens[piece].compactMap(\.reading).joined(separator: " "),
+                                               wordID: engine.languageModel.wordID(for: text), frozen: true))
+                    }
                 }
             }
         }
@@ -348,8 +374,9 @@ public final class Composer {
                 for index in committed.indices where committed[index].range.upperBound <= corrected {
                     committed[index].picked = true
                 }
-                for word in deletedWords where !conversion.contains(where: { $0.text == word.text && $0.reading == word.reading }) {
-                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: word.history)
+                for (word, before) in deletedWords
+                where !conversion.contains(where: { $0.text == word.text && $0.reading == word.reading }) {
+                    engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: before)
                 }
             }
             let context = leadingWords.map {
@@ -372,12 +399,12 @@ public final class Composer {
     /// The number of leading tokens that retype the deleted words' readings as different words; 0 when they do not.
     private func correctedPrefix() -> Int {
         guard !deletedWords.isEmpty else { return 0 }
-        let readings = deletedWords.flatMap { $0.reading.split(separator: " ").map(String.init) }
+        let readings = deletedWords.flatMap { $0.word.reading.split(separator: " ").map(String.init) }
         guard tokens.count >= readings.count,
               zip(tokens, readings).allSatisfy({ $0.reading == $1 }),
               conversion.contains(where: { $0.range.upperBound == readings.count }) else { return 0 }
         let retyped = conversion.filter { $0.range.upperBound <= readings.count }.map(\.text).joined()
-        return retyped == deletedWords.map(\.text).joined() ? 0 : readings.count
+        return retyped == deletedWords.map(\.word.text).joined() ? 0 : readings.count
     }
 
     /// The text before the insertion point, read from the app: the next composition continues its last words (or
@@ -777,8 +804,16 @@ public final class Composer {
             conversion = engine.convert(tokens, fixed: fixed, typo: options.typoTolerance, cache: &conversionCache,
                                         start: leadingHistory, characters: characterScores)
             if let reranker, !tokens.isEmpty {
-                let sentences = nBest(max(1, rerankingCount))
-                let index = reranker(sentences)
+                // Words the user picked in this place before stay: the reranker chooses among the sentences that keep
+                // them.
+                let before = Self.historiesBefore(conversion, start: leadingHistory)
+                let remembered = conversion.indices.filter {
+                    !conversion[$0].reading.isEmpty && engine.remembers(conversion[$0], before: before[$0])
+                }.map { conversion[$0] }
+                let sentences = nBest(max(1, rerankingCount)).filter { sentence in
+                    remembered.allSatisfy { word in sentence.words.contains { $0.range == word.range && $0.text == word.text } }
+                }
+                let index = sentences.isEmpty ? -1 : reranker(sentences)
                 if sentences.indices.contains(index) {
                     var history = leadingHistory
                     conversion = sentences[index].words.map { word in

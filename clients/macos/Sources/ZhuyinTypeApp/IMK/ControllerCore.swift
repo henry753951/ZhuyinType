@@ -136,7 +136,7 @@ final class ControllerCore {
 
     private static func startsComposition(_ key: KeyInput) -> Bool {
         switch key {
-        case .char, .shiftedChar, .printed: return true
+        case .char, .shiftedChar, .printed, .controlChar: return true
         default: return false
         }
     }

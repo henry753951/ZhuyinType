@@ -46,10 +46,16 @@ private struct GeneralPane: View {
                     Text("清除整段組字").tag(true)
                     Text("只清除注音").tag(false)
                 }
+                Picker("標點按法", selection: binding(preferences, \.punctuationKeys)) {
+                    Text("Windows").tag(PunctuationKeys.windows)
+                    Text("macOS").tag(PunctuationKeys.mac)
+                }
             } header: {
                 Text("按鍵")
             } footer: {
-                FooterText("所有按鍵列在「快捷鍵」。")
+                FooterText(preferences.punctuationKeys == .windows
+                    ? "Windows：Shift 加符號鍵打出鍵上的符號（< > _ ?），Control 加符號鍵打出中文標點（，。、？！）。所有按鍵列在「快捷鍵」。"
+                    : "macOS：Shift 加符號鍵打出中文標點（，。？！——），Option 加符號鍵打出鍵上的符號。所有按鍵列在「快捷鍵」。")
             }
             Section {
                 Picker("游標在句中時改", selection: binding(preferences, \.candidateAnchor)) {
@@ -152,8 +158,14 @@ private struct KeysPane: View {
             Section("其他") {
                 if !shift.isEmpty { KeyRow("中英切換", shift.map { "單按 " + $0 }) }
                 KeyRow(preferences.escapeClearsComposition ? "清除組字" : "清除注音", ["Esc"])
-                KeyRow("中文標點：，。？！「」", ["⇧", "符號鍵"])
-                KeyRow("鍵上印的符號：. / ; < >", ["⌥", "數字或符號鍵"])
+                if preferences.punctuationKeys == .windows {
+                    KeyRow("中文標點：，。、？！：；『』", ["⌃", "符號鍵"])
+                    KeyRow("鍵上的符號：< > _ ? !", ["⇧", "符號鍵"])
+                } else {
+                    KeyRow("中文標點：，。？！：『』——", ["⇧", "符號鍵"])
+                    KeyRow("鍵上的符號：. / ; < >", ["⌥", "數字或符號鍵"])
+                }
+                KeyRow("「 」 、", ["[", "]", "'"])
                 KeyRow("英文", ["Caps Lock"])
             }
         }

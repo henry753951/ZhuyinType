@@ -8,9 +8,14 @@ to the first wrong character, opens the candidate list and picks the first entry
 Reports the share of runs right with 0, ≤1, ≤2, ≤3 picks (0 picks is whole-run accuracy: "no-selection typing"),
 the mean picks over runs that end right, and how often a pick made another, already right, character wrong
 (a pick that breaks what the user has read).  Runs are chosen as in conversion_eval.py (seed 7).
+
+--relearn also types every run that needed picks a second time in the same CLI process (--keep-memory), after the
+picked version was committed, and reports how often the second typing shows what was learned.
 """
 import argparse
 import os
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import random
 import re
 import sys
@@ -37,6 +42,7 @@ def main():
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--cli-arg", action="append", default=[])
     parser.add_argument("--test", nargs="+", required=True)
+    parser.add_argument("--relearn", action="store_true", help="retype runs fixed by picks after committing them")
     args = parser.parse_args()
     lexicon = load_lexicon(args.lexicon)
     base = [args.cli, "--lexicon", args.lexicon, "--batch"] + args.cli_arg
@@ -50,7 +56,8 @@ def main():
                 break
             readings = readings_for(run, lexicon)
             if readings and len(readings) == len(run):
-                runs.append([run, keys_for(readings), 0, None, False])  # target, keys, picks, done-at, broke
+                keys = keys_for(readings)
+                runs.append([run, keys, 0, None, False, keys])  # target, keys, picks, done-at, broke, typed keys
         shown = run_cli(base, [r[1] + "<enter>" for r in runs], args.jobs)
         for run, got in zip(runs, shown):
             if got == run[0]:
@@ -87,6 +94,17 @@ def main():
         print(f"[{os.path.basename(test)}] {len(runs)} runs: right with 0 picks {within[0]:.1%}, ≤1 {within[1]:.1%}, "
               f"≤2 {within[2]:.1%}, ≤3 {within[3]:.1%}; mean picks {sum(fixed) / max(1, len(fixed)):.2f}; "
               f"picks that broke a right character in {sum(r[4] for r in runs) / total:.1%} of runs")
+        if args.relearn:
+            picked = [r for r in runs if r[3] is not None and r[3] > 0]
+
+            def retype(run):
+                out = subprocess.run(base + ["--keep-memory"], input=f"{run[1]}<enter>\n{run[5]}<enter>\n",
+                                     capture_output=True, text=True, check=True).stdout.split("\n")
+                return out[1] == run[0]
+            with ThreadPoolExecutor(max(1, args.jobs)) as pool:
+                kept = sum(pool.map(retype, picked))
+            print(f"[{os.path.basename(test)}] retyped after picking: {kept}/{len(picked)} show what was learned "
+                  f"({kept / max(1, len(picked)):.1%})")
 
 
 if __name__ == "__main__":

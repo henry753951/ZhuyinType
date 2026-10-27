@@ -13,6 +13,9 @@ public enum KeyInput: Hashable, Sendable {
     /// A digit or symbol key with Option held: the ASCII character printed on it, typed as is (Option+. is ".", Option+Shift+. is
     /// ">"), for the symbols the Zhuyin keys and Chinese punctuation cover.
     case printed(Character)
+    /// A symbol key with Control held, named by the character printed on it (Control+Shift+/ is "?"): full-width
+    /// Chinese punctuation, as Windows' Microsoft Bopomofo types it.
+    case controlChar(Character)
     case space, shiftSpace
     case enter, shiftEnter
     case backspace, optionBackspace, forwardDelete
@@ -114,6 +117,15 @@ public struct Presentation: Equatable, Sendable {
 }
 
 /// Strength of the physical-keyboard error channel. Neutral-tone matching is independent.
+/// What Shift with a symbol key types in Chinese mode.
+public enum PunctuationKeys: String, Sendable, CaseIterable {
+    /// The symbol printed on the key, half-width (Shift+, is "<", Shift+- is "_"); Control with the key types Chinese
+    /// punctuation (Control+, is "，").  As Windows' Microsoft Bopomofo.
+    case windows
+    /// Chinese punctuation (Shift+, is "，", Shift+- is "——"), as the Zhuyin input of macOS.
+    case mac
+}
+
 public enum TypoTolerance: String, Sendable, CaseIterable {
     case off, standard, aggressive
     var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
@@ -202,6 +214,8 @@ public struct ComposerOptions: Equatable, Sendable {
     /// Which of two interchangeable character forms to write (台 or 臺).  Conversion and learning use the lexicon's
     /// own forms; this only changes the text shown and committed.
     public var characterForms: CharacterForms = .common
+    /// What Shift and Control with a symbol key type.
+    public var punctuationKeys: PunctuationKeys = .windows
 
     public init() {}
 }

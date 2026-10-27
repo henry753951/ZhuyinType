@@ -252,6 +252,16 @@ enum ControllerCoreSelfTest {
             core.commit()
             try expect(client.inserts == ["你.>"], "inserted \(client.inserts)")
         }
+        test("Windows keys: Control types Chinese punctuation, Shift the symbol on the key") {
+            let (core, client) = session()
+            type("su3", into: core)
+            try expect(core.keyDown(keyCode: 43, modifiers: .control), "Control-, was not consumed")
+            try expect(core.keyDown(keyCode: 44, modifiers: [.control, .shift]), "Control-Shift-/ was not consumed")
+            try expect(core.keyDown(keyCode: 27, modifiers: .shift), "Shift-- was not consumed")
+            try expect(!core.keyDown(keyCode: 33, modifiers: .control), "Control-[ was taken from the app")
+            try expect(client.inserts == ["你，？_"], "inserted \(client.inserts)")
+            try expect(KeyMapping.input(keyCode: 18, modifiers: .control) == nil, "Control-1 is the app's")
+        }
         test("popup app receives preview without marked text") {
             let (core, client) = session()
             core.popupCompositionApps = [client.bundleIdentifier]

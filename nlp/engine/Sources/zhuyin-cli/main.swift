@@ -38,7 +38,7 @@ var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
 // The engine's own forms by default, so results compare with the evaluation text and earlier runs; the app writes 台.
 options.characterForms = .standard
-let usage = "Usage: zhuyin-cli [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--lexicon":
@@ -48,6 +48,10 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--typo":
         guard arguments.count >= 2, let typo = TypoTolerance(rawValue: arguments[1]) else { fail(usage) }
         options.typoTolerance = typo
+        arguments.removeFirst(2)
+    case "--punctuation":
+        guard arguments.count >= 2, let keys = PunctuationKeys(rawValue: arguments[1]) else { fail(usage) }
+        options.punctuationKeys = keys
         arguments.removeFirst(2)
     case "--batch": batch = true; arguments.removeFirst()
     case "--keep-memory": keepMemory = true; arguments.removeFirst()
@@ -253,6 +257,8 @@ func parse(_ input: String) throws -> [(String, KeyInput)] {
                 result.append(("<\(name)>", .shiftedChar(key)))
             } else if name.hasPrefix("O-"), name.dropFirst(2).count == 1, let key = name.last {
                 result.append(("<\(name)>", .printed(key)))
+            } else if name.hasPrefix("C-"), name.dropFirst(2).count == 1, let key = name.last {
+                result.append(("<\(name)>", .controlChar(key)))
             } else if name.hasPrefix("dt:"), let ms = Double(name.dropFirst(3)) {
                 result.append(("<dt:\(ms)>", .space))  // a delay, not a key: see `typed(_:into:)`
             } else {

@@ -849,6 +849,19 @@ public final class Engine: @unchecked Sendable {
         }
     }
 
+    /// The user picked this word in this place before (after the same word, or a phrase anywhere): the neural
+    /// reranker must not replace it.
+    func remembers(_ word: ConvertedWord, before history: LanguageModelHistory) -> Bool {
+        synchronized {
+            let phrase = word.text.count > 1
+            if phrase, (learned[PhraseKey(reading: word.reading, word: word.text)]?.picks ?? 0) > 0 { return true }
+            let id = word.wordID ?? languageModel.wordID(for: word.text) ?? wordIDs[word.text]
+                ?? mappedLexicon?.wordIndex(word.text).map { 0x4000_0000 + UInt32($0) }
+            guard let id else { return false }
+            return personal.remembers(id, before: history, phrase: phrase)
+        }
+    }
+
     /// The user picked something else where `text` was shown: weaken what made it the first choice.
     func weaken(text: String, reading: String, wordID: UInt32?, history: LanguageModelHistory?) {
         synchronized {

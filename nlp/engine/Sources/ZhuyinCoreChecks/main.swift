@@ -66,7 +66,7 @@ let tiny = """
 func type(_ keys: String, into composer: Composer) {
     for character in keys { _ = composer.handle(character == " " ? .space : .char(character)) }
 }
-var legacyOptions = ComposerOptions(); legacyOptions.typoTolerance = .off
+var legacyOptions = ComposerOptions(); legacyOptions.typoTolerance = .off; legacyOptions.punctuationKeys = .mac
 func composer(_ engine: Engine, _ keys: String = "", options: ComposerOptions = legacyOptions) -> Composer {
     let result = Composer(engine: engine, options: options)
     type(keys, into: result)
@@ -252,6 +252,30 @@ for (shifted, table) in [(false, plainPunctuation), (true, shiftedPunctuation)] 
         validPresentation(c, "literal")
     }
 }
+// Windows keys (the default): Shift types the symbol printed on the key, Control types Chinese punctuation.
+var windowsKeys = legacyOptions; windowsKeys.punctuationKeys = .windows
+check(ComposerOptions().punctuationKeys == .windows, "Windows punctuation keys by default")
+let printedSymbols: [(Character, String)] = [(",", "<"), (".", ">"), ("/", "?"), (";", ":"), ("'", "\""), ("1", "!"),
+    ("6", "^"), ("-", "_"), ("=", "+"), ("[", "{"), ("]", "}"), ("\\", "|"), ("`", "~")]
+for (key, text) in printedSymbols {
+    let c = composer(engine, options: windowsKeys)
+    check(c.handle(.shiftedChar(key)) == .consumed && c.presentation.text == text, "Windows Shift+\(key) types \(text)")
+}
+let controlMarks: [(Character, String)] = [(",", "，"), (".", "。"), ("'", "、"), (";", "；"), (":", "："), ("?", "？"),
+    ("!", "！"), ("{", "『"), ("}", "』"), ("(", "（"), (")", "）"), ("<", "《"), (">", "》"), ("-", "－"), ("_", "——"),
+    ("=", "＝"), ("~", "～")]
+for (key, text) in controlMarks {
+    let c = composer(engine, options: windowsKeys)
+    check(c.handle(.controlChar(key)) == .consumed && c.presentation.text == text, "Control+\(key) types \(text)")
+}
+let emoticon = composer(engine, options: windowsKeys)
+for key: KeyInput in [.shiftedChar("t"), .shiftedChar("-"), .shiftedChar("t")] { _ = emoticon.handle(key) }
+check(emoticon.presentation.text == "T_T", "T_T with Windows keys")
+let controlBracket = composer(engine, "18 ", options: windowsKeys)
+let bracketResult = controlBracket.handle(.controlChar("["))
+check(!bracketResult.handled && bracketResult.commit == "八" && !controlBracket.isComposing,
+      "Control+[ sends the composition and goes to the app")
+check(composer(engine).handle(.controlChar("[")) == .passThrough, "Control+[ with nothing composed is the app's")
 for key in "abcdefghijklmnopqrstuvwxyz" {
     let c = composer(engine)
     _ = c.handle(.shiftedChar(key))
@@ -411,6 +435,11 @@ check(interior.presentation.candidates!.items.first?.text == "媽", "after-curso
 interior.options.candidateAnchor = .beforeCursor
 _ = interior.handle(.down)
 check(interior.presentation.candidates!.items.first?.text == "八趴", "before-cursor shown text first inside a longer word")
+let insideEngine = try Engine(lexiconText: tiny + "\nㄆㄚ\t啪\t-3\nㄅㄚ ㄆㄚ\t疤趴\t-0.5\n")
+let inside = composer(insideEngine, "18 q8 ")
+_ = inside.handle(.left); _ = inside.handle(.down)
+_ = inside.selectCandidate(at: inside.presentation.candidates!.items.firstIndex { $0.text == "啪" }!)
+check(inside.presentation.text == "疤啪", "a pick inside a word keeps the rest of that word")
 let sixEngine = try Engine(lexiconText: tiny + "\nㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ\t八八八八八八\t-0.1\nㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ ㄅㄚ\t巴巴巴巴巴巴巴\t0\n")
 let six = composer(sixEngine, String(repeating: "18 ", count: 7))
 check(six.presentation.clauses.count == 2 && !six.presentation.text.contains("巴"), "word spans capped at six syllables")
@@ -1104,6 +1133,15 @@ check(nbestComposer.presentation.text == "巴啪", "reranker chooses displayed s
 _ = nbestComposer.handle(.down)
 check(nbestComposer.presentation.candidates?.items.first?.text == "巴啪", "candidate list starts with current span under reranking")
 check(nbestComposer.nBest().map(\.score) == [-1.5, -3, -4, -5], "reranker leaves statistical scores ordered")
+let rememberEngine = try Engine(lexiconText: "ㄅㄚ\t八\t-1\nㄅㄚ\t巴\t-2\nㄆㄚ\t趴\t-1\nㄆㄚ\t啪\t-3\n")
+let rememberPick = composer(rememberEngine, "q8 18 ")
+_ = rememberPick.handle(.down)
+_ = rememberPick.selectCandidate(at: rememberPick.presentation.candidates!.items.firstIndex { $0.text == "巴" }!)
+_ = rememberPick.commitAll()
+let remembering = composer(rememberEngine, "q8 18 ")
+remembering.reranker = { $0.firstIndex { !$0.text.hasSuffix("巴") } ?? 0 }
+check(remembering.presentation.text == "趴巴" && remembering.nBest().contains { !$0.text.hasSuffix("巴") },
+      "reranker keeps a word picked in the same place before")
 nbestComposer.reranker = { _ in Int.max }
 check(nbestComposer.presentation.text == "八趴", "invalid reranker choice falls back")
 nbestComposer.reranker = nil

@@ -167,6 +167,15 @@ final class PersonalLanguageModel: @unchecked Sendable {
         totals[history] = total
     }
 
+    /// The user picked `word` after the previous word of `history`, or, for a phrase, anywhere.
+    func remembers(_ word: UInt32, before history: LanguageModelHistory, phrase: Bool) -> Bool {
+        lock.withLock {
+            if history.previous > 2, history.previous != LanguageModelHistory.noContext,
+               (entries[Key(words: [history.previous, word])]?.picks ?? 0) > 0 { return true }
+            return phrase && (entries[Key(words: [word])]?.picks ?? 0) > 0
+        }
+    }
+
     /// A pick replaced `word` after `history`: halve the user's evidence for it there.
     func weaken(word: UInt32, history: LanguageModelHistory) {
         lock.withLock {

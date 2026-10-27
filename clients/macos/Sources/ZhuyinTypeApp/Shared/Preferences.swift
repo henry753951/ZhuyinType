@@ -55,6 +55,7 @@ final class Preferences: ObservableObject {
             Key.fuzzySounds: 0,
             Key.usesPrecedingText: true,
             Key.characterForms: CharacterForms.common.rawValue,
+            Key.punctuationKeys: PunctuationKeys.windows.rawValue,
         ])
     }
 
@@ -77,10 +78,12 @@ final class Preferences: ObservableObject {
         static let usesPrecedingText = "usesPrecedingText"
         static let shortcuts = "shortcuts"
         static let characterForms = "characterForms"
+        static let punctuationKeys = "punctuationKeys"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
                           shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, characterForms]
+                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, characterForms,
+                          punctuationKeys]
     }
 
     func resetToDefaults() {
@@ -142,6 +145,10 @@ final class Preferences: ObservableObject {
         get { CharacterForms(rawValue: defaults.string(forKey: Key.characterForms) ?? "") ?? .common }
         set { defaults.set(newValue.rawValue, forKey: Key.characterForms); changed() }
     }
+    var punctuationKeys: PunctuationKeys {
+        get { PunctuationKeys(rawValue: defaults.string(forKey: Key.punctuationKeys) ?? "") ?? .windows }
+        set { defaults.set(newValue.rawValue, forKey: Key.punctuationKeys); changed() }
+    }
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
@@ -198,6 +205,7 @@ final class Preferences: ObservableObject {
         o.candidateAnchor = candidateAnchor == .after ? .afterCursor : .beforeCursor
         o.verticalList = candidateLayout == .vertical
         o.characterForms = characterForms
+        o.punctuationKeys = punctuationKeys
         return o
     }
 }
