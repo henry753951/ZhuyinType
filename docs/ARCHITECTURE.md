@@ -56,7 +56,7 @@ flowchart TD
    ```
 
 8. **⑤ 重排**：前 16 句交給 v2b，總分 = 引擎分數 + 1.0 × log P_v2b(整句 | 前文)。修正過的句子要比最好的未修正句子多 4.0 分才成為首選。
-9. **顯示**：`Presentation` 帶回組字文字、游標、要改的字的底線與候選字清單，`ControllerCore` 呼叫 `setMarkedText`，必要時顯示候選字視窗。
+9. **顯示**：依「台／臺」設定換成選定的寫法（只改顯示與送出的文字，不改選字）；`Presentation` 帶回組字文字、游標、要改的字的底線與候選字清單，`ControllerCore` 呼叫 `setMarkedText`，必要時顯示候選字視窗。
 
 ## 4. 候選字清單
 
@@ -82,7 +82,7 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
     A["組字開始"] --> B{"App 提供游標前的文字？"}
-    B -- 是 --> C["讀最多 32 字"]
+    B -- 是 --> C["讀最多 128 字"]
     B -- 否 --> D["同一個 App 10 分鐘內送出的字"]
     C --> E["recentText"]
     D --> E
@@ -111,13 +111,22 @@ flowchart LR
 
 | 內容 | 位置（app bundle `Contents/Resources/`） | 載入 |
 |---|---|---|
-| 詞庫 `lexicon.tsv` | 根目錄 | 啟動時讀入記憶體 |
-| 百科語言模型 | `lm/{unigram,bigram,backoff}.tsv` | 啟動時讀入 |
-| 聊天語言模型 | `lm_chat/{unigram,bigram,backoff}.tsv` | 有這個目錄時，和百科模型混合 |
+| 詞庫 `lexicon.bin` | 根目錄 | mmap，不解析（格式見 `training/lm/LEXICON_FORMAT.md`） |
+| 百科語言模型 | `lm/lm.bin` | mmap（ZTLM/1，`training/lm/FORMAT.md`） |
+| 聊天語言模型 | `lm_chat/lm.bin` | mmap；有這個目錄時和百科模型混合 |
 | v2b 整句重排 | `reranker/Reranker.mlmodelc`、`vocab.json`、`config.json` | Core ML，只用 CPU |
 | v3 字模型 | `v3/{ContextEncoder,SyllableEncoder}.mlmodelc`、`chars.json`、`syllables.json` | Core ML，只用 CPU；前文編碼結果依前文快取 |
 
-引擎與模型在 `EngineHost.load()` 的背景佇列載入，載入完成前按鍵直接交給 App。
+引擎與模型在 `EngineHost` 的背景佇列載入；載入期間的文字鍵先保留，完成後依序送進組字。模型目錄 `~/Library/Application Support/ZhuyinType/Models/` 裡的檔案優先於 app 內建的。
+
+```mermaid
+flowchart LR
+    F["FSEvents：app 資料夾、模型目錄"] --> C{"什麼變了？"}
+    C -- "app 版本或執行檔" --> R["等所有輸入框沒有組字<br/>→ 寫入個人資料、記下中英模式 → 結束程序"]
+    R --> N["下一個按鍵：macOS 啟動新版"]
+    C -- "資料或模型" --> L["背景載入新的引擎與模型<br/>generation + 1"]
+    L --> S["各輸入框在組字結束時換用新的"]
+```
 
 ## 8. 開發流程
 

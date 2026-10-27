@@ -61,11 +61,15 @@ private struct GeneralPane: View {
                     Text("標準").tag(TypoSetting.standard)
                     Text("積極").tag(TypoSetting.aggressive)
                 }
+                Picker("台／臺", selection: binding(preferences, \.characterForms)) {
+                    Text("台").tag(CharacterForms.common)
+                    Text("臺").tag(CharacterForms.standard)
+                }
                 Toggle("參考游標前的文字", isOn: binding(preferences, \.usesPrecedingText))
             } header: {
                 Text("選字")
             } footer: {
-                FooterText("游標在句尾時改最後的字詞；在句中時，要改的字有底線。按錯相鄰的鍵或聲調時自動修正，候選字視窗只列照按鍵打出的字，修正的字按 Shift-↑ 才列出。選字參考游標前約 30 個字（包括同一個 App 裡 10 分鐘內打的字），只在這台 Mac 上使用。")
+                FooterText("游標在句尾時改最後的字詞；在句中時，要改的字有底線。按錯相鄰的鍵或聲調時自動修正，候選字視窗只列照按鍵打出的字，修正的字按 Shift-↑ 才列出。選字參考游標前約 120 個字（包括同一個 App 裡 10 分鐘內打的字），只在這台 Mac 上使用。")
             }
             Section {
                 ForEach(Self.fuzzyPairs, id: \.label) { pair in

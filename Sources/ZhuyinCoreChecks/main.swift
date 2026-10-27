@@ -486,6 +486,8 @@ for (word, reading) in [("", "ㄅㄚ"), ("八", ""), ("八", "foo"), ("八趴", 
 let temp = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinCoreChecks-\(UUID().uuidString)")
 try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: temp) }
+try checkMappedLexicon(in: temp)
+try checkTSVBinaryMixture(in: temp)
 try Data("bad\nㄅㄚ\t八\tNaN\t0\nㄅㄚ\t巴\t1\tNaN\n".utf8).write(to: temp.appendingPathComponent("learned.tsv"))
 try Data("bad\nnot-reading\t八\n".utf8).write(to: temp.appendingPathComponent("user_phrases.tsv"))
 let persisted = try Engine(lexiconText: tiny, userDataDirectory: temp)

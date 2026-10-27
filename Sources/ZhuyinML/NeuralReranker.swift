@@ -6,9 +6,10 @@ import ZhuyinCore
 
 /// Chooses the displayed conversion among the engine's N best with a character language model.
 ///
-/// Each candidate sentence is scored as log P(candidate | text before it) by one batched Core ML call; the choice is
+/// Each candidate sentence is scored as log P(candidate | text before it) by one Core ML / ONNX call; the choice is
 /// the candidate with the highest engine score + `weight` × that log probability.  The model directory holds
 /// `Reranker.mlmodelc` (or `Reranker.mlpackage`, compiled on first use) and `vocab.json`.
+/// An optional `RerankerTree` model shares candidate prefixes; the batched model remains the fallback.
 public final class NeuralReranker: @unchecked Sendable {
     public var weight: Double
     /// How many of the engine's best conversions to choose among.
@@ -20,6 +21,8 @@ public final class NeuralReranker: @unchecked Sendable {
     public var unknownPenalty = log(5465.0)
     public typealias Prediction = ([Int32], [Int32], Int, Int) throws -> [Double]
     private var remotePrediction: Prediction?
+    typealias TreePrediction = (RerankerTree) throws -> [Double]
+    var treePrediction: TreePrediction?
     #if canImport(CoreML)
     private var model: MLModel?
     #endif
@@ -53,6 +56,26 @@ public final class NeuralReranker: @unchecked Sendable {
         let configuration = MLModelConfiguration()
         configuration.computeUnits = computeUnits
         model = try MLModel(contentsOf: modelURL, configuration: configuration)
+        let treeURL = directory.appendingPathComponent("RerankerTree.mlmodelc")
+        if FileManager.default.fileExists(atPath: treeURL.path),
+           let tree = try? MLModel(contentsOf: treeURL, configuration: configuration) {
+            treePrediction = { packed in
+                func array(_ values: [Int32], _ shape: [Int]) throws -> MLMultiArray {
+                    let array = try MLMultiArray(shape: shape.map(NSNumber.init(value:)), dataType: .int32)
+                    let pointer = array.dataPointer.bindMemory(to: Int32.self, capacity: values.count)
+                    values.withUnsafeBufferPointer { pointer.update(from: $0.baseAddress!, count: values.count) }
+                    return array
+                }
+                let n = packed.ids.count
+                let input = try MLDictionaryFeatureProvider(dictionary: [
+                    "ids": try array(packed.ids, [1, n]), "positions": try array(packed.positions, [1, n]),
+                    "ancestors": try array(packed.ancestors, [n, n]), "parents": try array(packed.parents, [packed.targets.count]),
+                    "targets": try array(packed.targets, [packed.targets.count])])
+                let output = try tree.prediction(from: input)
+                guard let values = output.featureValue(for: "logprob")?.multiArrayValue else { return [] }
+                return (0..<values.count).map { values[$0].doubleValue }
+            }
+        }
         maxLength = 64
     }
 
@@ -61,6 +84,9 @@ public final class NeuralReranker: @unchecked Sendable {
     #if os(Linux)
     public convenience init(directory: URL, weight: Double = 0.5) throws {
         try self.init(directory: directory, weight: weight, prediction: ONNXModel.reranker(directory))
+        if FileManager.default.fileExists(atPath: directory.appendingPathComponent("RerankerTree.onnx").path) {
+            treePrediction = try? ONNXModel.rerankerTree(directory)
+        }
     }
     #endif
 
@@ -73,6 +99,11 @@ public final class NeuralReranker: @unchecked Sendable {
         let longest = encoded.map(\.count).max() ?? 0
         guard longest > 0, longest < maxLength else { return nil }
         let prefix = [Int32(1)] + encode(String(context.suffix(min(contextLength, maxLength - 1 - longest))))
+        if let treePrediction, candidates.count <= 32 {
+            let packed = RerankerTree(prefix: prefix, candidates: encoded)
+            if let logprob = try? lock.withLock({ try treePrediction(packed) }),
+               let result = packed.scores(logprob, unknownPenalty: unknownPenalty) { return result }
+        }
         // The model accepts sequences of 2 or more; a lone character after <bos> is padded.
         let length = max(2, prefix.count - 1 + longest)
         var ids = [Int32](repeating: 0, count: candidates.count * length)
@@ -126,8 +157,15 @@ public final class NeuralReranker: @unchecked Sendable {
     public var exactMargin = 4.0
 
     /// The index of the sentence to display.  The keys as typed win unless a correction scores clearly better.
+    /// The last texts scored for `choose`: a key that adds only an unfinished Zhuyin symbol leaves the sentences as
+    /// they were, and is answered without running the model.
+    private var lastChoice: (context: String, texts: [String], neural: [Double])?
+
     public func choose(_ sentences: [ScoredSentence], context: String) -> Int {
-        guard sentences.count > 1, let neural = scores(context: context, candidates: sentences.map(\.text)) else { return 0 }
+        let texts = sentences.map(\.text)
+        let cached = lock.withLock { lastChoice.flatMap { $0.context == context && $0.texts == texts ? $0.neural : nil } }
+        guard sentences.count > 1, let neural = cached ?? scores(context: context, candidates: texts) else { return 0 }
+        if cached == nil { lock.withLock { lastChoice = (context, texts, neural) } }
         let totals = sentences.indices.map { sentences[$0].score + weight * neural[$0] }
         let best = totals.indices.max { totals[$0] < totals[$1] }!
         guard sentences[best].corrected,

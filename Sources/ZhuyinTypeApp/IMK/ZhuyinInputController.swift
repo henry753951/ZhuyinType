@@ -85,7 +85,16 @@ final class IMKTextClient: TextClient {
 @objc(ZhuyinInputController)
 final class ZhuyinInputController: IMKInputController {
     private static weak var activeController: ZhuyinInputController?
+    /// Every live controller, so EngineHost can tell whether anything is being composed.
+    private static let controllers: NSHashTable<ZhuyinInputController> = {
+        EngineHost.isComposing = { ZhuyinInputController.controllers.allObjects.contains { $0.core?.composer.isComposing == true } }
+        return .weakObjects()
+    }()
     private var core: ControllerCore?
+    /// The EngineHost generation `core` was built from.
+    private var coreGeneration = 0
+    /// Keys typed while the engine was still loading (after a launch or an update), replayed once it is ready.
+    private var bufferedKeys: [(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval, text: String)] = []
     private var textClient: IMKTextClient?
     private var clientIdentity: ObjectIdentifier?
     private var observers: [NSObjectProtocol] = []
@@ -94,6 +103,11 @@ final class ZhuyinInputController: IMKInputController {
     private var loggedNotReady = false
 
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
+        super.init(server: server, delegate: delegate, client: inputClient)
+        Self.controllers.add(self)
+    }
 
     override func recognizedEvents(_ sender: Any!) -> Int {
         Int(NSEvent.EventTypeMask.keyDown.rawValue | NSEvent.EventTypeMask.flagsChanged.rawValue)
@@ -147,8 +161,11 @@ final class ZhuyinInputController: IMKInputController {
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, bind(sender) else { return false }
         claimActive()
+        replaceStaleCore()
         makeCoreIfReady()
         guard let core else {
+            if event.type == .keyDown, buffer(event) { return true }
+            flushBufferedKeys()
             if !loggedNotReady {
                 EngineHost.logger.info("Engine not ready; passing session keys through")
                 loggedNotReady = true
@@ -166,6 +183,7 @@ final class ZhuyinInputController: IMKInputController {
             let handled = core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags, time: event.timestamp)
             lastKeyDown = (event.keyCode, event.timestamp, handled)
             Self.keyLog.debug("key \(event.keyCode) t=\(event.timestamp) repeat=\(event.isARepeat) handled=\(handled)")
+            EngineHost.restartIfIdle()
             return handled
         case .flagsChanged:
             return core.flagsChanged(keyCode: event.keyCode, modifiers: event.modifierFlags,
@@ -202,8 +220,34 @@ final class ZhuyinInputController: IMKInputController {
         return true
     }
 
+    /// Text keys typed while the engine loads are held (and swallowed) so they are not typed into the app as Latin
+    /// letters; anything with a modifier, and every key in English mode, still goes straight to the app.
+    private func buffer(_ event: NSEvent) -> Bool {
+        guard EngineHost.isLoading, EngineHost.lastEnglishMode != true, bufferedKeys.count < 64,
+              event.modifierFlags.isDisjoint(with: [.command, .control, .option]),
+              let text = event.characters, !text.isEmpty,
+              text.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7f && $0.value < 0xf700 }) else { return false }
+        bufferedKeys.append((event.keyCode, event.modifierFlags, event.timestamp, text))
+        return true
+    }
+
+    /// The engine failed to load: give the held keys to the app as typed.
+    private func flushBufferedKeys() {
+        guard !bufferedKeys.isEmpty, !EngineHost.isLoading else { return }
+        for key in bufferedKeys { textClient?.insertText(key.text, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        bufferedKeys.removeAll()
+    }
+
+    /// After a reload, rebuild the core from the new engine and models once its composition is finished.
+    private func replaceStaleCore() {
+        guard let core, coreGeneration != EngineHost.generation, !core.composer.isComposing else { return }
+        core.endSession()
+        self.core = nil
+    }
+
     private func makeCoreIfReady() {
         guard core == nil, let engine = EngineHost.engine, let textClient else { return }
+        coreGeneration = EngineHost.generation
         let preferences = Preferences.shared
         let core = ControllerCore(engine: engine, client: textClient, options: preferences.composerOptions,
                                   isEnglish: EngineHost.lastEnglishMode ?? preferences.startInEnglish,
@@ -227,6 +271,11 @@ final class ZhuyinInputController: IMKInputController {
             ModeToast.shared.show(english ? "英" : "中", caret: caret, windowLevel: client.windowLevel)
         }
         refreshPreferences()
+        let held = bufferedKeys
+        bufferedKeys.removeAll()
+        for key in held where !core.keyDown(keyCode: key.keyCode, modifiers: key.modifiers, time: key.time) {
+            textClient.insertText(key.text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
     }
 
     private func refreshPreferences() {
@@ -270,6 +319,7 @@ final class ZhuyinInputController: IMKInputController {
         })
         observers.append(center.addObserver(forName: EngineHost.didLoad, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.active else { return }
+            self.replaceStaleCore()
             self.makeCoreIfReady()
         })
     }

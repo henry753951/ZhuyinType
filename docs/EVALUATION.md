@@ -72,6 +72,7 @@ python3 training/eval/error_analysis.py --cli .build-dev/release/zhuyin-cli --re
 | `--decoder slots\|boundaries\|reorder\|timed`、`--decoder-costs …`、`--hotspot` | 按鍵解碼方法、成本、熱點成本 |
 | `--typo off\|standard\|aggressive`、`--fuzzy zh,ch,…` | 容錯、模糊音 |
 | `--context TEXT` | 游標前的文字 |
+| `--forms standard\|common` | 「臺」或「台」；CLI 預設 `standard`（引擎原本的字，和評測文字、舊的數字可直接比較），app 預設 `common` |
 | `--timing` | 印出每次模型呼叫的時間，最後加上延遲、CPU、能耗、記憶體摘要 |
 
 批次輸入每行一段按鍵；`<dt:MS>` 指定和前一鍵的間隔，`<enter>`、`<left>`、`<sdown>`（⇧↓）、`<sup>`（⇧↑）等表示特殊鍵；「文字<tab>按鍵」把前面的文字當作前文。

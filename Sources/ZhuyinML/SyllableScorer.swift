@@ -104,8 +104,22 @@ public final class SyllableScorer: @unchecked Sendable {
 
     /// For each syllable, log P over its candidate characters (same order; at most `maxCandidates` each, the caller
     /// prunes).  Nil when the model cannot run or the input is empty or too long.
+    /// The last request and its answer: a key that leaves the syllables and candidates as they were is answered
+    /// without running the model.
+    private var lastRequest: (context: String, syllables: [Syllable], candidates: [[Character]], scores: [[Double]])?
+
     public func scores(context text: String, syllables: [Syllable], candidates: [[Character]]) -> [[Double]]? {
         guard !syllables.isEmpty, syllables.count == candidates.count, syllables.count <= 64 else { return nil }
+        if let last = lock.withLock({ lastRequest }), last.context == text, last.syllables == syllables,
+           last.candidates == candidates {
+            return last.scores
+        }
+        let result = computeScores(context: text, syllables: syllables, candidates: candidates)
+        if let result { lock.withLock { lastRequest = (text, syllables, candidates, result) } }
+        return result
+    }
+
+    private func computeScores(context text: String, syllables: [Syllable], candidates: [[Character]]) -> [[Double]]? {
         let width = max(1, min(Self.maxCandidates, candidates.map(\.count).max() ?? 1))
         let count = syllables.count
         var candidateIDs = [Int32](repeating: 0, count: count * width)

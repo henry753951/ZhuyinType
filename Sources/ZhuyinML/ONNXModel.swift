@@ -57,6 +57,17 @@ final class ONNXModel {
         }
     }
 
+    static func rerankerTree(_ directory: URL) throws -> NeuralReranker.TreePrediction {
+        let model = try ONNXModel(directory, "RerankerTree")
+        return { tree in
+            let n = tree.ids.count
+            let inputs = try [ONNXTensor(tree.ids, shape: [1, n]), ONNXTensor(tree.positions, shape: [1, n]),
+                              ONNXTensor(tree.ancestors, shape: [n, n]), ONNXTensor(tree.parents, shape: [tree.targets.count]),
+                              ONNXTensor(tree.targets, shape: [tree.targets.count])]
+            return try model.run(["ids", "positions", "ancestors", "parents", "targets"], inputs, outputs: ["logprob"])[0].doubles()
+        }
+    }
+
     static func syllable(_ directory: URL) throws -> SyllableScorer.Prediction {
         let context = try ONNXModel(directory, "ContextEncoder")
         let syllable = try ONNXModel(directory, "SyllableEncoder")

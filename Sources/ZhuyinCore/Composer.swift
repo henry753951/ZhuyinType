@@ -65,6 +65,8 @@ public final class Composer {
         didSet { conversionDirty = true; refresh() }
     }
     public var characterWeight = 1.0
+    /// Also order the candidate list by the character model's scores at each position.
+    public var characterScoresInList = true
     /// The character model's scores for the current tokens, recomputed when they change.
     private var characterScores: CharacterScores?
     /// How many characters per syllable the character model is asked about.
@@ -287,7 +289,7 @@ public final class Composer {
                     part.first == "˙" ? String(part.dropFirst()) + "˙" : String(part)
                 }
                 let typed = tokens[choice.range].compactMap { token -> String? in
-                    if case .syllable(_, let keys) = token { return keys }
+                    if case .syllable(_, let keys, _) = token { return keys }
                     return nil
                 }
                 if typed.count == meant.count { engine.recordTypos(Array(zip(typed, meant))) }
@@ -459,7 +461,9 @@ public final class Composer {
         }
         let lists = candidates.map { $0.sorted { $0.value > $1.value }.prefix(Self.characterCandidates).map(\.key) }
         let syllables = tokens.map { token -> CharacterModelSyllable in
-            guard case .syllable(let reading, let keys) = token else { return CharacterModelSyllable(base: nil, tone: 0, costBucket: 0) }
+            guard case .syllable(let reading, let keys, let implicit) = token else {
+                return CharacterModelSyllable(base: nil, tone: 0, costBucket: 0)
+            }
             let toneMarks: [Character: Int] = ["ˊ": 2, "ˇ": 3, "ˋ": 4, "˙": 5]
             let tone = reading.last.flatMap { toneMarks[$0] } ?? 1
             let base = String(reading.filter { toneMarks[$0] == nil })
@@ -468,7 +472,7 @@ public final class Composer {
                 let cost = engine.alternatives(for: keys).first?.cost ?? .infinity
                 bucket = cost <= 6 ? 1 : cost <= 11 ? 2 : 3
             }
-            return CharacterModelSyllable(base: base, tone: tone, costBucket: bucket)
+            return CharacterModelSyllable(base: base, tone: tone, costBucket: bucket, implicit: implicit)
         }
         guard let scores = characterScorer(syllables, lists) else { return nil }
         var positions = Array(repeating: [Character: Double](), count: tokens.count)
@@ -496,7 +500,7 @@ public final class Composer {
     }
 
     private func score(_ split: KeyDecoder.Result, after settled: [CompositionToken]) -> Double {
-        let candidate = settled + split.syllables.map { CompositionToken.syllable($0.reading, keys: $0.keys) }
+        let candidate = settled + split.syllables.map { CompositionToken.syllable($0.reading, keys: $0.keys, implicit: $0.implicit) }
         guard let sentence = engine.sentences(candidate, fixed: fixed, typo: options.typoTolerance, k: 1,
                                               start: leadingHistory).first else { return -.infinity }
         return sentence.score - split.cost
@@ -520,7 +524,7 @@ public final class Composer {
         let unfinished = decoded.bufferKeys.isEmpty ? 0 : 1
         guard decoded.cost.isFinite, settled + decoded.syllables.count + unfinished <= options.maxSyllables else { return false }
         if runTokens > 0 { delete((tokens.count - runTokens)..<tokens.count) }
-        for syllable in decoded.syllables { insert(.syllable(syllable.reading, keys: syllable.keys)) }
+        for syllable in decoded.syllables { insert(.syllable(syllable.reading, keys: syllable.keys, implicit: syllable.implicit)) }
         runTokens = decoded.syllables.count
         buffer = decoded.buffer
         bufferKeys = decoded.bufferKeys
@@ -624,13 +628,17 @@ public final class Composer {
     }
 
     /// Text at token boundaries, including partial words and multi-character literal tokens.
-    private func shown(in range: Range<Int>) -> String {
+    /// The converted text over `range`, in the lexicon's own forms.
+    private func converted(in range: Range<Int>) -> String {
         conversion.filter { $0.range.overlaps(range) }.map { word in
             if range.lowerBound <= word.range.lowerBound && range.upperBound >= word.range.upperBound { return word.text }
             return String(word.text.dropFirst(max(0, range.lowerBound - word.range.lowerBound))
                 .prefix(min(word.range.upperBound, range.upperBound) - max(word.range.lowerBound, range.lowerBound)))
         }.joined()
     }
+
+    /// The text over `range` as shown, in the preferred character forms.
+    private func shown(in range: Range<Int>) -> String { options.characterForms.apply(converted(in: range)) }
 
     private func choice(range: Range<Int>, text: String, reading: String,
                         words: [ConvertedWord]? = nil) -> FixedWord {
@@ -709,6 +717,11 @@ public final class Composer {
             let order: ((match: Engine.Match, score: Double), (match: Engine.Match, score: Double)) -> Bool = { a, b in
                 a.score == b.score ? a.match.entry.word < b.match.entry.word : a.score > b.score
             }
+            if characterScoresInList, let characterScores {
+                for index in ranked.indices {
+                    ranked[index].score += characterScores.score(ranked[index].match.entry.word, at: range.lowerBound)
+                }
+            }
             ranked.sort(by: order)
             if let candidateScorer, ranked.count > 1 {
                 let head = min(ranked.count, candidateScoringCount)
@@ -719,7 +732,7 @@ public final class Composer {
                 }
             }
             // What is shown there: first for the whole span; for a shorter span only when it is one word or a pick.
-            let current = shown(in: range)
+            let current = converted(in: range)
             if let existing = fixed.first(where: { $0.range == range && $0.text == current }) {
                 exact.append(existing)
             } else if range == longest || conversion.contains(where: { $0.range == range }) {
@@ -734,8 +747,10 @@ public final class Composer {
                 if match.annotation == nil { exact.append(word) } else { corrected.append(word) }
             }
         }
+        // Two forms of one word (臺北, 台北) are shown once, in the preferred form.
+        let forms = options.characterForms
         for word in [head].compactMap({ $0 }) + (tolerant ? corrected + exact : exact) where choices.count < 60
-            && !choices.contains(where: { $0.range == word.range && $0.text == word.text }) {
+            && !choices.contains(where: { $0.range == word.range && forms.apply($0.text) == forms.apply(word.text) }) {
             choices.append(word)
         }
         candidateSelection = 0
@@ -784,8 +799,9 @@ public final class Composer {
             for token in word.range {
                 if cursor == token { appendBuffer() }
                 offsets[token] = text.utf16.count
-                if word.range.count == 1 { text += word.text }
-                else { text += String(word.text.dropFirst(token - word.range.lowerBound).prefix(1)) }
+                let shown = options.characterForms.apply(word.text)
+                if word.range.count == 1 { text += shown }
+                else { text += String(shown.dropFirst(token - word.range.lowerBound).prefix(1)) }
             }
             offsets[word.range.upperBound] = text.utf16.count
             boundaries.insert(text.utf16.count)
@@ -816,7 +832,8 @@ public final class Composer {
         let clauses = zip(sorted, sorted.dropFirst()).compactMap { start, end in start < end ? start..<end : nil }
         if let range = selection, notice == nil { notice = "Enter 加入自訂詞：" + shown(in: range) }
         let candidates: CandidateList? = choices.isEmpty ? nil : CandidateList(
-            items: choices.map { Candidate(text: $0.text, annotation: $0.annotation) }, selection: candidateSelection,
+            items: choices.map { Candidate(text: options.characterForms.apply($0.text), annotation: $0.annotation) },
+            selection: candidateSelection,
             pageSize: max(1, options.selectionKeys.count),
             tolerant: literalList || !correctionsAvailable ? nil : tolerantList,
             singleCharacter: singleCharacterList)

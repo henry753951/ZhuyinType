@@ -21,8 +21,11 @@ are little-endian; every section starts on an 8-byte boundary (pad with zero byt
 
 ## Vocabulary
 
-Word ids are `0 ..< V`, assigned in **byte-wise ascending order of the UTF-8 spelling**. Ids 0, 1, 2 are reserved and
-spelled `</s>`, `<s>`, `<unk>` (these happen to sort first byte-wise; the writer must check that they do).
+Word ids are `0 ..< V`. Ids 0, 1, 2 are reserved and spelled `</s>`, `<s>`, `<unk>`.
+The remaining words sort in **byte-wise ascending order of the UTF-8 spelling**, excluding those three spellings.
+ARPA exports filter ASCII tokens so the reserved words also sort first globally; shipping TSV models retain ASCII
+tokens and look up the reserved IDs separately. See [LEXICON_FORMAT.md](LEXICON_FORMAT.md) for the TSV compatibility
+metadata, preserved fallback semantics, compiler and mapped lexicon format.
 
 - `u32 offsets[V + 1]` — byte offsets into the string blob; word `i` is `blob[offsets[i] ..< offsets[i+1]]`.
 - `u8 blob[offsets[V]]` — the UTF-8 spellings, concatenated, no terminators.
@@ -73,3 +76,6 @@ the lexicon's own log probability for words the model does not know, shifted by 
 ## Tools
 
 - `training/lm/lmbin.py` — writer and verifier (`python3 training/lm/lmbin.py verify lm.bin`).
+- `scripts/compile-data.sh OUT_DIR` — deterministic shipping TSV compiler; uses the project's existing `.venv` and
+  standard library only. Its TSV compatibility profile is checked by `training/lm/test_compile_data.py` and the Swift
+  binary fixtures; the ARPA verifier above additionally requires normalized probability mass and global word order.

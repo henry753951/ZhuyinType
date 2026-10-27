@@ -65,7 +65,9 @@ let stray = FileManager.default.enumerator(atPath: app.path)!.compactMap { $0 as
     .filter { ($0 as NSString).lastPathComponent.hasPrefix("._") }
 precondition(stray.isEmpty, "AppleDouble files in the bundle: \(stray.prefix(3))")
 precondition(NSImage(contentsOf: resources.appendingPathComponent("AppIcon.icns")) != nil)
-for name in ["lexicon.tsv", "Licenses/AGPL-3.0.txt", "Licenses/LEXICON.txt", "Licenses/CC-BY-SA-4.0.txt", "Licenses/Unicode-3.0.txt", "Licenses/wordfreq-NOTICE.txt", "Licenses/SOURCES.md"] {
+precondition(FileManager.default.fileExists(atPath: resources.appendingPathComponent("lexicon.bin").path)
+             || FileManager.default.fileExists(atPath: resources.appendingPathComponent("lexicon.tsv").path), "lexicon")
+for name in ["Licenses/AGPL-3.0.txt", "Licenses/LEXICON.txt", "Licenses/CC-BY-SA-4.0.txt", "Licenses/Unicode-3.0.txt", "Licenses/wordfreq-NOTICE.txt", "Licenses/SOURCES.md"] {
     let data = try Data(contentsOf: resources.appendingPathComponent(name))
     precondition(!data.isEmpty, name)
 }

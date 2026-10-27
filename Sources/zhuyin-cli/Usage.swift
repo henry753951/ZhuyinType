@@ -36,7 +36,7 @@ struct Usage {
         usage.peakFootprint = info.ri_lifetime_max_phys_footprint
         #else
         var resources = rusage()
-        getrusage(RUSAGE_SELF, &resources)
+        getrusage(__rusage_who_t(RUSAGE_SELF.rawValue), &resources)
         usage.cpu = Double(resources.ru_utime.tv_sec + resources.ru_stime.tv_sec)
             + Double(resources.ru_utime.tv_usec + resources.ru_stime.tv_usec) / 1e6
         usage.peakFootprint = UInt64(resources.ru_maxrss) * 1024

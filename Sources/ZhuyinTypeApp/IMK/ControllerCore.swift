@@ -45,6 +45,10 @@ final class ControllerCore {
     var usesPrecedingText = true
     /// How long what was committed in an app stays context once typing there stops.
     static let contextWindow: TimeInterval = 600
+    /// Characters read from the app before the insertion point, and kept as context: the character model reads up to
+    /// 255, the reranker its last 24.
+    static let contextRead = 128
+    static let contextKept = 255
     /// How much the character model's scores count in the lattice (docs/MODEL.md §6).
     static let characterWeight = 0.5
     /// Per app, what was last committed there: context across fields and focus changes, for `contextWindow`.
@@ -60,7 +64,7 @@ final class ControllerCore {
             composer.characterWeight = Self.characterWeight
             composer.characterScorer = { [weak self] syllables, candidates in
                 characterModel.scores(context: self?.recentText ?? "", syllables: syllables.map {
-                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: false)
+                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: $0.implicit)
                 }, candidates: candidates)
             }
         }
@@ -142,7 +146,7 @@ final class ControllerCore {
         let time = now()
         if time.timeIntervalSince(recentTime) > Self.contextWindow { recentText = "" }
         guard usesPrecedingText else { return }
-        if let text = client.textBeforeInsertion(maxLength: 32) {
+        if let text = client.textBeforeInsertion(maxLength: Self.contextRead) {
             recentText = text
             composer.setPrecedingText(text)
         } else if recentText.isEmpty, let saved = Self.appContext[client.bundleIdentifier],
@@ -153,7 +157,7 @@ final class ControllerCore {
     }
 
     private func remember() {
-        recentText = String(recentText.suffix(32))
+        recentText = String(recentText.suffix(Self.contextKept))
         recentTime = now()
         if usesPrecedingText { Self.appContext[client.bundleIdentifier] = (recentText, recentTime) }
     }

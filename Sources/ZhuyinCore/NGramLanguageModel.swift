@@ -1,11 +1,13 @@
 import Foundation
 
 /// ZTLM/1 sections stay mapped; only the header and array bounds are inspected at startup.
-public struct NGramLanguageModel: LanguageModel {
+public struct NGramLanguageModel: VocabularyLanguageModel {
+    private let tsvCompatibility: Bool
+    private let missingUnigrams: Set<UInt32>
     private let data: Data
     public let order: Int
     public let unknownWordShift: Double
-    private let vocabularyCount: Int
+    public let vocabularyCount: Int
     private let bigramCount: Int
     private let trigramCount: Int
     private let vocabulary: Int
@@ -63,11 +65,17 @@ public struct NGramLanguageModel: LanguageModel {
         data = mapped
         self.order = order; vocabularyCount = v; bigramCount = b; trigramCount = t
         vocabulary = vocab; self.blob = blob; unigrams = uni; bigrams = bi; trigrams = tri
-        struct Metadata: Decodable { var unknown_word_shift: Double? }
+        struct Metadata: Decodable {
+            var unknown_word_shift: Double?
+            var tsv_compatibility: Bool?
+            var missing_unigrams: [UInt32]?
+        }
         let metadata = try? JSONDecoder().decode(Metadata.self,
             from: Data(contentsOf: directory.appendingPathComponent("lm.json")))
         let shift = metadata?.unknown_word_shift ?? 0
         unknownWordShift = shift.isFinite ? shift : 0
+        tsvCompatibility = metadata?.tsv_compatibility ?? false
+        missingUnigrams = Set(metadata?.missing_unigrams ?? [])
     }
 
     private static func uint(_ raw: UnsafeRawBufferPointer, _ offset: Int) -> UInt32 {
@@ -79,10 +87,22 @@ public struct NGramLanguageModel: LanguageModel {
         return value.isFinite ? value : -.infinity
     }
 
+    public func word(at id: UInt32) -> String {
+        precondition(id < vocabularyCount)
+        return data.withUnsafeBytes { raw in
+            let start = blob + Int(Self.uint(raw, vocabulary + Int(id) * 4))
+            let end = blob + Int(Self.uint(raw, vocabulary + (Int(id) + 1) * 4))
+            return String(decoding: raw[start..<end], as: UTF8.self)
+        }
+    }
+
     public func wordID(for word: String) -> UInt32? {
+        if word == "</s>" { return 0 }
+        if word == "<s>" { return 1 }
+        if word == "<unk>" { return 2 }
         func search(_ bytes: UnsafeBufferPointer<UInt8>) -> UInt32? {
             data.withUnsafeBytes { raw in
-                var low = 0, high = vocabularyCount
+                var low = 3, high = vocabularyCount
                 while low < high {
                     let mid = (low + high) / 2
                     let start = blob + Int(Self.uint(raw, vocabulary + mid * 4))
@@ -101,6 +121,26 @@ public struct NGramLanguageModel: LanguageModel {
     }
 
     public func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double {
+        if tsvCompatibility {
+            return data.withUnsafeBytes { raw in
+                let previous = history.previous
+                let backoff = previous < vocabularyCount
+                    ? Self.float(raw, unigrams + (vocabularyCount + Int(previous)) * 4) : 0
+                guard let wordID, wordID < vocabularyCount else { return backoff + unigram + unknownWordShift }
+                let start = Int(Self.uint(raw, bigrams + (previous < vocabularyCount ? Int(previous) : 0) * 4))
+                let end = previous < vocabularyCount ? Int(Self.uint(raw, bigrams + (Int(previous) + 1) * 4)) : start
+                var low = start, high = end
+                let next = bigrams + (vocabularyCount + 1) * 4
+                while low < high {
+                    let mid = (low + high) / 2
+                    if Self.uint(raw, next + mid * 4) < wordID { low = mid + 1 } else { high = mid }
+                }
+                if low < end, Self.uint(raw, next + low * 4) == wordID {
+                    return Self.float(raw, next + (bigramCount + low) * 4)
+                }
+                return backoff + (missingUnigrams.contains(wordID) ? unigram : Self.float(raw, unigrams + Int(wordID) * 4))
+            }
+        }
         guard let wordID, wordID < vocabularyCount else { return unigram + unknownWordShift }
         return data.withUnsafeBytes { raw in
             func find(_ section: Int, _ groups: Int, _ context: UInt32, _ word: UInt32) -> Int? {

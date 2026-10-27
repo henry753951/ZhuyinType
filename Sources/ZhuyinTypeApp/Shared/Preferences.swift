@@ -54,6 +54,7 @@ final class Preferences: ObservableObject {
             Key.candidateAnchor: AnchorSetting.after.rawValue,
             Key.fuzzySounds: 0,
             Key.usesPrecedingText: true,
+            Key.characterForms: CharacterForms.common.rawValue,
         ])
     }
 
@@ -75,10 +76,11 @@ final class Preferences: ObservableObject {
         static let fuzzySounds = "fuzzySounds"
         static let usesPrecedingText = "usesPrecedingText"
         static let shortcuts = "shortcuts"
+        static let characterForms = "characterForms"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
                           shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts]
+                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, characterForms]
     }
 
     func resetToDefaults() {
@@ -136,6 +138,10 @@ final class Preferences: ObservableObject {
         get { TypoSetting(rawValue: defaults.string(forKey: Key.typoTolerance) ?? "") ?? .standard }
         set { defaults.set(newValue.rawValue, forKey: Key.typoTolerance); changed() }
     }
+    var characterForms: CharacterForms {
+        get { CharacterForms(rawValue: defaults.string(forKey: Key.characterForms) ?? "") ?? .common }
+        set { defaults.set(newValue.rawValue, forKey: Key.characterForms); changed() }
+    }
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
@@ -191,6 +197,7 @@ final class Preferences: ObservableObject {
         o.typoTolerance = typoTolerance.tolerance
         o.candidateAnchor = candidateAnchor == .after ? .afterCursor : .beforeCursor
         o.verticalList = candidateLayout == .vertical
+        o.characterForms = characterForms
         return o
     }
 }

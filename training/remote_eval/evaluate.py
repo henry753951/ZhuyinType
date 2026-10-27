@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 
-TOOLS = ['conversion_eval', 'error_analysis', 'typing_errors', 'typo_eval']
+TOOLS = ['conversion_eval', 'candidate_eval', 'error_analysis', 'typing_errors', 'typo_eval']
 
 
 def parallel_run(original, command, jobs, slots, **kwargs):
@@ -37,7 +37,7 @@ def main():
         p.error('--jobs must be positive')
     original = subprocess.run
     slots = threading.Semaphore(a.jobs)
-    if a.tool == 'conversion_eval':
+    if a.tool in ('conversion_eval', 'candidate_eval'):
         rest += ['--jobs', str(a.jobs)] + ['--cli-arg=' + x for x in a.cli_arg]
     else:
         cli = rest[rest.index('--cli') + 1] if '--cli' in rest else None

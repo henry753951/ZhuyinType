@@ -60,6 +60,7 @@ struct CommittedWord {
 
 /// Lexicon and personal data are shared safely by composers. Disk writes never run on the calling thread.
 public final class Engine: @unchecked Sendable {
+    private let mappedLexicon: MappedLexicon?
     private var lexicon: [String: [WordEntry]] = [:]
     private var reverse: [String: [(String, Double)]] = [:]
     private var phrases: [PhraseKey: Double] = [:]
@@ -125,8 +126,15 @@ public final class Engine: @unchecked Sendable {
 
     /// An explicit model directory overrides discovery of the lexicon's adjacent `lm/` directory.
     public convenience init(lexiconURL: URL, userDataDirectory: URL?, languageModelDirectory: URL?) throws {
-        try self.init(data: Data(contentsOf: lexiconURL), userDataDirectory: userDataDirectory,
+        let binaryURL = lexiconURL.deletingPathExtension().appendingPathExtension("bin")
+        if FileManager.default.fileExists(atPath: binaryURL.path) {
+            let mapped = try MappedLexicon(url: binaryURL)
+            self.init(data: Data(), mappedLexicon: mapped, userDataDirectory: userDataDirectory,
                       languageModelDirectory: languageModelDirectory)
+        } else {
+            self.init(data: try Data(contentsOf: lexiconURL), userDataDirectory: userDataDirectory,
+                      languageModelDirectory: languageModelDirectory)
+        }
     }
 
     public convenience init(lexiconText: String, userDataDirectory: URL? = nil,
@@ -153,16 +161,19 @@ public final class Engine: @unchecked Sendable {
     /// The mixture, when a chat model is loaded.
     private let mixture: MixtureLanguageModel?
 
-    private init(data: Data, userDataDirectory: URL?, languageModelDirectory: URL?) {
+    private init(data: Data, mappedLexicon: MappedLexicon? = nil, userDataDirectory: URL?, languageModelDirectory: URL?) {
         directory = userDataDirectory
+        self.mappedLexicon = mappedLexicon
         var model: any LanguageModel
         var mixture: MixtureLanguageModel?
-        if let url = languageModelDirectory, let ngram = try? NGramLanguageModel(directory: url) {
-            model = ngram
-        } else if let url = languageModelDirectory, let bigram = try? BigramLanguageModel(directory: url) {
-            model = bigram
-            if let chatURL = Engine.chatModelDirectory, let chat = try? BigramLanguageModel(directory: chatURL) {
-                let mixed = MixtureLanguageModel(chat: chat, encyclopedia: bigram, chatWeight: Engine.chatPrior)
+        func load(_ url: URL) -> (any VocabularyLanguageModel)? {
+            if let ngram = try? NGramLanguageModel(directory: url) { return ngram }
+            return try? BigramLanguageModel(directory: url)
+        }
+        if let url = languageModelDirectory, let encyclopedia = load(url) {
+            model = encyclopedia
+            if encyclopedia.order == 2, let chatURL = Engine.chatModelDirectory, let chat = load(chatURL), chat.order == 2 {
+                let mixed = MixtureLanguageModel(chat: chat, encyclopedia: encyclopedia, chatWeight: Engine.chatPrior)
                 mixture = mixed
                 model = mixed
             }
@@ -172,23 +183,27 @@ public final class Engine: @unchecked Sendable {
         self.mixture = mixture
         let base = Engine.sentenceBoundaries || model.order == 1 ? model : BoundaryFreeLanguageModel(base: model)
         languageModel = PersonalizedLanguageModel(base: base, personal: personal)
-        lexicon.reserveCapacity(50000)
-        reverse.reserveCapacity(125000)
-        scanTSV(data) { fields in
-            guard fields.count == 3, let score = Double(fields[2]), score.isFinite,
-                  !fields[0].isEmpty, !fields[1].isEmpty else { return }
-            lexicon[fields[0], default: []].append(WordEntry(word: fields[1], logp: score, wordID: resolveID(fields[1])))
-            reverse[fields[1], default: []].append((fields[0], score))
-        }
-        // The lexicon gives log P(word, reading); split it into the word's probability and the reading's share.
-        var best: [String: Double] = [:]
-        best.reserveCapacity(reverse.count)
-        for (word, readings) in reverse where readings.count > 1 { best[word] = readings.map(\.1).max() }
-        for index in lexicon.indices {
-            for i in lexicon.values[index].indices {
-                guard let top = best[lexicon.values[index][i].word] else { continue }
-                lexicon.values[index][i].readingPrior = lexicon.values[index][i].logp - top
-                lexicon.values[index][i].logp = top
+        if let mappedLexicon {
+            nextPersonalID += UInt32(mappedLexicon.wordCount)
+        } else {
+            lexicon.reserveCapacity(50000)
+            reverse.reserveCapacity(125000)
+            scanTSV(data) { fields in
+                guard fields.count == 3, let score = Double(fields[2]), score.isFinite,
+                      !fields[0].isEmpty, !fields[1].isEmpty else { return }
+                lexicon[fields[0], default: []].append(WordEntry(word: fields[1], logp: score, wordID: resolveID(fields[1])))
+                reverse[fields[1], default: []].append((fields[0], score))
+            }
+            // The lexicon gives log P(word, reading); split it into the word's probability and the reading's share.
+            var best: [String: Double] = [:]
+            best.reserveCapacity(reverse.count)
+            for (word, readings) in reverse where readings.count > 1 { best[word] = readings.map(\.1).max() }
+            for index in lexicon.indices {
+                for i in lexicon.values[index].indices {
+                    guard let top = best[lexicon.values[index][i].word] else { continue }
+                    lexicon.values[index][i].readingPrior = lexicon.values[index][i].logp - top
+                    lexicon.values[index][i].logp = top
+                }
             }
         }
         loadPersonalData()
@@ -198,6 +213,9 @@ public final class Engine: @unchecked Sendable {
     /// Every word gets an ID: the language model's, or a personal one above its vocabulary, so the user's statistics
     /// can follow words the model does not know.
     private func resolveID(_ word: String) -> UInt32? {
+        if let index = mappedLexicon?.wordIndex(word) {
+            return languageModel.wordID(for: word) ?? (0x4000_0000 + UInt32(index))
+        }
         if let id = wordIDs[word] { return id }
         let id = languageModel.wordID(for: word) ?? {
             defer { nextPersonalID += 1 }
@@ -205,6 +223,29 @@ public final class Engine: @unchecked Sendable {
         }()
         wordIDs[word] = id
         return id
+    }
+
+    private func lexicalEntries(_ reading: String) -> [WordEntry] {
+        guard let mappedLexicon else { return lexicon[reading] ?? [] }
+        return mappedLexicon.entries(for: reading).map {
+            var entry = $0
+            entry.wordID = resolveID(entry.word)
+            return entry
+        }
+    }
+
+    private func knownReadings(_ word: String) -> [(String, Double)] {
+        mappedLexicon?.readings(of: word) ?? reverse[word] ?? []
+    }
+
+    private func bestReading(_ word: String) -> (String, Double)? {
+        if let mappedLexicon { return mappedLexicon.bestReading(of: word) }
+        return reverse[word]?.max(by: { $0.1 < $1.1 })
+    }
+
+    private func knowsWord(_ word: String) -> Bool {
+        if let mappedLexicon { return mappedLexicon.wordIndex(word) != nil }
+        return reverse[word] != nil
     }
 
     private func synchronized<T>(_ body: () throws -> T) rethrows -> T {
@@ -220,7 +261,9 @@ public final class Engine: @unchecked Sendable {
             let typed = reading.split(separator: " ")
             var result: [WordEntry] = []
             var position: [String: Int] = [:]
-            let readings = [reading] + (readingIndex[Self.withoutTones(reading)] ?? []).filter { $0 != reading }
+            let base = Self.withoutTones(reading)
+            let alternatives = Set((mappedLexicon?.readings(forBase: base) ?? []) + (readingIndex[base] ?? []))
+            let readings = [reading] + alternatives.filter { $0 != reading }.sorted()
             for source in readings {
                 var penalty = 0.0
                 if source != reading {
@@ -231,7 +274,7 @@ public final class Engine: @unchecked Sendable {
                     }
                     if !penalty.isFinite { continue }
                 }
-                var entries = lexicon[source] ?? []
+                var entries = lexicalEntries(source)
                 for (word, phrase) in phraseIndex[source] ?? [:] {
                     if let index = entries.firstIndex(where: { $0.word == word }) {
                         entries[index].logp = phrase.logp
@@ -261,7 +304,7 @@ public final class Engine: @unchecked Sendable {
             let now = personal.clock()
             for word in learnedWords[reading] ?? [] {
                 guard let value = learned[PhraseKey(reading: reading, word: word)], value.isActive(at: now) else { continue }
-                let source = reverse[word]?.max(by: { $0.1 < $1.1 })
+                let source = bestReading(word)
                 result.append(WordEntry(word: word, logp: source?.1 ?? -7, recalled: true, wordID: resolveID(word),
                                         wholeOnly: value.kind == .whole))
             }
@@ -304,6 +347,7 @@ public final class Engine: @unchecked Sendable {
         }
         for base in readingIndex.keys { addBasePrefixes(base) }
         for reading in learnedWords.keys { addPrefixes(reading) }
+        syllables.formUnion(mappedLexicon?.syllables ?? [])
         for syllable in syllables {
             let base = Self.withoutTones(syllable)
             syllableBases.insert(base)
@@ -369,7 +413,7 @@ public final class Engine: @unchecked Sendable {
         var span: [CompositionToken] = []
         var key = typo.rawValue + "\(fuzzySounds.rawValue)"
         for token in tokens[start..<min(tokens.count, start + 6)] {
-            guard case .syllable(_, let keys) = token else { break }
+            guard case .syllable(_, let keys, _) = token else { break }
             span.append(token)
             key += "\t" + keys
         }
@@ -401,7 +445,7 @@ public final class Engine: @unchecked Sendable {
         var options: [[ReadingAlternative]] = []
         var typed: [String] = []
         for token in tokens[start..<min(tokens.count, start + 6)] {
-            guard case .syllable(let reading, let keys) = token else { break }
+            guard case .syllable(let reading, let keys, _) = token else { break }
             typed.append(reading)
             var cheapest: [String: ReadingAlternative] = [reading: ReadingAlternative(reading: reading, cost: 0)]
             for option in Self.fuzzyAlternatives(for: reading, fuzzy) + (typo == .off ? [] : alternatives(for: keys))
@@ -418,7 +462,7 @@ public final class Engine: @unchecked Sendable {
                 guard count <= 2 else { continue }
                 let next = reading + (reading.isEmpty ? "" : " ") + option.reading
                 let nextBase = base + (base.isEmpty ? "" : " ") + Self.withoutTones(option.reading)
-                guard synchronized({ readingPrefixes.contains(nextBase) }) else { continue }
+                guard synchronized({ (readingPrefixes.contains(nextBase) || mappedLexicon?.containsPrefix(nextBase) == true) }) else { continue }
                 let total = cost + option.cost * typo.costMultiplier
                 if count <= (index < 3 ? 1 : 2) {
                     let typedReading = typed.prefix(index + 1).joined(separator: " ")
@@ -474,7 +518,7 @@ public final class Engine: @unchecked Sendable {
             let source = entry.reading ?? reading
             let phrase = phrases[PhraseKey(reading: source, word: entry.word)]
             let original = phrase == nil ? entry.logp
-                : (lexicon[source]?.first(where: { $0.word == entry.word })?.logp ?? -7)
+                : (lexicalEntries(source).first(where: { $0.word == entry.word })?.logp ?? -7)
             return (original, (phrase.map { $0 - original } ?? 0) - entry.penalty + entry.readingPrior)
         }
     }
@@ -504,7 +548,7 @@ public final class Engine: @unchecked Sendable {
     // Called under lock.
     private func addPhrase(word: String, reading: String) {
         let key = PhraseKey(reading: reading, word: word)
-        phrases[key] = max(lexicon[reading]?.first(where: { $0.word == word })?.logp ?? -7, -7) + 1
+        phrases[key] = max(lexicalEntries(reading).first(where: { $0.word == word })?.logp ?? -7, -7) + 1
         phraseIndex[reading, default: [:]][word] = WordEntry(word: word, logp: phrases[key]!, wordID: resolveID(word))
     }
 
@@ -520,14 +564,14 @@ public final class Engine: @unchecked Sendable {
 
     public func readings(of word: String) -> [String] {
         synchronized {
-            let known = (reverse[word] ?? []).sorted { $0.1 > $1.1 }.map(\.0)
+            let known = knownReadings(word).sorted { $0.1 > $1.1 }.map(\.0)
             let personal = phrases.keys.filter { $0.word == word }.map(\.reading).sorted()
             var seen = Set<String>()
             let result = (known + personal).filter { seen.insert($0).inserted }
             if !result.isEmpty { return result }
             var parts: [String] = []
             for character in word {
-                guard let best = reverse[String(character)]?.max(by: { $0.1 < $1.1 }) else { return [] }
+                guard let best = bestReading(String(character)) else { return [] }
                 parts.append(best.0)
             }
             return parts.isEmpty ? [] : [parts.joined(separator: " ")]
@@ -599,7 +643,7 @@ public final class Engine: @unchecked Sendable {
             guard Self.isHan(characters[index]) else { index += 1; continue }
             var length = min(6, characters.count - index)
             while length > 1 && (characters[index..<(index + length)].contains { !Self.isHan($0) }
-                                 || synchronized({ reverse[String(characters[index..<(index + length)])] == nil })) {
+                                 || synchronized({ !knowsWord(String(characters[index..<(index + length)])) })) {
                 length -= 1
             }
             words.append(String(characters[index..<(index + length)]))
@@ -618,7 +662,7 @@ public final class Engine: @unchecked Sendable {
             var end = run.count
             while end > 0 && words.count < 2 {
                 var length = min(6, end)
-                while length > 1 && reverse[String(run[(end - length)..<end])] == nil { length -= 1 }
+                while length > 1 && !knowsWord(String(run[(end - length)..<end])) { length -= 1 }
                 words.insert(String(run[(end - length)..<end]), at: 0)
                 end -= length
             }
@@ -626,7 +670,7 @@ public final class Engine: @unchecked Sendable {
             return words.map { word in
                 let id = resolveID(word)
                 history = history.appending(id, order: languageModel.order)
-                let reading = reverse[word]?.max(by: { $0.1 < $1.1 })?.0 ?? ""
+                let reading = bestReading(word)?.0 ?? ""
                 return ConvertedWord(range: 0..<0, text: word, reading: reading, wordID: id, history: history)
             }
         }
@@ -774,10 +818,10 @@ public final class Engine: @unchecked Sendable {
                 let parts = word.reading.split(separator: " ").map(String.init)
                 for (part, character) in zip(parts, word.text) { syllables.append((part, String(character), word.picked)) }
                 guard word.picked else { continue }
-                let lexical = lexicon[word.reading]?.contains(where: { $0.word == word.text }) == true
+                let lexical = lexicalEntries(word.reading).contains(where: { $0.word == word.text })
                     || phrases[PhraseKey(reading: word.reading, word: word.text)] != nil
                 if !lexical {
-                    let typo = reverse[word.text] != nil
+                    let typo = knowsWord(word.text)
                     remember(.init(reading: word.reading, word: word.text), kind: typo ? .typo : .phrase, at: now)
                 }
             }
@@ -956,6 +1000,13 @@ public final class Engine: @unchecked Sendable {
         value.long = DecayingCount(value: longValue, time: longTime)
         value.picks = max(0, picks)
         return (PhraseKey(reading: fields[1], word: fields[2]), value)
+    }
+
+    /// Writes pending personal data now: before another Engine reads the same directory, or before the process exits.
+    public func flushPersonalData() {
+        guard let work = synchronized({ pendingWrite }) else { return }
+        // The scheduled copy may run as well; it writes the same snapshot.
+        writer.sync { if !work.isCancelled { work.perform() } }
     }
 
     // Called under lock. Snapshots survive Engine teardown and are serialized before atomically replacing each file.

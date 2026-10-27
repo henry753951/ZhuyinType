@@ -18,7 +18,8 @@ struct LMTrigram {
 /// Independent Swift writer for the FORMAT.md arrays, including alignment and little-endian fields.
 func lmFixture(order: Int, unigrams: [String: Float], backoffs: [String: Float] = [:],
                bigrams: [LMBigram], trigrams: [LMTrigram] = []) -> Data {
-    let words = Set(unigrams.keys).union(["</s>", "<s>", "<unk>"]).sorted {
+    let reserved = ["</s>", "<s>", "<unk>"]
+    let words = reserved + Set(unigrams.keys).subtracting(reserved).sorted {
         $0.utf8.lexicographicallyPrecedes($1.utf8)
     }
     precondition(Array(words.prefix(3)) == ["</s>", "<s>", "<unk>"])
@@ -164,4 +165,38 @@ func legacyBigramConversion(_ readings: [String], lexicon: String, model: Bigram
         return position..<(position + word.utf16.count)
     }
     return (best?.words.joined() ?? "", clauses)
+}
+
+func checkTSVBinaryMixture(in temp: URL) throws {
+    let root = temp.appendingPathComponent("tsv-binary-mixture")
+    let wiki = root.appendingPathComponent("wiki"), chat = root.appendingPathComponent("chat")
+    for dir in [wiki, chat] {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let extra = dir == chat ? "巴" : "八"
+        let unigrams: [String: Float] = ["</s>": -1, "<unk>": -8, "!": -2, extra: -3]
+        let bigrams: [LMBigram] = [.init(first: "<s>", second: extra, logp: -0.1),
+                                  .init(first: extra, second: "!", logp: -0.2)]
+        try lmFixture(order: 2, unigrams: unigrams, backoffs: ["<s>": -0.7, extra: -0.4], bigrams: bigrams)
+            .write(to: dir.appendingPathComponent("lm.bin"))
+        try Data("{\"tsv_compatibility\":true,\"missing_unigrams\":[1]}".utf8).write(to: dir.appendingPathComponent("lm.json"))
+        try Data(unigrams.map { "\($0.key)\t\($0.value)\n" }.joined().utf8).write(to: dir.appendingPathComponent("unigram.tsv"))
+        try Data(bigrams.map { "\($0.first)\t\($0.second)\t\($0.logp)\n" }.joined().utf8).write(to: dir.appendingPathComponent("bigram.tsv"))
+        try Data("<s>\t-0.7\n\(extra)\t-0.4\n".utf8).write(to: dir.appendingPathComponent("backoff.tsv"))
+    }
+    let tsvWiki = try BigramLanguageModel(directory: wiki), tsvChat = try BigramLanguageModel(directory: chat)
+    let binWiki = try NGramLanguageModel(directory: wiki), binChat = try NGramLanguageModel(directory: chat)
+    check(binWiki.wordID(for: "!") == 3, "mapped LM supports ASCII before reserved spellings")
+    let baseline = MixtureLanguageModel(chat: tsvChat, encyclopedia: tsvWiki, chatWeight: 0.5)
+    let variants = [MixtureLanguageModel(chat: binChat, encyclopedia: binWiki, chatWeight: 0.5),
+                    MixtureLanguageModel(chat: tsvChat, encyclopedia: binWiki, chatWeight: 0.5),
+                    MixtureLanguageModel(chat: binChat, encyclopedia: tsvWiki, chatWeight: 0.5)]
+    for word in ["八", "巴", "!", "</s>", "<s>", "<unk>", "不存在"] {
+        for previous in ["八", "巴", "<s>", "<unk>", "不存在"] {
+            let expected = baseline.score(word: word, after: previous, unigram: -9)
+            for model in variants {
+                check(abs(model.score(word: word, after: previous, unigram: -9) - expected) < 1e-6,
+                      "mixed TSV/binary models preserve backoff for \(previous) → \(word)")
+            }
+        }
+    }
 }

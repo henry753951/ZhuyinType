@@ -1,5 +1,5 @@
 #!/bin/bash
 set -euo pipefail
-# installer may upgrade an input method running in more than one login session.
-/usr/bin/pkill -x ZhuyinType || true
+# A running ZhuyinType notices the new version and restarts itself once nothing is being composed (EngineHost),
+# so it is not stopped here.
 exit 0

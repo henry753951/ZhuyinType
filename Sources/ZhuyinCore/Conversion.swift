@@ -1,9 +1,10 @@
 import Foundation
 
 enum CompositionToken: Equatable {
-    case syllable(String, keys: String)
+    /// `implicit`: the syllable ended without a tone key or Space, before the next initial (first tone).
+    case syllable(String, keys: String, implicit: Bool = false)
     case literal(String)
-    var reading: String? { if case .syllable(let value, _) = self { return value }; return nil }
+    var reading: String? { if case .syllable(let value, _, _) = self { return value }; return nil }
 }
 
 struct ConvertedWord: Equatable {

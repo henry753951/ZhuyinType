@@ -46,9 +46,15 @@ public struct UnigramLanguageModel: LanguageModel {
     public func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double { unigram }
 }
 
-public struct BigramLanguageModel: LanguageModel {
+public protocol VocabularyLanguageModel: LanguageModel {
+    var vocabularyCount: Int { get }
+    func word(at id: UInt32) -> String
+}
+
+public struct BigramLanguageModel: VocabularyLanguageModel {
     public let order = 2
     private var ids: [String: UInt32] = ["</s>": 0, "<s>": 1, "<unk>": 2]
+    private var words = ["</s>", "<s>", "<unk>"]
     private var unigrams: [UInt32: Double] = [:]
     private var bigrams: [UInt32: [UInt32: Double]] = [:]
     private var backoffs: [UInt32: Double] = [:]
@@ -57,6 +63,7 @@ public struct BigramLanguageModel: LanguageModel {
         if let id = ids[word] { return id }
         let id = UInt32(ids.count)
         ids[word] = id
+        words.append(word)
         return id
     }
 
@@ -81,6 +88,8 @@ public struct BigramLanguageModel: LanguageModel {
     public func wordID(for word: String) -> UInt32? { ids[word] }
     /// Every word the model knows, with its ID.
     public var vocabulary: [String: UInt32] { ids }
+    public var vocabularyCount: Int { words.count }
+    public func word(at id: UInt32) -> String { words[Int(id)] }
     public func score(wordID: UInt32?, history: LanguageModelHistory, unigram: Double) -> Double {
         let word = wordID ?? UInt32.max
         return bigrams[history.previous]?[word]
@@ -93,28 +102,20 @@ public struct BigramLanguageModel: LanguageModel {
 /// cursor is.  Word IDs are the encyclopedic model's, then new ones for words only the chat model knows.
 public final class MixtureLanguageModel: LanguageModel, @unchecked Sendable {
     public let order = 2
-    private let chat: BigramLanguageModel
-    private let encyclopedia: BigramLanguageModel
-    private var ids: [String: UInt32]
+    private let chat: any VocabularyLanguageModel
+    private let encyclopedia: any VocabularyLanguageModel
     /// Per mixture ID, the chat model's ID (UInt32.max when it lacks the word).
     private var chatIDs: [UInt32]
     private var encyclopediaCount: UInt32
     private let lock = NSLock()
     private var weight: Double
 
-    public init(chat: BigramLanguageModel, encyclopedia: BigramLanguageModel, chatWeight: Double) {
+    public init(chat: any VocabularyLanguageModel, encyclopedia: any VocabularyLanguageModel, chatWeight: Double) {
         self.chat = chat
         self.encyclopedia = encyclopedia
         weight = chatWeight
-        ids = encyclopedia.vocabulary
-        encyclopediaCount = (ids.values.max() ?? 2) + 1
-        var next = encyclopediaCount
-        for word in chat.vocabulary.keys where ids[word] == nil {
-            ids[word] = next
-            next += 1
-        }
-        chatIDs = Array(repeating: .max, count: Int(next))
-        for (word, id) in chat.vocabulary { chatIDs[Int(ids[word]!)] = id }
+        encyclopediaCount = UInt32(encyclopedia.vocabularyCount)
+        chatIDs = (0..<encyclopediaCount).map { chat.wordID(for: encyclopedia.word(at: $0)) ?? .max }
     }
 
     /// The chat model's share, between 0 and 1.
@@ -123,13 +124,18 @@ public final class MixtureLanguageModel: LanguageModel, @unchecked Sendable {
         set { lock.withLock { weight = min(1, max(0, newValue)) } }
     }
 
-    public func wordID(for word: String) -> UInt32? { ids[word] }
+    public func wordID(for word: String) -> UInt32? {
+        encyclopedia.wordID(for: word) ?? chat.wordID(for: word).map { encyclopediaCount + $0 }
+    }
 
     private func chatID(_ id: UInt32?) -> UInt32? {
         guard let id else { return nil }
         if id == LanguageModelHistory.noContext { return id }
-        guard Int(id) < chatIDs.count, chatIDs[Int(id)] != .max else { return nil }
-        return chatIDs[Int(id)]
+        if id >= encyclopediaCount {
+            let chatID = id - encyclopediaCount
+            return chatID < chat.vocabularyCount ? chatID : nil
+        }
+        return chatIDs[Int(id)] == .max ? nil : chatIDs[Int(id)]
     }
 
     private func encyclopediaID(_ id: UInt32?) -> UInt32? {

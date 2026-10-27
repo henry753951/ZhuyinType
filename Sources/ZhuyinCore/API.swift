@@ -155,7 +155,11 @@ public struct CharacterModelSyllable: Equatable, Sendable {
     public var base: String?
     public var tone: Int
     public var costBucket: Int
-    public init(base: String?, tone: Int, costBucket: Int) { self.base = base; self.tone = tone; self.costBucket = costBucket }
+    /// The syllable ended without a tone key or Space (a first tone found by the key decoder).
+    public var implicit: Bool
+    public init(base: String?, tone: Int, costBucket: Int, implicit: Bool = false) {
+        self.base = base; self.tone = tone; self.costBucket = costBucket; self.implicit = implicit
+    }
 }
 
 /// Ranges are composition token offsets, not UTF-16 offsets. Literals have an empty reading.
@@ -195,6 +199,25 @@ public struct ComposerOptions: Equatable, Sendable {
     /// The candidate window lists top to bottom: ↑↓ move the highlight and ←→ move to the neighbouring character.
     /// Left to right, ←→ move the highlight and ↑↓ turn pages.
     public var verticalList: Bool = true
+    /// Which of two interchangeable character forms to write (台 or 臺).  Conversion and learning use the lexicon's
+    /// own forms; this only changes the text shown and committed.
+    public var characterForms: CharacterForms = .common
 
     public init() {}
+}
+
+/// 台／臺 and similar pairs that Taiwan text writes both ways.  The models learnt the forms of their training text
+/// (mostly 臺, from Wikipedia), while everyday writing mostly uses 台.
+public enum CharacterForms: String, Sendable, CaseIterable {
+    /// The everyday forms: 台.
+    case common
+    /// The forms of the Ministry of Education's standard: 臺.
+    case standard
+
+    static let commonForms: [Character: Character] = ["臺": "台"]
+
+    func apply(_ text: String) -> String {
+        guard self == .common, text.contains(where: { Self.commonForms[$0] != nil }) else { return text }
+        return String(text.map { Self.commonForms[$0] ?? $0 })
+    }
 }

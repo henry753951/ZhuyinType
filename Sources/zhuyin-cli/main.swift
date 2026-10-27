@@ -22,6 +22,10 @@ var exactMargin: Double?
 var reportNBest = 0
 var v3Path: String?
 var v3Weight = 0.5
+var v3Boundaries = true
+var v3InList = true
+/// Batch mode: print the open candidate list (tab-separated) instead of what was committed.
+var reportList = false
 var nbest = 0
 var context = ""
 /// Text committed so far by the line being typed (batch mode) or by the keys (single run).
@@ -29,6 +33,8 @@ var committed = ""
 var timing = false
 var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
+// The engine's own forms by default, so results compare with the evaluation text and earlier runs; the app writes 台.
+options.characterForms = .standard
 let usage = "Usage: zhuyin-cli [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
@@ -53,6 +59,12 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--rerank-count":
         guard arguments.count >= 2, let count = Int(arguments[1]), count > 0 else { fail(usage) }
         rerankCount = count
+        arguments.removeFirst(2)
+    case "--forms":
+        guard arguments.count >= 2, let forms = CharacterForms(rawValue: arguments[1]) else {
+            fail("--forms needs one of: " + CharacterForms.allCases.map(\.rawValue).joined(separator: ", "))
+        }
+        options.characterForms = forms
         arguments.removeFirst(2)
     case "--decoder":
         guard arguments.count >= 2, let method = KeyDecoderMethod(rawValue: arguments[1]) else {
@@ -107,6 +119,18 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--v3":
         guard arguments.count >= 2 else { fail(usage) }
         v3Path = arguments[1]
+        arguments.removeFirst(2)
+    case "--report-list":
+        reportList = true
+        arguments.removeFirst()
+    case "--v3-list":
+        guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail("--v3-list needs on or off") }
+        v3InList = arguments[1] == "on"
+        arguments.removeFirst(2)
+    case "--v3-boundaries":
+        // Whether the character model is told which syllables ended without a tone key or Space.
+        guard arguments.count >= 2, ["on", "off"].contains(arguments[1]) else { fail("--v3-boundaries needs on or off") }
+        v3Boundaries = arguments[1] == "on"
         arguments.removeFirst(2)
     case "--v3-weight":
         guard arguments.count >= 2, let value = Double(arguments[1]) else { fail(usage) }
@@ -236,7 +260,12 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
            .home, .end, .up, .down, .enter, .shiftEnter, .escape, .tab, .shiftedChar("x"), .shiftLeft, .shiftRight])
 assert((try? parse("<unknown>")) == nil)
 do {
+    let engineStart = DispatchTime.now().uptimeNanoseconds
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)
+    if timing {
+        FileHandle.standardError.write(Data(String(format: "engine load: %.3f ms\n",
+            Double(DispatchTime.now().uptimeNanoseconds - engineStart) / 1e6).utf8))
+    }
     engine.fuzzySounds = fuzzy
     let reranker: NeuralReranker?
     let characterModel: SyllableScorer?
@@ -258,9 +287,10 @@ do {
     func attach(_ composer: Composer) {
         if let characterModel {
             composer.characterWeight = v3Weight
+            composer.characterScoresInList = v3InList
             composer.characterScorer = { syllables, candidates in
                 characterModel.scores(context: context + committed, syllables: syllables.map {
-                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: false)
+                    SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: v3Boundaries && $0.implicit)
                 }, candidates: candidates)
             }
         }
@@ -301,7 +331,10 @@ do {
             }
             composer.setPrecedingText(context)
             committed = typed(try parse(String(keys)), into: composer)
-            if reportNBest > 0 {
+            if reportList {
+                print(composer.presentation.candidates?.items.map(\.text).joined(separator: "\t") ?? "")
+                composer.reset()
+            } else if reportNBest > 0 {
                 print(composer.nBest(reportNBest).map(\.text).joined(separator: "\t"))
                 composer.reset()
             } else {

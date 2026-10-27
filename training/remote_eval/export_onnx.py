@@ -14,6 +14,7 @@ import onnx
 import onnxruntime as ort
 import torch
 from train import CharLM, Config
+from export_tree import TreeScorer, example as tree_example
 from models import ContextExport, SyllableExport, load_models
 
 NAMES = ['syllable_ids', 'tone_ids', 'cost_bucket', 'boundary', 'candidate_ids']
@@ -66,6 +67,7 @@ def main():
     p.add_argument('--reranker', type=Path, default=ROOT / 'data/build/reranker')
     p.add_argument('--v3', type=Path, default=ROOT / 'data/build/v3')
     p.add_argument('--fp16', action='store_true')
+    p.add_argument('--tree', action='store_true', help='also export prefix-tree scoring with the same weights')
     a = p.parse_args()
     torch.set_num_threads(1)
     checkpoint = torch.load(a.reranker_checkpoint, map_location='cpu', weights_only=False)
@@ -75,6 +77,11 @@ def main():
     ids = torch.ones((4, 24), dtype=torch.int32)
     export(scorer, (ids, ids), a.reranker / 'Reranker.onnx', ['ids', 'targets'], ['logprob'],
            {n: {0: 'batch', 1: 'length'} for n in ['ids', 'targets', 'logprob']}, a.fp16)
+    if a.tree:
+        export(TreeScorer(model).eval(), tree_example(), a.reranker / 'RerankerTree.onnx',
+               ['ids', 'positions', 'ancestors', 'parents', 'targets'], ['logprob'],
+               {'ids': {1: 'nodes'}, 'positions': {1: 'nodes'}, 'ancestors': {0: 'nodes', 1: 'nodes'},
+                'parents': {0: 'edges'}, 'targets': {0: 'edges'}, 'logprob': {0: 'edges'}}, a.fp16)
     context, syllable = load_models(a.v3 / 'syllable.pt')
     cw, sw = ContextExport(context, syllable).eval(), SyllableExport(syllable).eval()
     ctx = torch.ones((1, 12), dtype=torch.int32)
