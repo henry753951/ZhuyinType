@@ -163,8 +163,10 @@ public final class NeuralReranker: @unchecked Sendable {
         return result
     }
 
-    /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.
-    public var exactMargin = 4.0
+    /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.  8
+    /// under the app setup (reranker weight 1.0): 4 let a corrected reading win where the keys were right (ㄜˇ became
+    /// 與); 8 keeps standard typing untouched on the dev sets and costs 0.5–1.7 points with 10% mistyped keys.
+    public var exactMargin = 8.0
     /// τ: the model is consulted only when the engine's two best sentences are this close.  At 8 the outputs on the
     /// three dev sets are identical to always consulting it (1,200/1,200 runs), and short compositions skip the
     /// model often enough to cut per-key p95 from 24 to 15 ms (docs/engine/MODEL.md §7).

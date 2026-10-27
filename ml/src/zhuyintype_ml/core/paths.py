@@ -4,7 +4,7 @@ Every tool resolves paths through this module, so a checkout works the same from
 on a Linux host.  Environment overrides:
 
     ZT_DATA            data directory (default: data/build in the repository)
-    ZT_CLI             zhuyin-cli executable (default: .build/release/zhuyin-cli, built on first use)
+    ZT_CLI             zhuyin-cli executable (default: .build/release/zhuyin-cli, brought up to date on first use)
     SWIFT_SCRATCH_PATH SwiftPM build directory (default: .build in the repository)
     ZT_BUILD_JOBS      parallel compile jobs for swift build (default: every core), to share a busy host
     ZT_SWIFT           swift executable (default: PATH, then ~/opt/swift/usr/bin/swift)
@@ -17,6 +17,7 @@ on PATH always wins.
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -124,11 +125,16 @@ def build_cli(quiet: bool = False) -> Path:
 
 
 def cli() -> Path:
-    """zhuyin-cli, building it when it does not exist yet."""
+    """zhuyin-cli, built from the current sources: SwiftPM rebuilds what changed (a second or two when nothing did),
+    once per process.  Using an existing binary as is let evaluations run old engine code after a source change."""
     if "ZT_CLI" in os.environ:
         return Path(os.environ["ZT_CLI"]).resolve()
-    path = scratch() / "release" / "zhuyin-cli"
-    return path if path.exists() else build_cli()
+    return _current_cli()
+
+
+@functools.cache
+def _current_cli() -> Path:
+    return build_cli(quiet=True)
 
 
 def python_command(module: str, *args: str, groups: tuple[str, ...] = ()) -> list[str]:
