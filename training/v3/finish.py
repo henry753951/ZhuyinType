@@ -10,8 +10,11 @@ import time
 
 from common import ROOT, OUT, save
 
-SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-i", str(Path.home() / ".ssh/<remote-key>"), "$ZHUYIN_REMOTE_HOST"]
-REMOTE = "~/zhuyintype"
+# The remote host: ZHUYIN_REMOTE_HOST / ZHUYIN_REMOTE_KEY (see .remote.env.example).
+SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-i",
+       os.path.expandvars(os.environ.get("ZHUYIN_REMOTE_KEY", str(Path.home() / ".ssh/id_ed25519"))),
+       os.environ.get("ZHUYIN_REMOTE_HOST", "")]
+REMOTE = "zhuyintype"
 REPORT = ROOT / "training/v3/REPORT.md"
 
 
@@ -20,7 +23,7 @@ def probe():
 import json
 from pathlib import Path
 import subprocess
-p=Path('~/zhuyintype'); out=p/'data/build/v3'
+p=Path.home()/'zhuyintype'; out=p/'data/build/v3'
 result={'metrics':{}}
 for name in ['status','wiki','colloquial','provenance','polyphone','encode','data-audit','context-done','syllable-done','context-history','syllable-history','quality']:
  f=out/(name+'.json')

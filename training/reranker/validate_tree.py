@@ -25,7 +25,7 @@ def main():
     executable = a.out / 'check-tree'
     command = ['swiftc', '-O', '-swift-version', '5', '-parse-as-library', '-I', str(products),
                '-Xcc', '-fmodule-map-file=' + str(modulemap)]
-    command += [str(x) for x in Path('Sources/ZhuyinML').glob('*.swift')]
+    command += [str(x) for x in Path('nlp/engine/Sources/ZhuyinML').glob('*.swift')]
     command += ['training/reranker/check_tree.swift', str(products / 'ZhuyinCore.o'), str(products / 'ONNXBridge.o'),
                 '-L', os.path.expanduser('~/opt/onnxruntime/lib'), '-lonnxruntime', '-Xlinker', '-rpath',
                 '-Xlinker', os.path.expanduser('~/opt/onnxruntime/lib'), '-o', str(executable)]

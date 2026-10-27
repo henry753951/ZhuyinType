@@ -46,3 +46,10 @@ training/**/checkpoints/
 
 # Agent run logs
 .codex-logs/
+training/remote_eval/run.*-snapshot.sh
+
+# Downloaded build tools (Sparkle CLI)
+.tools/
+
+# Local remote-host settings (see .remote.env.example)
+.remote.env

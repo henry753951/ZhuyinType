@@ -18,9 +18,10 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data/build/reranker_v2_experiment"
 REPORT = ROOT / "training/reranker/REPORT_v2.md"
-HOST = "$ZHUYIN_REMOTE_HOST"
-KEY = str(Path.home() / ".ssh/<remote-key>")
-REMOTE = "~/zhuyintype"
+# The remote host: ZHUYIN_REMOTE_HOST / ZHUYIN_REMOTE_KEY (see .remote.env.example).
+HOST = os.environ.get("ZHUYIN_REMOTE_HOST", "")
+KEY = os.path.expandvars(os.environ.get("ZHUYIN_REMOTE_KEY", str(Path.home() / ".ssh/id_ed25519")))
+REMOTE = "zhuyintype"
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-i", KEY, HOST]
 DEV = ["data/build/corpus/dev_colloquial.txt", "data/build/corpus/dev_wikipedia.txt"]
 TEST = ["data/build/lm/test_sentences.txt", "data/build/corpus/test_colloquial.txt",

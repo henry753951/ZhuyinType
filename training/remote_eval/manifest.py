@@ -4,10 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 
-paths = [Path('Package.swift'), Path('data/build/lexicon.tsv')]
+paths = [Path('nlp/engine/Package.swift'), Path('data/build/lexicon.tsv')]
 for directory, patterns in [
-    ('Sources/ZhuyinCore', ['*.swift']), ('Sources/ZhuyinCoreChecks', ['*.swift']),
-    ('Sources/ZhuyinML', ['*.swift']), ('Sources/zhuyin-cli', ['*.swift']), ('Sources/ONNXBridge', ['*.c', '*.h']),
+    ('nlp/engine/Sources/ZhuyinCore', ['*.swift']), ('nlp/engine/Sources/ZhuyinCoreChecks', ['*.swift']),
+    ('nlp/engine/Sources/ZhuyinML', ['*.swift']), ('nlp/engine/Sources/zhuyin-cli', ['*.swift']), ('nlp/engine/Sources/ONNXBridge', ['*.c', '*.h']),
     ('training/eval', ['*.py']), ('training/remote_eval', ['validation.json']),
     ('data/build/lm', ['unigram.tsv', 'bigram.tsv', 'backoff.tsv']),
     ('data/build/lm_chat', ['unigram.tsv', 'bigram.tsv', 'backoff.tsv', 'dev_chat_tt.txt']),

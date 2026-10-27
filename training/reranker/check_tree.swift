@@ -1,4 +1,4 @@
-// Compile alongside Sources/ZhuyinML/*.swift, linking the existing ZhuyinCore and ONNXBridge objects.
+// Compile alongside nlp/engine/Sources/ZhuyinML/*.swift, linking the existing ZhuyinCore and ONNXBridge objects.
 // Linux only: replay captured evaluator inputs through the real Composer and compare every model call.
 import Foundation
 import ZhuyinCore

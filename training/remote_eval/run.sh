@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-HOST=${HOST:-$ZHUYIN_REMOTE_HOST}
-KEY=${KEY:-$ZHUYIN_REMOTE_KEY}
+# The remote host comes from .remote.env (see .remote.env.example) or the environment.
+if [[ -f .remote.env ]]; then set -a; source .remote.env; set +a; fi
+HOST=${HOST:-${ZHUYIN_REMOTE_HOST:?Set ZHUYIN_REMOTE_HOST in .remote.env (see .remote.env.example)}}
+KEY=${KEY:-${ZHUYIN_REMOTE_KEY:-$HOME/.ssh/id_ed25519}}
 REMOTE_DIR=${REMOTE_DIR:-zhuyintype/work/onnx-eval}
 JOBS=${JOBS:-60}
 BACKEND=${BACKEND:-cpu}
@@ -21,9 +23,13 @@ export RSYNC_RSH="ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAl
 # Copy only the portable products; leave app and training workspaces alone. No --delete.
 (
     cd "$ENGINE_SNAPSHOT"
-    rsync -azcR Package.swift Tests/ZhuyinMLTests Sources/{ZhuyinCore,ZhuyinCoreChecks,ZhuyinML,ONNXBridge,zhuyin-cli} \
+    rsync -azcR nlp/engine/Package.swift nlp/engine/Tests/ZhuyinMLTests nlp/engine/Sources/{ZhuyinCore,ZhuyinCoreChecks,ZhuyinML,ONNXBridge,zhuyin-cli} \
         training/eval "$HOST:$REMOTE_DIR/"
 )
+# Keep newly imported external row sets in sync even with an older ENGINE_SNAPSHOT.
+if [[ -d training/eval/sets/external/shanjie ]]; then
+    rsync -azcR training/eval/sets/external/shanjie "$HOST:$REMOTE_DIR/"
+fi
 rsync -azcR training/remote_eval/*.py training/remote_eval/*.json training/remote_eval/*.sh training/remote_eval/requirements.txt \
     training/reranker/train.py training/reranker/export_tree.py training/v3/models.py \
     data/build/lexicon.tsv data/build/lm/{unigram,bigram,backoff}.tsv \
@@ -73,7 +79,8 @@ mkdir -p data/build/remote_eval
 PYTHON="$PWD/.venv/bin/python"
 [[ -x "$PYTHON" ]] || { echo 'Follow README.md to install the isolated ONNX export environment.' >&2; exit 1; }
 swift --version
-swift build -c release 2>&1 | tee data/build/remote_eval/build.log
+# The engine package is nlp/engine; products stay in .build at the remote root (.build/release/zhuyin-cli).
+swift build -c release --package-path nlp/engine --scratch-path .build 2>&1 | tee data/build/remote_eval/build.log
 # Re-export only when checkpoint/export source contents change, not once per sweep.
 sha256sum data/build/"$RERANKER_MODEL"/charlm.pt data/build/"$V3_MODEL"/{context,syllable}.pt \
     training/remote_eval/export_onnx.py training/reranker/train.py training/reranker/export_tree.py training/v3/models.py > data/build/remote_eval/export-inputs.current
@@ -105,7 +112,7 @@ fi
 if [[ "${1:-}" == chat2 ]]; then
     shift
     CHAT2_LOG="$HOME/zhuyintype/logs/lm-chat2-evaluation-$(date +%Y%m%dT%H%M%S).log"
-    nohup "$PYTHON" -u training/lm_chat2/evaluate.py --cli .build/release/zhuyin-cli --jobs "$JOBS" "$@" \
+    nohup "$PYTHON" -u training/lm_chat2/evaluate.py --cli .build/release/zhuyin-cli --jobs "$JOBS" "${MODEL_ARGS[@]}" "$@" \
         > "$CHAT2_LOG" 2>&1 < /dev/null &
     CHAT2_PID=$!
     echo "$CHAT2_PID" > data/build/lm_chat2/evaluation.pid

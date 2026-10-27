@@ -43,7 +43,7 @@ cd ~/zhuyintype/work/onnx-eval
 ~/.local/bin/uv venv .venv --python ~/zhuyintype/.venv-gen/bin/python
 printf '%s\n' "$HOME/zhuyintype/.venv-gen/lib/python3.12/site-packages" > .venv/lib/python3.12/site-packages/training-torch.pth
 ~/.local/bin/uv pip install --python .venv/bin/python -r training/remote_eval/requirements.txt
-PATH="$HOME/opt/swift/usr/bin:$PATH" swift build -c release
+PATH="$HOME/opt/swift/usr/bin:$PATH" swift build -c release --package-path nlp/engine --scratch-path .build
 ```
 
 All install commands, sources and resolved versions are recorded in REPORT.md. The separate environment reuses Torch without changing `.venv-gen` or the other training jobs. No Python/global Mac toolchain configuration is needed.
@@ -55,7 +55,7 @@ All install commands, sources and resolved versions are recorded in REPORT.md. T
   --reranker-checkpoint data/build/reranker/charlm.pt --fp16
 # Writes fp32 baseline and optional *.fp16.onnx experiments next to model JSON.
 .venv/bin/python training/remote_eval/parity.py --output data/build/remote_eval/parity.json
-PATH="$HOME/opt/swift/usr/bin:$PATH" swift test -c release --filter BackendTests
+PATH="$HOME/opt/swift/usr/bin:$PATH" swift test -c release --package-path nlp/engine --scratch-path .build --filter BackendTests
 python3 training/remote_eval/test_tools.py
 # Linux socket experiment regression (uses the built CLI and existing lexicon):
 python3 training/remote_eval/test_socket.py
