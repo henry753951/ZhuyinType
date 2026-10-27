@@ -71,7 +71,12 @@ def holdouts(new=False):
     texts = list(SMOKE)
     for path in paths:
         for line in path.read_text().splitlines():
-            texts.extend(line.split('\t'))
+            fields = line.split('\t')
+            texts.append(fields[-1])
+            # A short context such as a quote mark is not an evaluation sentence.
+            texts.extend(c for c in fields[:-1] if len(c) >= 8)
+            if len(fields)>1:
+                texts.append(''.join(fields))
     return Exclusions(texts)
 
 

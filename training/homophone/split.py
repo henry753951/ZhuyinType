@@ -3,14 +3,20 @@ from collections import Counter
 import json
 import random
 import re
+import sys
 
-from common import CATEGORIES, OUT, SMOKE, holdouts, jsonl, save
+from common import CATEGORIES, OUT, ROOT, SMOKE, holdouts, jsonl, save
 
 
 def main():
     assert not (OUT/'splits.json').exists(), 'Splits are immutable after creation.'
     rows = [r for r in jsonl(OUT/'judged.jsonl') if r['judge']['accepted'] and len(r['text'])<32
+            and not r['text'].endswith(('在','再'))
             and not (r['offset']>0 and (not r['context'] or re.search('[一-鿿]$',r['context'])))]
+    sys.path.insert(0,str(ROOT/'data/build/homophone'))
+    from conversion_eval import load_lexicon, readings_for
+    lexicon = load_lexicon(OUT/'lexicon.tsv')
+    rows = [r for r in rows if readings_for(r['text'],lexicon) is not None]
     for row in rows:
         row['context'] = row['context'].replace('\n',' ').replace('\t',' ').strip()
     rng = random.Random(20261027)

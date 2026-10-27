@@ -8,6 +8,8 @@ import subprocess
 import sys
 import time
 import threading
+import itertools
+import math
 
 from common import OUT, ROOT, digest, jsonl, positions, save, v3
 
@@ -70,12 +72,16 @@ def main():
     p.add_argument('--line-context', action='store_true')
     p.add_argument('--model-only', action='store_true')
     p.add_argument('--jobs', type=int, default=60)
-    p.add_argument('--backend', choices=['torch','coreml'], default='coreml')
+    p.add_argument('--min-free-gb',type=float,default=0,help='Wait for this much available host RAM (GiB) before CLI workers.')
+    p.add_argument('--backend', choices=['torch'], default='torch')
     args = p.parse_args()
     assert sys.platform == 'linux', 'Evaluation runs remotely; Mac is export/parity only.'
     assert args.jobs > 0
+    if not math.isfinite(args.min_free_gb) or args.min_free_gb<0:
+        p.error('--min-free-gb must be finite and nonnegative')
     assert not args.output.exists(), 'Output exists: do not silently rerun evaluations.'
-    sys.path.insert(0, str(ROOT/'training/eval'))
+    evaluator = ROOT/'training/eval'
+    sys.path.insert(0, str(evaluator if evaluator.is_dir() else OUT))
     import conversion_eval as conversion
     lexicon = conversion.load_lexicon(args.lexicon)
     v3()
@@ -139,14 +145,65 @@ def main():
         env = {k:v for k,v in os.environ.items() if k != 'ZHUYIN_UNITS'}
         sys.path.insert(0, str(ROOT/'training/remote_eval'))
         from evaluate import parallel_run
-        result = parallel_run(subprocess.run, command, args.jobs, threading.Semaphore(args.jobs),
-                              input='\n'.join(scripts)+'\n', capture_output=True,text=True,check=True,env=env)
+        server = None
+        server_log = None
+        socket = None
+        original = subprocess.run
+        try:
+            while args.min_free_gb:
+                available = next(int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines()
+                                 if line.startswith('MemAvailable:'))
+                if available >= args.min_free_gb*2**30:
+                    break
+                print(f'Waiting for RAM: {available/2**30:.1f} GiB available, {args.min_free_gb:g} required',flush=True)
+                time.sleep(30)
+            if '--model-server' in command and (args.reranker or args.v3):
+                # Two 30-worker cohorts fit the validated server's 32-context cache.
+                slot = command.index('--model-server')+1
+                socket = Path(command[slot]+f'-{os.getpid()}')
+                assert not socket.exists()
+                server_log = args.output.with_suffix('.server.log').open('x')
+                server = subprocess.Popen([sys.executable,str(ROOT/'training/remote_eval/model_server.py'),
+                    '--socket',str(socket),'--reranker',str((args.reranker or ROOT/'data/build/reranker')/'charlm.pt'),
+                    '--v3',str((args.v3 or ROOT/'data/build/v3')/'syllable.pt'),
+                    '--device','cuda','--memory-gb','2'],stdout=server_log,stderr=subprocess.STDOUT,env=env)
+                for _ in range(120):
+                    if socket.exists():
+                        break
+                    if server.poll() is not None:
+                        raise RuntimeError(f'Additional scorer failed: {args.output.with_suffix(".server.log")}')
+                    time.sleep(.5)
+                assert socket.exists(), 'Additional scorer did not become ready.'
+                turns = itertools.count()
+                def original(cmd, **kwargs):
+                    if next(turns)%2:
+                        cmd = list(cmd)
+                        cmd[slot] = str(socket)
+                    return subprocess.run(cmd,**kwargs)
+            result = parallel_run(original, command, args.jobs, threading.Semaphore(args.jobs),
+                                  input='\n'.join(scripts)+'\n', capture_output=True,text=True,check=True,env=env)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f'CLI failed ({error.returncode}): {(error.stderr or "")[-4000:]}') from error
+        finally:
+            if server:
+                server.terminate()
+                try:
+                    server.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
+            if server_log:
+                server_log.close()
+            if socket:
+                socket.unlink(missing_ok=True)
         predictions = result.stdout.splitlines()
         elapsed = None
     result = metrics(selected, predictions)
     result.update(seconds=time.monotonic()-start, command=command, line_context=args.line_context,
                   model_only=args.model_only, test_sha256=digest(args.test),
                   predictions=predictions, per_reference_call_ms=elapsed,
+                  parallel_scorers=2 if not args.model_only and server is not None else 1,
+                  minimum_available_gib=args.min_free_gb,
                   cli_sha256=digest(args.cli) if not args.model_only else None,
                   model_only_candidates='top64 with gold injected; conditional selection, not decoder recall' if args.model_only else None)
     save(args.output, result)
