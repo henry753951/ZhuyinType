@@ -138,8 +138,8 @@ enum Habits {
 struct SettingsPreset: Identifiable {
     let id: String
     let title: String
-    /// What it sets, one line each, for the choice.
-    let lines: [String]
+    /// What it sets, one line each, for the choice: the keys it is about (drawn as keycaps) and the words.
+    let lines: [(keys: [String], text: String)]
     /// The settings it sets; the others keep their values.
     let values: [String: SettingValue]
     /// Where the behaviour of the input method it follows is documented.
@@ -154,20 +154,21 @@ struct SettingsPreset: Identifiable {
     /// Only what each input method's own documentation states is in its preset; the rest keeps the current value.
     static let windows = SettingsPreset(
         id: "windows", title: "Windows 注音的習慣",
-        lines: ["⌃ 加符號鍵打中文標點", "單按 Shift 切換中英"],
+        lines: [(["⌃", "，"], "打中文標點"), (["Shift"], "單按切換中英")],
         values: ["punctuationKeys": .text(PunctuationKeys.windows.rawValue), "shiftSwitch": .bool(true),
                  "shiftToggle": .text(ShiftToggle.both.rawValue)],
         sources: ["https://support.microsoft.com/en-us/Windows/Hardware/Input-Devices/microsoft-traditional-chinese-ime"])
     static let mac = SettingsPreset(
         id: "mac", title: "macOS 注音的習慣",
-        lines: ["打完注音後按空白開啟候選字視窗", "Return 選取反白的字"],
+        lines: [(["空白"], "打完注音後開啟候選字視窗"), (["Return"], "選取反白的字")],
         values: ["spaceAction": .text(SpaceAction.openCandidates.rawValue)],
         sources: ["https://support.apple.com/guide/chinese-input-method/cim12992/mac"])
     static let zhuyinType = SettingsPreset(
-        id: "default", title: "ZhuyinType 預設", lines: ["空白鍵送出並輸入空白", "⌃ 加符號鍵打中文標點", "單按 Shift 切換中英"],
+        id: "default", title: "ZhuyinType 預設",
+        lines: [(["空白"], "送出並輸入空白"), (["⌃", "，"], "打中文標點"), (["Shift"], "單按切換中英")],
         values: SettingsRegistry.defaults.values.filter { !$0.key.hasPrefix("keys.") && !$0.key.hasPrefix("feature.") }
             .merging(["shiftSwitch": .bool(true)]) { _, new in new })
-    static let custom = SettingsPreset(id: "custom", title: "自訂", lines: ["從目前的設定開始", "每一步自己選"], values: [:])
+    static let custom = SettingsPreset(id: "custom", title: "自訂", lines: [([], "從目前的設定開始"), ([], "每一步自己選")], values: [:])
 
     static let all = [windows, mac, zhuyinType, custom]
 }
@@ -190,6 +191,12 @@ struct PracticeTask {
     let isDone: (PracticeOutcome) -> Bool
 }
 
+/// What a lesson shows beside its choices: the real preview at a state, or one of the ⓘ demos.
+enum LessonDemo {
+    case preview(PreviewState)
+    case space, punctuation, typo, fuzzy, context, correctionLog
+}
+
 /// One step of the setup wizard: a feature (or a few), how to use it, the choices, and practice.
 struct Lesson: Identifiable {
     enum Level { case basic, full, optional, advanced }
@@ -203,6 +210,17 @@ struct Lesson: Identifiable {
     let tasks: [PracticeTask]
     /// The version that added the lesson, for 「新功能導覽」.
     var since = "0.4.2"
+    /// The demo beside the choices: an ⓘ demo for the lessons that have one, otherwise the real preview.
+    var demo: LessonDemo? {
+        switch id {
+        case "typing": return .space
+        case "punctuation": return .punctuation
+        case "fuzzy": return .fuzzy
+        case "context": return .context
+        case "correctionLog": return .correctionLog
+        default: return preview.map(LessonDemo.preview)
+        }
+    }
 
     /// The lessons in order; 快速設定 takes the basic ones.
     static let all: [Lesson] = [
