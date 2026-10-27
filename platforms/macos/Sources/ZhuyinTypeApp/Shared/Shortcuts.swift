@@ -241,6 +241,14 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// A command with no other way to reach it keeps at least one key; the others may have none.
+    var isRequired: Bool {
+        switch self {
+        case .commitWithNewline, .previousCharacter, .nextCharacter: return true
+        default: return false
+        }
+    }
+
     /// Inputs that mean a command: produced only through a binding, never straight from a key.
     static let commandInputs = Set(allCases.compactMap(\.input))
 

@@ -71,6 +71,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         return window
     }
 
+    /// The UI previews: forget the window, so the next `makeWindow` builds a new one and the old views go away.
+    func discardWindow() {
+        window?.orderOut(nil)
+        window?.contentViewController = nil
+        window?.close()
+        window = nil
+        split = nil
+        subpageObserver = nil
+    }
+
     /// Shows `pane`, as when its row in the sidebar is clicked.
     func select(_ pane: SettingsPane) {
         split?.select(pane)
@@ -100,20 +110,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
     // MARK: Toolbar search, for the word lists
 
     /// The toolbar search filters the word lists, and the actions of the 快捷鍵 page.
-    private var searches: Bool { searchedList != nil || pane == .keys }
+    private var searches: Bool { pane == .keys }
 
-    private var searchedList: ListEditorView? {
-        guard pane == .words else { return nil }
-        switch model.subpage {
-        case .phrases: return model.phrases.view
-        case .learnedWords: return model.learned.view
-        default: return nil
-        }
-    }
+    /// The window sheets of the list pages attach to.
+    var sheetWindow: NSWindow? { window }
+
+    func windowDidResignKey(_ notification: Notification) { HoverState.shared.clear() }
 
     private func paneChanged(_ pane: SettingsPane) {
-        model.phrases.view.setQuery("")
-        model.learned.view.setQuery("")
+        HoverState.shared.clear()
+        model.phrases.list.query = ""
+        model.learned.list.query = ""
         model.keysQuery = ""
         self.pane = pane
         guard let toolbar else { return }
@@ -147,7 +154,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSSearchField else { return }
         if pane == .keys { model.keysQuery = field.stringValue }
-        searchedList?.setQuery(field.stringValue)
     }
 }
 
@@ -164,7 +170,7 @@ final class SettingsModel: ObservableObject {
     /// The toolbar search on the 快捷鍵 page.
     @Published var keysQuery = ""
     /// The sub-page shown in the current page (one level down), or nil for the page itself.
-    @Published var subpage: SettingsSubpage?
+    @Published var subpage: SettingsSubpage? { didSet { HoverState.shared.clear() } }
     /// A row to scroll to, set by the links between pages; cleared once shown.
     @Published var scrollTarget: String?
     /// The row a link just led to, and its section, highlighted for a moment.  A section alone: all its rows.

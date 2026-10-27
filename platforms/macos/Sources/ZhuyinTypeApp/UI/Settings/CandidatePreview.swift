@@ -292,7 +292,12 @@ private struct CandidateWindowView: NSViewRepresentable {
     let keys: [Character]
     let appearance: PanelAppearance
 
-    func makeNSView(context: Context) -> InputSurface { InputSurface(content: CandidateContentView(frame: .zero)) }
+    /// An illustration: its rows never show the pointer.
+    func makeNSView(context: Context) -> InputSurface {
+        let content = CandidateContentView(frame: .zero)
+        content.hoverEnabled = false
+        return InputSurface(content: content)
+    }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance
@@ -312,5 +317,16 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance
         (surface.content as? ModeBadgeView)?.label.stringValue = text
+    }
+}
+
+/// One scene of the preview (the candidate list) on its own, for the floating preview after a change.
+struct CandidateScenePreview: View {
+    @ObservedObject var preferences: Preferences
+    var width: CGFloat = 300
+    var body: some View {
+        let layout = SceneLayout(scene: PreviewScenes(preferences: preferences).list, width: width, preferences: preferences)
+        PreviewBlock(layout: layout.fitted(height: layout.naturalHeight), preferences: preferences, animated: false)
+            .frame(width: width, height: CandidatePreview.titleHeight + layout.naturalHeight)
     }
 }

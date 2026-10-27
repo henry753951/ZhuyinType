@@ -46,6 +46,8 @@ enum RowMetrics {
     static let gap: CGFloat = 12
     /// Between the value, the control and the ⓘ or ›.
     static let trailingSpacing: CGFloat = 8
+    /// Above and below the sub-page bar's breadcrumb.
+    static let barPadding: CGFloat = 10
     /// The arrival tint, inset from the card's edges.
     static let tintInset: CGFloat = 4
 }
@@ -54,6 +56,8 @@ enum RowMetrics {
 enum RowAccessory {
     case none
     case chevron
+    /// A › that goes somewhere, when the row itself does something else.
+    case link(help: String, action: () -> Void)
     case info(title: String, content: AnyView)
 }
 
@@ -72,9 +76,27 @@ enum RowSections {
     static func headerID(_ section: String) -> String { "section-" + section }
 }
 
-/// A settings page: its sections in a column, scrolled, with the page insets.
+/// A sub-page's bar: the page it belongs to, its title, and going back.
+struct SubpageHeaderInfo {
+    let parent: String
+    let title: String
+    let back: () -> Void
+}
+private struct SubpageHeaderKey: EnvironmentKey { static let defaultValue: SubpageHeaderInfo? = nil }
+extension EnvironmentValues {
+    var subpageHeader: SubpageHeaderInfo? {
+        get { self[SubpageHeaderKey.self] }
+        set { self[SubpageHeaderKey.self] = newValue }
+    }
+}
+
+/// A settings page: its sections in a column, scrolled, with the page insets.  On a sub-page the bar is pinned above:
+/// the content starts below it, and scrolls behind it.
 struct SettingsForm<Content: View>: View {
     @ViewBuilder let content: () -> Content
+    @Environment(\.subpageHeader) private var header
+    @State private var scrolled = false
+    @State private var restTop: CGFloat?
     init(@ViewBuilder content: @escaping () -> Content) { self.content = content }
 
     var body: some View {
@@ -82,11 +104,49 @@ struct SettingsForm<Content: View>: View {
             VStack(alignment: .leading, spacing: RowMetrics.sectionSpacing) { content() }
                 .frame(maxWidth: RowMetrics.maxWidth)
                 .padding(.horizontal, RowMetrics.pageInset)
-                .padding(.top, RowMetrics.pageTop)
+                .padding(.top, header == nil ? RowMetrics.pageTop : RowMetrics.pageTop / 2)
                 .padding(.bottom, RowMetrics.pageBottom)
                 .frame(maxWidth: .infinity)
+                .background(alignment: .top) {
+                    // Where the content's top is, against the scroll view: below its rest position means scrolled.
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ScrollTop.self, value: proxy.frame(in: .named("settingsPage")).minY)
+                    }
+                    .frame(height: 0)
+                }
+        }
+        .coordinateSpace(name: "settingsPage")
+        .onPreferenceChange(ScrollTop.self) { top in
+            // The top at rest is where the content starts below the bar; anything above it has scrolled under.
+            if restTop == nil || top > restTop! { restTop = top }
+            let now = top < (restTop ?? top) - 0.5
+            if now != scrolled { scrolled = now }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let header { SubpageBar(info: header, scrolled: scrolled) }
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+private struct ScrollTop: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Pushing a sub-page in from the trailing side, or the page it leaves moving back a little; both fade.
+struct NavigationMotion: ViewModifier, Animatable {
+    let offset: CGFloat
+    var visible: Double
+    var animatableData: Double {
+        get { visible }
+        set { visible = newValue }
+    }
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset * CGFloat(1 - visible))
+            // The page being left fades faster than the new one comes in, so the two are never both legible.
+            .opacity(offset < 0 ? visible * visible * visible : visible)
     }
 }
 
@@ -208,6 +268,8 @@ struct SettingRow<Control: View>: View {
     var indent = false
     var dimmed = false
     var link: (title: String, place: SettingsPlace)?
+    /// A small accent dot before the title: the setting differs from its default (「已自訂」 as its tooltip).
+    var marked = false
     var accessory: RowAccessory = .none
     /// The row's id for links: links scroll to it and it shows the arrival tint.
     var anchor: String?
@@ -223,6 +285,15 @@ struct SettingRow<Control: View>: View {
                 Text(title)
                     .foregroundStyle(indent || dimmed ? .secondary : .primary)
                     .help(title)
+                    .overlay(alignment: .leading) {
+                        if marked {
+                            // In the margin, so the title keeps its place.
+                            Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                                .offset(x: -11)
+                                .help("已自訂")
+                                .accessibilityLabel("已自訂")
+                        }
+                    }
                 if let subtitle {
                     Text(subtitle)
                         .font(.callout)
@@ -269,6 +340,18 @@ struct SettingRow<Control: View>: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.tertiary)
+                .frame(width: 16)
+        case .link(let help, let action):
+            Button(action: action) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(help)
+            .accessibilityLabel(help)
         case .info(let title, let content): InfoButton(title: title) { content }
         }
     }
@@ -361,7 +444,23 @@ enum RowGeometry {
     private static var cardFrames: [UUID: CGRect] = [:]
     private static var childFrames: [UUID: [CGRect]] = [:]
 
-    static func reset() { rows = [:]; cardFrames = [:]; childFrames = [:] }
+    static func reset() { rows = [:]; cardFrames = [:]; childFrames = [:]; bar = nil; listRows = [:] }
+
+    /// Rows of the list pages (not `SettingRow`s), for the bar check.
+    private static var listRows: [String: CGRect] = [:]
+    static func recordListRow(_ id: String, _ frame: CGRect) { if recording, frame.height > 0 { listRows[id] = frame } }
+
+    /// The sub-page bar, which no row may be under while the page is at its top.
+    private(set) static var bar: CGRect?
+    static func recordBar(_ frame: CGRect) { if recording, frame.height > 0 { bar = frame } }
+
+    /// Rows under the sub-page bar.
+    static func underBar(_ rows: [Row]) -> [String] {
+        guard let bar else { return [] }
+        let all = rows.map { ($0.id, $0.leading) } + listRows.map { ($0.key, $0.value) }
+        return all.filter { $0.1.minY < bar.maxY - 0.5 && $0.1.maxY > bar.minY }
+            .map { "「\($0.0)」 at y \($0.1.minY) is under the sub-page bar (bottom \(bar.maxY))" }
+    }
 
     /// Records a row's two blocks, measured in the same layout pass; a later pass replaces them.
     static func record(_ probe: UUID, title: String, leading: CGRect, trailing: CGRect, origin: CGPoint) {
@@ -446,4 +545,76 @@ private struct RowBlocks: PreferenceKey {
         value.leading = next.leading ?? value.leading
         value.trailing = next.trailing ?? value.trailing
     }
+}
+
+// MARK: - Hover
+
+/// What the pointer is over in the settings window: one thing at most.  Each hover-revealed control registers
+/// through `hoverTracked(_:)`.  Content scrolling under a still pointer sends no exit, so any scroll clears it, as do
+/// the window losing key and a page change; the next pointer move sets it again.
+final class HoverState: ObservableObject {
+    static let shared = HoverState()
+    @Published private(set) var hovered: AnyHashable?
+    /// A part of the hovered thing under the pointer (a key chip in a row), tracked on its own.
+    @Published private(set) var detail: AnyHashable?
+    private var monitor: Any?
+
+    func enter(_ id: AnyHashable) {
+        if hovered != id { hovered = id }
+        if monitor == nil, NSApp != nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+                self?.scrolled()
+                return event
+            }
+        }
+    }
+    func leave(_ id: AnyHashable) { if hovered == id { hovered = nil } }
+    func enterDetail(_ id: AnyHashable) { if detail != id { detail = id } }
+    func leaveDetail(_ id: AnyHashable) { if detail == id { detail = nil } }
+    func scrolled() { clear() }
+    func clear() {
+        if hovered != nil { hovered = nil }
+        if detail != nil { detail = nil }
+    }
+}
+
+private struct HoverTracked: ViewModifier {
+    let id: AnyHashable
+    @ObservedObject var state = HoverState.shared
+    func body(content: Content) -> some View {
+        // The UI previews draw without a pointer.
+        if SettingsWindowController.isPreview { content } else { tracked(content) }
+    }
+    private func tracked(_ content: Content) -> some View {
+        content.onContinuousHover { phase in
+            switch phase {
+            case .active: state.enter(id)
+            case .ended: state.leave(id)
+            }
+        }
+    }
+}
+
+private struct HoverTrackedDetail: ViewModifier {
+    let id: AnyHashable
+    @ObservedObject var state = HoverState.shared
+    func body(content: Content) -> some View {
+        if SettingsWindowController.isPreview {
+            content
+        } else {
+            content.onContinuousHover { phase in
+                switch phase {
+                case .active: state.enterDetail(id)
+                case .ended: state.leaveDetail(id)
+                }
+            }
+        }
+    }
+}
+
+extension View {
+    /// Reports the pointer over this view to `HoverState` under `id`.
+    func hoverTracked(_ id: AnyHashable) -> some View { modifier(HoverTracked(id: id)) }
+    /// Reports the pointer over a part (a chip) of the hovered thing.
+    func hoverTrackedDetail(_ id: AnyHashable) -> some View { modifier(HoverTrackedDetail(id: id)) }
 }
