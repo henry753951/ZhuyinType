@@ -974,6 +974,80 @@ enum ControllerCoreSelfTest {
             try expect(!core.keyDown(keyCode: 123, modifiers: .option), "idle ⌥← was taken")
         }
 
+        test("candidate list ends: paging and moving past the first or last page report the end, nowhere else") {
+            let (core, _) = session()
+            var edges: [Int] = []
+            core.listEdge = { edges.append($0) }
+            type("u4", into: core)
+            press("<down>", into: core)
+            guard let first = core.composer.presentation.candidates, first.pageCount > 1 else {
+                throw Failure(description: "the sample list has one page")
+            }
+            _ = core.handle(.shiftTab)
+            _ = core.handle(.up)
+            try expect(edges == [-1, -1], "before the first page: \(edges)")
+            edges = []
+            for _ in 1..<first.pageCount { _ = core.handle(.tab) }
+            try expect(edges.isEmpty, "turning pages reported an end: \(edges)")
+            _ = core.handle(.tab)
+            _ = core.handle(.pageDown)
+            try expect(edges == [1, 1], "past the last page: \(edges)")
+            edges = []
+            let last = core.composer.presentation.candidates!
+            for _ in 0..<(last.items.count - 1 - last.selection) { _ = core.handle(.down) }
+            try expect(edges.isEmpty, "moving down the last page reported an end")
+            _ = core.handle(.down)
+            try expect(edges == [1], "↓ on the last candidate: \(edges)")
+            _ = core.handle(.space)
+            try expect(edges == [1], "Space went round and reported an end")
+            press("<esc><esc><esc>", into: core)
+        }
+
+        test("candidate window: pages keep the window's size; animated paging costs no more than plain paging") {
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            let preferences = Preferences(defaults: scratchDefaults())
+            Preferences.shared = preferences
+            let items = (0..<14).map { Candidate(text: $0 % 9 == 0 ? "很長很長的候選字\($0)" : "字\($0)") }
+            let content = CandidateContentView(frame: .zero)
+            let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 400, height: 600), styleMask: [.borderless],
+                                  backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.alphaValue = 0
+            window.contentView = content
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            for layout in CandidateLayout.allCases {
+                preferences.candidateLayout = layout
+                let style = preferences.candidateStyle
+                content.reset()
+                var sizes = Set<String>()
+                for page in [0, 1, 0, 1] {
+                    let list = CandidateList(items: items, selection: page * 9, pageSize: 9, tolerant: false)
+                    let size = content.update(list: list, preview: nil, keys: Array("123456789"), style: style)
+                    sizes.insert("\(size.width)x\(size.height)")
+                }
+                try expect(sizes.count == 1, "\(layout): the window changed size between pages: \(sizes)")
+            }
+            func flips(animated: Bool) -> Double {
+                preferences.panelAnimation = animated
+                preferences.candidateLayout = .vertical
+                let style = preferences.candidateStyle
+                content.reset()
+                let start = DispatchTime.now().uptimeNanoseconds
+                for index in 0..<200 {
+                    let list = CandidateList(items: items, selection: (index % 2) * 9, pageSize: 9, tolerant: false)
+                    content.update(list: list, preview: nil, keys: Array("123456789"), style: style)
+                }
+                return Double(DispatchTime.now().uptimeNanoseconds - start) / 200 / 1000
+            }
+            _ = flips(animated: false)
+            let plain = flips(animated: false), animated = flips(animated: true)
+            print("     page change: \(String(format: "%.0f", plain)) µs plain, \(String(format: "%.0f", animated)) µs animated")
+            try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
+        }
+
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
     }

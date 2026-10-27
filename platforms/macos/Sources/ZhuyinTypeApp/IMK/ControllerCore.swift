@@ -94,6 +94,8 @@ final class ControllerCore {
 
     private var capsLock = false
     /// Rebindable shortcuts, by key.
+    /// A key that pages or moves through the open list stopped at its end (1: past the last, -1: before the first).
+    var listEdge: ((Int) -> Void)?
     var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(
         ShortcutCommand.defaultBindings.flatMap { command, list in list.map { ($0, command) } }, uniquingKeysWith: { first, _ in first })
 
@@ -150,6 +152,11 @@ final class ControllerCore {
         let started = stats == nil ? 0 : DispatchTime.now().uptimeNanoseconds
         let before = composer.presentation
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
+        if let move = Self.listMove(key, vertical: composer.options.verticalList), let old = before.candidates,
+           let new = composer.presentation.candidates, old.items.count == new.items.count, old.pageSize == new.pageSize,
+           move.page ? old.page == new.page : old.selection == new.selection {
+            listEdge?(move.direction)
+        }
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
         let latency = stats == nil ? nil : DispatchTime.now().uptimeNanoseconds - started
@@ -180,6 +187,20 @@ final class ControllerCore {
         _ = composer.handle(reopen)
         render()
         return true
+    }
+
+    /// How `key` moves through an open list, for keys that stop at its ends: the direction (1 on, -1 back) and whether
+    /// it turns pages (or moves the highlight); nil for other keys.  Space goes round to the first page, so it never stops.
+    static func listMove(_ key: KeyInput, vertical: Bool) -> (direction: Int, page: Bool)? {
+        switch key {
+        case .tab, .pageDown: return (1, true)
+        case .shiftTab, .pageUp: return (-1, true)
+        case .down: return (1, !vertical)
+        case .up: return (-1, !vertical)
+        case .right where !vertical: return (1, false)
+        case .left where !vertical: return (-1, false)
+        default: return nil
+        }
     }
 
     private static func startsComposition(_ key: KeyInput) -> Bool {

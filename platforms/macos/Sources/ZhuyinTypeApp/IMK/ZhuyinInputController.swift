@@ -273,6 +273,9 @@ final class ZhuyinInputController: IMKInputController {
                                                 keys: self.core?.composer.options.selectionKeys ?? [],
                                                 windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint)
         }
+        core.listEdge = { [weak self] direction in
+            if let self, self.active, Self.activeController === self { CandidatePanelController.shared.bounce(direction: direction) }
+        }
         core.hidePanel = { [weak self] in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.hide() }
         }

@@ -94,6 +94,27 @@ enum UIPreviewRenderer {
         }
         let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))
+        // Turning pages and the end of the list, frame by frame (the animation's own easing, drawn still).
+        let many = CandidateList(items: (words + ["瞑", "洺", "螟蛉", "明明", "名命"]).map { Candidate(text: $0) }, selection: 0,
+                                 pageSize: 9, tolerant: false)
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("paging"), withIntermediateDirectories: true)
+        for layout in CandidateLayout.allCases {
+            let style = CandidateStyle(layout: layout, fontSize: 18)
+            for (name, from, to, kind, direction) in [("next", 0, 9, CandidateContentView.PinnedMotion.page, 1),
+                                                      ("previous", 9, 0, .page, -1), ("end", 9, 9, .bounce, 1)] {
+                for progress in [0.0, 0.2, 0.45, 1.0] {
+                    let content = CandidateContentView(frame: .zero)
+                    var list = many
+                    list.selection = from
+                    content.update(list: list, preview: nil, keys: keys, style: style, zhuyinHint: hint)
+                    content.pinnedMotion = (kind, direction, progress)
+                    list.selection = to
+                    content.update(list: list, preview: nil, keys: keys, style: style, zhuyinHint: hint)
+                    try capture(view: Backdrop(content: InputSurface(content: content)), to: directory.appendingPathComponent(
+                        "paging/\(layout.rawValue)-\(name)-\(Int(progress * 100))-\(suffix).png"))
+                }
+            }
+        }
     }
 
     private static func capturePanel(list: CandidateList?, keys: [Character], style: CandidateStyle, zhuyinHint: String? = nil,

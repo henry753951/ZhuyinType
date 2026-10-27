@@ -305,9 +305,66 @@ struct CandidateStyle: Equatable {
     var keyLabels = CandidateKeyLabels()
 }
 
+/// One page of candidate rows.  The window has two, so a page change can move the old page out while the new one
+/// comes in; both sit in a clip the size of the rows' area.
+private final class RowPage: NSView {
+    override var isFlipped: Bool { true }
+    var rows: [CandidateRow] = []
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    func ensure(_ count: Int) {
+        while rows.count < count {
+            let row = CandidateRow(frame: .zero)
+            rows.append(row)
+            addSubview(row)
+        }
+    }
+}
+
+/// What makes two lists the same list, so that a new page of it is a page change (and not a new list).
+private struct ListIdentity: Equatable {
+    var count: Int, first: String, pageSize: Int, tolerant: Bool?, singleCharacter: Bool
+    init(_ list: CandidateList) {
+        count = list.items.count
+        first = list.items.first?.text ?? ""
+        pageSize = list.pageSize
+        tolerant = list.tolerant
+        singleCharacter = list.singleCharacter
+    }
+}
+
+/// How a page change and the end of the list move: short, eased out, a few points along the list, never delaying a key.
+enum PageMotion {
+    static let duration: TimeInterval = 0.14
+    /// The old page is gone sooner than the new one settles, so the two barely overlap.
+    static let outDuration: TimeInterval = 0.08
+    /// How far the pages travel.
+    static let offset: CGFloat = 10
+    /// The nudge at the first or last page.
+    static let bounce: CGFloat = 3
+    static let bounceOut: TimeInterval = 0.06
+    static let bounceBack: TimeInterval = 0.12
+}
+
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
-    private var rows: [CandidateRow] = []
+    private let rowClip = InputMaterialView()
+    private let pageViews = [RowPage(frame: .zero), RowPage(frame: .zero)]
+    private var front = 0
+    private var rows: [CandidateRow] { pageViews[front].rows }
+    /// The list shown and its page, to tell a page change of the same list from a new list.
+    private var shown: (identity: ListIdentity, page: Int)?
+    private var shownStyle: CandidateStyle?
+    /// The largest size of the list shown, so turning pages never resizes the window.
+    private var steadySize = NSSize.zero
+    private var transitionGeneration = 0
+    /// For the UI previews: draw a page change (`direction`) or the end bounce at `progress` (0…1) instead of animating.
+    var pinnedMotion: (kind: PinnedMotion, direction: Int, progress: CGFloat)?
+    enum PinnedMotion { case page, bounce }
+    private var layoutIsVertical = true
     private let previewLabel = NSTextField(labelWithString: "")
     private let noticeView = NoticeView()
     private let zhuyinButton = ZhuyinHintButton()
@@ -327,6 +384,11 @@ final class CandidateContentView: InputMaterialView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
+        rowClip.wantsLayer = true
+        rowClip.layer?.masksToBounds = true
+        for page in pageViews { rowClip.addSubview(page) }
+        pageViews[1].isHidden = true
+        addSubview(rowClip)
         addSubview(previewLabel)
         addSubview(noticeView)
         zhuyinButton.isBordered = false
@@ -343,6 +405,7 @@ final class CandidateContentView: InputMaterialView {
         pageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
         pageLabel.alignment = .center
+        pageLabel.wantsLayer = true
         addSubview(pageLabel)
         for (button, symbol, label) in [(previous, "chevron.left", "上一頁"), (next, "chevron.right", "下一頁")] {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
@@ -374,11 +437,17 @@ final class CandidateContentView: InputMaterialView {
         let indices: [Int]
         if let list, list.items.indices.contains(list.selection) { indices = Array(list.pageRange) }
         else { indices = [] }
-        while rows.count < indices.count {
-            let row = CandidateRow(frame: .zero)
-            rows.append(row)
-            addSubview(row)
+        // A new page of the same list: the page shown becomes the outgoing one and the other takes the new rows.
+        let identity = list.map(ListIdentity.init)
+        var direction = 0
+        if let list, !indices.isEmpty, let shown, shown.identity == identity, shown.page != list.page {
+            direction = shown.page == list.pageCount - 1 && list.page == 0 ? 1 : list.page > shown.page ? 1 : -1
         }
+        if identity == nil || identity != shown?.identity || style != shownStyle { steadySize = .zero }
+        shownStyle = style
+        shown = identity.map { ($0, list?.page ?? 0) }
+        if direction != 0 { front = 1 - front }
+        pageViews[front].ensure(indices.count)
         let rowHeight = ceil(fontSize * (compact ? 1.32 : 1.55))
         let padding: CGFloat = compact ? 4 : 6
         let spacing: CGFloat = compact ? 4 : 10
@@ -449,17 +518,28 @@ final class CandidateContentView: InputMaterialView {
         if layout == .vertical { width = max(width, (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2) }
         else { width = max(width, naturalRowWidth + gaps + padding * 2 + footerWidth) }
         width = max(width, footerWidth + padding * 2)
-        width = min(maxWidth, ceil(width))
+        // Pages of one list keep the widest width seen, so the window does not jump as pages turn.
+        width = min(maxWidth, ceil(max(width, steadySize.width)))
         noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
         previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
-        var x = padding
+        var x: CGFloat = 0
         let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? footerWidth : 0))
         let scale = min(1, availableWidth / max(1, naturalRowWidth))
+        // The rows' area: a vertical list with pages keeps room for a full page, so the last page is the same height.
+        let slots = layout == .vertical && hasPages ? max(indices.count, list?.pageSize ?? 0) : indices.count
+        let rowsTop = y
+        let rowsArea = NSRect(x: padding, y: rowsTop, width: max(0, width - padding * 2 - (layout == .horizontal ? footerWidth : 0)),
+                              height: listOpen ? (layout == .vertical ? CGFloat(slots) * rowHeight : rowHeight) : 0)
+        var rowY: CGFloat = 0
         for row in activeRows {
             let rowWidth = layout == .vertical ? width - padding * 2 : floor(row.preferredWidth * scale)
-            row.frame = NSRect(x: x, y: y, width: max(0, rowWidth), height: rowHeight)
-            if layout == .vertical { y += rowHeight } else { x += rowWidth + spacing }
+            row.frame = NSRect(x: x, y: rowY, width: max(0, rowWidth), height: rowHeight)
+            if layout == .vertical { rowY += rowHeight } else { x += rowWidth + spacing }
         }
+        rowClip.frame = rowsArea
+        rowClip.isHidden = !listOpen
+        layoutIsVertical = layout == .vertical
+        if layout == .vertical { y += rowsArea.height }
         let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
         if layout == .horizontal && listOpen { y += rowHeight }
         candidateTextInset = listOpen ? padding + (activeRows.first?.textInset ?? 29) : 14
@@ -479,7 +559,15 @@ final class CandidateContentView: InputMaterialView {
             correctionButton.frame = NSRect(x: footerX + singleWidth, y: pageY, width: max(0, toggleWidth - 8), height: 22)
         }
         if hasFooter, let list {
-            pageLabel.stringValue = "\(list.page + 1) / \(list.pageCount)"
+            let pageText = "\(list.page + 1) / \(list.pageCount)"
+            if direction != 0, pageText != pageLabel.stringValue, PanelMotion.animates, window?.isVisible == true {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = PageMotion.duration
+                fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                pageLabel.layer?.add(fade, forKey: "page")
+            }
+            pageLabel.stringValue = pageText
             pageLabel.frame = NSRect(x: width - 65, y: pageY + 3, width: 40, height: 16)
             previous.frame = NSRect(x: width - 89, y: pageY, width: 22, height: 22)
             next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
@@ -487,11 +575,127 @@ final class CandidateContentView: InputMaterialView {
             next.isEnabled = list.page + 1 < list.pageCount
             if layout == .vertical { y += footerHeight }
         }
-        let size = NSSize(width: width, height: y + padding)
+        let size = NSSize(width: width, height: max(y + padding, listOpen ? steadySize.height : 0))
+        if listOpen { steadySize = size }
         if frame.size != size { setFrameSize(size) }
+        placePages(direction: direction)
         return size
     }
-    func resetHover() { rows.forEach { $0.resetHover() } }
+    func resetHover() { pageViews.forEach { $0.rows.forEach { $0.resetHover() } } }
+
+    /// Forgets the list shown, when the window closes: the next list starts at its own size.
+    func reset() {
+        shown = nil
+        steadySize = .zero
+        stopMotion()
+    }
+
+    // MARK: Page motion
+
+    /// The point a page sits at when moved `amount` along the list (down or right for positive amounts).
+    private func origin(_ amount: CGFloat) -> NSPoint {
+        layoutIsVertical ? NSPoint(x: 0, y: amount) : NSPoint(x: amount, y: 0)
+    }
+
+    private func stopMotion() {
+        transitionGeneration += 1
+        for page in pageViews {
+            page.layer?.removeAllAnimations()
+            page.setFrameOrigin(.zero)
+            page.alphaValue = 1
+        }
+        pageViews[front].isHidden = false
+        pageViews[1 - front].isHidden = true
+    }
+
+    /// After a page change (`direction`): the old page moves out against it and fades, the new one comes in from the
+    /// other side.  The rows are already the new ones, so keys never wait; a further change cuts this one short.
+    private func placePages(direction: Int) {
+        let incoming = pageViews[front], outgoing = pageViews[1 - front]
+        for page in pageViews { page.frame.size = rowClip.bounds.size }
+        if let pinned = pinnedMotion {
+            pinMotion(pinned, incoming: incoming, outgoing: outgoing)
+            return
+        }
+        guard direction != 0, PanelMotion.animates, window?.isVisible == true else {
+            if direction != 0 || outgoing.isHidden == false { stopMotion() }
+            return
+        }
+        stopMotion()
+        outgoing.isHidden = false
+        let generation = transitionGeneration
+        let travel = PanelMotion.reduceMotion ? 0 : PageMotion.offset * CGFloat(direction)
+        incoming.setFrameOrigin(origin(travel))
+        incoming.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = PageMotion.duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            incoming.animator().setFrameOrigin(.zero)
+            incoming.animator().alphaValue = 1
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = PageMotion.outDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            outgoing.animator().setFrameOrigin(origin(-travel))
+            outgoing.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, self.transitionGeneration == generation else { return }
+            outgoing.isHidden = true
+            outgoing.setFrameOrigin(.zero)
+            outgoing.alphaValue = 1
+        }
+    }
+
+    /// Paging stopped at the first or last page: the page nudges a few points that way and settles back (a short dip
+    /// in opacity under Reduce Motion).
+    func bounce(direction: Int) {
+        guard PanelMotion.animates, window?.isVisible == true, !rowClip.isHidden else { return }
+        stopMotion()
+        let page = pageViews[front]
+        let generation = transitionGeneration
+        let reduce = PanelMotion.reduceMotion
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = PageMotion.bounceOut
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            context.allowsImplicitAnimation = true
+            if reduce { page.animator().alphaValue = 0.7 } else { page.animator().setFrameOrigin(origin(PageMotion.bounce * CGFloat(direction))) }
+        } completionHandler: { [weak self] in
+            guard let self, self.transitionGeneration == generation else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = PageMotion.bounceBack
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.allowsImplicitAnimation = true
+                page.animator().setFrameOrigin(.zero)
+                page.animator().alphaValue = 1
+            }
+        }
+    }
+
+    private func pinMotion(_ pinned: (kind: PinnedMotion, direction: Int, progress: CGFloat), incoming: RowPage, outgoing: RowPage) {
+        // The same easing as the animation (ease-out), drawn still for review.
+        let t = pinned.progress
+        let eased = 1 - (1 - t) * (1 - t)
+        incoming.isHidden = false
+        switch pinned.kind {
+        case .page:
+            let travel = PageMotion.offset * CGFloat(pinned.direction)
+            incoming.setFrameOrigin(origin(travel * (1 - eased)))
+            incoming.alphaValue = eased
+            let out = min(1, t * PageMotion.duration / PageMotion.outDuration)
+            let outEased = 1 - (1 - out) * (1 - out)
+            outgoing.isHidden = out >= 1
+            outgoing.setFrameOrigin(origin(-travel * outEased))
+            outgoing.alphaValue = 1 - outEased
+        case .bounce:
+            // Out over the first third, back over the rest.
+            let amount = t < 1.0 / 3 ? t * 3 : max(0, 1 - (t - 1.0 / 3) * 1.5)
+            incoming.setFrameOrigin(origin(PageMotion.bounce * CGFloat(pinned.direction) * amount))
+            incoming.alphaValue = 1
+            outgoing.isHidden = true
+        }
+    }
 }
 
 /// Pure geometry shared by the panel, toast and offscreen checks.
@@ -600,7 +804,11 @@ final class CandidatePanelController {
         panel.alphaValue = 1
         lastCaret = nil
         content.resetHover()
+        content.reset()
     }
+
+    /// Paging stopped at an end of the list (`direction`: 1 past the last page, -1 before the first).
+    func bounce(direction: Int) { content.bounce(direction: direction) }
     var isVisible: Bool { panel.isVisible }
 }
 
