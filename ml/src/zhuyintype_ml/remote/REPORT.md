@@ -147,17 +147,19 @@ socket 修正後，完整的 15 列 GPU 矩陣耗時 **393.13 s**，ONNX CPU 為
 
 ### 改動前後
 
-| 評測 | 改動前 | 改動後（GPU，預設） | 改動後（`--backend cpu`） |
-|---|---:|---:|---:|
-| `eval conversion --config app --set dev -n 400` | 144.7 s | 19 s | 50 s |
-| 同上加 `--context line` | — | 20 s | 51 s |
-| `eval typo --config app --rates 0 0.1 --set colloquial-dev wiki-dev` | 339 s | 42 s | — |
-| `eval sweep matrices/validation.json`（15 列 × 400 段） | 372 s | 46 s | — |
-| `eval candidates --config app --set dev` | — | 24 s | 94 s |
+這段工作進行中，main 換成了 Rust 引擎、移除了 Swift 版。下表的改動前有兩個：開始時的 249de13（Swift）與換成 Rust 後的 0c26e09；改動後是這個分支（Rust）。
 
-時間是從 Mac 下指令到結果取回的總時間。打字錯誤與矩陣的改動前時間是主機上評測本身的時間加上約 3 s 的固定成本；矩陣改動前量測時負載 56–86，改動後約 30。
+| 評測 | 改動前（Swift，249de13） | 改動前（Rust，0c26e09） | 改動後（GPU，預設） | 改動後（`--backend cpu`） |
+|---|---:|---:|---:|---:|
+| `eval conversion --config app --set dev -n 400` | 144.7 s | 60 s | 13 s | 46 s |
+| `eval typo --config app --rates 0 0.1 --set colloquial-dev wiki-dev` | 339 s | 239 s | 32 s | — |
+| `eval sweep matrices/validation.json`（15 列 × 400 段） | 372 s | 178 s | 29 s | — |
 
-改動後的使用率：轉換評測時主機 CPU 40–78% 忙碌（含其他人的工作），伺服器 74–77% 的時間在計算；打字錯誤評測時主機 CPU 60–83%，伺服器 86%。伺服器的 GPU 記憶體約 3 GiB。
+時間是從 Mac 下指令到結果取回的總時間；改動前的打字錯誤、矩陣與 Rust 的轉換是主機上評測本身的時間加上約 3 s 的固定成本。負載：Swift 改動前 45–86，Rust 改動前 10–51，改動後 4–15（其他人的工作也算在內），所以 Swift 欄的倍數偏大，Rust 欄比較接近同樣條件下的比較。
+
+Swift 引擎時量到的改動後時間：轉換 19 s（`--context line` 20 s；`--backend cpu` 50 s），打字錯誤 42 s，矩陣 46 s，候選字清單 24 s（`--backend cpu` 94 s）。換成 Rust 後的差異主要來自二進位框架：zhuyin-cli 送 JSON 時打字錯誤要 39 s，伺服器有約四分之一的時間在解析與產生 JSON。
+
+改動後的使用率（Rust）：主機 CPU 在轉換時 28–45%、打字錯誤時 31–55%、矩陣時 23–42% 忙碌（含其他人的工作）；伺服器 71–88% 的時間在計算，GPU 記憶體 2–4 GiB。現在的瓶頸是伺服器這一個行程，引擎行程常在等它。
 
 ### 一致性
 
@@ -168,6 +170,7 @@ socket 修正後，完整的 15 列 GPU 矩陣耗時 **393.13 s**，ONNX CPU 為
 - 驗證矩陣，GPU 對改動前的 CPU：6,000／6,000。
 - 候選字清單（`eval candidates`，含正解在清單裡的名次，反映重排與 v3 的排序），GPU 對 CPU：1,200／1,200。
 - 改動後的 CPU 對改動前的 CPU：1,200／1,200。
+- 換成 Rust 之後，GPU（二進位框架）對 Swift 改動前的 CPU：轉換 1,200／1,200、打字錯誤 4,800／4,800、矩陣 6,000／6,000；Rust 的 `--backend cpu` 轉換 1,200／1,200。
 
 前綴樹的 reranker 和一般的批次前向在 102,464 個位置上的最大差異為 2.5e-5，和 ONNX 對 PyTorch 的差異同一量級。
 

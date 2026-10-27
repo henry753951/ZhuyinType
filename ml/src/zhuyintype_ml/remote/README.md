@@ -66,7 +66,7 @@ zt data compile --quiet                            # 詞庫與語言模型的 mm
 
 ## 引擎行程池與模型伺服器
 
-評測把每一段輸入交給 `zhuyin-cli --batch` 行程（`core/engine.py` 的 `EnginePool`）。行程數預設等於核心數（`--jobs` 可改），每個行程做完一段就拿下一段，所以少數長句不會讓其他核心在最後閒著；`zt eval typo` 把所有錯誤比例與容錯模式一次交給同一組行程。同一次 `zt eval` 的各個評測集共用這些行程，每個行程只載入一次模型。這需要 zhuyin-cli 在 `--batch` 下每寫完一行就送出（Swift 版呼叫 `fflush`，Rust 版的 stdout 本來就逐行送出）。
+評測把每一段輸入交給 `zhuyin-cli --batch` 行程（`core/engine.py` 的 `EnginePool`）。行程數預設等於核心數（`--jobs` 可改），每個行程做完一段就拿下一段，所以少數長句不會讓其他核心在最後閒著；`zt eval typo` 把所有錯誤比例與容錯模式一次交給同一組行程。同一次 `zt eval` 的各個評測集共用這些行程，每個行程只載入一次模型。這需要 zhuyin-cli 在 `--batch` 下每寫完一行就送出（Rust 的 stdout 本來就逐行送出；替代用的假 CLI 要 `flush`）。
 
 `cuda` 時，`zt models serve` 在主機上啟動 `zhuyintype_ml.remote.model_server`，再以一個加上 `--model-server SOCKET` 的 zhuyin-cli 包裝程式（`ZT_CLI`）執行指令，結束時只停止自己的伺服器，並在輸出最後印出伺服器的計數。引擎行程只做解碼，模型都在 GPU 上算：
 
@@ -77,7 +77,7 @@ zt data compile --quiet                            # 詞庫與語言模型的 mm
 - fp32，停用 TF32，和 ONNX 模型相同；GPU 記憶體上限預設每個 worker 12 GiB（`--memory-gb`）。`--workers N` 可以開多個伺服器行程共用同一個 socket，但它們分時使用 GPU，實測幾乎沒有更快。
 - 伺服器每分鐘與結束時在 `remote_eval/model-server.log` 寫一行計數：各模型的請求數、平均批次大小、忙碌的時間比例。
 
-伺服器的協定有兩種格式，看每個請求的第一個位元組分辨：JSON lines（舊格式，`{` 開頭）與二進位框架（`0x00` 開頭，Swift 版 zhuyin-cli 使用）。框架是 8 位元組的標頭（標記 0、種類、版本 1、內容長度）加上 little-endian 的 int32 內容，回覆是 float32；格式寫在 `model_server.py` 的開頭。
+伺服器的協定有兩種格式，看每個請求的第一個位元組分辨：JSON lines（舊格式，`{` 開頭）與二進位框架（`0x00` 開頭，zhuyin-cli 使用）。框架是 8 位元組的標頭（標記 0、種類、版本 1、內容長度）加上 little-endian 的 int32 內容，回覆是 float32；格式寫在 `model_server.py` 的開頭。
 
 原生的 Linux 推論仍是 ONNX CPU；GPU 伺服器只是評測用的加速。
 
@@ -109,7 +109,7 @@ zt data compile --quiet                            # 詞庫與語言模型的 mm
 - 耗時（各列實際耗時加總）：Mac 8 個 worker 1174.31 s；Linux ONNX CPU 60 個 worker 610.12 s；Linux CUDA 伺服器 393.13 s。CUDA 的 6,000 筆預測與 CPU 完全相同；伺服器的 GPU 記憶體約 0.8–1.2 GiB。
 - 引擎檢查：Linux 3075/3081 通過，失敗的 6 項都是共用負載下的延遲門檻，沒有行為上的失敗。
 - 連結：Mac 的 CLI 連結 CoreML.framework、不依賴 ONNX；Linux 的 CLI 從 `~/opt/onnxruntime/lib/` 載入 `libonnxruntime.so.1`。
-- 2026-10-28 的評測加速：App 設定的開發集轉換從 144.7 s 到 19 s（`--backend cpu` 50 s），打字錯誤從 339 s 到 42 s，驗證矩陣從 372 s 到 46 s；GPU 與 CPU 的輸出在 14,400 段裡逐段相同。量測與改動見 [REPORT.md](REPORT.md) 的「評測加速」。
+- 2026-10-28 的評測加速（Rust 引擎）：App 設定的開發集轉換從 60 s 到 13 s（`--backend cpu` 46 s），打字錯誤從 239 s 到 32 s，驗證矩陣從 178 s 到 29 s；GPU 與 CPU 的輸出逐段相同。量測與改動見 [REPORT.md](REPORT.md) 的「評測加速」。
 - Linux Foundation 的 `read(upToCount:)` 在 socket 保持開啟時會等到逾時，`ModelServer.swift` 因此在 Linux 上改用 `recv` 讀取已到達的資料；`test_socket.py` 是這個問題的回歸測試。
 
 ## 輸入與輸出

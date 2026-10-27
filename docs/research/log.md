@@ -6,7 +6,7 @@
 
 ### 評測在 GPU 主機上的速度
 
-`zt --remote eval` 預設改由 GPU 上的模型伺服器計算模型，引擎行程池改成逐段分派，遠端執行前先編譯詞庫與語言模型的 mmap 檔。App 設定的開發集轉換從 144.7 s 到 19 s，打字錯誤從 339 s 到 42 s，驗證矩陣從 372 s 到 46 s。GPU 與 CPU（ONNX）的輸出在轉換、打字錯誤、驗證矩陣與候選字清單共 14,400 段裡逐段相同。過程與數字見 [remote/REPORT.md](../../ml/src/zhuyintype_ml/remote/REPORT.md) 的「評測加速」。
+`zt --remote eval` 預設改由 GPU 上的模型伺服器計算模型，引擎行程池改成逐段分派，遠端執行前先編譯詞庫與語言模型的 mmap 檔。以 Rust 引擎量，App 設定的開發集轉換從 60 s 到 13 s，打字錯誤從 239 s 到 32 s，驗證矩陣從 178 s 到 29 s。GPU 與 CPU（ONNX）的輸出在轉換、打字錯誤、驗證矩陣與候選字清單共 14,400 段裡逐段相同。過程與數字見 [remote/REPORT.md](../../ml/src/zhuyintype_ml/remote/REPORT.md) 的「評測加速」。
 
 決定：開發時的評測用 GPU；發布的數字（ZhuyinBench、與其他輸入法的比較）用 `--backend cpu`。這是評測工具的改變，引擎的輸出不變。
 

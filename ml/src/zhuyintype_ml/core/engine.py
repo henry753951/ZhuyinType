@@ -8,7 +8,7 @@ A configuration is named, so results say what they measured:
 Extra zhuyin-cli options vary one setting against these.  Batch lines are independent (the CLI resets the composer
 and its learning per line unless --keep-memory), so a batch is spread over parallel processes, one core each, which
 take the next line whenever they finish one.  This needs zhuyin-cli --batch to flush each answer line as it writes it
-(the Swift CLI calls fflush; Rust's stdout is line-buffered); a stand-in CLI must do the same (print(..., flush=True)).
+(Rust's stdout is line-buffered); a stand-in CLI must do the same (print(..., flush=True)).
 
 The engine breaks every score tie in a fixed order (engine/DESIGN.md §4), so a result depends only on the input line,
 never on the process or the order of the lines.

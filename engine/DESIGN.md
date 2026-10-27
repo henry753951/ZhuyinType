@@ -124,7 +124,7 @@ pub trait SyllableModel: Send {
 
 - **ONNX Runtime**（`zhuyin-models` 的 `onnx` feature，Linux、Windows）：`ort` crate 連結系統的 ONNX Runtime 1.24（`ORT_LIB_PATH` 指向它的 `lib/`，`engine/.cargo/config.toml` 要求動態連結，不下載任何二進位檔）；session 設定和 Swift 的 `ONNXBridge` 相同（CPU、intra/inter 各 1 個執行緒、全部圖最佳化、不送遙測），`float32` 輸出轉成 `f64`。前文編碼器的輸出依前文 ID 快取。
 - **主機的 callback**（`zhuyin-ffi`，macOS）：Swift 以 Core ML 推論，註冊 `logprob`、`tree_logprob`、`predict` 與 `release`（§6）。Core ML 的呼叫和 `ZhuyinML` 的完全相同，所以分數相同。
-- **模型伺服器**（`zhuyin-cli --model-server`，任何平台）：JSON-lines Unix socket，協定和 Swift 的 `ModelServer` 相同。
+- **模型伺服器**（`zhuyin-cli --model-server`，任何平台）：Unix socket 上的二進位框架（little-endian 的 int32 請求、float32 回覆，格式寫在 `ml/src/zhuyintype_ml/remote/model_server.py` 與 `zhuyin-cli/src/model_server.rs` 的開頭）；伺服器也接受原本的 JSON lines。
 
 ## 6. C ABI
 
