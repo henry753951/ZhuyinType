@@ -434,6 +434,18 @@ enum UIPreviewRenderer {
         try renderPages(settings, [(.choosing, nil, 1180), (.candidates, nil, 1720), (.typing, nil, 1260)], to: directory,
                         label: "-field-states", suffix: suffix)
         DemoPinning.fieldStates = [:]
+        // The overview while editing: changed keys (已自訂, and 還原預設 on the hovered row), a command with no key,
+        // a field hovered (＋ and the ✕ on each key) and one recording.
+        Preferences.shared.resetToDefaults()
+        customKeys(Preferences.shared)
+        var edited = Preferences.shared.bindings
+        edited[.singleCharacterList] = []
+        Preferences.shared.bindings = edited
+        DemoPinning.fieldStates = [.nextPage: .hover, .correctionsList: .recording(index: 1, held: ["⌥"])]
+        DemoPinning.hoveredRow = "row-nextPage"
+        try renderPages(settings, [(.keys, nil, 2600)], to: directory, label: "-edit", suffix: suffix)
+        DemoPinning.hoveredRow = nil
+        DemoPinning.fieldStates = [:]
         Preferences.shared.resetToDefaults()
         // The arrival cue, frame by frame: on a row (its section's header in the accent colour), then on a section.
         for (target, row, section) in [("row", Optional(ShortcutCommand.correctionsList.keysRow), "按錯鍵"),

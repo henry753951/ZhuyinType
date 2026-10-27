@@ -800,7 +800,7 @@ enum ControllerCoreSelfTest {
             preferences.unbind(.correctionsList, at: 0)
             try expect(preferences.bindings[.correctionsList] == [Shortcut("↑", shift: true)], "remove")
             preferences.unbind(.correctionsList, at: 0)
-            try expect(preferences.bindings[.correctionsList]?.count == 1, "the last binding was removed")
+            try expect(preferences.bindings[.correctionsList] == [], "an optional command could not lose its last key")
             try expect(preferences.resetBindings(.correctionsList) == nil
                        && preferences.bindings[.correctionsList] == ShortcutCommand.correctionsList.defaultBindings, "reset")
             preferences.setEnabled(.correctionsList, false)
@@ -1083,6 +1083,40 @@ enum ControllerCoreSelfTest {
             content.hoverEnabled = false
             content.hover(at: NSPoint(x: 40, y: 60))
             try expect(content.hoveredRowCount == 0, "an illustration showed hover")
+        }
+
+        test("keys: any key can be removed or added, defaults too; a required command keeps one; only changes are stored") {
+            let defaults = scratchDefaults()
+            let preferences = Preferences(defaults: defaults)
+            func stored() -> [String: [Shortcut]] {
+                (try? JSONDecoder().decode([String: [Shortcut]].self, from: defaults.data(forKey: "keyBindings") ?? Data())) ?? [:]
+            }
+            // Remove fn ↓ from 下一頁: Tab and ⌥↓ stay.
+            try expect(preferences.unbind(.nextPage, at: 1) == nil, "fn ↓ could not be removed")
+            try expect(preferences.bindings[.nextPage] == [Shortcut("Tab"), Shortcut("↓", option: true)], "下一頁 after removing fn ↓")
+            try expect(Set(stored().keys) == ["nextPage"], "stored more than the change: \(stored().keys)")
+            // A fourth and a fifth key.
+            for (index, key) in [(2, Shortcut("n", control: true)), (3, Shortcut("PageDown"))] {
+                try expect(preferences.bind(.nextPage, at: index, to: key) == nil, "could not add \(key.spoken)")
+            }
+            try expect(preferences.bindings[.nextPage]?.count == 4, "four keys")
+            try expect(preferences.bind(.nextPage, at: 4, to: Shortcut("m", control: true)) == nil
+                       && preferences.bindings[.nextPage]?.count == 5, "the fifth key")
+            // An optional command may be left with no key, and stays so.
+            for _ in 0..<(preferences.bindings[.singleCharacterList]?.count ?? 0) {
+                try expect(preferences.unbind(.singleCharacterList, at: 0) == nil, "只列一個字 refused to lose its key")
+            }
+            try expect(preferences.bindings[.singleCharacterList] == [], "只列一個字 has keys left")
+            try expect(Preferences(defaults: defaults).bindings[.singleCharacterList] == [], "no key did not persist")
+            try expect(Preferences(defaults: defaults).activeBindings[.singleCharacterList]?.isEmpty ?? true, "an empty command is active")
+            // A required command keeps its last key.
+            try expect(preferences.unbind(.commitWithNewline, at: 0) != nil && preferences.bindings[.commitWithNewline]?.count == 1,
+                       "送出並換行 lost its only key")
+            // 還原預設 brings the defaults back and stores nothing for the command.
+            _ = preferences.resetBindings(.nextPage)
+            _ = preferences.resetBindings(.singleCharacterList)
+            try expect(preferences.bindings[.nextPage] == ShortcutCommand.nextPage.defaultBindings, "下一頁 not restored")
+            try expect(stored().isEmpty, "restored commands are still stored: \(stored().keys)")
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")

@@ -17,6 +17,8 @@ enum DemoPinning {
     static var fieldStates: [ShortcutCommand: ShortcutFieldPreview] = [:]
     /// A push into the current sub-page (or a pop out of it) drawn still at `progress` (0…1).
     static var navigation: (push: Bool, progress: Double)?
+    /// A row drawn as if the pointer were over it.
+    static var hoveredRow: String?
     /// A list row being removed, drawn still at `progress` (0: in place, 1: gone).
     static var removal: (id: String, progress: Double)?
     static var mini: Int?

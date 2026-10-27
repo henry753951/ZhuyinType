@@ -363,12 +363,17 @@ final class Preferences: ObservableObject {
     }
 
     /// Removes one binding of `command`; its last binding stays (turn the feature off instead).
-    func unbind(_ command: ShortcutCommand, at index: Int) {
+    /// Removes one key of `command`, default or not.  A command may be left with no key, unless it is required;
+    /// returns why not.
+    @discardableResult
+    func unbind(_ command: ShortcutCommand, at index: Int) -> String? {
         var all = bindings
-        guard var list = all[command], list.count > 1, list.indices.contains(index) else { return }
+        guard var list = all[command], list.indices.contains(index) else { return nil }
+        if list.count == 1, command.isRequired { return "「\(command.label)」至少要有一個按鍵" }
         list.remove(at: index)
         all[command] = list
         bindings = all
+        return nil
     }
 
     /// Restores `command`'s default bindings, unless another command now uses one of them; returns why not.

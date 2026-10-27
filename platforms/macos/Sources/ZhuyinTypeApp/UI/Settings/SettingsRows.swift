@@ -56,6 +56,8 @@ enum RowMetrics {
 enum RowAccessory {
     case none
     case chevron
+    /// A › that goes somewhere, when the row itself does something else.
+    case link(help: String, action: () -> Void)
     case info(title: String, content: AnyView)
 }
 
@@ -326,6 +328,18 @@ struct SettingRow<Control: View>: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.tertiary)
+                .frame(width: 16)
+        case .link(let help, let action):
+            Button(action: action) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(help)
+            .accessibilityLabel(help)
         case .info(let title, let content): InfoButton(title: title) { content }
         }
     }

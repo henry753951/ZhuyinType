@@ -34,7 +34,7 @@ struct ShortcutField: View {
     @State private var monitor: Any?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    static let maximumBindings = 3
+    static let maximumBindings = 5
 
     var body: some View {
         let bindings = preferences.bindings[command] ?? []
@@ -46,9 +46,14 @@ struct ShortcutField: View {
             TrailingFlow(spacing: 5, lineSpacing: 5) {
                 // ＋ comes first, so its reserved place is on the free side and the keycaps end on the row's right edge.
                 if bindings.count < Self.maximumBindings, !disabled {
-                    iconButton("plus", help: "加入另一個按鍵") { start(bindings.count) }
-                        .opacity(showsControls ? 1 : 0)
-                        .allowsHitTesting(showsControls)
+                    // With no key, ＋ always shows: it is the only way to add one.
+                    let visible = showsControls || bindings.isEmpty && recordingIndex == nil
+                    iconButton("plus", help: bindings.isEmpty ? "加入按鍵" : "加入另一個按鍵") { start(bindings.count) }
+                        .opacity(visible ? 1 : 0)
+                        .allowsHitTesting(visible)
+                }
+                if bindings.isEmpty && recordingIndex == nil {
+                    Text("沒有按鍵").font(.callout).foregroundStyle(.secondary)
                 }
                 ForEach(Array(bindings.enumerated()), id: \.offset) { index, shortcut in
                     if index > 0 { Text("或").font(.callout).foregroundStyle(.tertiary) }
@@ -56,6 +61,21 @@ struct ShortcutField: View {
                         recorder
                     } else {
                         bindingButton(index: index, shortcut: shortcut, conflict: conflicts[index], count: bindings.count)
+                            .overlay(alignment: .topTrailing) {
+                                // Remove this key: shown over the keycap's corner on hover, so nothing moves.
+                                Button { remove(index) } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 11))
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(.white, Color.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("移除 " + shortcut.spoken)
+                                .accessibilityLabel("移除 " + shortcut.spoken)
+                                .offset(x: 6, y: -6)
+                                .opacity(showsControls ? 1 : 0)
+                                .allowsHitTesting(showsControls)
+                            }
                     }
                 }
                 if let recordingIndex, recordingIndex >= bindings.count {
@@ -115,8 +135,8 @@ struct ShortcutField: View {
         .help(shortcut.spoken + "：" + (conflict.map { "也用於「\($0.label)」；點一下改按鍵" } ?? "點一下，再按下新的組合"))
         .contextMenu {
             Button("改按鍵…") { start(index) }
-            if count > 1 { Button("移除這個按鍵") { preferences.unbind(command, at: index) } }
-            Button("全部還原成預設值") { problem = preferences.resetBindings(command) }
+            Button("移除這個按鍵") { remove(index) }
+            Button("還原預設") { problem = preferences.resetBindings(command) }
         }
         .accessibilityLabel(shortcut.spoken + (conflict.map { "，也用於「\($0.label)」" } ?? ""))
     }
@@ -167,6 +187,10 @@ struct ShortcutField: View {
     }
 
     // MARK: Recording
+
+    private func remove(_ index: Int) {
+        if let message = preferences.unbind(command, at: index) { refuse(message) } else { problem = nil }
+    }
 
     private func start(_ index: Int) {
         stop()

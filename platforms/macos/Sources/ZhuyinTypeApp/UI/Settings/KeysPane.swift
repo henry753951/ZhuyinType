@@ -275,18 +275,53 @@ private struct KeyItemRow: View {
         return item.feature.map { keys.isOn($0) } ?? true
     }
 
+    @ObservedObject private var hover = HoverState.shared
+
     var body: some View {
         let availability = item.feature.flatMap(preferences.availability)
-        if let home = item.home {
+        if case .command(let command) = item.keys, on {
+            // Keys set right here, with the same field as the feature's page; › goes to the feature.
+            editableRow(command, availability)
+        } else if let home = item.home {
             Button {
                 SettingsWindowController.shared.open(home)
             } label: {
                 row(availability).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("在「\(home.subpage?.title ?? home.pane.title)」設定")
+            .accessibilityHint("開啟「\(home.subpage?.title ?? home.pane.title)」")
         } else {
             row(availability)
+        }
+    }
+
+    private func editableRow(_ command: ShortcutCommand, _ availability: KeyAvailability?) -> some View {
+        let hovered = hover.hovered == AnyHashable("row-" + item.id) || DemoPinning.hoveredRow == "row-" + item.id
+        let customized = preferences.isCustomized(command)
+        let accessory: RowAccessory = item.home.map { home in
+            .link(help: "前往「\(home.subpage?.title ?? home.pane.title)」") { SettingsWindowController.shared.open(home) }
+        } ?? .none
+        return SettingRow(title: item.title, subtitle: availability?.note ?? item.subtitle, accessory: accessory,
+                          anchor: "row-" + item.id) {
+            if customized {
+                // 已自訂 at rest, 還原預設 on hover, in the same place: nothing moves.
+                ZStack(alignment: .trailing) {
+                    CustomizedBadge().opacity(hovered ? 0 : 1)
+                    Button("還原預設") { _ = preferences.resetBindings(command) }
+                        .buttonStyle(.link)
+                        .font(.callout)
+                        .opacity(hovered ? 1 : 0)
+                        .allowsHitTesting(hovered)
+                }
+                .animation(.easeOut(duration: 0.12), value: hovered)
+            }
+            ShortcutField(preferences: preferences, command: command, disabled: availability != nil,
+                          preview: DemoPinning.fieldStates[command])
+        }
+        .hoverTracked("row-" + item.id)
+        .contextMenu {
+            if customized { Button("還原預設") { _ = preferences.resetBindings(command) } }
+            if let home = item.home { Button("前往「\(home.subpage?.title ?? home.pane.title)」") { SettingsWindowController.shared.open(home) } }
         }
     }
 
@@ -296,14 +331,6 @@ private struct KeyItemRow: View {
             if !on {
                 Text("已關閉").foregroundStyle(.secondary)
             } else {
-                if case .command(let command) = item.keys, preferences.isCustomized(command) {
-                    Text("已自訂")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(.quaternary.opacity(0.6)))
-                }
                 trailing.opacity(availability == nil ? 1 : 0.45)
             }
         }
@@ -330,5 +357,17 @@ private struct KeyItemRow: View {
         case .shiftTap:
             KeyCombo(keys: [keys.shiftTap ?? "Shift"])
         }
+    }
+}
+
+/// The quiet mark on a row whose keys differ from the default.
+private struct CustomizedBadge: View {
+    var body: some View {
+        Text("已自訂")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(.quaternary.opacity(0.6)))
     }
 }
