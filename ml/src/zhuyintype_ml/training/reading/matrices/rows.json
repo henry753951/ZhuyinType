@@ -1,0 +1,133 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "base",
+   "config": "app"
+  },
+  {
+   "name": "lexcov",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexcov-s14/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexcov-s14/lm_chat"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "mr-taiwan",
+   "set": "misread-dev-taiwan"
+  },
+  {
+   "name": "mr-mainland",
+   "set": "misread-dev-mainland"
+  },
+  {
+   "name": "mr-neutral",
+   "set": "misread-dev-neutral"
+  },
+  {
+   "name": "mr-colloquial",
+   "set": "misread-dev-colloquial"
+  },
+  {
+   "name": "mr-misread",
+   "set": "misread-dev-misread"
+  },
+  {
+   "name": "mr-interjection",
+   "set": "misread-dev-interjection"
+  },
+  {
+   "name": "mr-examples",
+   "set": "misread-dev-examples"
+  },
+  {
+   "name": "sj-neutral",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--neutral--words.txt"
+  },
+  {
+   "name": "sj-moedict",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--sets--moedict.txt"
+  },
+  {
+   "name": "sj-user",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--user-reported.txt"
+  },
+  {
+   "name": "sj-user2",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--bench--suite-v2--user-reported.txt"
+  },
+  {
+   "name": "sj-dev302",
+   "set": "shanjie-dev302"
+  },
+  {
+   "name": "sj-trap",
+   "set": "shanjie-trap"
+  },
+  {
+   "name": "sj-daily",
+   "set": "shanjie-daily"
+  },
+  {
+   "name": "gap-taiwan-standard",
+   "set": "data/build/v3_reading/gap/taiwan.standard.rows.txt"
+  },
+  {
+   "name": "gap-taiwan-variant",
+   "set": "data/build/v3_reading/gap/taiwan.variant.rows.txt"
+  },
+  {
+   "name": "gap-mainland-standard",
+   "set": "data/build/v3_reading/gap/mainland.standard.rows.txt"
+  },
+  {
+   "name": "gap-mainland-variant",
+   "set": "data/build/v3_reading/gap/mainland.variant.rows.txt"
+  },
+  {
+   "name": "gap-neutral-standard",
+   "set": "data/build/v3_reading/gap/neutral.standard.rows.txt"
+  },
+  {
+   "name": "gap-neutral-variant",
+   "set": "data/build/v3_reading/gap/neutral.variant.rows.txt"
+  },
+  {
+   "name": "gap-colloquial-standard",
+   "set": "data/build/v3_reading/gap/colloquial.standard.rows.txt"
+  },
+  {
+   "name": "gap-colloquial-variant",
+   "set": "data/build/v3_reading/gap/colloquial.variant.rows.txt"
+  },
+  {
+   "name": "gap-misread-standard",
+   "set": "data/build/v3_reading/gap/misread.standard.rows.txt"
+  },
+  {
+   "name": "gap-misread-variant",
+   "set": "data/build/v3_reading/gap/misread.variant.rows.txt"
+  },
+  {
+   "name": "gap-interjection-standard",
+   "set": "data/build/v3_reading/gap/interjection.standard.rows.txt"
+  },
+  {
+   "name": "gap-interjection-variant",
+   "set": "data/build/v3_reading/gap/interjection.variant.rows.txt"
+  },
+  {
+   "name": "gap-examples-standard",
+   "set": "data/build/v3_reading/gap/examples.standard.rows.txt"
+  },
+  {
+   "name": "gap-examples-variant",
+   "set": "data/build/v3_reading/gap/examples.variant.rows.txt"
+  }
+ ]
+}

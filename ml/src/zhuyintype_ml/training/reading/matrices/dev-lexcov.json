@@ -1,0 +1,57 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "lexcov",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexcov-s14/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexcov-s14/lm_chat"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "wiki",
+   "set": "wiki-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexcov-s14/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexcov-s14/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexcov-s14/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "smoke",
+   "set": "smoke",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexcov-s14/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "zai",
+   "set": "zai-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexcov-s14/lexicon.tsv"
+   ]
+  }
+ ]
+}

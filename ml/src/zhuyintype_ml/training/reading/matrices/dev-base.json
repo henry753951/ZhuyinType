@@ -1,0 +1,51 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "base",
+   "config": "app"
+  }
+ ],
+ "sets": [
+  {
+   "name": "wiki",
+   "set": "wiki-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "smoke",
+   "set": "smoke",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "zai",
+   "set": "zai-dev",
+   "options": [
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  }
+ ]
+}
