@@ -6,4 +6,4 @@
 |---|---|---|---|---|---|---|---|---|
 | [v0.4.0](v0.4.0.md) | 2026-10-27 | 81.2% | 83.5% | 100.0% | 73.2% | 86.5% | 63.4% | 56.2 ms |
 
-和其他注音輸入法在同一批句子上的比較（含條件與限制）見 [research/related-work.md](../research/related-work.md)。
+和其他注音輸入法在同一批句子上的比較（含條件與限制）見 [competition.md](competition.md)，各專案的做法見 [相關工作](../research/related-work.md)。

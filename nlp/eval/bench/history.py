@@ -175,8 +175,8 @@ def readme(entries: list[tuple[dict[str, Any], dict[str, Any] | None]]) -> str:
         )
     rows += [
         "",
-        "和其他注音輸入法在同一批句子上的比較（含條件與限制）見 "
-        "[research/related-work.md](../research/related-work.md)。",
+        "和其他注音輸入法在同一批句子上的比較（含條件與限制）見 [competition.md](competition.md)，"
+        "各專案的做法見 [相關工作](../research/related-work.md)。",
     ]
     return "\n".join(rows) + "\n"
 
