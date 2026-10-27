@@ -1,25 +1,25 @@
-# Reusable shanjie evaluation rows
+# 可重用的善解（shanjie）評測資料列
 
-Source: [Nanako0129/shanjie](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval), commit `bd3b6095e170012e5675b15b9443786a04103790`.
-Original files below are byte-for-byte copies. The adjacent `*.clean.rows.txt` files are the evaluation inputs: overlapping rows were removed; trap/daily additionally received the original engine's evaluation readings. No model files or upstream code are imported.
+來源：[Nanako0129/shanjie](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval)，commit `bd3b6095e170012e5675b15b9443786a04103790`。
+下表中的原始檔案為逐位元組複製。旁邊的 `*.clean.rows.txt` 檔案是評測輸入：已移除重疊的資料列；trap/daily 另外加上原始引擎的評測讀音。沒有匯入任何模型檔案或上游程式碼。
 
-License authority: [LICENSES/data.md](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/LICENSES/data.md). The frozen dev302/typing76/probe/user-reported80/fw snapshots inherit the CC0 license of their source rows (eval/dev, eval/probe, eval/rerank); the snapshot construction is documented in tools/bench.py and docs/benchmark.md.
+授權依據：[LICENSES/data.md](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/LICENSES/data.md)。凍結的 dev302/typing76/probe/user-reported80/fw 快照沿用其來源資料列（eval/dev、eval/probe、eval/rerank）的 CC0 授權；快照的建構方式記錄在 tools/bench.py 與 docs/benchmark.md。
 
-CC0 rows: attribution to the shanjie project and contributors (including the users who consented to CC0 for their reported sentences). [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+CC0 資料列：歸功於 shanjie 專案及其貢獻者（包括同意以 CC0 釋出其回報句子的使用者）。[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)。
 
-Holdout talk rows remain [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): Wikipedia contributors; The Computational Democracy Project (vTaiwan, CC BY 4.0); National Development Council (public participation platform, OGDL-1.0). Page/revision or comment identity is retained in the unmodified sources.tsv. This data is supplied by the National Development Council under the [Open Government Data License](https://data.gov.tw/license).
+holdout talk 資料列維持 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)：Wikipedia 貢獻者；The Computational Democracy Project（vTaiwan，CC BY 4.0）；國家發展委員會（National Development Council，公共參與平臺，OGDL-1.0）。頁面／修訂版本或留言的識別資訊保留在未修改的 sources.tsv 中。本資料由國家發展委員會依 [Open Government Data License](https://data.gov.tw/license) 提供。
 
-Holdout news rows retain their individual licenses: government press releases (not copyright subject matter as recorded upstream; OGDL-1.0 where specified), Wikinews contributors ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), and each PeoPo author ([CC BY 3.0 Taiwan](https://creativecommons.org/licenses/by/3.0/tw/)). Preserve eval/holdout/next/sources.tsv for each row's author/source, URL or title/revision, and license. Government data is supplied by each providing agency identified there under OGDL-1.0.
+holdout news 資料列各自保留其授權：政府新聞稿（依上游紀錄不屬於著作權保護標的；有標示者為 OGDL-1.0）、Wikinews 貢獻者（[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)），以及每位 PeoPo 作者（[CC BY 3.0 Taiwan](https://creativecommons.org/licenses/by/3.0/tw/)）。請保留 eval/holdout/next/sources.tsv，其中記錄每一列的作者／來源、URL 或標題／修訂版本，以及授權。政府資料由該檔所列的各提供機關依 OGDL-1.0 提供。
 
-Only future shards 2 and 3 are imported. The pinned eval/README.md says they have not yet been activated (historical aggregate noise-floor measurements did exist); this benchmark exposes them for evaluation, so they must not subsequently be presented as unseen confirmation data. The active shard 1 is benchmarked remotely but is not imported.
+只匯入未來的 shard 2 與 3。固定版本的 eval/README.md 說明它們尚未啟用（過去確實有彙總的雜訊底限量測）；本基準把它們開放用於評測，因此之後不得再把它們當作未見過的確認資料呈現。啟用中的 shard 1 在遠端進行評測，但沒有匯入。
 
-All clean files are evaluation-only. Do not train on them. Originals are provenance archives and can contain training overlaps; use the clean files for leakage-controlled evaluation. Do not aggregate overlapping challenge/probe/snapshot sets as independent observations.
+所有 clean 檔案僅供評測，不要用它們訓練。原始檔是來源封存，可能與訓練資料重疊；做控制洩漏的評測時請使用 clean 檔案。彼此重疊的 challenge／probe／快照集不要當作獨立觀察值合併計算。
 
-Containment ran on gpu-lab over the prepared training text for corpus, Wikipedia LM, v3, lm_chat and lm_chat2 (plus available historical training shards). It scans any shared 8-character substring of truth or context after NFC and the union of both character folds; exact short truths are also dropped. The source paths, byte sizes, SHA-256, timestamps and removed original line numbers are in containment.json. Each file is bounded to its recorded starting size; changed/growing files are disclosed in that receipt. This does not prove absence from unavailable historical corpora or future training.
+重疊檢查（containment）在遠端主機（`$ZHUYIN_REMOTE_HOST`）上執行，對象是 corpus、Wikipedia LM、v3、lm_chat 與 lm_chat2 已準備好的訓練文字（另含可取得的歷史訓練 shard）。它在 NFC 正規化並取兩種字元摺疊的聯集後，掃描 truth 或 context 是否與訓練文字有任何共同的 8 字元子字串；完全相同的短 truth 也會捨棄。來源路徑、位元組大小、SHA-256、時間戳記與被移除的原始行號記錄在 containment.json。每個檔案只掃描到其記錄的起始大小；有變動或持續增長的檔案揭露在這份收據中。這無法證明資料不存在於無法取得的歷史語料或未來的訓練資料中。
 
-No BY-ND files are imported. For full shanjie normalization at evaluation time, read the unmodified eval/variants.tsv from the pinned commit in an ignored evaluation directory and pass --shanjie-variants PATH to rows_eval.py. The original moedict.txt is likewise retained only in the isolated remote reference checkout; any evaluation readings stay in ignored benchmark output.
+沒有匯入任何 BY-ND 檔案。若要在評測時使用 shanjie 的完整正規化，請在被忽略的評測目錄中讀取固定 commit 中未修改的 eval/variants.tsv，並以 --shanjie-variants PATH 傳給 rows_eval.py。原始的 moedict.txt 同樣只保留在隔離的遠端參考 checkout 中；任何評測讀音都只留在被忽略的基準輸出中。
 
-| File | License | Rows: original / dropped / kept | SHA-256 |
+| 檔案 | 授權 | 資料列：原始／捨棄／保留 | SHA-256 |
 |---|---|---:|---|
 | [eval/bench/suite-v1/dev302.txt](eval/bench/suite-v1/dev302.txt) | CC0-1.0 | original | `603850e444efee38b8c121e3d666d6c540acd3a27d5a6a5070a78a962dd98456` |
 | [eval/bench/suite-v1/dev302.clean.rows.txt](eval/bench/suite-v1/dev302.clean.rows.txt) | CC0-1.0 | 302 / 36 / 266 | `d68d7996eecf834d30cd3219ae10285b7615202567cec4b4fc9208566389dc6c` |
@@ -47,6 +47,6 @@ No BY-ND files are imported. For full shanjie normalization at evaluation time, 
 | [eval/holdout/next/shard-3/talk.clean.rows.txt](eval/holdout/next/shard-3/talk.clean.rows.txt) | CC BY-SA 4.0 (Wikipedia, vTaiwan/Computational Democracy, NDC; per-row sources.tsv) | 150 / 11 / 139 | `0fbc29d3f9e4f10787328c26f8bf0de5e4782e7193af3e9a1df435c578b65db4` |
 | [eval/holdout/next/sources.tsv](eval/holdout/next/sources.tsv) | CC0-1.0 | original | `f58939d776d6c5132004878a3ed2a700fc9d4f8f044b175f6d704448d599eb5d` |
 
-Additional receipt hashes:
+其他收據雜湊值：
 - `manifest.json`: `2e0fd54ec20711ffea6ed128f0ce0074141098883c60d30f26dc8fc8b1e289a9`
 - `containment.json`: `ea33d24b40ffa488711a654dc447f699a9b5670c34b3527a0226a94cb275c3b7`

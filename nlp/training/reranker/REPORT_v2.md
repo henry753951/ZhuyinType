@@ -1,64 +1,64 @@
-# Reranker v2 experiment
+# Reranker v2 實驗
 
-Experiment started 2026-10-26; completed 2026-10-27 (Asia/Taipei). The Results section records the final status.
+實驗於 2026-10-26 開始，2026-10-27 完成（Asia/Taipei）。最終狀態記錄在「結果」一節。
 
-## Protocol
+## 實驗流程
 
-Train from seed 7 with the existing trainer and unchanged v1 defaults (batch 512, learning rate 0.001, bf16, context 64, vocabulary 12,000). Separate remote `reranker_v2a/`, `reranker_v2b/` and `reranker_v2c/` directories contain byte-identical vocabulary copies and symlinks to v1 token streams. This experiment did not change data preparation or application sources; the trainer and exporter are unchanged. The existing train.py, export_coreml.py and prepare.py matched SHA-256 on both hosts, so scp was unnecessary.
+以 seed 7、既有的訓練程式與未變更的 v1 預設值訓練（batch 512、學習率 0.001、bf16、上下文 64、詞彙 12,000）。遠端各自獨立的 `reranker_v2a/`、`reranker_v2b/` 與 `reranker_v2c/` 目錄包含逐位元組相同的詞彙複本，以及指向 v1 token 串流的符號連結。這個實驗沒有變更資料準備或 App 原始碼；訓練程式與匯出程式都沒有變更。既有的 train.py、export_coreml.py 與 prepare.py 在兩台主機上的 SHA-256 都一致，因此不需要 scp。
 
-Use the existing remote `.venv-gen/bin/python` (Python 3.12.15, Torch 2.13.0+cu130, NumPy 2.3.5, coremltools 9.0). The specified `.venv` lacks Torch; no packages were installed. GPU: H100L-3-47C / MIG 3g.47gb (46,587 MiB).
+使用遠端既有的 `.venv-gen/bin/python`（Python 3.12.15、Torch 2.13.0+cu130、NumPy 2.3.5、coremltools 9.0）。指定的 `.venv` 沒有 Torch；沒有安裝任何套件。GPU：H100L-3-47C / MIG 3g.47gb（46,587 MiB）。
 
-Local evaluation uses Python 3.12.14 via uv 0.12.7; the CLI was built with Swift 6.4. All variants were exported to Core ML fp16.
+本機評估透過 uv 0.12.7 使用 Python 3.12.14；CLI 以 Swift 6.4 建置。所有變體都匯出為 Core ML fp16。
 
-Build with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release --scratch-path .build-codex --product zhuyin-cli` (passed). Freeze that executable and the existing evaluator under `data/build/reranker_v2_experiment/` to isolate comparisons from concurrent source edits. Hashes and selection rules: `manifest.json` there. The default developer directory lacks `coremlcompiler`; all compilation uses the full Xcode `DEVELOPER_DIR` above. CPU only (`ZHUYIN_UNITS` unset); MacBook Pro Apple M5, 32 GB, macOS 27.0.1.
+以 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release --scratch-path .build-codex --product zhuyin-cli` 建置（通過）。把這個執行檔與既有的評估器凍結在 `data/build/reranker_v2_experiment/` 下，讓比較不受同時進行的原始碼修改影響。雜湊值與選擇規則：該目錄下的 `manifest.json`。預設的開發者目錄沒有 `coremlcompiler`；所有編譯都使用上面完整 Xcode 的 `DEVELOPER_DIR`。只用 CPU（不設定 `ZHUYIN_UNITS`）；MacBook Pro Apple M5，32 GB，macOS 27.0.1。
 
-Selection: maximize equal-weight mean of dev colloquial and Wikipedia whole-run accuracy among v2 models with slowest post-first-call CPU latency <25 ms. Ties: mean character accuracy, lower latency, then weight nearest 1.0. Evaluate weights {0.7, 1.0, 1.4} for each model and v1; reference v1 uses its shipped weight 1.0. Train v2c only if v2b final perplexity is at least 2% lower than v2a on **both** dev token streams (predeclared interpretation of “clearly beats”).
+選擇方式：在首次呼叫之後最慢的 CPU 延遲 <25 ms 的 v2 模型中，取 dev 口語與維基百科整段準確率等權平均最高者。平手時依序比較平均字元準確率、較低的延遲，以及最接近 1.0 的權重。每個模型與 v1 都評估權重 {0.7, 1.0, 1.4}；參考用的 v1 使用其出貨時的權重 1.0。只有在 v2b 的最終困惑度在**兩個** dev token 串流上都比 v2a 低至少 2% 時，才訓練 v2c（這是事先宣告的「明顯較佳」的解讀）。
 
-Evaluate held-out sets once per locked dev winner and shipped v1, never for tuning. Promote only if the winner strictly exceeds v1's equal-weight mean whole-run accuracy across the three held-out sets and passes latency.
+保留測試集只對鎖定的 dev 勝出者與出貨的 v1 各評估一次，從不用於調整。只有當勝出者在三個保留測試集上的整段準確率等權平均嚴格高於 v1，且延遲通過時，才升級採用。
 
-Resource recovery: the first-pass integrity check found that the shared `data/build/lexicon.tsv` no longer matched its initial hash (observed modification time 19:13:51). The first pass stopped on a hash check before any held-out evaluation. `data/build/lexicon.before-priors.tsv` exactly matches the initial lexicon SHA-256 (`e7cc8a1edd019180f88ce2313715abfeb5fb5968444a5f1d4da5a756534325a1`). All first-pass dev/timing results were archived under `pre-resource-freeze/` and discarded for selection. Every dev combination and CPU timing was rerun using private frozen copies of that original lexicon, the unchanged LM/dev files, the CLI and evaluator. Test files were mechanically copied without using their outcomes for selection; held-out evaluation was run once per locked winner and v1. The shared lexicon and concurrent source edits were preserved. Frozen resource hashes are in `manifest.json` (`frozen_evaluation_sha256`).
+資源復原：第一輪的完整性檢查發現共用的 `data/build/lexicon.tsv` 已與初始雜湊值不符（觀察到的修改時間為 19:13:51）。第一輪在任何保留測試集評估之前，就因雜湊檢查而停止。`data/build/lexicon.before-priors.tsv` 與初始詞庫的 SHA-256（`e7cc8a1edd019180f88ce2313715abfeb5fb5968444a5f1d4da5a756534325a1`）完全一致。第一輪所有的 dev 與計時結果都封存在 `pre-resource-freeze/` 下，不用於選擇。每一個 dev 組合與 CPU 計時都使用該原始詞庫、未變更的語言模型與 dev 檔案、CLI 及評估器的私有凍結複本重新執行。測試檔只是機械式地複製，沒有使用其結果來選擇；保留測試集評估對每個鎖定的勝出者與 v1 各執行一次。共用詞庫與同時進行的原始碼修改都保留不動。凍結資源的雜湊值在 `manifest.json`（`frozen_evaluation_sha256`）。
 
-## Commands
+## 指令
 
-SSH: `ssh -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST`; remote root `~/zhuyintype`. Jobs use `nohup`; logs and exit status files are under `logs/reranker_v2*`.
+SSH：`ssh -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST`；遠端根目錄 `~/zhuyintype`。工作使用 `nohup`；紀錄與結束狀態檔在 `logs/reranker_v2*` 下。
 
 ```sh
-# Remote; each directory has vocab.json and symlinked train.bin/val_*.bin.
+# 遠端；每個目錄都有 vocab.json，以及以符號連結指向的 train.bin/val_*.bin。
 .venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2a --steps 90000
 .venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2b --steps 90000 --layers 8 --width 512 --heads 8 --ffn 2048
-# Conditional v2c:
+# 有條件執行的 v2c：
 .venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2c --steps 90000 --layers 10 --width 640 --heads 10 --ffn 2560
-# Per finished variant:
+# 每個完成的變體：
 .venv-gen/bin/python -u nlp/training/reranker/export_coreml.py --data reranker_v2a --out reranker_v2a/Reranker.mlpackage
 scp -r -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST:zhuyintype/reranker_v2a/Reranker.mlpackage data/build/reranker_v2a/
 scp -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST:zhuyintype/reranker_v2a/vocab.json data/build/reranker_v2a/
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun coremlcompiler compile data/build/reranker_v2a/Reranker.mlpackage data/build/reranker_v2a/
-# Repeat for every finished variant, initial config {"weight": 1.0, "count": 16}.
+# 對每個完成的變體重複，初始設定為 {"weight": 1.0, "count": 16}。
 
-# Local dev; DIR is v1 or each variant, W is 0.7 / 1.0 / 1.4.
+# 本機 dev；DIR 為 v1 或各變體，W 為 0.7 / 1.0 / 1.4。
 env -u ZHUYIN_UNITS uv run --no-project --python 3.12 data/build/reranker_v2_experiment/conversion_eval.py --cli data/build/reranker_v2_experiment/zhuyin-cli --lexicon data/build/reranker_v2_experiment/lexicon.tsv -n 400 --reranker DIR --rerank-weight W --rerank-count 16 --test data/build/reranker_v2_experiment/dev/dev_colloquial.txt data/build/reranker_v2_experiment/dev/dev_wikipedia.txt
-# CPU latency, omit first timed call:
+# CPU 延遲，略過第一次計時的呼叫：
 env -u ZHUYIN_UNITS data/build/reranker_v2_experiment/zhuyin-cli --lexicon data/build/reranker_v2_experiment/lexicon.tsv --reranker DIR --rerank-count 16 --timing "ji3ap6vu35j/ru04xu4vu/5j4u4ek75k4cl3vu04xu4cl3wu4"
-# Held-out, once per winner and v1 (same options and n=400):
+# 保留測試集，每個勝出者與 v1 各一次（相同選項，n=400）：
 # --test data/build/reranker_v2_experiment/test/test_sentences.txt data/build/reranker_v2_experiment/test/test_colloquial.txt data/build/reranker_v2_experiment/test/colloquial_smoke.txt
 ```
 
-## Results
+## 結果
 
-Status: complete.
+狀態：完成。
 
-### Training
+### 訓練
 
-| Model | Steps | Minutes | Wiki perplexity | Colloquial perplexity |
+| 模型 | 步數 | 分鐘 | Wiki 困惑度 | 口語困惑度 |
 |---|---:|---:|---:|---:|
-| v1 (historical) | 30000 | 16.71 | 29.5594 | 75.2983 |
+| v1（歷史紀錄） | 30000 | 16.71 | 29.5594 | 75.2983 |
 | reranker_v2a | 90000 | 49.42 | 27.5580 | 72.2539 |
 | reranker_v2b | 90000 | 79.04 | 23.3940 | 65.1481 |
 | reranker_v2c | 90000 | 122.17 | 20.9905 | 60.7843 |
 
-### Dev (400 runs per set)
+### Dev（每組 400 次執行）
 
-| Model / weight | Colloquial char % | Colloquial whole % | Wiki char % | Wiki whole % | Whole mean % |
+| 模型／權重 | 口語字元 % | 口語整段 % | Wiki 字元 % | Wiki 整段 % | 整段平均 % |
 |---|---:|---:|---:|---:|---:|
 | v1 / 0.7 | 95.9 | 80.50 | 96.3 | 76.25 | 78.375 |
 | v1 / 1.0 | 95.8 | 79.00 | 96.3 | 76.50 | 77.750 |
@@ -73,53 +73,51 @@ Status: complete.
 | v2c / 1.0 | 96.3 | 82.50 | 96.8 | 77.75 | 80.125 |
 | v2c / 1.4 | 96.3 | 82.25 | 96.7 | 76.75 | 79.500 |
 
-### CPU latency
+### CPU 延遲
 
-| Model | First ms (excluded) | Every subsequent call, ms | Maximum ms | Pass <25 ms |
+| 模型 | 首次 ms（不計入） | 之後每次呼叫，ms | 最大 ms | 通過 <25 ms |
 |---|---:|---|---:|---|
-| v1 | 3.7 | 2.1, 2.0, 3.1, 3.7, 4.6, 5.0, 6.0, 6.5, 7.3, 8.0, 8.8, 9.2, 10.1, 10.6 | 10.6 | yes |
-| reranker_v2a | 3.8 | 2.1, 2.1, 3.2, 3.7, 4.5, 5.0, 6.0, 6.5, 7.3, 8.0, 8.7, 9.3, 10.2, 10.6 | 10.6 | yes |
-| reranker_v2b | 7.0 | 4.0, 3.8, 5.6, 6.5, 8.0, 8.9, 10.3, 11.5, 12.8, 14.1, 15.6, 16.3, 17.9, 18.9 | 18.9 | yes |
-| reranker_v2c | 11.5 | 6.0, 6.0, 9.0, 10.0, 12.6, 13.8, 17.0, 22.9, 21.3, 22.4, 25.7, 26.2, 28.5, 29.9 | 29.9 | no |
+| v1 | 3.7 | 2.1, 2.0, 3.1, 3.7, 4.6, 5.0, 6.0, 6.5, 7.3, 8.0, 8.8, 9.2, 10.1, 10.6 | 10.6 | 是 |
+| reranker_v2a | 3.8 | 2.1, 2.1, 3.2, 3.7, 4.5, 5.0, 6.0, 6.5, 7.3, 8.0, 8.7, 9.3, 10.2, 10.6 | 10.6 | 是 |
+| reranker_v2b | 7.0 | 4.0, 3.8, 5.6, 6.5, 8.0, 8.9, 10.3, 11.5, 12.8, 14.1, 15.6, 16.3, 17.9, 18.9 | 18.9 | 是 |
+| reranker_v2c | 11.5 | 6.0, 6.0, 9.0, 10.0, 12.6, 13.8, 17.0, 22.9, 21.3, 22.4, 25.7, 26.2, 28.5, 29.9 | 29.9 | 否 |
 
-### Held-out test (once per model)
+### 保留測試集（每個模型一次）
 
-| Model / weight | Set | Runs | Character % | Whole-run % |
+| 模型／權重 | 測試集 | 執行次數 | 字元 % | 整段 % |
 |---|---|---:|---:|---:|
 | reranker_v2b-w1.0 | test_sentences.txt | 400 | 96.8 | 76.75 |
 | reranker_v2b-w1.0 | test_colloquial.txt | 400 | 96.5 | 81.25 |
 | reranker_v2b-w1.0 | colloquial_smoke.txt | 68 | 99.8 | 98.53 |
-| reranker_v2b-w1.0 | **Equal-weight mean** | — | 97.70 | **85.510** |
+| reranker_v2b-w1.0 | **等權平均** | — | 97.70 | **85.510** |
 | v1-w1.0 | test_sentences.txt | 400 | 96.6 | 76.50 |
 | v1-w1.0 | test_colloquial.txt | 400 | 96.1 | 79.25 |
 | v1-w1.0 | colloquial_smoke.txt | 68 | 99.8 | 98.53 |
-| v1-w1.0 | **Equal-weight mean** | — | 97.50 | **84.760** |
+| v1-w1.0 | **等權平均** | — | 97.50 | **84.760** |
 
-### Decision
+### 決定
 
-Adopt reranker_v2b, weight 1.0: held-out whole-run mean improves by 0.75 percentage points versus shipped v1; slowest post-first CPU call 18.9 ms. Winner artifacts are in data/build/reranker_v2/.
+採用 reranker_v2b，權重 1.0：保留測試集的整段平均比出貨的 v1 高 0.75 個百分點；首次之後最慢的 CPU 呼叫為 18.9 ms。勝出者的產出物在 data/build/reranker_v2/。
 
-Raw evaluation output, timings, copy/compile logs, manifest and machine details: `data/build/reranker_v2_experiment/`. Training logs: remote `logs/reranker_v2*-train.log` and local variant `train-log.json`.
+原始評估輸出、計時、複製與編譯紀錄、清單與機器細節：`data/build/reranker_v2_experiment/`。訓練紀錄：遠端的 `logs/reranker_v2*-train.log` 與本機各變體的 `train-log.json`。
 
-Character accuracy is printed by the existing evaluator to 0.1 percentage point. Whole-run counts are recovered unambiguously from the printed percentage and sample count (at most 400 runs), so whole-run means and the adoption gate use exact fractions. Latency uses the specified single typing sequence and excludes its first timed call. No broader workload, app UI or installation test was run.
+既有的評估器以 0.1 個百分點的精度輸出字元準確率。整段的計數可以從輸出的百分比與樣本數（最多 400 次執行）明確還原，因此整段平均與採用門檻都使用精確的分數。延遲使用指定的單一打字序列，並略過第一次計時的呼叫。沒有執行更廣的工作負載、App UI 或安裝測試。
 
-The full chronological execution log, including the recovered first-pass interruption, is `data/build/reranker_v2_experiment/experiment.log`. Only the clean frozen-resource measurements above are used for selection and adoption.
+完整的依時間順序執行紀錄，包括已復原的第一輪中斷，在 `data/build/reranker_v2_experiment/experiment.log`。選擇與採用只使用上面以乾淨凍結資源量測的結果。
 
-Final artifact verification passed: the promoted mlpackage and mlmodelc match v2b file-for-file by SHA-256; vocabulary matches v1 (12,000 entries); config is {"weight": 1.0, "count": 16}. All frozen resources retained their hashes. Exactly two held-out commands ran, one for the locked winner and one for v1. Details: `data/build/reranker_v2_experiment/adoption-check.json`.
+最終產出物驗證通過：升級的 mlpackage 與 mlmodelc 在每個檔案的 SHA-256 上都與 v2b 一致；詞彙與 v1 一致（12,000 個條目）；設定為 {"weight": 1.0, "count": 16}。所有凍結資源的雜湊值都維持不變。保留測試集指令恰好執行兩次，一次給鎖定的勝出者，一次給 v1。詳情：`data/build/reranker_v2_experiment/adoption-check.json`。
 
-## Verification on the 0.2.3 engine
+## 在 0.2.3 引擎上的驗證
 
-Re-run on 2026-10-27 with the current engine (reading priors, tone sandhi, exact-match margin 4.0, Taiwan sense
-readings, <unk> share) and the shipped lexicon, weight 1.0, 16 candidates, n = 400; "context" is
-`conversion_eval.py --line-context`. Whole-run accuracy:
+2026-10-27 以目前的引擎（讀音先驗、變調、完全相符邊際 4.0、台灣讀音、<unk> 分攤）與出貨的詞庫重新執行，權重 1.0，16 個候選字，n = 400；「上下文」指
+`conversion_eval.py --line-context`。整段準確率：
 
-| Model | Wikipedia | Colloquial | Everyday | Wikipedia + context | Colloquial + context |
+| 模型 | 維基百科 | 口語 | 日常 | 維基百科 + 上下文 | 口語 + 上下文 |
 |---|---:|---:|---:|---:|---:|
 | v1 | 80.5 | 80.5 | 100.0 | 83.0 | 80.8 |
 | v2a | 79.8 | 80.8 | 100.0 | 83.0 | 81.0 |
 | v2b | 80.8 | 82.8 | 100.0 | 85.2 | 83.0 |
 
-CPU time per reranking call while typing a 25-syllable sentence (`zhuyin-cli --timing`), first call excluded:
-v1 2.1–11.0 ms, v2a 2.1–11.0 ms, v2b 3.8–20.9 ms.  v2b is the only clear gain (+2.2 points with context) and about
-1.9× slower per call; v2a matches v1's speed without a clear gain.  Not adopted yet: the adoption rule for the app
-was "better on the test sets and not slower".
+輸入一個 25 音節句子時，每次重新排序呼叫的 CPU 時間（`zhuyin-cli --timing`），不計第一次呼叫：
+v1 2.1–11.0 ms，v2a 2.1–11.0 ms，v2b 3.8–20.9 ms。v2b 是唯一明顯的進步（含上下文 +2.2 個百分點），每次呼叫約慢
+1.9 倍；v2a 與 v1 速度相同，但沒有明顯進步。目前尚未採用：App 的採用規則是「在測試集上較好，而且不更慢」。

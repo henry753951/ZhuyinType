@@ -1,11 +1,10 @@
-# Timed typing-error evaluation
+# 依時間的打字錯誤評測
 
-The harness evaluates committed text and pure-engine recall@16 on the development
-sets. It writes no engine or model files. Run it from the repository root.
+這套評測在開發集上評估送出的文字，以及純引擎的 recall@16。它不寫入任何引擎或模型檔案。請在儲存庫根目錄執行。
 
-## Reproduce
+## 重現
 
-Rebuild before **each full run**, because the engine is being changed concurrently:
+因為引擎同時在修改，**每次完整執行前**都要重新建置：
 
 ```sh
 mkdir -p .build-eval
@@ -19,89 +18,37 @@ env -u ZHUYIN_UNITS uv run --no-project python nlp/eval/typing_errors.py \
   > .build-eval/typing-errors-table.md 2> .build-eval/typing-errors.log
 ```
 
-`--test` takes corpus paths; `--self-test` runs the built-in assertions without
-data or a CLI. `-n` defaults to 300 **per dataset before applicability filtering**.
-Configurations accept shell-quoted CLI arguments, for example
-`--config timed '--decoder timed'`. The current build advertises
-`slots|boundaries|reorder|timed`; the two measured configurations use its default,
-`slots`. No decoder names are hard-coded in the harness.
+`--test` 接受語料路徑；`--self-test` 執行內建的斷言，不需要資料或 CLI。`-n` 預設為每個資料集 300，**在適用性篩選之前計算**。設定接受以 shell 引號包住的 CLI 參數，例如 `--config timed '--decoder timed'`。目前的建置提供 `slots|boundaries|reorder|timed`；兩組實測的設定都使用它的預設值 `slots`。評測程式中沒有寫死任何解碼器名稱。
 
-The full-run command above used the two default dev paths for `--test` and
-redirected output to the scratch directory. Core ML used the CLI default, CPU only.
-Pilot runs used `-n 3` and `-n 1`; a separate 30-run timing probe found CPU faster
-than `ZHUYIN_UNITS=all` or `ane` on this Mac. These pilots are excluded below.
+上面的完整執行指令對 `--test` 使用兩個預設的 dev 路徑，並把輸出導向暫存目錄。Core ML 使用 CLI 的預設值，只用 CPU。試跑使用 `-n 3` 與 `-n 1`；另一次 30 次執行的計時探測發現，在這台 Mac 上 CPU 比 `ZHUYIN_UNITS=all` 或 `ane` 快。這些試跑不計入下方結果。
 
-## Model and counting rules
+## 模型與計數規則
 
-- Select readable Han runs using the same `[\u4e00-\u9fff]{4,20}` matching,
-  lexicon longest-match readings, and first-tone Space convention as
-  `conversion_eval.py`; require one reading per reference character. Shuffle with
-  seed 7. Each condition uses the same selected runs, filtering inapplicable ones.
-  Readings are inferred, not manually annotated pronunciation truth.
-- Use US Mac key centres, with row offsets 0, 0.25, 0.5, 1 key widths, touch-typing
-  hands/fingers, and right-thumb Space. Every key gets a `<dt:MS>` prefix.
-  Intervals are log-normal with log standard deviation 0.35 and base median
-  120 ms (60 ms fast), multiplied by 0.75 for alternating hands or 1.4 for the
-  same finger. Exact and exact-fast share random timing draws, scaled by two.
-- Swaps exchange distinct adjacent keys, including tone keys and first-tone
-  Spaces. `swap-in-syllable` stays inside a syllable; `swap-across` crosses its
-  boundary. Rollover samples either kind and sets the exchanged pair's gap to
-  uniform 0–15 ms. Ordinary swaps retain ordinary sampled timing.
-- Hotspots sample a landing point from a Gaussian centred on the intended key
-  (horizontal sigma 0.45, vertical sigma 0.30), snap to the nearest physical key
-  centre, and reject unchanged/non-neighbour landings (distance over 1.6 widths).
-  Physical punctuation keys remain possible slips. Wide Space is excluded as a
-  hotspot/extra-key anchor; it can still be swapped or dropped. Extra-key inserts
-  a sampled neighbour before or after its anchor, with uniform 0–20 ms pair gap.
-- Conditions 3–9 inject exactly one edit per applicable run. `swap-across-2`,
-  `rollover-2`, and `hotspot-2` inject two edits at disjoint positions. Missing-key
-  drops one key; tone exchanges only 3↔4 or 6↔7.
-- Nospace omits only canonical first-tone Spaces **before another syllable**;
-  the final Space is retained. `nospace-all` removes every eligible Space;
-  `nospace-30` samples each independently at 30%. Only runs with an actual omission
-  count, so this row is conditioned on observing an error.
-- Mixed chooses at most one slip per syllable: 3% hotspot, 2% rollover, 1% extra,
-  1% missing, 1% tone, otherwise none. Inapplicable slips are skipped rather than
-  replaced by another type. It independently omits 30% of eligible first-tone
-  Spaces and chooses the fast profile for 30% of runs. Mixed includes unchanged
-  realizations; JSON records each run's actual edit count and profile.
-- Fixed per-run/per-condition RNGs keep scripts identical across configurations.
-  Both datasets share one batch per condition/configuration. At most three CLI
-  processes overlap; batch mode resets context and learning for each input line.
-  Commit scripts end in Enter; recall scripts do not. Recall strips reranker
-  options and reuses the same pure-engine result for equivalent configurations.
-- Whole-run accuracy requires exact committed-text equality. Character accuracy
-  is `max(0, 1 - total Levenshtein distance / reference characters)`, reusing
-  `typo_eval.py`. Recall@16 requires the entire reference in the engine list.
-  False correction means output differs from **that configuration's normal,
-  canonical exact output**, irrespective of whether the baseline is correct;
-  exact is therefore 0% by definition and exact-fast measures speed-induced
-  changes. This is not the off-mode correctness-conditioned metric in typo_eval.
+- 以與 `conversion_eval.py` 相同的 `[\u4e00-\u9fff]{4,20}` 比對、詞庫最長比對讀音，以及一聲以 Space 輸入的慣例，挑出可讀的漢字段；每個參考字必須恰有一個讀音。以 seed 7 打亂順序。每個條件使用同一批選出的段落，並濾除不適用者。讀音是推斷出來的，不是人工標註的發音真值。
+- 使用美式 Mac 鍵盤的按鍵中心點，各列偏移 0、0.25、0.5、1 個鍵寬，採用標準指法的左右手與手指分配，Space 由右手拇指按。每個按鍵都加上 `<dt:MS>` 前綴。按鍵間隔服從對數常態分布，對數標準差 0.35，基準中位數 120 ms（快速為 60 ms）；左右手交替時乘以 0.75，同一手指時乘以 1.4。exact 與 exact-fast 共用相同的隨機計時抽樣，以 2 倍縮放。
+- 交換（swap）對調兩個相鄰且不同的按鍵，包括聲調鍵與一聲的 Space。`swap-in-syllable` 限於同一音節內；`swap-across` 跨越音節邊界。rollover 從這兩種中抽樣，並把被對調的這對按鍵之間的間隔設為 0–15 ms 均勻分布。一般交換保留一般抽樣的計時。
+- hotspot 以目標按鍵為中心的高斯分布抽樣落點（水平 sigma 0.45，垂直 sigma 0.30），對齊到最近的實體按鍵中心，並捨棄未改變或非相鄰的落點（距離超過 1.6 個鍵寬）。實體標點鍵仍可能被誤觸。寬的 Space 不作為 hotspot／extra-key 的錨點；它仍可能被交換或漏打。extra-key 在錨點之前或之後插入一個抽樣的相鄰鍵，該對按鍵間隔為 0–20 ms 均勻分布。
+- 條件 3–9 在每個適用的段落中恰好注入一個錯誤。`swap-across-2`、`rollover-2` 與 `hotspot-2` 在互不重疊的位置注入兩個錯誤。missing-key 漏掉一個按鍵；tone 只對調 3↔4 或 6↔7。
+- nospace 只省略**後面還有其他音節**的標準一聲 Space；最後的 Space 保留。`nospace-all` 移除所有符合條件的 Space；`nospace-30` 以 30% 機率對每個 Space 獨立抽樣。只有實際發生省略的段落才計入，因此這一列是以觀察到錯誤為條件。
+- mixed 在每個音節最多選一種錯誤：3% hotspot、2% rollover、1% extra、1% missing、1% tone，其餘不加錯誤。不適用的錯誤直接略過，不以其他類型替代。它另外獨立省略 30% 符合條件的一聲 Space，並在 30% 的段落選用快速設定。mixed 包含沒有任何改變的段落；JSON 記錄每個段落實際的錯誤數與設定。
+- 固定的每段落／每條件 RNG 讓各設定使用相同的按鍵腳本。兩個資料集在每個條件／設定下共用一個批次。最多同時有三個 CLI 行程；批次模式在每一行輸入時重設上下文與學習。送出用的腳本以 Enter 結尾；recall 用的腳本不加。recall 會去除 reranker 選項，並在等價的設定之間重用同一份純引擎結果。
+- 整段準確率要求送出的文字完全相同。字元準確率為 `max(0, 1 - total Levenshtein distance / reference characters)`，沿用 `typo_eval.py`。Recall@16 要求完整的參考答案出現在引擎清單中。誤修正指輸出與**該設定在正常、標準輸入下的 exact 輸出**不同，不論基準本身是否正確；因此 exact 依定義為 0%，exact-fast 衡量的是速度造成的改變。這與 typo_eval 中以正確性為條件的 off-mode 指標不同。
 
-JSON contains every input script, output, N-best list, metrics, artifact hashes,
-and wall time; it is checkpointed after each result row. Empty conditions report
-N=0 and undefined metrics rather than entering the denominator.
+JSON 包含每一個輸入腳本、輸出、N-best 清單、指標、產出物雜湊值與實際耗時；每完成一列結果就寫入一次檢查點。沒有樣本的條件回報 N=0 與未定義的指標，不計入分母。
 
-## Results
+## 結果
 
-Measured 2026-10-27 (Asia/Taipei), starting at 2026-10-26T19:34:17.982916+00:00.
-Wall time: **24 min 33 s** (1472.6 s), including both configurations,
-all conditions, corpus loading and hashing. No tracked artifact changed during
-measurement (26 CLI/corpus/lexicon/model files checked before and after).
+量測於 2026-10-27（Asia/Taipei），開始時間 2026-10-26T19:34:17.982916+00:00。實際耗時：**24 min 33 s**（1472.6 s），包含兩組設定、所有條件、語料載入與雜湊計算。量測期間沒有任何追蹤中的產出物改變（量測前後檢查了 26 個 CLI／語料／詞庫／模型檔案）。
 
-- CLI SHA-256: `170b82f6ad951185d6c494f83fe968eec92771c290460af82ca498420011aa2b`.
-- Lexicon SHA-256: `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60`.
-- Python 3.15.0 through uv 0.12.7; default CPU-only Core ML.
-- Full records: `.build-eval/typing-errors.json` (scratch artifact).
-- Self-checks, the small batch pilots, and actual `--decoder slots` / `timed`
-  argument pass-through checks passed. All 60 metric rows were independently
-  recomputed from recorded outputs. All 8,535 distinct condition/run inputs were
-  regenerated from seeds; paired configuration scripts and engine N-best matched.
+- CLI SHA-256：`170b82f6ad951185d6c494f83fe968eec92771c290460af82ca498420011aa2b`。
+- 詞庫 SHA-256：`9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60`。
+- Python 3.15.0，透過 uv 0.12.7；預設只用 CPU 的 Core ML。
+- 完整記錄：`.build-eval/typing-errors.json`（暫存產出物）。
+- 自我檢查、小型批次試跑，以及實際的 `--decoder slots` / `timed` 參數傳遞檢查都通過。全部 60 列指標都從記錄的輸出獨立重新計算過。全部 8,535 個不同的條件／段落輸入都由 seed 重新產生；成對設定的腳本與引擎 N-best 都相符。
 
-Whole and Char describe committed output; Recall@16 always excludes the
-reranker. A dash means the metric is not requested for that condition.
+Whole 與 Char 描述送出的輸出；Recall@16 一律不使用 reranker。破折號表示該條件不計算此指標。
 
-| Dataset | Condition | Config | N | Whole | Char | Recall@16 | False corr. |
+| 資料集 | 條件 | 設定 | N | Whole | Char | Recall@16 | 誤修正 |
 |---|---|---|---:|---:|---:|---:|---:|
 | colloquial | exact | current | 300 | 75.7% | 95.3% | 95.7% | 0.0% |
 | colloquial | exact | current+reranker | 300 | 84.7% | 97.4% | 95.7% | 0.0% |
@@ -164,26 +111,11 @@ reranker. A dash means the metric is not requested for that condition.
 | wikipedia | mixed | current | 300 | 26.3% | 79.5% | 34.7% | — |
 | wikipedia | mixed | current+reranker | 300 | 29.7% | 81.9% | 34.7% | — |
 
-The reranker improves clean whole-run accuracy from 75.7% to 84.7% on colloquial
-and 71.7% to 81.0% on Wikipedia. Exact-fast reproduces exact outputs in both
-configurations: speed-induced false correction is 0% on these samples. Exact's
-0% is the same-configuration baseline by definition, not a claim of perfect
-conversion.
+reranker 把乾淨輸入的整段準確率在口語上從 75.7% 提升到 84.7%，在 Wikipedia 上從 71.7% 提升到 81.0%。exact-fast 在兩組設定下都重現了 exact 的輸出：在這些樣本上，速度造成的誤修正為 0%。exact 的 0% 依定義是同一設定的基準，不代表轉換完全正確。
 
-Boundary failures dominate: one cross-syllable swap has only 1.7% / 0% recall;
-one missing key has 9.3% / 10.0%. Both omission-of-Space conditions have 0% whole
-accuracy and recall among runs with actual omissions. Raising reranker quality
-alone cannot recover these absent candidates. Conversely, tone slips retain
-89.0% / 91.3% recall, with reranked accuracy 75.0% / 75.7%.
+主要的失敗來自音節邊界：一次跨音節交換的 recall 只有 1.7% / 0%；漏打一個按鍵為 9.3% / 10.0%。兩種省略 Space 的條件，在實際發生省略的段落中，整段準確率與 recall 都是 0%。只提升 reranker 的品質無法找回這些不在清單中的候選。相對地，聲調錯誤保有 89.0% / 91.3% 的 recall，加上 reranker 後的準確率為 75.0% / 75.7%。
 
-Two hotspots reduce reranked whole accuracy from 48.7% / 50.7% (one) to
-22.0% / 28.7% (two). Mixed achieves 42.7% / 29.7% with reranking versus
-34.7% / 26.3% without; its realized fast counts are 94/300 and 75/300.
-The 30% fast rate is sampled, not a quota. Rollover and ordinary-swap conditions
-use independently drawn positions; their difference is not a paired timing-only
-ablation. Compare configurations within a condition for that purpose.
+兩個 hotspot 使加上 reranker 的整段準確率從 48.7% / 50.7%（一個）降到 22.0% / 28.7%（兩個）。mixed 加上 reranker 為 42.7% / 29.7%，不加為 34.7% / 26.3%；實際抽到快速設定的段落數為 94/300 與 75/300。30% 的快速比例是抽樣結果，不是配額。rollover 與一般交換條件的位置各自獨立抽樣；兩者的差異不是只改變計時的成對消融比較。要做這種比較，請在同一條件內比較不同設定。
 
-These are synthetic-error dev-set results with lexicon-inferred readings, not
-human typing calibration or held-out acceptance tests. The binary hash identifies
-this snapshot even if concurrently edited Swift sources change afterward.
+這些是開發集上的合成錯誤結果，讀音由詞庫推斷，不是依真人打字校準，也不是保留集上的驗收測試。即使之後同時修改中的 Swift 原始碼有所變動，二進位檔的雜湊值仍可識別這份快照。
 

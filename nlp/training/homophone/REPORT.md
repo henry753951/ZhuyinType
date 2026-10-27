@@ -1,81 +1,46 @@
-# Compatible continuation — 2026-10-27
+# 相容繼續訓練（2026-10-27）
 
-**Recommendation: do not adopt.** The licensed continuation improves aggregate
-在／再 accuracy but still outputs 在試試看 for 再試試看 and introduces
-我再吃一碗麵 for the previously correct 我在吃一碗麵. These are explicit development
-acceptance failures, regardless of aggregate significance. The targeted retry and
-one parameter-midpoint attempt do not preserve both eating examples either.
-The no-adoption decision was sealed before this run's test scoring; test only tracks.
+**建議：不採用。** 合乎授權的繼續訓練提高了在／再的整體正確率，但「再試試看」仍輸出「在試試看」，原本正確的「我在吃一碗麵」則變成「我再吃一碗麵」。不論整體結果是否顯著，這兩項都是明確的開發驗收失敗。針對性重試與一次參數中點嘗試也無法同時保住兩個「吃」的例子。不採用的決定在這次測試評分之前就已封存；測試集只用於追蹤。
 
-The delivered experimental bundle is `data/build/v3_homophone2/`, selected training
-step **500**, with both fp16 packages/compiled models, original vocabularies,
-configuration, vectors, PyTorch checkpoints, source notices and attribution.
-It is license-clean and interface-validated, **not a completed production fix**.
-The app, engine, release assets and original `data/build/v3` remain unchanged by this task.
+交付的實驗套件是 `data/build/v3_homophone2/`，選定的訓練步數為 **500**，包含兩個 fp16 套件與編譯後的模型、原始詞彙表、設定、向量、PyTorch 檢查點、來源聲明與出處。它在授權上沒有問題，也通過介面驗證，但**不是完成的正式修正**。這項工作沒有改動 app、引擎、發布資產與原本的 `data/build/v3`。
 
-Checkpoint SHA256: `67955335d9d4b16fbc8faa329d12d71f87917eadec59690e268b0775af8ba51e`. Original starting checkpoint: `03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`; never the TRAIL-trained checkpoint.
+檢查點 SHA256：`67955335d9d4b16fbc8faa329d12d71f87917eadec59690e268b0775af8ba51e`。原始起點檢查點：`03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`；從未使用以 TRAIL 訓練的檢查點。
 
-## Sources and exclusions
+## 來源與排除
 
-No Taiwan Tongues source text enters either fine-tune stream. TT remains evaluation
-only. Reuse immutable Wikipedia/colloquial shards and cached chat2 real sources;
-no new generated pilot text or downloaded resampling. All paths below are relative
-to the repository; remote access uses `$ZHUYIN_REMOTE_HOST` / `$ZHUYIN_REMOTE_KEY`.
+兩個微調資料流都不含 Taiwan Tongues 的原文。TT 只用於評測。重用不可變的維基百科／口語分片與已快取的 chat2 真實來源；不產生新的試驗文字，也不下載重新取樣。以下路徑都相對於儲存庫；遠端存取使用 `$ZHUYIN_REMOTE_HOST` 與 `$ZHUYIN_REMOTE_KEY`。
 
-| Eligible source pool | Candidates / input | Retained | License |
+| 可用的來源 | 候選／輸入 | 保留 | 授權 |
 | --- | --- | --- | --- |
-| Wikipedia + deduplicated legacy colloquial shards | 16,950,352 indexed examples | 5,407,644 | Wikipedia CC BY-SA 4.0; legacy Qwen3-8B / Common Voice lineage |
-| Legislative Yuan gazettes | 690,984 | 148,939 | OGDL v1; OpenFun LYAPI CC BY 4.0 |
-| Wikipedia talk | 17,474 | 6,916 | CC BY-SA 4.0 |
-| Common Voice sentence collector | 8,882 | 6,114 | CC0 1.0 |
-| Taiwan Tongues | Evaluation only | 0 training | Not a model source |
+| 維基百科 + 去重後的舊口語分片 | 16,950,352 個已索引樣本 | 5,407,644 | 維基百科 CC BY-SA 4.0；舊資料源自 Qwen3-8B／Common Voice |
+| 立法院公報 | 690,984 | 148,939 | OGDL v1；OpenFun LYAPI CC BY 4.0 |
+| 維基百科討論頁 | 17,474 | 6,916 | CC BY-SA 4.0 |
+| Common Voice 句子收集器 | 8,882 | 6,114 | CC0 1.0 |
+| Taiwan Tongues | 僅供評測 | 訓練 0 | 不作為模型來源 |
 
-Reject **11,542,708** indexed examples by whole-document exclusion. The
-supplement has **161,969 internally deduplicated clauses** (not an additional
-unique count across the legacy CV-containing shards). Independent rescan:
-**3,777,130 retained documents**, 5,407,644 indexed examples and 161,969
-supplemental clauses, **0 violations**. Filtering took 118.04 s.
+整份文件排除共拒絕 **11,542,708** 個已索引樣本。補充資料有 **161,969 個內部去重的子句**（不是相對於含 CV 的舊分片另外去重後的數量）。獨立重新掃描：**3,777,130 份保留文件**、5,407,644 個已索引樣本與 161,969 個補充子句，**0 個違規**。篩選耗時 118.04 s。
 
-All 38 frozen evaluation files block heldout eight-character substrings and short
-actual sentences, including context/target joins, homophone dev/test, old TT
-holdouts, chat2 dialogue dev/test, smoke and every imported shanjie text. Check
-original, 台/臺-folded and encoded-UNK forms. Short context alone contributes
-only eight-grams. This is continuation exclusion; original pretraining may already
-contain later-created holdouts. Evaluation files remain byte-identical.
+全部 38 個凍結的評測檔都會擋下保留集的 8 字子字串與短的實際句子，包括前文與目標的接合、同音字開發集／測試集、舊的 TT 保留集、chat2 對話開發集／測試集、smoke 以及每一份匯入的善解文字。檢查原始、台／臺合併後與編碼成 UNK 後的三種形式。只有短前文時只貢獻 8-gram。這是繼續訓練的排除；原始預訓練可能已包含後來建立的保留集。評測檔保持逐位元組相同。
 
-Legacy colloquial/Common Voice source hashes match the compatible chat2 manifest.
-Agent reading of 24 deterministic initial 在/再 samples found no evident primary
-label error; one awkward inherited Wiki phrase was noted. This is not independent
-human annotation. Initial sampling also includes fixed words such as 再生能源.
-See `inputs.json`, `source-integrity.json`, `source-review.json`, `filtered.json`
-and `leakage-audit.json` under `data/build/homophone2/`.
+舊口語／Common Voice 來源的雜湊與相容 chat2 的 manifest 相符。由 agent 閱讀 24 個確定性抽出的句首在／再樣本，沒有發現明顯的主要標注錯誤；記下一個沿用的維基語句不太通順。這不是獨立的人工標注。句首取樣也包含「再生能源」這類固定詞。見 `data/build/homophone2/` 下的 `inputs.json`、`source-integrity.json`、`source-review.json`、`filtered.json` 與 `leakage-audit.json`。
 
-Licenses/attribution: [model NOTICE](../../../data/build/v3_homophone2/NOTICE.md),
-`articles.tsv.gz`, `attribution.jsonl`, `source-manifest.json`, Qwen3-8B Apache-2.0
-license and the existing lexicon/Unicode/wordfreq notices are retained in the bundle.
+授權與出處：[模型 NOTICE](../../../data/build/v3_homophone2/NOTICE.md)、`articles.tsv.gz`、`attribution.jsonl`、`source-manifest.json`、Qwen3-8B 的 Apache-2.0 授權，以及既有的詞庫／Unicode／wordfreq 聲明都保留在套件中。
 
-## Training and rejected follow-ups
+## 訓練與被否決的後續嘗試
 
-Original recipe: frozen context, AdamW 2e-5 (100-step warmup), batch 64,
-30% focused batches, half explicitly balanced primary 在/再, 3x confusion-position
-loss, unchanged augmentation and 30% context dropout. Four data workers.
-The compatible run replaces the old TT supplement with a 25% real-source draw in
-normal and explicitly primary-focused batches. Half the latter focus on initial
-characters. Check every 500 steps; select lowest primary dev NLL only if all eight
-original general-dev conditions lose at most 0.2 percentage points; stop after
-four non-improving checks. A 10,000-step cap was never reached.
+原始配方：凍結前文，AdamW 2e-5（100 步 warmup），batch 64，30% 重點批次，其中一半明確平衡主要的在／再，混淆位置損失乘 3，資料增強不變，前文 dropout 30%。四個資料 worker。相容執行以 25% 的真實來源取樣取代舊的 TT 補充，用於一般批次與明確以主要字為重點的批次。後者有一半著重句首的字。每 500 步檢查；只有在原本八個一般開發集條件都下降不超過 0.2 個百分點時，才選主要開發集 NLL 最低者；連續四次未改善就停止。從未達到 10,000 步的上限。
 
-| Step | Primary dev NLL | Conditional primary accuracy | General gate | Selected |
+| 步數 | 主要開發集 NLL | 條件式主要正確率 | 一般門檻 | 選定 |
 | --- | --- | --- | --- | --- |
-| 500 | 0.185696 | 92.89% | True | yes |
+| 500 | 0.185696 | 92.89% | True | 是 |
 | 1000 | 0.340019 | 87.37% | True |  |
 | 1500 | 0.204008 | 92.51% | True |  |
 | 2000 | 0.219059 | 91.45% | True |  |
 | 2500 | 0.310261 | 88.86% | True |  |
 
-Stop at 2,500; selected 500; training time 201.41 s. Baseline NLL 0.514428; conditional primary accuracy 82.56% → 92.89%. These model-only unions inject gold and are not decoder recall.
+停在 2,500；選定 500；訓練時間 201.41 s。基準 NLL 0.514428；條件式主要正確率 82.56% → 92.89%。這些模型單獨評測的候選聯集都加入了正確答案，不代表解碼器的召回率。
 
-| General model-only condition | Positions | Original | Continued | Delta pp |
+| 一般模型單獨條件 | 位置數 | 原始 | 繼續訓練 | 差異（百分點） |
 | --- | --- | --- | --- | --- |
 | colloquial-False-0.0 | 15837 | 95.05% | 95.43% | +0.38 |
 | colloquial-False-0.05 | 15837 | 94.85% | 95.20% | +0.35 |
@@ -86,15 +51,9 @@ Stop at 2,500; selected 500; training time 201.41 s. Baseline NLL 0.514428; cond
 | wikipedia-True-0.0 | 60462 | 95.02% | 95.10% | +0.09 |
 | wikipedia-True-0.05 | 60462 | 94.84% | 94.92% | +0.09 |
 
-The targeted retry reuses exactly these allowed data, focusing on initial 再
-before verbs (109 shard + 187 real examples) and subject + 在 + verb
-(750 + 76). A prefix-only preparation (49 + 28 for 在) was
-archived before training; allowing preceding clause text corrected that coverage.
-Three known requested examples are model-only development gates, excluded from
-gradient training and not unseen confirmation evidence.
-Retry stop: 3,000; selected 1,000; 249.25 s.
+針對性重試完全重用這些允許的資料，著重於動詞前的句首「再」（分片 109 個 + 真實來源 187 個樣本）與「主詞 + 在 + 動詞」（750 + 76）。只取前綴的準備（「在」為 49 + 28）在訓練前就已封存；允許前面有子句文字後，涵蓋範圍得到修正。三個已知的指定範例是模型單獨的開發門檻，不參與梯度訓練，也不是未見資料上的確認證據。重試停在 3,000；選定 1,000；249.25 s。
 
-| Retry step | NLL | General + guard admissible | 再試 / 我再吃 / 我在吃麵 guards |
+| 重試步數 | NLL | 一般與防護皆可接受 | 再試／我再吃／我在吃麵 防護 |
 | --- | --- | --- | --- |
 | 500 | 0.252763 | False | True / True / False |
 | 1000 | 0.346597 | True | True / True / True |
@@ -103,66 +62,41 @@ Retry stop: 3,000; selected 1,000; 249.25 s.
 | 2500 | 0.210847 | False | True / True / False |
 | 3000 | 0.328445 | False | True / True / False |
 
-The midpoint uses original/continued decoder parameters equally, identical frozen
-context and vocabularies, no additional gradient training and no coefficient sweep.
-All eight original general gates pass; conditional primary accuracy
-89.29%, NLL 0.292398.
-Its full dev primary accuracy is 88.38% / 92.80% without/with context, versus
-85.69% / 91.07% baseline, but it retains the same protected eating regression.
-Neither follow-up opens the homophone test sets.
+中點版本以相同比例混合原始與繼續訓練的解碼器參數，凍結的前文與詞彙表都相同，沒有額外的梯度訓練，也沒有係數掃描。原本八個一般門檻全部通過；條件式主要正確率 89.29%，NLL 0.292398。完整開發集的主要正確率在無／有前文時為 88.38%／92.80%，基準為 85.69%／91.07%，但仍保留同一個受保護的「吃」例子退步。兩個後續嘗試都沒有開啟同音字測試集。
 
-A fast-probe mistake is retained explicitly: `conversion_eval --reranker` injects
-reranker weight 1, whereas today's frozen CLI default is 0.5. Early fast probes
-are **not app-configuration evidence**. Corrected probes pin 0.5 and reproduce the
-failures below. All full matrices used 0.5 throughout; the adapter now pins it.
+快速探測的一個失誤明確保留下來：`conversion_eval --reranker` 會帶入整句重排權重 1，而目前凍結 CLI 的預設是 0.5。早期的快速探測**不能作為 app 設定的證據**。修正後的探測固定為 0.5，並重現下列失敗。所有完整矩陣始終使用 0.5；轉接程式現在明確固定這個值。
 
-| Known dev target | Current v3 | Full continuation | Targeted retry (corrected) | Midpoint (corrected) |
+| 已知開發目標 | 目前 v3 | 完整繼續訓練 | 針對性重試（修正後） | 中點（修正後） |
 | --- | --- | --- | --- | --- |
 | 再試試看 | 在試試看 | 在試試看 | 在試試看 | 在試試看 |
-| 我再吃一碗 | exact | exact | 我在吃一碗 | exact |
-| 我在吃一碗麵 | exact | 我再吃一碗麵 | exact | 我再吃一碗麵 |
+| 我再吃一碗 | 完全正確 | 完全正確 | 我在吃一碗 | 完全正確 |
+| 我在吃一碗麵 | 完全正確 | 我再吃一碗麵 | 完全正確 | 我再吃一碗麵 |
 
-The two short three-character rows are absent from the 16-run conversion probes;
-the formal homophone smoke includes all 18 rows / 19 primary positions.
-Full-continuation smoke: 18/19 → 17/19 primary positions; 16/18 → 15/18 whole sentences.
-在啦幹 → 在拉幹 remains a non-primary spelling error. A model-only correct 再試試看
-is not end-to-end success: it survives as n-best #2, raw scores -21.401834 (在)
-versus -22.013088 (再), neural scores -21.117 versus -20.917; the fixed app stack
-still commits 在. No engine/reranker/chat-prior change is made to hide this failure.
+兩個三字的短句列不在 16 次執行的轉換探測中；正式的同音字 smoke 包含全部 18 列／19 個主要位置。完整繼續訓練的 smoke：主要位置 18/19 → 17/19；整句 16/18 → 15/18。在啦幹 → 在拉幹 仍是主要混淆以外的錯字。模型單獨正確的「再試試看」不代表端到端成功：它留在 n-best 第 2 名，原始分數 -21.401834（在）對 -22.013088（再），神經分數 -21.117 對 -20.917；固定的 app 組合仍然送出「在」。沒有為了掩蓋這個失敗而修改引擎、整句重排或聊天先驗。
 
-## Current-app paired evaluation
+## 目前 app 的成對評測
 
-Same frozen engine and data throughout: reranker count 16, **reranker weight 0.5**,
-v3 weight 0.5, chat LM `data/build/lm_chat` at prior 0.3, default gate τ=8,
-standard keyboard/typo handling. Linux ONNX CPU via a temporary copy of
-`nlp/remote/run.sh`, `REMOTE_DIR=zhuyintype/work/onnx-eval-homophone3`.
-JOBS=24 for baseline dev, 40 for candidate/full final rows, never above 40.
-No selected checkpoint changes after the dev decision. Do not compare these
-numbers directly with historical experiment 1's different engine/configuration.
+整個過程使用相同的凍結引擎與資料：整句重排候選數 16、**整句重排權重 0.5**、v3 權重 0.5、聊天語言模型 `data/build/lm_chat` 先驗 0.3、預設門檻 τ=8，標準鍵盤／按錯處理。在 Linux 上以 ONNX CPU 執行，使用 `nlp/remote/run.sh` 的暫時副本，`REMOTE_DIR=zhuyintype/work/onnx-eval-homophone3`。基準開發集用 JOBS=24，候選與完整最終列用 40，從未超過 40。開發集決定後，選定的檢查點不再更換。不要把這些數字直接和歷史實驗 1 在不同引擎／設定下的數字比較。
 
-Paired statistics use `nlp/eval/stats.py`: exact McNemar, 10,000 paired
-bootstrap samples, seed 7; homophone bootstrap clusters by source/line,
-other sets by row. Category tests are exploratory; McNemar itself is unclustered.
-Position scoring uses edit alignment (deletion wrong); whole-sentence accuracy is exact.
-Category priority remains fixed word > subject > initial > verb > place/time > other.
+成對統計使用 `nlp/eval/stats.py`：exact McNemar、10,000 次成對 bootstrap 抽樣、seed 7；同音字的 bootstrap 依來源／行分群，其他資料集依列。類別檢定屬探索性；McNemar 本身不分群。位置評分使用編輯距離對齊（刪除算錯）；整句正確率要求完全相同。類別優先順序維持：固定詞 > 主詞 > 句首 > 動詞 > 地點／時間 > 其他。
 
-### Primary dev
+### 主要開發集
 
-| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| 子集 | N | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- |
-| All | 1041 | 85.69% | 90.68% | 91.07% | 94.33% |
-| Non-fixed | 842 | 82.90% | 89.07% | 89.55% | 93.47% |
+| 全部 | 1041 | 85.69% | 90.68% | 91.07% | 94.33% |
+| 非固定詞 | 842 | 82.90% | 89.07% | 89.55% | 93.47% |
 | 在 | 536 | 100.00% | 100.00% | 100.00% | 100.00% |
 | 再 | 505 | 70.50% | 80.79% | 81.58% | 88.32% |
-| Fixed word | 199 | 97.49% | 97.49% | 97.49% | 97.99% |
-| After subject | 158 | 94.30% | 94.94% | 94.94% | 94.94% |
-| Initial | 163 | 62.58% | 79.14% | 85.28% | 93.87% |
-| Before verb | 156 | 91.03% | 93.59% | 94.23% | 94.87% |
-| Before place/time | 157 | 94.90% | 95.54% | 94.90% | 96.18% |
-| Other | 208 | 75.00% | 84.13% | 81.25% | 88.94% |
-| Whole sentence | 1000 | 67.10% | 71.30% | 74.20% | 76.70% |
+| 固定詞 | 199 | 97.49% | 97.49% | 97.49% | 97.99% |
+| 主詞後 | 158 | 94.30% | 94.94% | 94.94% | 94.94% |
+| 句首 | 163 | 62.58% | 79.14% | 85.28% | 93.87% |
+| 動詞前 | 156 | 91.03% | 93.59% | 94.23% | 94.87% |
+| 地點／時間前 | 157 | 94.90% | 95.54% | 94.90% | 96.18% |
+| 其他 | 208 | 75.00% | 84.13% | 81.25% | 88.94% |
+| 整句 | 1000 | 67.10% | 71.30% | 74.20% | 76.70% |
 
-| Context | Subset | N | Old → new | Fixed/broken | Delta pp | 95% CI pp | p |
+| 前文 | 子集 | N | 舊 → 新 | 改對／改壞 | 差異（百分點） | 95% 信賴區間（百分點） | p |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | all | 1041 | 85.69% → 90.68% | 52/0 | +5.00 | [+3.71, +6.36] | 4.441e-16 |
 | 0 | char_category:再:initial | 118 | 48.31% → 71.19% | 27/0 | +22.88 | [+15.38, +30.77] | 1.49e-08 |
@@ -171,23 +105,23 @@ Category priority remains fixed word > subject > initial > verb > place/time > o
 | 1 | char_category:再:initial | 118 | 79.66% → 91.53% | 14/0 | +11.86 | [+5.98, +17.95] | 0.0001221 |
 | 1 | char_category:在:after_subject | 145 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
 
-### Primary test
+### 主要測試集
 
-| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| 子集 | N | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- |
-| All | 1051 | 87.44% | 91.53% | 92.20% | 94.67% |
-| Non-fixed | 851 | 85.08% | 90.01% | 90.83% | 93.89% |
+| 全部 | 1051 | 87.44% | 91.53% | 92.20% | 94.67% |
+| 非固定詞 | 851 | 85.08% | 90.01% | 90.83% | 93.89% |
 | 在 | 543 | 99.82% | 99.82% | 99.82% | 99.82% |
 | 再 | 508 | 74.21% | 82.68% | 84.06% | 89.17% |
-| Fixed word | 200 | 97.50% | 98.00% | 98.00% | 98.00% |
-| After subject | 157 | 94.90% | 94.90% | 95.54% | 95.54% |
-| Initial | 165 | 63.03% | 78.79% | 83.03% | 90.30% |
-| Before verb | 154 | 93.51% | 95.45% | 92.86% | 96.10% |
-| Before place/time | 159 | 96.23% | 97.48% | 97.48% | 98.74% |
-| Other | 216 | 80.56% | 85.65% | 87.04% | 90.28% |
-| Whole sentence | 1000 | 68.30% | 71.50% | 74.80% | 77.00% |
+| 固定詞 | 200 | 97.50% | 98.00% | 98.00% | 98.00% |
+| 主詞後 | 157 | 94.90% | 94.90% | 95.54% | 95.54% |
+| 句首 | 165 | 63.03% | 78.79% | 83.03% | 90.30% |
+| 動詞前 | 154 | 93.51% | 95.45% | 92.86% | 96.10% |
+| 地點／時間前 | 159 | 96.23% | 97.48% | 97.48% | 98.74% |
+| 其他 | 216 | 80.56% | 85.65% | 87.04% | 90.28% |
+| 整句 | 1000 | 68.30% | 71.50% | 74.80% | 77.00% |
 
-| Context | Subset | N | Old → new | Fixed/broken | Delta pp | 95% CI pp | p |
+| 前文 | 子集 | N | 舊 → 新 | 改對／改壞 | 差異（百分點） | 95% 信賴區間（百分點） | p |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | all | 1051 | 87.44% → 91.53% | 43/0 | +4.09 | [+2.92, +5.35] | 2.274e-13 |
 | 0 | char_category:再:initial | 118 | 48.31% → 70.34% | 26/0 | +22.03 | [+14.41, +29.66] | 2.98e-08 |
@@ -196,9 +130,9 @@ Category priority remains fixed word > subject > initial > verb > place/time > o
 | 1 | char_category:再:initial | 118 | 76.27% → 86.44% | 12/0 | +10.17 | [+5.08, +16.10] | 0.0004883 |
 | 1 | char_category:在:after_subject | 144 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
 
-### General dev and external rows
+### 一般開發集與外部資料
 
-| Set | N | Exact | Variants | Fixed/broken exact | Exact delta CI pp | p |
+| 資料集 | N | 完全相同 | 寫法視為相同 | 完全相同的改對／改壞 | 完全相同的差異信賴區間（百分點） | p |
 | --- | --- | --- | --- | --- | --- | --- |
 | colloquial | 400 | 87.00% → 87.00% | 87.00% → 87.00% | 4/4 | [-1.25, +1.50] | 1 |
 | wikipedia | 400 | 83.75% → 84.00% | 83.75% → 84.00% | 4/3 | [-1.00, +1.50] | 1 |
@@ -207,11 +141,11 @@ Category priority remains fixed word > subject > initial > verb > place/time > o
 | dev302 | 266 | 81.58% → 81.20% | 84.21% → 83.83% | 2/3 | [-2.26, +1.13] | 1 |
 | typing76 | 49 | 83.67% → 85.71% | 83.67% → 85.71% | 1/0 | [+0.00, +6.12] | 1 |
 
-Shanjie common-character normalization, dev302: 86.09% → 85.71%. Shanjie common-character normalization, typing76: 95.92% → 95.92%. No external full variants dictionary is supplied. Clean rows contain 266/49 examples, not the original 302/76. Wiki uses line context; each large general set uses 400 runs, seed 7; colloquial smoke has 68 runs. No significant general improvement or noninferiority claim follows from these small samples.
+善解常用字正規化，dev302：86.09% → 85.71%。善解常用字正規化，typing76：95.92% → 95.92%。沒有提供外部的完整異體字典。清理後的資料各含 266／49 個例子，不是原本的 302／76。維基使用同一行前文；每個大型一般資料集執行 400 次，seed 7；colloquial smoke 執行 68 次。這些小樣本無法支持一般表現顯著改善或不劣性的結論。
 
-### Secondary groups
+### 次要組
 
-| Split | Group | Positions | Old 0 | New 0 | Old 1 | New 1 |
+| 分割 | 組 | 位置數 | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- | --- |
 | dev | 做作 | 243 | 83.95% | 84.36% | 85.19% | 84.77% |
 | dev | 已以 | 263 | 92.02% | 92.78% | 93.54% | 93.92% |
@@ -271,153 +205,75 @@ Shanjie common-character normalization, dev302: 86.09% → 85.71%. Shanjie commo
 | test | NON-FIXED | 3553 | 85.39% | 85.70% | 87.22% | 87.50% |
 
 
-| Secondary split | Context | Fixed/broken | Delta pp | 95% CI pp | p |
+| 次要分割 | 前文 | 改對／改壞 | 差異（百分點） | 95% 信賴區間（百分點） | p |
 | --- | --- | --- | --- | --- | --- |
 | dev | 0 | 27/21 | +0.11 | [-0.13, +0.37] | 0.4709 |
 | dev | 1 | 25/25 | +0.00 | [-0.26, +0.26] | 1 |
 | test | 0 | 31/16 | +0.28 | [+0.04, +0.53] | 0.03999 |
 | test | 1 | 23/10 | +0.24 | [+0.04, +0.44] | 0.03508 |
 
-Full group/category counts and ordered predictions are retained in `results/*.json`; paired category/character intervals in `paired-*.positions.json`, whole-sentence/variant/CER statistics in `paired-*.json`. Secondary changes include both gains and regressions.
+完整的組別／類別計數與有序預測保留在 `results/*.json`；成對的類別／字信賴區間在 `paired-*.positions.json`，整句／異體／CER 統計在 `paired-*.json`。次要組的變化有進步也有退步。
 
-## Core ML and real-output parity
+## Core ML 與真實輸出一致性
 
-| Model | Max logprob error | Max memory error | Max probability error | Synthetic argmax flips |
+| 模型 | 最大 logprob 誤差 | 最大記憶向量誤差 | 最大機率誤差 | 合成案例 argmax 翻轉 |
 | --- | --- | --- | --- | --- |
-| Original | 0.072990417 | 0.089843750 | 0.013366759 | 2/504 |
-| Delivered continuation | 0.082813263 | 0.093750000 | 0.010225266 | 5/504 |
-| Rejected midpoint | 0.073307037 | 0.093750000 | 0.007131398 | 4/504 |
+| 原始 | 0.072990417 | 0.089843750 | 0.013366759 | 2/504 |
+| 交付的繼續訓練版本 | 0.082813263 | 0.093750000 | 0.010225266 | 5/504 |
+| 被否決的中點版本 | 0.073307037 | 0.093750000 | 0.007131398 | 4/504 |
 
-Same upstream fp16 exporter, macOS 14 target, Xcode coremlcompiler via
-`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. The original 20 vector
-inputs are unchanged; expected outputs come from each Core ML package. Swift
-`--check-v3`: **20/20**, largest difference **4.33680869e-19**. This is an interface
-check, not an independent PyTorch numerical check. The saved-output audits above
-are independent and use the original v3 as calibration; all delivered cases also
-meet the historical 0.1 numerical bound. ONNX/PyTorch: 20 cases, max difference
-**0.0000181198**, shape/padding/finite/normalization checks pass.
+使用相同的上游 fp16 匯出器、macOS 14 目標，以及透過 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` 呼叫的 Xcode coremlcompiler。原本 20 組向量的輸入不變；預期輸出取自各自的 Core ML 套件。Swift `--check-v3`：**20/20**，最大差異 **4.33680869e-19**。這是介面檢查，不是獨立的 PyTorch 數值檢查。上表已儲存輸出的稽核是獨立的，並以原始 v3 作為校準；交付的所有案例也都在歷史上的 0.1 數值上限內。ONNX／PyTorch：20 個案例，最大差異 **0.0000181198**，形狀／填補／有限值／正規化檢查都通過。
 
-The single-use real-output check uses 397 frozen Wiki inputs plus the three known
-critical smoke inputs (400 total), all with saved Linux ONNX outputs. The original
-control uses the full 400 Wiki inputs: **396/400 (99.00%)** identical. Delivered
-candidate: **395/400 (98.75%)**. On the 397 shared Wiki inputs, original is
-**393/397 (98.99%)**, candidate **392/397 (98.74%)**. Only one divergence overlaps;
-three old ones disappear and four new ones appear. Wiki exact-correct counts:
-original **332 Linux / 332 Mac**, candidate **333 Linux / 329 Mac**. Thus four
-Linux-correct Wiki decisions become Mac-wrong for this candidate. All **53**
-primary target positions in shared Wiki runs and the **3** critical outputs agree
-across platforms; the critical outputs still include both known errors. Parity
-is not accuracy approval. Full-stack comparison includes the unchanged reranker's
-fp16/fp32 differences too; do not attribute every difference to v3 alone.
+單次的真實輸出檢查使用 397 筆凍結的維基輸入，加上三個已知的關鍵 smoke 輸入（共 400 筆），都有已儲存的 Linux ONNX 輸出。原始對照組使用完整的 400 筆維基輸入：**396/400（99.00%）** 相同。交付的候選：**395/400（98.75%）**。在共用的 397 筆維基輸入上，原始為 **393/397（98.99%）**，候選為 **392/397（98.74%）**。只有一處分歧重疊；三個舊分歧消失，出現四個新分歧。維基完全正確數：原始 **Linux 332／Mac 332**，候選 **Linux 333／Mac 329**。因此這個候選有四個在 Linux 上正確的維基決定在 Mac 上變錯。共用維基執行中全部 **53** 個主要目標位置與 **3** 個關鍵輸出在兩個平台上一致；關鍵輸出仍包含兩個已知錯誤。一致不等於正確率獲得認可。完整組合的比較也包含未修改的整句重排模型的 fp16／fp32 差異；不要把每個差異都歸因於 v3。
 
-Artifacts: `mac-*-parity.json`, `mac-parity-summary.json`, `coreml-*-audit.json`,
-`onnx-chosen-audit.json`, `check-v3.log`, `export-manifest.json`. Binary lexicon and
-both LMs were rebuilt in an experiment-only Mac directory; all three hashes match
-Linux. No Mac corpus selection/training, app installation/UI or latency test.
+產物：`mac-*-parity.json`、`mac-parity-summary.json`、`coreml-*-audit.json`、`onnx-chosen-audit.json`、`check-v3.log`、`export-manifest.json`。二進位詞庫與兩個語言模型在僅供實驗的 Mac 目錄中重建；三個雜湊都與 Linux 相符。沒有在 Mac 上做語料選擇／訓練、app 安裝／介面或延遲測試。
 
-## Execution and integrity
+## 執行與完整性
 
-Baseline test SSH closed after its first completed row; the remote driver continued
-through three complete raw prediction rows, then stopped while reporting progress.
-No last-row start log existed. Audited recovery verified the sealed manifest,
-CLI/model/input hashes and raw commands, retained the three predictions, rebuilt
-missing sidecars and decoded only the never-started final row. No sealed decode
-was replayed. The compatible dispatcher now uses nohup, a new session, PID receipt
-and logs in `~/zhuyintype/logs/`; recovery refuses an already-started incomplete row.
-Both final completion seals are retained. Final `/proc` inspection finds no owned
-evaluator/model-server processes in the isolated workspace (`final-process-audit.json`).
-No model/test retuning follows.
+基準測試的 SSH 在第一列完成後關閉；遠端驅動程式繼續完成三列完整的原始預測，然後在回報進度時停止。最後一列沒有開始紀錄。經稽核的復原確認了已封存的 manifest、CLI／模型／輸入雜湊與原始指令，保留三列預測，重建缺少的附屬檔，只解碼從未開始的最後一列。沒有重播任何已封存的解碼。相容派送器現在使用 nohup、新的 session、PID 收據，記錄檔放在 `~/zhuyintype/logs/`；復原時拒絕已開始但未完成的列。兩個最終完成封存檔都保留。最後以 `/proc` 檢查，隔離工作區中沒有自己擁有的評測器／模型伺服器程序（`final-process-audit.json`）。之後沒有重新調整模型或測試。
 
-Sampled host MemAvailable stayed at least 63 GiB; this is not a continuous peak
-measurement. No owned OOM or broad process-name kill. Initial slow sync was stopped
-by verified local rsync PID before evaluation; hash-identical remote weights seeded
-the workspace. Initial regression-test failures were missing old-layout remote
-helper files; syncing the current evaluator dependencies fixed them.
+取樣到的主機 MemAvailable 一直至少有 63 GiB；這不是連續的峰值量測。沒有自己擁有的程序發生 OOM，也沒有依程序名稱大範圍終止程序。一開始緩慢的同步在評測前依已確認的本機 rsync PID 停止；以雜湊相同的遠端權重作為工作區的初始內容。最初的回歸測試失敗是因為缺少舊目錄結構的遠端輔助檔；同步目前評測器的相依檔後修正。
 
-Remote: Python 3.12.15, Torch 2.13.0+cu130, ONNX Runtime 1.24.4, Swift 6.4.1,
-uv 0.13.5. Mac: Python 3.12.14, Torch 2.7.0, coremltools 9.0, NumPy 2.3.5,
-Swift 6.4. The new isolated venv reuses existing site-packages read-only; no
-package/tool installs or lockfile/global-default changes. Nine inherited and
-four focused regression checks pass, including source routing, paired identity,
-cluster bootstrap, test guards, nohup dispatch and incomplete-row replay refusal.
+遠端：Python 3.12.15、Torch 2.13.0+cu130、ONNX Runtime 1.24.4、Swift 6.4.1、uv 0.13.5。Mac：Python 3.12.14、Torch 2.7.0、coremltools 9.0、NumPy 2.3.5、Swift 6.4。新的隔離 venv 以唯讀方式重用既有的 site-packages；沒有安裝套件或工具，也沒有更改 lockfile 或全域預設。九項沿用與四項針對性的回歸檢查都通過，包括來源分流、成對身分、分群 bootstrap、測試防護、nohup 派送與拒絕重播未完成的列。
 
-Code changes are confined to `nlp/training/homophone/`; no engine/client/docs/release
-workflow/asset-manifest edits, app deployment, Git commit/push/stash/reset/checkout
-by this task. Other workspace changes are preserved. Reproduction: [README.md](README.md).
+程式變更只在 `nlp/training/homophone/`；這項工作沒有修改引擎、用戶端、文件、發布 workflow 或資產清單，沒有部署 app，也沒有執行 Git commit／push／stash／reset／checkout。工作區中的其他變更都保留。重現方式：[README.md](README.md)。
 
-The observed gains support further research, not promotion of this checkpoint:
-keep the current v3 until the protected conversational regression and the remaining
-initial 再 failure are resolved under the same exact app configuration.
+觀察到的進步支持繼續研究，但不支持採用這個檢查點：在完全相同的 app 設定下解決受保護的對話退步與剩下的句首「再」失敗之前，維持目前的 v3。
 
 ---
 
-# Historical experiment 1
+# 歷史實驗 1
 
-# Homophone continuation report
+# 同音字繼續訓練報告
 
-Dev-selected candidate: **unchanged v2b + continued v3, weight 1, rerank count 16**.
-**Core ML numerical gate failed:** one synthetic case exceeds the
-inherited fp32 tolerance (0.118900 > 0.1), with four top-1 differences across 504
-positions. The compiled artifacts are not approved for promotion. PyTorch/ONNX
-quality results below remain valid; no checkpoint or test choice was changed.
-Dev choice was sealed at 2026-10-27 02:19:52 UTC, before test/smoke evaluation.
-All **32 end-to-end rows** are complete: 22 dev + ten sealed final rows. Both final
-roles exit 0 and their completion seals are retrieved. Test/smoke ran once per
-role/context; smoke has no duplicated context run. No model change follows test.
+開發集選出的候選：**未修改的 v2b + 繼續訓練的 v3，權重 1，重排數量 16**。**Core ML 數值門檻未通過：**一個合成案例超過沿用的 fp32 容許誤差（0.118900 > 0.1），504 個位置中有四個首選不同。編譯後的產物不核准升級採用。以下 PyTorch／ONNX 的品質結果仍然有效；沒有更改任何檢查點或測試選擇。開發集選擇在 2026-10-27 02:19:52 UTC 封存，早於測試／smoke 評測。全部 **32 個端到端列**都已完成：22 個開發集列與十個已封存的最終列。兩個最終角色都以 0 結束，並取回各自的完成封存檔。測試／smoke 每個角色／前文條件只跑一次；smoke 沒有重複的前文執行。測試之後沒有任何模型變更。
 
-The selected model is `data/build/v3_homophone/`, step **2,500**; checkpoint SHA256:
-`c9fce9e1d2f7a245b9aad96e57d7bd1f16d048dcda8d623e7d08630806072d4e`.
-Both compiled Core ML models and the original PyTorch checkpoint layout are present.
-No app deployment, engine edits or upstream trainer edits were made. The only
-existing-file exception is the authorized portable-runner extension; concurrent
-work by other engineers is preserved. No dependency installs or Git mutations.
+選定的模型是 `data/build/v3_homophone/`，第 **2,500** 步；檢查點 SHA256：`c9fce9e1d2f7a245b9aad96e57d7bd1f16d048dcda8d623e7d08630806072d4e`。兩個編譯後的 Core ML 模型與原本的 PyTorch 檢查點目錄結構都在。沒有部署 app、修改引擎或修改上游訓練程式。唯一修改既有檔案的例外是經授權的 portable runner 擴充；其他工程師並行的工作都保留。沒有安裝相依套件，也沒有更動 Git。
 
-## Data and label quality
+## 資料與標注品質
 
-The zero-candidate bug compared list readings with tuple inventory readings.
-Canonical tuples fix the shared matcher; regression covers both native and JSON
-inventory. The repaired final mine has **40,937 clauses / 27 groups** (120.9 s).
-Of 11,172 primary-bearing candidates, Qwen3-8B independently accepted 9,319 and
-rejected 1,853; 29,765 secondary-only rows need no primary judgment. Total accepted:
-39,084. Identical completed judgments were cached. Both inherited and additional
-judge servers were stopped by verified PID immediately after their passes.
+零候選的錯誤來自以 list 形式的讀音與 tuple 形式的清查讀音相比。改用標準形式的 tuple 修正了共用的比對器；回歸測試涵蓋原生與 JSON 兩種清查格式。修正後的最終挖掘有 **40,937 個子句／27 組**（120.9 s）。在 11,172 個含主要字的候選中，Qwen3-8B 獨立接受 9,319 個、拒絕 1,853 個；29,765 個只含次要字的列不需要主要判斷。總共接受 39,084 個。相同的已完成判斷有快取。沿用的與額外的判斷伺服器都在各自完成後立即依已確認的 PID 停止。
 
-Mining preserves complete 4–31-Han clauses, preceding Wikipedia document context,
-source line/offset, toned readings and category flags. Counts include Wikipedia,
-deduplicated colloquial and Taiwan Tongues zh-TW **training TSV**; evaluation clauses
-come only from Wikipedia and TT. No TT test.tsv or lm_chat holdout is mined.
+挖掘保留 4–31 個漢字的完整子句、前面的維基百科文件前文、來源行／位移、帶聲調的讀音與類別旗標。計數包含維基百科、去重後的口語與 Taiwan Tongues zh-TW **訓練 TSV**；評測子句只取自維基百科與 TT。沒有挖掘 TT test.tsv 或 lm_chat 的保留集。
 
-| Set | Clauses | Wikipedia / TT | 在 / 再 positions |
+| 資料集 | 子句 | 維基百科／TT | 在／再位置數 |
 | --- | --- | --- | --- |
 | dev_zai | 1000 | 959 / 41 | 536 / 505 |
 | test_zai | 1000 | 962 / 38 | 543 / 508 |
-| dev_pairs | 2482 | 2172 / 310 | secondary only |
-| test_pairs | 2480 | 2155 / 325 | secondary only |
+| dev_pairs | 2482 | 2172 / 310 | 只有次要字 |
+| test_pairs | 2480 | 2155 / 325 | 只有次要字 |
 
-Twenty-two secondary groups reach 100 clauses per split; 帶戴 94/93, 副付 79/78,
-坐座 68/68, 竟競 41/41 fall short after overlap/typing filters. All 18 requested smoke
-sentences are retained. Each split is allocated jointly to avoid exhausting 再.
+二十二個次要組在每個分割都達到 100 個子句；帶戴 94/93、副付 79/78、坐座 68/68、竟競 41/41 在重疊與打字篩選後不足。指定的 18 個 smoke 句子全部保留。每個分割一起分配，避免「再」被用盡。
 
-Manual reading of 100 final source clauses and contexts (105 primary positions)
-found **0 evident 在/再 label errors**. This was agent reading, not an independent
-human annotator. Five clear category issues were flagged, not an exhaustive category
-error-rate estimate. Categories remain heuristic: fixed lexicon word > recognized
-subject > initial > before verb > before place/time > other. Non-fixed is the
-interesting subset. `manual-review.json` and `review100.jsonl` preserve the audit.
+逐一閱讀 100 個最終來源子句與前文（105 個主要位置），發現 **0 個明顯的在／再標注錯誤**。這是 agent 閱讀，不是獨立的人工標注者。標出五個明確的類別問題，但這不是對類別錯誤率的完整估計。類別仍是啟發式：詞庫固定詞 > 可辨識的主詞 > 句首 > 動詞前 > 地點／時間前 > 其他。非固定詞是值得關注的子集。`manual-review.json` 與 `review100.jsonl` 保留這次稽核。
 
-Continuation excludes every old/new heldout 8-gram, short actual sentence and smoke
-substring, checking original and UNK-normalized text, context and context-target
-joins. Short context alone contributes only 8-grams. Whole contaminated documents
-are removed: **6,102,901 allowed / 10,847,451 rejected examples**, plus 352 confident
-unique TT training clauses. Original pretraining may already contain the newly
-mined holdouts: this is continuation exclusion, not retroactively clean pretraining.
-Primary evaluation is predominantly Wikipedia, limiting conversational coverage.
+繼續訓練排除所有新舊保留集的 8-gram、短的實際句子與 smoke 子字串，檢查原始與 UNK 正規化後的文字、前文以及前文與目標的接合。只有短前文時只貢獻 8-gram。受汙染的文件整份移除：**允許 6,102,901 個／拒絕 10,847,451 個樣本**，另有 352 個有信心且不重複的 TT 訓練子句。原始預訓練可能已包含新挖出的保留集：這是繼續訓練的排除，不是回溯清理過的預訓練。主要評測以維基百科為主，對話情境的涵蓋有限。
 
-## Frequency inventory
+## 頻率清查
 
-Counts are source-text occurrences and longest-match standalone/word-initial counts before continuation exclusions. Shared toned readings come from the frozen lexicon. Counts do not claim every occurrence uses the shared reading.
+計數是來源文字中的出現次數，以及在繼續訓練排除之前以最長比對得到的單獨成詞／詞首次數。共同的帶聲調讀音取自凍結的詞庫。計數不代表每次出現都使用共同的讀音。
 
-| Group | Shared readings | Text counts | Standalone / initial counts |
+| 組 | 共同讀音 | 文字次數 | 單獨／詞首次數 |
 |---|---|---|---|
 | 在／再 | ㄗㄞˋ | 在: 5,782,456; 再: 459,529 | 在: 5,305,658; 再: 418,517 |
 | 做／作 | ㄗㄨㄛˋ | 做: 269,713; 作: 1,806,707 | 做: 253,980; 作: 902,413 |
@@ -447,20 +303,13 @@ Counts are source-text occurrences and longest-match standalone/word-initial cou
 | 候／後 | ㄏㄡˋ | 候: 353,365; 後: 2,708,109 | 候: 55,908; 後: 1,767,906 |
 | 里／裡 | ㄌㄧˇ | 里: 545,848; 裡: 677,075 | 里: 202,956; 裡: 539,540 |
 
-## Training and dev selection
+## 訓練與開發集選擇
 
-Continue from original v3 (`03c27edd...ffd133`), freeze context, retain original
-augmentation/context dropout, batch 64, learning rate 2e-5, 30% focused batches,
-3x confusion-position loss. Half of focused sampling targets balanced 在/再;
-eligible TT supplies 25% of that stream. Four non-improving 500-step checks stop
-training at 4,500; best step 2,500. Runtime: 515.53 s. Selection is primary dev NLL
-subject to every original general condition losing <=0.2 percentage points.
+從原始 v3（`03c27edd...ffd133`）繼續訓練，凍結前文，保留原本的資料增強與前文 dropout，batch 64，學習率 2e-5，30% 重點批次，混淆位置損失乘 3。重點取樣中一半針對平衡的在／再；符合條件的 TT 提供這部分的 25%。連續四次 500 步檢查未改善，訓練在 4,500 步停止；最佳為第 2,500 步。執行時間：515.53 s。選擇依據是主要開發集 NLL，前提是每個原本的一般條件下降都不超過 0.2 個百分點。
 
-Primary model-only dev improves **82.565% -> 92.747%** (both context conditions,
-uncapped gold-containing candidate unions; conditional selection, not decoder recall).
-All eight original general per-position conditions improve:
+主要開發集的模型單獨結果提升 **82.565% -> 92.747%**（兩種前文條件，不設上限且包含正確答案的候選聯集；是條件式選擇，不是解碼器召回率）。原本八個一般的逐位置條件全部改善：
 
-| Set / context / noise | Positions | Original | Continued | Delta pp |
+| 資料集／前文／雜訊 | 位置數 | 原始 | 繼續訓練 | 差異（百分點） |
 | --- | --- | --- | --- | --- |
 | colloquial-False-0.0 | 15837 | 95.05% | 95.16% | +0.1137 |
 | colloquial-False-0.05 | 15837 | 94.85% | 94.93% | +0.0758 |
@@ -471,12 +320,9 @@ All eight original general per-position conditions improve:
 | wikipedia-True-0.0 | 60462 | 95.02% | 95.13% | +0.1125 |
 | wikipedia-True-0.05 | 60462 | 94.84% | 94.95% | +0.1108 |
 
-End-to-end dev confusion-position accuracy, frozen portable engine, JOBS=60.
-Columns 0/1 mean without/with line context. Original v3 alone is diagnostic on
-primary dev; the optional secondary-alone rows are omitted (14 baseline + eight
-continued-model rows total).
+端到端開發集的混淆位置正確率，凍結的 portable 引擎，JOBS=60。0／1 欄分別代表無／有同一行前文。原始 v3 單獨只在主要開發集上作為診斷；省略可選的次要單獨列（共 14 個基準列與八個繼續訓練模型列）。
 
-| Stack | Primary 0 | Primary 1 | Secondary 0 | Secondary 1 |
+| 組合 | 主要 0 | 主要 1 | 次要 0 | 次要 1 |
 | --- | --- | --- | --- | --- |
 | engine | 78.58% | 78.58% | 83.62% | 83.64% |
 | v2b | 85.78% | 91.35% | 89.03% | 89.78% |
@@ -485,15 +331,11 @@ continued-model rows total).
 | v3-new | 90.97% | 89.91% | 86.69% | 88.26% |
 | v2b-v3-new | 90.97% | 94.72% | 89.42% | 90.96% |
 
-Non-fixed primary dev mean across contexts improves **84.857% -> 91.449%**.
-With continued v3, reranking introduces 24/94 residual errors without context and
-5/55 with context; 70/50 are also wrong without reranking. Reranking rescues 24/55.
-Neither condition has mostly reranker-caused residual errors, so conditional v2b
-continuation is **not triggered**; reuse checkpoint `e7f5ebcf...081a53`.
+非固定詞的主要開發集在兩種前文條件的平均提升 **84.857% -> 91.449%**。使用繼續訓練的 v3 時，剩餘錯誤中由重排引入的，無前文為 24/94，有前文為 5/55；其中 70／50 個在不重排時也是錯的。重排救回 24／55 個。兩種條件下剩餘錯誤都不是大多由重排造成，因此有條件的 v2b 繼續訓練**不觸發**；重用檢查點 `e7f5ebcf...081a53`。
 
-General end-to-end dev, exact whole-sentence counts, n=400 per set:
+一般端到端開發集，整句完全相同的計數，每組 n=400：
 
-| Stack | Colloquial | Wikipedia |
+| 組合 | 口語 | 維基百科 |
 | --- | --- | --- |
 | engine | 302/400 (75.50%) | 285/400 (71.25%) |
 | v2b | 335/400 (83.75%) | 319/400 (79.75%) |
@@ -502,44 +344,39 @@ General end-to-end dev, exact whole-sentence counts, n=400 per set:
 | v3-new | 321/400 (80.25%) | 298/400 (74.50%) |
 | v2b-v3-new | 337/400 (84.25%) | 320/400 (80.00%) |
 
-Complete-stack correct counts are unchanged, although 14/17 saved predictions
-change. Continued v3 alone declines on general whole-sentence accuracy and is not
-the selected configuration. No test/smoke result is used for model selection.
+完整組合的正確數不變，但 17 個已儲存預測中有 14 個改變。繼續訓練的 v3 單獨使用時，一般整句正確率下降，因此不是選定的設定。測試／smoke 結果都沒有用於模型選擇。
 
-## Sealed primary test
+## 已封存的主要測試集
 
-1,000 clauses, 1,051 primary positions. Same fixed models/weights as dev; each
-role/context runs once. Percentages below use edit-aligned confusion positions;
-deletions are wrong. Whole-sentence accuracy requires exact text equality.
+1,000 個子句，1,051 個主要位置。與開發集相同的固定模型／權重；每個角色／前文條件跑一次。下表百分比使用編輯距離對齊的混淆位置；刪除算錯。整句正確率要求文字完全相同。
 
-| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| 子集 | N | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- |
-| All positions | 1051 | 86.96% | 91.06% | 91.63% | 94.77% |
-| Non-fixed | 851 | 84.49% | 89.31% | 90.13% | 93.77% |
+| 全部位置 | 1051 | 86.96% | 91.06% | 91.63% | 94.77% |
+| 非固定詞 | 851 | 84.49% | 89.31% | 90.13% | 93.77% |
 | 在 | 543 | 99.82% | 99.63% | 99.82% | 99.82% |
 | 再 | 508 | 73.23% | 81.89% | 82.87% | 89.37% |
-| Fixed lexicon word | 200 | 97.50% | 98.50% | 98.00% | 99.00% |
-| After subject | 157 | 94.27% | 95.54% | 94.90% | 96.82% |
-| Sentence-initial | 165 | 57.58% | 68.48% | 78.79% | 86.67% |
-| Before verb | 154 | 94.81% | 96.10% | 94.81% | 96.10% |
-| Before place/time | 159 | 96.86% | 98.74% | 98.11% | 98.74% |
-| Other | 216 | 81.48% | 88.89% | 86.11% | 91.67% |
-| Whole sentence | 1000 | 68.10% | 72.80% | 76.30% | 78.90% |
+| 詞庫固定詞 | 200 | 97.50% | 98.50% | 98.00% | 99.00% |
+| 主詞後 | 157 | 94.27% | 95.54% | 94.90% | 96.82% |
+| 句首 | 165 | 57.58% | 68.48% | 78.79% | 86.67% |
+| 動詞前 | 154 | 94.81% | 96.10% | 94.81% | 96.10% |
+| 地點／時間前 | 159 | 96.86% | 98.74% | 98.11% | 98.74% |
+| 其他 | 216 | 81.48% | 88.89% | 86.11% | 91.67% |
+| 整句 | 1000 | 68.10% | 72.80% | 76.30% | 78.90% |
 
-Sentence-initial remains the weakest category. Without context, 在 loses one
-correct position while 再 gains 44; with context, 在 is unchanged and 再 gains 33.
+句首仍是最弱的類別。無前文時，「在」少了一個正確位置，「再」多了 44 個；有前文時，「在」不變，「再」多了 33 個。
 
-## Sealed secondary test and smoke
+## 已封存的次要測試集與 smoke
 
-2,480 clauses / 5,443 secondary positions, with each role/context run once.
+2,480 個子句／5,443 個次要位置，每個角色／前文條件各跑一次。
 
-| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| 子集 | N | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- |
-| all | 5443 | 89.22% | 89.73% | 91.00% | 91.25% |
-| interesting | 3553 | 86.24% | 86.94% | 88.77% | 88.91% |
-| Whole sentence | 2480 | 68.10% | 68.79% | 72.18% | 72.38% |
+| 全部 | 5443 | 89.22% | 89.73% | 91.00% | 91.25% |
+| 值得關注 | 3553 | 86.24% | 86.94% | 88.77% | 88.91% |
+| 整句 | 2480 | 68.10% | 68.79% | 72.18% | 72.38% |
 
-| Group | Positions | Old 0 | New 0 | Old 1 | New 1 |
+| 組 | 位置數 | 舊 0 | 新 0 | 舊 1 | 新 1 |
 | --- | --- | --- | --- | --- | --- |
 | 做／作 | 245 | 86.12% | 87.35% | 88.16% | 86.94% |
 | 已／以 | 253 | 93.28% | 92.09% | 94.86% | 94.07% |
@@ -568,103 +405,48 @@ correct position while 再 gains 44; with context, 在 is unchanged and 再 gain
 | 候／後 | 195 | 98.46% | 98.46% | 98.97% | 98.97% |
 | 里／裡 | 180 | 86.67% | 87.78% | 87.78% | 89.44% |
 
-Smoke: primary positions **17/19 -> 17/19**; whole sentence **15/18 -> 15/18**. No net improvement. These results were not used to retune or reselect. All other smoke rows are exact in both stacks; the union of failures is:
+Smoke：主要位置 **17/19 -> 17/19**；整句 **15/18 -> 15/18**。沒有淨改善。這些結果沒有用於重新調整或重新選擇。其他 smoke 列在兩種組合中都完全正確；失敗的聯集如下：
 
-| Input / expected | Original stack | Continued stack |
+| 輸入／預期 | 原始組合 | 繼續訓練組合 |
 | --- | --- | --- |
 | 再試試看 | 在試試看 | 在試試看 |
 | 在啦幹 | 在拉幹 | 在拉幹 |
 | 我再吃一碗 | 我在吃一碗 | 我再吃一碗 |
 | 我在吃一碗麵 | 我在吃一碗麵 | 我再吃一碗麵 |
 
-The candidate fixes 我再吃一碗 but regresses 我在吃一碗麵; 再試試看 remains wrong. 在啦幹 fails on 啦/拉 outside the primary confusion. Sentence-initial and aspect-versus-repetition disambiguation are therefore still unresolved. Preserve the dev-locked checkpoint as an experiment; **do not promote these Core ML artifacts as a completed fix**.
+候選修好了「我再吃一碗」，但把「我在吃一碗麵」改壞；「再試試看」仍然錯誤。「在啦幹」錯在主要混淆以外的啦／拉。因此句首，以及進行貌與重複的區分，都仍未解決。將開發集鎖定的檢查點保留為實驗；**不要把這些 Core ML 產物當作完成的修正而升級採用**。
 
-## Latency and export checks
+## 延遲與匯出檢查
 
-Remote ONNX CPU, one thread, 10 warmups + 100 calls; v3 Lc=256, Ls=30, C=32;
-reranker B=16, L=30. Includes the ONNX bridge, excludes model load. Both repetitions
-ran together after host load fell; no claim about Mac IME latency or a speedup.
+遠端 ONNX CPU，單執行緒，暖身 10 次 + 呼叫 100 次；v3 Lc=256、Ls=30、C=32；整句重排 B=16、L=30。包含 ONNX 橋接，不含模型載入。兩次重複都在主機負載下降後一起執行；不主張任何 Mac 輸入法延遲或加速。
 
-| Call | Old p50 ms | New p50 ms | Old p95 ms | New p95 ms |
+| 呼叫 | 舊 p50 ms | 新 p50 ms | 舊 p95 ms | 新 p95 ms |
 | --- | --- | --- | --- | --- |
 | context | 111.2 | 113.4 | 123.6 | 123.1 |
 | syllable | 30.3 | 32.1 | 36.6 | 39.7 |
 | reranker | 187.3 | 191.3 | 401.6 | 431.1 |
 
-The unchanged reranker control differs by 2.2% in median. Earlier measurements
-showed a 43% control difference under heavier load; retained as `latency-{baseline,new}.json`.
-Repetition reason/time/PIDs are in `latency-repeat-provenance.json`.
+未修改的整句重排對照組中位數相差 2.2%。較早的量測在較重的負載下顯示對照組相差 43%；保留為 `latency-{baseline,new}.json`。重複的原因／時間／PID 記在 `latency-repeat-provenance.json`。
 
-* Remote ONNX vs selected PyTorch: 20 dynamic interface cases, maximum valid
-  logprob error 0.000023842; shape/finite/padding/normalization checks pass.
-* Remote CPU vs CUDA decoder probe: all 24 generic dev predictions identical.
-* Mac: export the selected checkpoint only, compile both models with Xcode
-  `coremlcompiler`, regenerate golden outputs for the original 20 synthetic
-  interface inputs, then run the frozen CLI's **single** `--check-v3`: 20/20 pass,
-  largest difference 1.301e-18. These golden vectors are Core ML outputs, not an
-  independent PyTorch/Core ML numerical comparison. Only vector format/package
-  hash metadata and example.json were added afterward; vector inputs/expected
-  stayed byte-semantically identical, recorded in `export-manifest.json`.
-  No Mac corpus evaluation,
-  training, or latency benchmark. See `check-v3.log` and `export-manifest.json`.
-* Nine remote regression checks passed; no upstream tests/trainers were modified.
-  Runtime: Python 3.12.15, Torch 2.13.0+cu130, NumPy 2.3.5, coremltools 9.0;
-  portable ONNX Runtime 1.24.4, Linux Swift 6.4.1, H100L-3-47C MIG.
+* 遠端 ONNX 與選定的 PyTorch 比較：20 個動態介面案例，最大有效 logprob 誤差 0.000023842；形狀／有限值／填補／正規化檢查通過。
+* 遠端 CPU 與 CUDA 的解碼器探測：全部 24 個一般開發集預測相同。
+* Mac：只匯出選定的檢查點，以 Xcode `coremlcompiler` 編譯兩個模型，為原本 20 個合成介面輸入重新產生 golden 輸出，然後執行凍結 CLI 的**單次** `--check-v3`：20/20 通過，最大差異 1.301e-18。這些 golden 向量是 Core ML 的輸出，不是獨立的 PyTorch／Core ML 數值比較。之後只加上向量格式／套件雜湊的中繼資料與 example.json；向量的輸入與預期輸出在位元組語意上保持相同，記錄在 `export-manifest.json`。沒有在 Mac 上做語料評測、訓練或延遲基準測試。見 `check-v3.log` 與 `export-manifest.json`。
+* 九項遠端回歸檢查通過；沒有修改上游的測試或訓練程式。執行環境：Python 3.12.15、Torch 2.13.0+cu130、NumPy 2.3.5、coremltools 9.0；portable ONNX Runtime 1.24.4、Linux Swift 6.4.1、H100L-3-47C MIG。
 
-Additional saved-output comparison runs entirely on Linux. The first strict
-Core ML/PyTorch comparison stops at case 9 (logprob error 0.118900, memory 0.058594).
-An explicit diagnostic scan then records all 20 cases before returning failure:
-19/20 meet the original 0.1 bound; case 9 exceeds it, with no top-1 change in that
-case. Four other positions (cases 11,14,15) change argmax: **500/504 agreement**.
-Maximum memory error is 0.085938, maximum probability error 0.013088. Using the
-identical saved Core ML memory still produces 0.126284 logprob error at case 9,
-so context differences alone cannot explain it; this points to syllable FP16
-execution, without identifying an individual operation. The 0.1 gate is retained.
-See `coreml-pytorch-{first-failure,audit}.log` and `coreml-pytorch-audit.json`.
-No further export/parity retries or model changes are made after this failure;
-Mac end-to-end impact is unmeasured under the requested execution restriction.
+另外的已儲存輸出比較全部在 Linux 上執行。第一次嚴格的 Core ML／PyTorch 比較停在案例 9（logprob 誤差 0.118900，記憶向量 0.058594）。接著以明確的診斷掃描記錄全部 20 個案例後再回報失敗：19/20 在原本的 0.1 上限內；案例 9 超過，但該案例沒有首選改變。另外四個位置（案例 11、14、15）的 argmax 改變：**500/504 一致**。最大記憶向量誤差 0.085938，最大機率誤差 0.013088。即使使用相同的已儲存 Core ML 記憶向量，案例 9 仍有 0.126284 的 logprob 誤差，因此無法只用前文差異解釋；這指向音節部分的 FP16 執行，但沒有找出是哪一個運算。保留 0.1 門檻。見 `coreml-pytorch-{first-failure,audit}.log` 與 `coreml-pytorch-audit.json`。這次失敗之後不再重試匯出／一致性檢查，也不更改模型；在指定的執行限制下，Mac 端到端的影響沒有量測。
 
-## Execution audit and reproduction
+## 執行稽核與重現
 
-All end-to-end runs use the portable runner, JOBS=60, frozen engine/evaluator at
-`data/build/homophone/portable/`, named PyTorch checkpoint directories, dedicated
-remote `work/onnx-eval-homophone-{baseline,new,general}` trees. Opt-in EXTRA_SYNC,
-ENGINE_SNAPSHOT and named-model support preserve runner defaults. `remote.py`
-executes a syntax-checked in-memory snapshot; `runner-pinned.sh` retains the known
-good pre-refactor runner after concurrent live paths moved to nlp/engine.
-The 19 engine source hashes plus Package.swift are verified; binary hashes differ
-by build workspace and are recorded in each result. No Mac CLI rebuild occurs;
-frozen CLI SHA256 `ba2e7030...9b1fb9`. Existing Mac `general-*.log` are untouched.
+所有端到端執行都使用 portable runner、JOBS=60、位於 `data/build/homophone/portable/` 的凍結引擎／評測器、具名的 PyTorch 檢查點目錄，以及專用的遠端 `work/onnx-eval-homophone-{baseline,new,general}` 目錄樹。可選用的 EXTRA_SYNC、ENGINE_SNAPSHOT 與具名模型支援不改變 runner 的預設。`remote.py` 執行經過語法檢查的記憶體內快照；並行的工作已把現行路徑移到 nlp/engine，`runner-pinned.sh` 保留重構前已知可用的 runner。19 個引擎原始碼雜湊與 Package.swift 都經過確認；二進位雜湊因建置工作區而不同，記錄在每個結果中。沒有在 Mac 上重新建置 CLI；凍結 CLI 的 SHA256 為 `ba2e7030...9b1fb9`。Mac 上既有的 `general-*.log` 沒有更動。
 
-Rejected attempts and corrections are retained, not silently retried:
+被否決的嘗試與修正都保留下來，沒有默默重試：
 
-* Partial regex clauses, dev-first 再 exhaustion, whitespace context and dangling
-  final 在 were found before final data lock. Prior splits/judgments remain in
-  `audit-first-split/` and `audit-before-manual-qc/`.
-* Short punctuation context wrongly excluded most training documents. Stop the
-  preliminary 300+ step run by exact PID tree; archive its indexes/weights remotely
-  under `data/build/homophone/audit-context-exclusion/`. It is never selected.
-  UNK decoding now preserves one character per encoded unknown.
-* Another experiment overwrote the default portable workspace. Stop our process
-  tree, retain seven certified rows, discard two uncertifiable rows, and compute
-  only missing dev rows in dedicated workspaces. Fresh sync initially missed
-  Package.swift due to rsync /./ behavior; syncing from the snapshot directory fixes
-  it. In-memory runner execution avoids concurrent Bash-source rereads.
-* Kernel logs confirm shared-host **RAM OOM**, not GPU exhaustion, killed one dev
-  scorer. Archive the failed row under `audit-host-oom/`; resume only unfinished dev
-  rows after diagnosing the cause. RAM admission gates then guard worker startup.
-  Baseline final uses 64 GiB, chosen 80 GiB; final roles overlap only after available
-  RAM recovers to 103 GiB. Admission cannot prevent unrelated later memory pressure.
-* First Core ML metadata save targeted the source package and coremltools deleted
-  it before copying weights. Save to a separate package then rename; re-export the
-  same selected checkpoint. No parity/test prediction was rerun for this repair.
+* 不完整的正規表示式子句、開發集優先分配導致「再」用盡、空白前文與句尾懸空的「在」，都在最終資料鎖定前發現。先前的分割與判斷留在 `audit-first-split/` 與 `audit-before-manual-qc/`。
+* 短的標點前文錯誤地排除了大部分訓練文件。依確切的 PID 樹停止初步的 300 多步訓練；它的索引與權重封存在遠端的 `data/build/homophone/audit-context-exclusion/`。這個版本從未被選用。UNK 解碼現在每個編碼後的未知字保留一個字元。
+* 另一個實驗覆寫了預設的 portable 工作區。停止我們的程序樹，保留七個已認證的列，捨棄兩個無法認證的列，只在專用工作區中計算缺少的開發集列。重新同步時一開始因 rsync /./ 的行為漏掉 Package.swift；改從快照目錄同步後修正。在記憶體中執行 runner，避免並行時重新讀取 Bash 原始檔。
+* 核心記錄確認終止一個開發集評分器的是共用主機的 **RAM OOM**，不是 GPU 耗盡。失敗的列封存在 `audit-host-oom/`；診斷原因後，只續跑未完成的開發集列。之後由記憶體准入門檻控制 worker 啟動。基準的最終階段使用 64 GiB，選定的使用 80 GiB；只有在可用記憶體恢復到 103 GiB 後，兩個最終角色才重疊執行。准入控制無法防止之後無關的記憶體壓力。
+* 第一次儲存 Core ML 中繼資料時寫到來源套件，coremltools 在複製權重前就把它刪除。改為存到另一個套件再重新命名；重新匯出同一個選定的檢查點。這項修復沒有重跑任何一致性或測試預測。
 
-Raw measurements are in `results/`, `general-{baseline,new}/`, `v3-training.json`,
-`diagnosis-new.json`, `onnx-parity-new.json` and `remote-*.log` under
-`data/build/homophone/`. `final-inputs.json`, `final-integrity.json`, source checks
-and export-input hashes identify the frozen inputs/models. Model output retains
-source notices/licenses and Wikipedia attribution. See README.md for commands.
+原始量測在 `data/build/homophone/` 下的 `results/`、`general-{baseline,new}/`、`v3-training.json`、`diagnosis-new.json`、`onnx-parity-new.json` 與 `remote-*.log`。`final-inputs.json`、`final-integrity.json`、來源檢查與匯出輸入雜湊標明凍結的輸入與模型。模型輸出保留來源聲明／授權與維基百科出處。指令見 README.md。
 
-`cleanup.json` records no owned active process and no GPU compute process at
-2026-10-27 03:24:29 UTC. Both final runner invocations exit 0. The numerical audit
-intentionally exits nonzero on its retained 0.1 gate. No further model work is running.
+`cleanup.json` 記錄 2026-10-27 03:24:29 UTC 時沒有自己擁有的執行中程序，也沒有 GPU 運算程序。兩次最終 runner 呼叫都以 0 結束。數值稽核因保留的 0.1 門檻而刻意以非零狀態結束。沒有其他模型工作在執行。

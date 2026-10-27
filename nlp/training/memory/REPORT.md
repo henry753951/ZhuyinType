@@ -1,46 +1,43 @@
-# Mapped lexicon and language models — 2026-10-27
+# 記憶體對應的詞庫與語言模型：2026-10-27
 
-Implementation and layout: [../lm/LEXICON_FORMAT.md](../lm/LEXICON_FORMAT.md).
-Compiler: `scripts/compile-data.sh OUT_DIR` (existing `.venv`, standard library,
-no installs or network). App/build-script integration is owned by the other
-engineer; this change does not edit `Sources/ZhuyinTypeApp/`, `scripts/build-app.sh`,
-or `docs/`. Concurrent edits in those locations and other Core files are preserved.
+實作與檔案配置：[../lm/LEXICON_FORMAT.md](../lm/LEXICON_FORMAT.md)。
+編譯器：`scripts/compile-data.sh OUT_DIR`（使用既有的 `.venv` 與標準函式庫，不安裝套件，
+不連網）。App 與建置腳本的整合由另一位工程師負責；這次變更不修改 `Sources/ZhuyinTypeApp/`、
+`scripts/build-app.sh` 或 `docs/`。這些位置與其他 Core 檔案中同時進行的修改都保留不動。
 
-## Mac memory and startup
+## Mac 記憶體與啟動
 
-Release build command:
+Release 建置指令：
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release --scratch-path .build-codex3
 ```
 
-Both measurements use the same full app configuration:
+兩次量測使用相同的完整 App 設定：
 `--reranker data/build/reranker --rerank-count 16 --v3 data/build/v3
---v3-weight 0.5 --chat-prior 0.5 --timing`.
-Before: `--lexicon data/build/lexicon.tsv --chat-lm data/build/lm_chat`.
-After: `--lexicon data/build/memory/binary/lexicon.tsv
---chat-lm data/build/memory/binary/lm_chat`. The after directory contains binaries
-and metadata only; successful loading proves no TSV is needed at those URLs.
+--v3-weight 0.5 --chat-prior 0.5 --timing`。
+變更前：`--lexicon data/build/lexicon.tsv --chat-lm data/build/lm_chat`。
+變更後：`--lexicon data/build/memory/binary/lexicon.tsv
+--chat-lm data/build/memory/binary/lm_chat`。變更後的目錄只含二進位檔與詮釋資料；
+能成功載入，就證明這些 URL 不需要 TSV。
 
-These are one short process per sentence/configuration, not repeated benchmark
-averages. Core ML models and CPU backend are the same on both paths. No evaluation
-or training ran on the Mac; only builds, these short measurements, and the
-explicitly requested Core checks.
+這些是每個句子與設定各執行一次的短程序，不是重複量測的基準平均值。兩條路徑使用相同的
+Core ML 模型與 CPU 後端。Mac 上沒有執行任何評估或訓練；只做了建置、這些短量測，以及明確
+要求的 Core 檢查。
 
-| Input | TSV footprint now / peak | Binary footprint now / peak | TSV engine load | Binary engine load |
+| 輸入 | TSV 目前／峰值用量 | 二進位目前／峰值用量 | TSV 引擎載入 | 二進位引擎載入 |
 |---|---:|---:|---:|---:|
-| 10 syllables | 333 / 337 MB | 16 / 20 MB | 1253.931 ms | 111.032 ms |
-| 25 syllables | 339 / 349 MB | 22 / 32 MB | 1248.231 ms | 66.467 ms |
+| 10 個音節 | 333 / 337 MB | 16 / 20 MB | 1253.931 ms | 111.032 ms |
+| 25 個音節 | 339 / 349 MB | 22 / 32 MB | 1248.231 ms | 66.467 ms |
 
-The CLI's MB unit is 1,048,576 bytes. Its Darwin memory metric is
-`rusage_info_v6.ri_phys_footprint` / `ri_lifetime_max_phys_footprint`, as requested.
-Clean, file-backed mappings are accounted differently from heap allocations;
-16–22 MB is **not total resident pages or the installed app's GUI footprint**.
-The three mapped binaries total 67,940,238 bytes (64.79 MiB), and model weights,
-frameworks, UI and existing bounded lookup caches can add pages. The installed
-input method has not been rebuilt/installed/measured by this task.
+CLI 的 MB 單位為 1,048,576 位元組。依照要求，它在 Darwin 上的記憶體指標是
+`rusage_info_v6.ri_phys_footprint`／`ri_lifetime_max_phys_footprint`。
+乾淨的、以檔案為後盾的對應與堆積配置的計算方式不同；16–22 MB **不是常駐分頁總量，也不是
+安裝後 App 圖形介面的用量**。三個對應的二進位檔合計 67,940,238 位元組（64.79 MiB），
+模型權重、框架、UI 與既有的有界查詢快取都可能再增加分頁。本任務沒有重新建置、安裝或量測
+已安裝的輸入法。
 
-Exact CLI summary lines:
+CLI 摘要輸出原文：
 
 ```text
 Before, 10 syllables:
@@ -61,48 +58,44 @@ engine load: 66.467 ms
   [memory 22 MB now, 32 MB peak]
 ```
 
-Inputs (no Enter, composition retained):
+輸入（不按 Enter，保留組字）：
 
-- `今天晚上一起去吃飯吧` (10): `rup<space>wu0<space>j03g;7u<space>fu3fm4t<space>z04187`
-- `今天晚上我們一起去吃飯然後再去公園散步順便買一些水` (25): `rup<space>wu0<space>j03g;7ji3ap7u<space>fu3fm4t<space>z04b06c.4y94fm4ej/<space>m06n041j4gjp41u04a93u<space>vu,<space>gjo3`
+- `今天晚上一起去吃飯吧`（10）：`rup<space>wu0<space>j03g;7u<space>fu3fm4t<space>z04187`
+- `今天晚上我們一起去吃飯然後再去公園散步順便買一些水`（25）：`rup<space>wu0<space>j03g;7ji3ap7u<space>fu3fm4t<space>z04b06c.4y94fm4ej/<space>m06n041j4gjp41u04a93u<space>vu,<space>gjo3`
 
-Raw logs, command arrays and model metadata are under `data/build/memory/`.
+原始紀錄、指令陣列與模型詮釋資料都在 `data/build/memory/` 下。
 
-## Behavior checks
+## 行為檢查
 
-Mac: **3568/3570 checks passed**, including every new binary fixture, personal
-overlay, malformed/truncated lexicon, mixed binary/TSV LM and ASCII/OOV backoff
-check. The only two failures are existing latency assertions (`cold channel at
-40 syllables under 3 ms`, `discovered LM aggressive neutral-tolerant handle under
-3 ms`). Full output: `data/build/memory/mac-checks.log`. The suite ran once.
+Mac：**3568/3570 項檢查通過**，包括每一個新的二進位測試資料、個人覆蓋層、格式錯誤或被截斷
+的詞庫、二進位與 TSV 混用的語言模型，以及 ASCII／OOV backoff 檢查。僅有的兩個失敗都是既有的
+延遲斷言（`cold channel at 40 syllables under 3 ms`、`discovered LM aggressive
+neutral-tolerant handle under 3 ms`）。完整輸出：`data/build/memory/mac-checks.log`。這套
+檢查只執行一次。
 
-Linux behavior checks and the complete remote parity results are recorded below.
+Linux 的行為檢查與完整的遠端一致性結果記錄在下方。
 
-## Build outputs
+## 建置產出
 
-| Binary | Bytes | SHA256 |
+| 二進位檔 | 位元組 | SHA256 |
 |---|---:|---|
 | lexicon.bin | 17,012,566 | `17fa3b1af7739710eeb5cc6aa0ecbe6f5bcf5b5cdc07cf579e7019b7a53cbe16` |
 | lm/lm.bin | 37,648,528 | `9d94cf72618525f54e482eb46a287cc6e1aee2ff807e350a3d2303dffa02d28e` |
 | lm_chat/lm.bin | 13,279,144 | `2d41df7a0a9f8663f80febbf31d1e6ff4f719d5b7ff8d0094acd5c66d13f0d9e` |
 
-The lexicon has 124,227 words, 105,061 readings and 127,617 entries. The LM
-vocabularies contain 134,698 and 124,573 spellings; the mixture retains only
-538,792 bytes of cross-vocabulary UInt32 IDs. All three binary hashes match
-between independent Mac and Linux compilations. The Linux stdlib compiler test
-passes (fixture structure, float scores, omitted unigrams, metadata SHA256 and
-byte-for-byte deterministic recompilation). Mac Swift: Apple Swift 6.4
-(`swiftlang-6.4.0.34.1`); compiler Python: existing 3.15.0 `.venv`. No dependency
-or toolchain configuration changed.
+詞庫有 124,227 個詞、105,061 個讀音與 127,617 個條目。兩個語言模型的詞彙分別包含 134,698
+與 124,573 個寫法；混合模型只保留 538,792 位元組的跨詞彙 UInt32 ID。三個二進位檔的雜湊值
+在 Mac 與 Linux 各自獨立編譯的結果之間都一致。Linux 上只用標準函式庫的編譯器測試通過
+（測試資料結構、浮點分數、省略的 unigram、詮釋資料 SHA256，以及逐位元組相同的確定性重新
+編譯）。Mac Swift：Apple Swift 6.4（`swiftlang-6.4.0.34.1`）；編譯器的 Python：既有的
+3.15.0 `.venv`。沒有變更任何相依套件或工具鏈設定。
 
-## Remote validation setup
+## 遠端驗證環境
 
-Isolated host workspace: `$ZHUYIN_REMOTE_HOST:~/zhuyintype/work/onnx-eval-memory`;
-SSH key `$ZHUYIN_REMOTE_KEY`. Reuses the existing evaluation virtualenv by
-symlink; existing ONNX exports were copied into this isolated workspace. No GPU
-backend or training-directory writes. Existing `nlp/remote/run.sh`
-changes belong to another job and were left intact; its sync list needed no edit.
-The compiler and matrix were synced separately, then binaries compiled there.
+獨立的主機工作區：`$ZHUYIN_REMOTE_HOST:~/zhuyintype/work/onnx-eval-memory`；
+SSH 金鑰 `$ZHUYIN_REMOTE_KEY`。以符號連結沿用既有的評估 virtualenv；既有的 ONNX 匯出檔複製到
+這個獨立工作區。不使用 GPU 後端，也不寫入訓練目錄。既有 `nlp/remote/run.sh` 的變更屬於另一個
+工作，保留不動；它的同步清單不需要修改。編譯器與矩陣另外同步，再在遠端編譯二進位檔。
 
 ```sh
 REMOTE_DIR=zhuyintype/work/onnx-eval-memory JOBS=60 \
@@ -111,74 +104,59 @@ REMOTE_DIR=zhuyintype/work/onnx-eval-memory JOBS=60 \
   --output data/build/remote_eval/memory -n 400
 ```
 
-Matrix uses TSV vs binary configs with exactly the app's requested model flags:
+矩陣比較 TSV 與二進位兩種設定，模型旗標與 App 要求的完全相同：
 `--reranker data/build/reranker --rerank-count 16 --v3 data/build/v3
---v3-weight 0.5 --chat-prior 0.5`, and the corresponding `--chat-lm` directory.
-The binary config overrides only `--lexicon` and `--chat-lm`; both evaluator
-configurations derive identical input keys from the original TSV lexicon.
-Sets: dev_colloquial, dev_wikipedia, dev_chat_tt, Wikipedia `--line-context`,
-colloquial `--split continue`, each `-n 400`, ONNX CPU, `JOBS=60`.
+--v3-weight 0.5 --chat-prior 0.5`，以及對應的 `--chat-lm` 目錄。
+二進位設定只覆蓋 `--lexicon` 與 `--chat-lm`；兩種評估設定都從原始的 TSV 詞庫推得相同的輸入按鍵。
+測試集：dev_colloquial、dev_wikipedia、dev_chat_tt、維基百科 `--line-context`、口語
+`--split continue`，各 `-n 400`，ONNX CPU，`JOBS=60`。
 
-Source freeze: the remote runner copied the portable sources at invocation time.
-Subsequent concurrent work adds a third CompositionToken syllable field and CLI
-forms/boundary flags. Those changes were not overwritten or resynced into an
-in-progress validation. The mmap reader, vocabulary/mixture implementation,
-compiler and binary fixtures are byte-identical to the local sources; the Engine
-snapshot differs only in the two concurrent syllable pattern arity changes.
-The CLI's engine-load instrumentation is identical. Source SHA256 manifests and
-the two remote source snapshots are saved in `data/build/memory/`.
+原始碼凍結：遠端執行腳本在呼叫當下複製可攜原始碼。之後同時進行的工作為 CompositionToken
+加入第三個音節欄位，以及 CLI 的形式與邊界旗標。這些變更沒有被覆寫，也沒有重新同步到進行中
+的驗證。mmap 讀取器、詞彙與混合模型的實作、編譯器與二進位測試資料都與本機原始碼逐位元組
+相同；Engine 快照只差在兩處同時進行的音節模式元數變更。CLI 的引擎載入量測程式碼完全相同。
+原始碼 SHA256 清單與兩份遠端原始碼快照都存放在 `data/build/memory/`。
 
-Runner preparation: the initial checkpoint transfer was stopped by its own rsync
-PID after verifying that the server already held all three checkpoint SHA256s.
-Those checkpoints were copied locally on the server, and run.sh restarted with
-`ENGINE_SNAPSHOT=.build-memory-snapshot`, a copy of the original remote portable
-source snapshot. The first Linux build exposed an existing CLI Usage.swift
-`getrusage(RUSAGE_SELF, ...)` enum/type mismatch. The concurrent engineer's existing
-local fix (`__rusage_who_t(RUSAGE_SELF.rawValue)`) was copied into that snapshot;
-no separate change to Usage.swift was authored here. Build/check logs retain the
-successful retry. This did not require touching homophone or GPU processes.
+執行腳本的準備：確認伺服器上已有全部三個檢查點的 SHA256 後，以最初檢查點傳輸自己的 rsync
+PID 停止該傳輸。這些檢查點在伺服器上就地複製，run.sh 以
+`ENGINE_SNAPSHOT=.build-memory-snapshot` 重新啟動，這是原始遠端可攜原始碼快照的複本。
+第一次 Linux 建置暴露了既有 CLI Usage.swift 中 `getrusage(RUSAGE_SELF, ...)` 的列舉／型別不符。
+同時作業的工程師在本機已有的修正（`__rusage_who_t(RUSAGE_SELF.rawValue)`）被複製到該快照中；
+這裡沒有另外撰寫對 Usage.swift 的變更。建置與檢查紀錄保留了成功的重試。過程中不需要動到
+同音字或 GPU 程序。
 
-Linux Core checks: **3561/3568 passed, zero behavior failures**, using the real
-mapped lexicon and binary Wikipedia LM. The suite ran from `core-checks/`, whose
-`data/build/{lexicon.tsv,lexicon.bin,lm}` link only to the frozen TSV input and
-compiled binaries; the TSV parity directory was not changed. The optional lm2
-benchmark is absent there, accounting for two fewer checks than the Mac. Seven
-existing latency thresholds failed under shared host load: 20-syllable 8-best,
-cold channel, discovered LM neutral-tolerant (normal/aggressive), synthetic
-150 MB LM neutral-tolerant (normal/aggressive), and synthetic LM aggressive
-first-tone. All fixture and real-data behavior checks passed. Real mapped
-lexicon + LM init: 215.035 ms; lexicon alone: 120.927 ms. Logs:
-`data/build/memory/memory-linux-{build,checks}.log`. Linux Swift 6.4.1.
+Linux Core 檢查：**3561/3568 通過，零個行為失敗**，使用實際記憶體對應的詞庫與二進位維基百科
+語言模型。這套檢查在 `core-checks/` 中執行，其中的 `data/build/{lexicon.tsv,lexicon.bin,lm}`
+只連結到凍結的 TSV 輸入與編譯後的二進位檔；TSV 一致性比對目錄沒有變更。那裡沒有選用的 lm2
+基準測試，所以檢查項目比 Mac 少兩項。在共用主機的負載下，有七個既有的延遲門檻失敗：20 音節
+8-best、cold channel、discovered LM neutral-tolerant（normal/aggressive）、合成的 150 MB 語言
+模型 neutral-tolerant（normal/aggressive），以及合成語言模型 aggressive first-tone。所有
+測試資料與真實資料的行為檢查都通過。實際記憶體對應的詞庫加語言模型初始化：215.035 ms；只有
+詞庫：120.927 ms。紀錄：`data/build/memory/memory-linux-{build,checks}.log`。Linux Swift 6.4.1。
 
-One runner start also encountered a shell syntax error while run.sh was being
-edited concurrently. A syntax-checked script snapshot was executed from one
-in-memory read, preserving its original `$0` and argument behavior. The saved
-script is `data/build/memory/runner-snapshot.sh`; no changes to run.sh were made.
+有一次啟動執行腳本時，run.sh 正好被同時修改，遇到 shell 語法錯誤。改為執行一份經過語法檢查、
+從記憶體中一次讀入的腳本快照，保留原本的 `$0` 與引數行為。儲存的腳本是
+`data/build/memory/runner-snapshot.sh`；沒有對 run.sh 做任何變更。
 
-A final Mac rebuild after the successful measured/check build encountered new
-concurrent work outside this task: `Sources/ZhuyinML/RerankerTree.swift:41–42`
-captures `self.ancestors` through closures before initialization. This file was
-not changed here. The earlier Mac release build, all short memory measurements,
-and the once-only Mac Core checks succeeded against the pre-tree source state;
-the frozen Linux build also succeeds. See `data/build/memory/mac-final-build.log`.
-The current shared working tree needs that separate build error resolved by its
-owner before a fresh whole-app build can pass. No attempt was made to rewrite or
-revert the concurrent reranker implementation.
+在成功完成量測與檢查的建置之後，最後一次的 Mac 重新建置遇到本任務範圍外、同時進行的新工作：
+`Sources/ZhuyinML/RerankerTree.swift:41–42` 在初始化之前就透過 closure 擷取 `self.ancestors`。
+這裡沒有變更該檔案。較早的 Mac release 建置、所有短記憶體量測，以及只執行一次的 Mac Core 檢查，
+都是在加入 tree 之前的原始碼狀態下成功的；凍結的 Linux 建置也成功。見
+`data/build/memory/mac-final-build.log`。目前共用的工作目錄需要由該程式碼的負責人先解決這個
+建置錯誤，重新建置整個 App 才能通過。沒有嘗試改寫或還原同時進行的 reranker 實作。
 
-The frozen CLI's default `rerankWeight` is 0.5. The requested command omits
-`--rerank-weight`, so both memory measurements and both parity configurations
-use that default, alongside explicit `--rerank-count 16`, `--v3-weight 0.5` and
-`--chat-prior 0.5`. Accuracy percentages here should therefore be compared within
-these frozen runs, not against documentation rows using reranker weight 1.0.
+凍結的 CLI 預設 `rerankWeight` 為 0.5。要求的指令沒有指定 `--rerank-weight`，所以兩次記憶體量測
+與兩種一致性設定都使用這個預設值，並明確指定 `--rerank-count 16`、`--v3-weight 0.5` 與
+`--chat-prior 0.5`。因此這裡的準確率百分比應在這些凍結的執行之間互相比較，不應與文件中使用
+reranker 權重 1.0 的資料列比較。
 
-## Final parity result
+## 最終一致性結果
 
-**Passed: 2,000/2,000 aligned output lines identical (100%). No differences.**
-Each of the five cases independently exceeds the required 99.5% threshold.
-The comparison asserts identical ordered inputs and exactly 400 inputs/outputs
-per case before comparing text. Runner and comparison both exited zero.
+**通過：2,000/2,000 行對齊的輸出完全相同（100%）。沒有任何差異。**
+五個案例各自都超過要求的 99.5% 門檻。比對文字之前，先確認有序輸入完全相同，且每個案例恰好有
+400 筆輸入與輸出。執行腳本與比對腳本都以零結束。
 
-| Set | Identical lines | Parity | TSV / binary accuracy | TSV / binary seconds |
+| 測試集 | 相同行數 | 一致性 | TSV／二進位準確率 | TSV／二進位秒數 |
 |---|---:|---:|---:|---:|
 | colloquial | 400/400 | 100.00% | 82.0% / 82.0% | 118.52 / 98.29 |
 | wikipedia | 400/400 | 100.00% | 79.0% / 79.0% | 134.57 / 150.65 |
@@ -186,31 +164,25 @@ per case before comparing text. Runner and comparison both exited zero.
 | context | 400/400 | 100.00% | 83.0% / 83.0% | 367.88 / 251.56 |
 | continue | 400/400 | 100.00% | 78.5% / 78.5% | 81.22 / 73.94 |
 
-Wall times reflect changing shared host load and are not a controlled decoding
-speed comparison. Accuracy is unchanged in every row. No differences, including
-float32 tie flips, were observed.
+實際經過時間反映的是共用主機不斷變動的負載，不是受控的解碼速度比較。每一列的準確率都沒有
+變化。沒有觀察到任何差異，包括 float32 平手時的順序翻轉。
 
-Artifacts: ordered inputs and outputs are in
-`data/build/remote_eval/remote/memory/{tsv,binary}-*.json` (all ten rows);
-`data/build/memory/parity.json` records the per-case counts and empty difference
-lists, and `parity-summary.md` is the comparison table. The comparison script ran
-on Linux; no Mac evaluation was used. The full runner log is
-`data/build/memory/remote-run.log`. Neural checkpoint hashes match the existing
-server copies; actual ONNX export hashes and Linux Python 3.12.15 are recorded in
-`data/build/memory/linux-model-sha256.txt`. The final mmap source/compiler hashes
-match between Mac and Linux in `final-{local,linux}-mmap-sha256.txt`.
+產出物：有序的輸入與輸出在 `data/build/remote_eval/remote/memory/{tsv,binary}-*.json`（全部十列）；
+`data/build/memory/parity.json` 記錄每個案例的計數與空的差異清單，`parity-summary.md` 是比對表。
+比對腳本在 Linux 上執行；沒有使用 Mac 上的評估。完整的執行紀錄是
+`data/build/memory/remote-run.log`。神經網路檢查點的雜湊值與伺服器上既有的複本一致；實際的 ONNX
+匯出雜湊值與 Linux Python 3.12.15 記錄在 `data/build/memory/linux-model-sha256.txt`。最終的 mmap
+原始碼與編譯器雜湊值在 Mac 與 Linux 之間一致，見 `final-{local,linux}-mmap-sha256.txt`。
 
-## Handoff summary
+## 交接摘要
 
-| Metric | TSV | Mapped binaries |
+| 指標 | TSV | 記憶體對應的二進位檔 |
 |---|---:|---:|
-| Mac footprint, 10 syllables | 333 MB (337 peak) | 16 MB (20 peak) |
-| Mac footprint, 25 syllables | 339 MB (349 peak) | 22 MB (32 peak) |
-| Mac engine load, 10 / 25 syllables | 1253.931 / 1248.231 ms | 111.032 / 66.467 ms |
-| Remote output parity, 5 × 400 | Reference | 2,000/2,000 identical |
+| Mac 記憶體用量，10 個音節 | 333 MB（峰值 337） | 16 MB（峰值 20） |
+| Mac 記憶體用量，25 個音節 | 339 MB（峰值 349） | 22 MB（峰值 32） |
+| Mac 引擎載入，10 / 25 個音節 | 1253.931 / 1248.231 ms | 111.032 / 66.467 ms |
+| 遠端輸出一致性，5 × 400 | 參考 | 2,000/2,000 相同 |
 
-`phys_footprint` is the requested metric; clean mapped pages are accounted
-differently from heap allocations. Total RSS and the installed input method UI
-were not measured. Mac and Linux
-behavior checks pass; timing-only failures remain as listed above. App packaging
-and the concurrent RerankerTree build error remain outside this change.
+`phys_footprint` 是要求的指標；乾淨的對應分頁與堆積配置的計算方式不同。沒有量測總 RSS 與已安裝
+輸入法的 UI。Mac 與 Linux 的行為檢查都通過；只與時間有關的失敗仍如上所列。App 打包與同時進行的
+RerankerTree 建置錯誤不在這次變更的範圍內。

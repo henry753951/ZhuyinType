@@ -1,93 +1,78 @@
-# Statistical base experiment (A1)
+# 統計基底實驗（A1）
 
-Code is AGPL-3.0-only. Run every training, model check and evaluation on the Linux GPU host.
-The developer Mac only edits/transfers files and retrieves artifacts. No engine,
-app, shared evaluator, asset manifest or documentation integration is included.
-The dev-selected bundle has TT/smoke test regressions; A1 acceptance remains
-unmet. Read REPORT.md before integrating these research assets.
+程式碼採用 AGPL-3.0-only 授權。所有訓練、模型檢查與評估都在 Linux GPU 主機上執行。
+開發用的 Mac 只負責編輯與傳輸檔案、取回產出物。這裡不包含引擎、App、共用評估器、
+資產清單或文件的整合。以 dev 選出的組合在 TT 與冒煙測試上有退步；A1 的驗收標準
+仍未達成。整合這些研究資產之前，請先閱讀 REPORT.md。
 
-`data/build/base/` holds the frozen engine/evaluator snapshot, incumbent typing
-lexicon, source hashes, additive McBopomofo lexicon, prepared corpora, candidate
-models, ordered predictions and paired statistics. Final deliverables are
-`lexicon.tsv`, `lm/`, `lm_chat/` and their notices. Unselected candidates remain
-under `models/`. The incumbent assets are never overwritten.
+`data/build/base/` 存放凍結的引擎與評估器快照、現行的打字詞庫、來源雜湊值、
+增補用的小麥注音詞庫、準備好的語料、候選模型、依序排列的預測結果與成對統計。
+最終交付物是 `lexicon.tsv`、`lm/`、`lm_chat/` 及其聲明檔。未選用的候選模型留在
+`models/` 下。現行資產從不被覆寫。
 
-## Method
+## 方法
 
-The additive lexicon preserves every incumbent `(reading, word, score)` exactly.
-Only Han entries with one valid Zhuyin syllable per character are imported.
-McBopomofo's log10 scores become natural logs. New words use the median score
-offset among shared words of the same length (lengths >=5 pooled); new readings
-of existing words cannot exceed their current best reading minus 1 nat. Existing
-Taiwan readings and polyphone odds therefore remain intact. The final merge retains source-supplied 一/不 variants; it does not infer new
-ones for ordinals or numeral names. Extension-plane Han characters are accepted. Source
-membership, rejected classes, calibration offsets and SHA256s are recorded.
+增補後的詞庫完整保留現行的每一筆 `(reading, word, score)`。
+只匯入每個字都對應一個有效注音音節的漢字條目。
+小麥注音的 log10 分數轉為自然對數。新詞使用同長度共有詞的分數偏移中位數
+（長度 >=5 合併計算）；既有詞的新讀音不能高於該詞目前最佳讀音減 1 nat。因此既有的
+台灣讀音與多音字比例都維持不變。最終合併保留來源提供的一／不變體，不為序數或數字名稱
+推論新的變體。接受擴充平面的漢字。來源歸屬、被拒絕的類別、校準偏移與 SHA256 都有記錄。
 
-Segmentation uses the incumbent final-E unigram distribution (wiki or chat by
-domain), with calibrated lexicon probabilities for newly introduced words.
-The tokenizer is held constant between matched hard and expected-count models.
-Expected counts sum exact forward/backward edge marginals and adjacent-edge
-joint posteriors over every segmentation, including BOS and EOS. There is no
-per-edge posterior cutoff. Counts are summed across shards/sources, generated
-text is weighted, then counts are rounded **once** to use the existing integer
-MKN estimator and its pruning/backoff normalization. This isolates the final
-counting change. A second, matched chat control uses `--fresh`: initialize from
-normalized lexicon priors, perform three E steps with two intervening empirical
-unigram M steps (0.1 pseudocount), and compare hard versus posterior counts.
-The generated weight also applies during those M steps. This separates corpus
-adaptation from the incumbent tokenizer's generated-text history.
+斷詞使用現行最終 E 步的 unigram 分布（依領域使用 wiki 或 chat），新引入的詞則使用
+校準後的詞庫機率。在相互對照的硬計數與期望計數模型之間，斷詞器保持不變。
+期望計數加總每一種斷詞（含 BOS 與 EOS）下精確的 forward/backward 邊邊際機率與
+相鄰邊的聯合後驗機率。不設逐邊的後驗門檻。計數在各分片與來源間加總，生成文字
+加權後，計數只**一次**四捨五入，以便沿用既有的整數 MKN 估計器及其剪枝與 backoff
+正規化。這樣可以單獨隔離最後的計數方式變更。第二組相互對照的 chat 對照組使用
+`--fresh`：從正規化的詞庫先驗初始化，執行三次 E 步，中間穿插兩次經驗 unigram M 步
+（偽計數 0.1），再比較硬計數與後驗計數。生成文字的權重在這些 M 步中同樣適用。
+這把語料適應與現行斷詞器對生成文字的使用歷史分開。
 
-Wikipedia reuses the incumbent cleaned, globally deduplicated training shards.
-Real chat text reuses chat2's document-reserved no-generated shards (Legislative
-Yuan, Wikipedia talk, Common Voice) and adds only Taiwan Tongues `train.tsv`.
-Generated text reuses the existing v3 Qwen/Common Voice pool, subtracting exact
-real-source duplicates. It is tested at weight 0.1, not generated afresh.
-The candidate models retain Taiwan Tongues' TRAIL terms and are research assets
-pending integration/license review; CC BY-SA alone does not describe them.
+維基百科沿用現行已清理、全域去重的訓練分片。
+真實聊天文字沿用 chat2 以文件為單位保留、不含生成文字的分片（立法院、維基百科
+討論頁、Common Voice），只另外加入 Taiwan Tongues 的 `train.tsv`。
+生成文字沿用既有的 v3 Qwen／Common Voice 資料池，扣除與真實來源完全重複的部分。
+它以權重 0.1 測試，不重新生成。
+候選模型保留 Taiwan Tongues 的 TRAIL 條款，在完成整合與授權審查之前屬於研究資產；
+單憑 CC BY-SA 無法描述它們的授權。
 
-Before fitting, every source is rescanned against all current dev/test files,
-both chat2 dialogue columns, homophone files, smoke and imported external row
-sets. Exact matches and any contiguous eight-character match are excluded,
-including 台/臺-normalized versions. Heldout conversion supplies only exclusion
-forms, never training examples. Test predictions never select a model.
+擬合之前，每個來源都會再與目前所有 dev／test 檔案、chat2 對話的兩個欄位、
+同音字檔案、冒煙測試與匯入的外部資料列重新比對。完全相同以及任何連續八個字相同的
+內容都會排除，包括台／臺正規化後的版本。保留測試資料的轉換只用來產生排除用的形式，
+從不作為訓練樣本。測試集的預測結果從不用於選擇模型。
 
-All configurations use the same 400 runs/set, seed 7, incumbent typing lexicon
-and frozen keys. Dev sets: colloquial, Wikipedia without/with line context, and
-Taiwan Tongues (report exact and variant-equal). Engine mode has the same chat
-prior 0.5 but no neural model. App mode adds unchanged v2b top-16, weight 1, and
-v3 weight 0.5. CLI batches save diagnostics and stop on any nonzero return or
-wrong output count. Results include model/CLI SHA256s. `stats.py` supplies paired
-McNemar, bootstrap intervals and break-rate bounds. Lexicon audits distinguish
-per-reading rows, the preferred reading per word, and words that lose under every reading: homophones cannot
-all be top-1. Habits reuse `error_analysis.py` rules on the frozen colloquial dev
-runs and report shown accuracy and engine oracle@16.
+所有設定都使用相同的每組 400 次執行、seed 7、現行打字詞庫與凍結的按鍵。Dev 集：
+口語、不含與含行上下文的維基百科，以及 Taiwan Tongues（同時報告完全相同與變體視為
+相同）。引擎模式使用同樣的 chat 先驗 0.5，但不含神經模型。App 模式加入未變更的
+v2b top-16（權重 1）與 v3（權重 0.5）。CLI 批次會儲存診斷資訊，遇到任何非零回傳值
+或輸出數量錯誤就停止。結果包含模型與 CLI 的 SHA256。`stats.py` 提供成對 McNemar、
+bootstrap 區間與破壞率上下界。詞庫稽核區分逐讀音的資料列、每個詞偏好的讀音，以及
+在每個讀音下都落敗的詞：同音字不可能全部排第一。使用習慣分析沿用 `error_analysis.py`
+的規則，套用在凍結的口語 dev 執行結果上，並報告顯示準確率與引擎 oracle@16。
 
-Selection uses dev only: primary score is the equal-weight mean of colloquial
-exact, Wikipedia with-context exact and Taiwan Tongues variant-equal. Prefer
-engine gains while retaining app primary score; Wikipedia without context is
-an additional guard. All stepwise numbers and any tradeoffs go in REPORT.md.
-Freeze the final configuration before evaluating test sets once.
+模型選擇只用 dev：主要分數是口語完全相同、含上下文維基百科完全相同與 Taiwan Tongues
+寫法視為相同這三者的等權平均。在維持 App 主要分數的前提下，優先採用引擎有進步的
+設定；不含上下文的維基百科作為額外的防護指標。所有逐步數字與取捨都寫在 REPORT.md。
+在對測試集做唯一一次評估之前，先凍結最終設定。
 
-The selected bundle is the corrected McBopomofo lexicon, `wiki_expected_wide`
-and `chat_fresh_expected`, without generated counts. Use the three together;
-the new LMs perform poorly with the old decoding lexicon. Regenerate compiled
-lexicon/LM assets together during integration: these experiments use TSVs with
-no binary sidecar overriding them. Mac mmap memory and latency remain unmeasured.
+選定的組合是修正後的小麥注音詞庫、`wiki_expected_wide` 與 `chat_fresh_expected`，
+不含生成文字的計數。三者必須一起使用；新的語言模型搭配舊的解碼詞庫時表現不佳。
+整合時要一起重新產生編譯後的詞庫與語言模型資產：這些實驗使用的是 TSV，沒有會覆蓋
+它們的二進位附屬檔。Mac 上的 mmap 記憶體用量與延遲尚未量測。
 
-Keep all incumbent TSVs in `inputs/baseline/` and all seven evaluation texts in
-`inputs/evaluation/`. `frozen-inputs.json` pins those files, the typing lexicon,
-CLI and neural assets. The evaluator refuses changed inputs and stale cached
-results. A clean habit run must reproduce its main dev capture exactly. Shared
-`data/build/lm_chat/` is not an immutable baseline: another job can replace it.
+所有現行 TSV 放在 `inputs/baseline/`，七個評估文字檔放在 `inputs/evaluation/`。
+`frozen-inputs.json` 固定這些檔案、打字詞庫、CLI 與神經網路資產。評估器會拒絕
+已變更的輸入與過期的快取結果。乾淨的使用習慣分析執行必須完全重現它的主要 dev 擷取。
+共用的 `data/build/lm_chat/` 不是不可變的基準：其他工作可能會取代它。
 
-## Reproduce
+## 重現
 
-Use the existing remote Python 3.12 environments; no packages are added. The
-isolated `.venv` uses `.pth` references to the existing parser/NumPy/Torch/ONNX
-environments without modifying them. The initial runner is copied to
-`data/build/base/frozen-runner.sh`; its only local dispatch addition invokes
-`nlp/training/base/evaluate.py` with `nohup` and logs under `~/zhuyintype/logs/`.
-Invoke the copy with the original `$0` so the root lookup remains valid:
+使用遠端既有的 Python 3.12 環境，不另外安裝套件。獨立的 `.venv` 以 `.pth` 參照
+既有的 parser／NumPy／Torch／ONNX 環境，不修改這些環境。最初的執行腳本已複製到
+`data/build/base/frozen-runner.sh`；它唯一的本機分派新增項目，是以 `nohup` 呼叫
+`nlp/training/base/evaluate.py`，並把紀錄寫到 `~/zhuyintype/logs/` 下。
+呼叫這份複本時要傳入原本的 `$0`，讓根目錄的查找仍然有效：
 
 ```sh
 REMOTE_DIR=zhuyintype/work/onnx-eval-base JOBS=8 BACKEND=cpu \
@@ -97,8 +82,7 @@ REMOTE_DIR=zhuyintype/work/onnx-eval-base JOBS=8 BACKEND=cpu \
   base --matrix data/build/base/baseline.json --phase dev -n 400
 ```
 
-After transferring `nlp/training/base/` and the McBopomofo source/notice to that
-workspace, execute remotely:
+把 `nlp/training/base/` 以及小麥注音的來源檔與聲明檔傳到該工作區後，在遠端執行：
 
 ```sh
 export PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
@@ -111,29 +95,22 @@ nohup bash nlp/training/base/run_train.sh > "$HOME/zhuyintype/logs/base-train.lo
 echo $! > data/build/base/training.pid
 ```
 
-Models refuse existing output directories; preserve any partial directory and
-choose a new model name before retrying. Never kill another job or use broad
-process-name matching. Stop and record repeated failures.
+模型訓練會拒絕已存在的輸出目錄；保留任何未完成的目錄，重試前另選一個新的模型名稱。
+不要終止其他工作，也不要用範圍過寬的程序名稱比對。重複失敗時停止並記錄。
 
-The recorded LM controls use the archived first lexicon (`lexicon_mcbopomofo.tsv`,
-232,700 rows). The corrected source-only lexicon (`lexicon_source.tsv`) is a
-separate dev ablation: it removes inferred sandhi rows and admits extension-plane
-Han. Word-model fitting is independent of typed readings; the final combination
-is rechecked on dev with the corrected lexicon. `train-v1.py` preserves the
-initial merge implementation; `run_train.sh` names that frozen seed explicitly.
-The current trainer defaults to the corrected lexicon for future experiments.
-`train-fresh-v2.py` in the data archive matches the selected chat fit's exact
-training-source fingerprint; the current trainer adds only the rounding-limit
-comment after that fit.
-`run_fresh.sh` runs the three corpus-adapted chat controls. `prior.py` is the
-rejected context-free frequency control; `prune.py` performs the single wider
-Wikipedia pruning ablation without recounting its corpus. Matrices, frozen
-receipts and ordered result files accompany the local data bundle.
+記錄下來的語言模型對照組使用封存的第一版詞庫（`lexicon_mcbopomofo.tsv`，
+232,700 列）。修正後、只含來源條目的詞庫（`lexicon_source.tsv`）是另一個 dev 消融實驗：
+它移除推論出的變調資料列，並接受擴充平面的漢字。詞模型的擬合與輸入讀音無關；最終組合
+已用修正後的詞庫在 dev 上重新檢查。`train-v1.py` 保留最初的合併實作；`run_train.sh`
+明確指定那個凍結的種子。目前的訓練程式預設使用修正後的詞庫進行後續實驗。
+資料封存中的 `train-fresh-v2.py` 與選定 chat 擬合所用訓練原始碼的指紋完全一致；
+目前的訓練程式在那次擬合之後只加了關於四捨五入上限的註解。
+`run_fresh.sh` 執行三個經語料適應的 chat 對照組。`prior.py` 是被否決的、不考慮上下文的
+頻率對照組；`prune.py` 執行唯一一次較寬的維基百科剪枝消融，不重新計數語料。
+矩陣、凍結紀錄與依序排列的結果檔隨本機資料包一起提供。
 
-`fallback.py --source MODEL --output NEW_MODEL` is a data-only ablation. It
-removes lexical words at the zero-continuation floor only when no stored
-bigram/backoff references them. They then use the engine's existing lexicon
-fallback. With removed unigram mass M and context backoff alpha, restrict stored
-probabilities by Z = 1 - alpha*M, rescale unigrams by 1/(1-M), and set the new
-backoff to alpha*(1-M)/Z. This preserves conditional normalization over the
-retained vocabulary. Old models remain available unchanged.
+`fallback.py --source MODEL --output NEW_MODEL` 是只動資料的消融實驗。它只在沒有任何
+已儲存的 bigram／backoff 參照時，移除處於零延續下限的詞。這些詞之後改用引擎既有的
+詞庫退回機制。設移除的 unigram 質量為 M、上下文 backoff 為 alpha，將已儲存的機率
+限制為 Z = 1 - alpha*M，把 unigram 乘以 1/(1-M) 重新縮放，並把新的 backoff 設為
+alpha*(1-M)/Z。這樣能在保留的詞彙上維持條件機率的正規化。舊模型維持原樣，仍可使用。

@@ -1,165 +1,137 @@
-# A1 statistical base — 2026-10-27
+# A1 統計基底：2026-10-27
 
-**Selected on dev: McBopomofo lexicon + wider posterior-count Wikipedia LM +
-fresh posterior-count real-text chat LM, generated weight 0.** The choice is
-frozen in `selection.json`; word/typing checks pass and the single test pass is
-complete. Balanced dev scores are 76.33 -> 78.75% engine and 85.83 -> 86.08% app.
-Dev per-set gains are not significant at 0.05. Tests improve colloquial/Wikipedia
-engine accuracy but regress on TT and smoke; **A1 acceptance is not achieved**.
-The first captures with changing shared assets are archived, not acceptance evidence.
+**依 dev 選定：小麥注音詞庫 + 較寬的後驗計數維基百科語言模型 + 重新擬合的後驗計數
+真實文字 chat 語言模型，生成文字權重 0。** 這個選擇已凍結在 `selection.json`；詞與打字
+檢查都通過，唯一一次的測試也已完成。平衡後的 dev 分數為引擎 76.33 -> 78.75%、App
+85.83 -> 86.08%。各 dev 集的進步在 0.05 水準下都不顯著。測試集上，口語與維基百科的引擎
+準確率提高，但 TT 與冒煙測試退步；**A1 驗收標準未達成**。
+最初在共用資產變動期間擷取的結果已封存，不作為驗收依據。
 
-## Protocol
+## 實驗流程
 
-All fitting, probability checks, corpus audits and conversion run on the Linux
-GPU host, in the requested isolated evaluation workspace. Mac activity is file
-editing, transfer, snapshot preparation and artifact retrieval. No engine,
-client, docs, CI, asset-manifest or shared lexicon-builder change is included.
-No Git commit, push, stash, reset or checkout is performed by this task.
+所有擬合、機率檢查、語料稽核與轉換都在 Linux GPU 主機上、在指定的獨立評估工作區中
+執行。Mac 上只做檔案編輯、傳輸、快照準備與取回產出物。不包含任何引擎、用戶端、文件、
+CI、資產清單或共用詞庫建置工具的變更。本任務不執行 Git commit、push、stash、reset
+或 checkout。
 
-400 paired 4–20-Han runs per set, seed 7; the task-start typing lexicon fixes the
-keys for every model. Wikipedia is measured without and with 32-character line
-context. TT cells report exact / variant-equal. Engine mode uses the word-model
-mixture with chat prior 0.5 and standard typo handling; app mode adds unchanged
-v2b top-16, rerank weight 1 and v3 weight 0.5. The quoted 0c reference/test figures
-in the task are not this dev cohort's baseline.
+每組 400 次成對執行，每句 4–20 個漢字，seed 7；任務開始時的打字詞庫決定每個模型的
+按鍵。維基百科分別在不含與含 32 字行上下文的情況下量測。TT 欄位報告完全相同／變體
+視為相同。引擎模式使用詞模型混合，chat 先驗 0.5，搭配標準的錯字處理；App 模式另外加入
+未變更的 v2b top-16、rerank 權重 1 與 v3 權重 0.5。任務中引用的 0c 參考與測試數字，
+不是這組 dev 樣本的基準。
 
-Dev selection uses the equal-weight mean of colloquial exact, Wikipedia with
-context exact and TT variant-equal. Prefer engine gains while retaining app
-primary score; Wikipedia without context is an additional guard. Paired results
-use the repository's `stats.py`: fixed/broken, exact McNemar, 10,000 paired
-bootstrap draws, 95% intervals and break-rate bounds. These exploratory trials
-are not multiplicity-corrected evidence of statistical superiority. Test sets
-are reserved for one final baseline/selected comparison after freezing assets.
+dev 選擇使用口語完全相同、含上下文維基百科完全相同與 TT 寫法視為相同三者的等權平均。
+在維持 App 主要分數的前提下，優先採用引擎有進步的設定；不含上下文的維基百科作為額外的
+防護指標。成對結果使用本專案的 `stats.py`：修正／破壞數、精確 McNemar、10,000 次成對
+bootstrap 抽樣、95% 區間與破壞率上下界。這些探索性試驗沒有做多重比較校正，不能作為
+統計上較佳的證據。測試集保留到資產凍結後，只做一次最終的基準與選定組合比較。
 
-## Lexicon
+## 詞庫
 
-The corrected merge has **233,213 rows, 215,811 distinct words**, from 127,617
-incumbent rows plus 97,852 new-word rows and 7,744 new readings for existing
-words. It accepts extension-plane Han and valid one-syllable-per-character
-readings. All incumbent scores and Taiwan-reading odds are unchanged. New
-readings cannot exceed the incumbent best reading minus 1 nat. Source-supplied
-and existing 一/不 variants remain; no new ordinal/numeral sandhi is inferred.
+修正後的合併結果有 **233,213 列、215,811 個不同的詞**，來自 127,617 列現行資料，加上
+97,852 列新詞，以及既有詞的 7,744 個新讀音。它接受擴充平面的漢字，以及每字一個有效
+音節的讀音。所有現行分數與台灣讀音比例都不變。新讀音不能高於現行最佳讀音減 1 nat。
+來源提供的與既有的一／不變體都保留；不為序數或數字推論新的變調。
 
-McBopomofo log10 scores become natural logs. Median offsets for shared words of
-length 1, 2, 3, 4 and >=5 are -1.8306133180, -0.0611862028, -1.0844112260,
--2.3281009149 and -5.3986204178, using 70,021 shared words. Rejections: 2,319
-control/punctuation rows, 1,534 non-Han rows and four invalid readings.
+小麥注音的 log10 分數轉為自然對數。以 70,021 個共有詞計算，長度 1、2、3、4 與 >=5
+的共有詞偏移中位數分別為 -1.8306133180、-0.0611862028、-1.0844112260、
+-2.3281009149 與 -5.3986204178。被拒絕的有：2,319 列控制字元／標點、1,534 列非漢字，
+以及四個無效讀音。
 
-Source SHA256: `0deae7b7c1dcde1d7a30d139e7068543e0c0e7112e944b63eb52947bca1db7ac`.
-Corrected output: `ac8c5e2275eed3da4637fe6407301b83f2be0310486a317ea632c7e21d1b08d6`.
-See `lexicon-source-merge.json`. Earlier matched LM controls use the archived
-232,700-row first merge (96,838 new-word rows, 7,741 new readings and 504 inferred
-sandhi rows); that first merge is not the proposed source-only lexicon. The
-corrected merge is separately measured; its 3,200 dev predictions match the
-first merge under incumbent LMs.
+來源 SHA256：`0deae7b7c1dcde1d7a30d139e7068543e0c0e7112e944b63eb52947bca1db7ac`。
+修正後的輸出：`ac8c5e2275eed3da4637fe6407301b83f2be0310486a317ea632c7e21d1b08d6`。
+見 `lexicon-source-merge.json`。較早的相互對照語言模型對照組使用封存的 232,700 列
+第一版合併（96,838 列新詞、7,741 個新讀音，以及 504 列推論出的變調資料列）；第一版
+合併不是本報告提議的只含來源條目的詞庫。修正後的合併另外量測；在現行語言模型下，它的
+3,200 個 dev 預測與第一版合併完全相同。
 
-The first full word audit, with incumbent LMs, covers 214,996 words in that first
-merge: 68,638 (31.9252%) lose under every reading; 69,156 (32.1662%) lose under
-their preferred reading. Per-row losses are 78,218 / 232,700 (33.6132%). The worst
-classes are new single characters (8,917 / 8,918; 99.9888%), new two-character
-rows (18,780 / 36,246; 51.8126%), and homophones (77.9241% versus 16.9839% for
-unique readings). Homophones cannot all be top-1. A context-free McBopomofo
-frequency-prior control is measured and rejected rather than boosting individual
-words. The selected model receives a new complete audit below.
+第一次完整的詞稽核使用現行語言模型，涵蓋第一版合併中的 214,996 個詞：68,638 個
+（31.9252%）在每個讀音下都落敗；69,156 個（32.1662%）在偏好讀音下落敗。逐列落敗為
+78,218 / 232,700（33.6132%）。最差的類別是新的單字（8,917 / 8,918；99.9888%）、新的
+兩字詞列（18,780 / 36,246；51.8126%），以及同音字（77.9241%，唯一讀音則為 16.9839%）。
+同音字不可能全部排第一。另外量測了一個不考慮上下文的小麥注音頻率先驗對照組，結果
+不採用，也不個別調高單一詞的分數。選定模型在下方有一次新的完整稽核。
 
-### Attribution ready for SOURCES.md
+### 可直接用於 SOURCES.md 的出處說明
 
-The reference's local MIT file agrees with [upstream McBopomofo's license](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt).
-Its [data README](https://github.com/openvanilla/McBopomofo/blob/master/Source/Data/README.md)
-confirms libtabe `tsi.src` BSD heritage. Full MIT and original libtabe 0.2.3 BSD
-notices are retained in `licenses/`, including TaBE/Pai-Hsiang Hsiao, Academia
-Sinica and Chih-Hao Tsai attribution. `libtabe-receipt.json` pins the archive URL,
-member and SHA256. Existing CC-CEDICT/wordfreq CC BY-SA 4.0 and Unicode Unihan
-notices remain applicable. No reference-engine implementation is copied.
+參考實作中的本機 MIT 授權檔與 [小麥注音上游的授權](https://github.com/openvanilla/McBopomofo/blob/master/LICENSE.txt) 一致。
+它的 [資料 README](https://github.com/openvanilla/McBopomofo/blob/master/Source/Data/README.md)
+確認資料源自 libtabe `tsi.src` 的 BSD 授權。完整的 MIT 與原始 libtabe 0.2.3 BSD 聲明
+保存在 `licenses/`，包括 TaBE／Pai-Hsiang Hsiao、中央研究院與 Chih-Hao Tsai
+的出處。`libtabe-receipt.json` 固定封存檔的 URL、成員與 SHA256。既有的
+CC-CEDICT／wordfreq CC BY-SA 4.0 與 Unicode Unihan 聲明仍然適用。沒有複製任何參考引擎的
+實作。
 
 ```markdown
 | [McBopomofo 小麥注音](https://github.com/openvanilla/McBopomofo) 3.1.1 `data.txt`（取自 Shanjie 保留的原始副本） | 補充台灣詞彙、注音讀音與詞頻；既有讀音機率及一／不變調列保留 | MIT，Copyright (c) 2011–2026 Mengjuei Hsieh et al.；片語源自 libtabe `tsi.src`（BSD）；完整授權與來源 SHA256 隨 `base/NOTICE.md` 保存 |
 ```
 
-## Corpora and counting
+## 語料與計數
 
-| Corpus | Input sentences | Retained | Holdout-excluded | Duplicates removed |
+| 語料 | 輸入句數 | 保留 | 因保留測試集排除 | 移除的重複 |
 |---|---:|---:|---:|---:|
-| Wikipedia | 20,370,968 | 19,841,857 | 529,111 | Already deduplicated upstream |
-| Real Taiwan text | 236,318 | 220,925 | 8,395 | 6,998 |
-| Existing generated pool | 5,908,512 | 5,892,956 | 7,244 | 8,312 |
+| 維基百科 | 20,370,968 | 19,841,857 | 529,111 | 上游已去重 |
+| 台灣真實文字 | 236,318 | 220,925 | 8,395 | 6,998 |
+| 既有生成資料池 | 5,908,512 | 5,892,956 | 7,244 | 8,312 |
 
-Wikipedia reuses the pinned cleaned article shards, CC BY-SA 4.0; exact revision
-attribution is in `articles.tsv.gz`. Real text reuses Chat2's no-generated
-Legislative Yuan, Wikipedia talk and Common Voice training shards, plus Taiwan
-Tongues **train.tsv only**. Before the broader filter, Chat2 contributes 203,621
-legislative, 7,297 talk and 8,309 Common Voice sentences; TT contributes 17,091
-unique training sentences. Source manifests, attribution records and source
-receipts accompany the word models. No new generated text is produced.
+維基百科沿用固定版本、已清理的文章分片，CC BY-SA 4.0；確切的修訂版本出處在
+`articles.tsv.gz`。真實文字沿用 Chat2 不含生成文字的立法院、維基百科討論頁與
+Common Voice 訓練分片，加上 Taiwan Tongues，**只用 train.tsv**。在套用較廣的篩選前，
+Chat2 貢獻 203,621 句立法院、7,297 句討論頁與 8,309 句 Common Voice；TT 貢獻 17,091
+句不重複的訓練句。來源清單、出處紀錄與來源收據隨詞模型一起提供。沒有產生新的生成文字。
 
-Every new corpus is rescanned against **42** dev/test files, including both
-Chat2 dialogue columns, homophone TXT/JSONL, smoke and imported external sets.
-Exact and contiguous eight-character overlaps are excluded, including OpenCC
-and 台/臺 exclusion forms. A separate full rescan finds zero retained overlaps;
-all 42 exclusion-file hashes remain unchanged. All seven scored text files
-match their training-exclusion hashes. The provided Chat2 no-generated model is
-not substituted as a clean candidate: a broader audit of its 366,097 training
-sentences/context sides finds 355 overlaps under the current rule. Refiltering
-its real-source sentences recovers usable training data. Inherited lexicon,
-legacy tokenizers and neural models are not retroactively retrained/cleaned.
+每個新語料都再與 **42** 個 dev／test 檔案重新比對，包括 Chat2 對話的兩個欄位、同音字
+TXT/JSONL、冒煙測試與匯入的外部資料集。完全相同與連續八個字相同的重疊都會排除，包括
+OpenCC 與台／臺的排除形式。另一次完整的重新掃描在保留資料中找到零筆重疊；42 個排除檔的
+雜湊值全部不變。七個計分用的文字檔都與訓練排除用的雜湊值一致。提供的 Chat2 不含生成
+文字模型沒有被當成乾淨的候選替代使用：以目前的規則對它的 366,097 個訓練句／上下文端
+做較廣的稽核，找到 355 筆重疊。重新篩選它的真實來源句子，可以取回可用的訓練資料。繼承
+而來的詞庫、舊版斷詞器與神經模型沒有追溯重新訓練或清理。
 
-The first matched controls freeze the incumbent final-E tokenizer per domain.
-Exact forward/backward edge marginals and adjacent-edge joint posteriors replace
-a single hard path, including BOS/EOS; there is no per-edge cutoff. Counts are
-summed across shards and weighted sources, then rounded **once** for the existing
-integer MKN count-of-count estimator. Stored TSVs use the existing normalized
-pruned/backoff format. This is posterior-count bigram re-estimation with a fixed
-segmentation prior, not a claim of full soft-EM convergence.
+第一組相互對照的對照組，依領域凍結現行最終 E 步的斷詞器。以精確的 forward/backward
+邊邊際機率與相鄰邊聯合後驗機率取代單一硬路徑，包括 BOS/EOS；不設逐邊門檻。計數在
+各分片與加權來源間加總，再為既有的整數 MKN count-of-count 估計器只**一次**四捨五入。
+儲存的 TSV 使用既有的正規化剪枝／backoff 格式。這是在固定斷詞先驗下的後驗計數 bigram
+重新估計，不主張達到完整 soft-EM 收斂。
 
-Fresh chat controls initialize from normalized lexicon priors and perform three
-E steps with two empirical unigram M steps (0.1 pseudocount). Hard and posterior
-variants share source/vocabulary/initialization; generated weight 0.1 also applies
-to the M steps. Generated text still contributes many tokens because its corpus
-is much larger. No fresh Chat2 turn-boundary augmentation is included.
-The real corpus is dominated by parliamentary speech; everyday messaging
-coverage remains limited.
+重新擬合的 chat 對照組從正規化的詞庫先驗初始化，執行三次 E 步與兩次經驗 unigram M 步
+（偽計數 0.1）。硬計數與後驗計數兩種變體共用來源、詞彙與初始化；生成文字權重 0.1 同樣
+套用在 M 步。由於生成語料大得多，生成文字仍貢獻了大量 token。沒有加入重新產生的 Chat2
+回合邊界增強。真實語料以議會發言為主；日常訊息的涵蓋仍然有限。
 
-TT raw scores must be read alongside variant-equal scores. In the first combined
-hard model, 52 engine predictions differ only by accepted variants; 48 contain
-gold 台 versus predicted 臺, and four contain 妳 versus 你. The incumbent has 21
-variant-only engine errors. This explains much of the apparent raw TT regression;
-literal raw accuracy is still reported, and TT selection uses the requested
-variant-equal metric. `variant-audit.json` retains the counts.
+TT 的原始分數必須搭配寫法視為相同的分數一起看。在第一個合併的硬計數模型中，有 52 個
+引擎預測只在可接受的變體上不同；其中 48 個是正解「台」而預測為「臺」，四個是「妳」與
+「你」。現行版本有 21 個只差在變體的引擎錯誤。這解釋了 TT 原始分數表面上退步的大部分
+原因；字面原始準確率仍照實報告，TT 的選擇則使用要求的寫法視為相同指標。
+`variant-audit.json` 保留這些計數。
 
-The wider Wikipedia control reuses identical posterior counts: cap 3 million
-produces 2,947,897 stored bigrams at count threshold 14; cap 6 million produces
-5,357,836 at threshold 7. Both normalize, with maximum serialized context error
-below 5e-13. Counts include 467,369,692.5271 word-token mass, 73,871,325 posterior
-pair types and 41,851,010 nonzero rounded pair types. The six-syllable decoder
-cannot use a longer entry as one word: 961 vocabulary entries exceed six Han;
-these represent 0.0277103% of Wiki and 0.00545466% of fresh-chat posterior token
-mass. Long words can still win through shorter paths; this residual mismatch is
-reported, not patched in the engine.
+較寬的維基百科對照組沿用完全相同的後驗計數：上限 3 百萬時，計數門檻 14，儲存
+2,947,897 個 bigram；上限 6 百萬時，門檻 7，儲存 5,357,836 個。兩者都正規化，序列化後
+的上下文最大誤差低於 5e-13。計數包含 467,369,692.5271 的詞 token 質量、73,871,325 種
+後驗詞對，以及 41,851,010 種四捨五入後非零的詞對。六音節的解碼器無法把更長的條目當成
+一個詞使用：有 961 個詞彙條目超過六個漢字，佔 Wiki 後驗 token 質量的 0.0277103%，以及
+重新擬合 chat 的 0.00545466%。長詞仍可能經由較短的路徑勝出；這個剩餘的不一致照實報告，
+沒有在引擎中修補。
 
-Taiwan Tongues retains TRAIL / TWM Responsible AI License v0.1; chat-derived
-research assets are not described as CC BY-SA-only or release-ready. Legislative
-Yuan originals retain OGDL v1/OpenFun CC BY 4.0 metadata, Wikipedia talk CC BY-SA
-4.0 and Common Voice CC0. Generated candidates also retain Qwen's license and
-legacy provenance. Each final component has its own NOTICE.md.
+Taiwan Tongues 保留 TRAIL／TWM Responsible AI License v0.1；源自 chat 的研究資產不描述為
+只受 CC BY-SA 約束，也不視為可發布。立法院原始資料保留 OGDL v1／OpenFun CC BY 4.0 詮釋
+資料，維基百科討論頁為 CC BY-SA 4.0，Common Voice 為 CC0。生成的候選資料也保留 Qwen 的
+授權與舊有的來源紀錄。每個最終元件都有自己的 NOTICE.md。
 
-A final data-only control addresses uniform zero-continuation floors overriding
-calibrated lexical frequencies. `fallback.py` removes lexical floor words only
-if no stored bigram/backoff references them: 33,385 Wiki words (unigram mass
-0.0000797647000363) and 166,977 chat words (mass 0.0135700757306). With removed
-mass M and context backoff alpha, Z = 1-alpha*M; stored probabilities divide by
-Z, retained unigrams divide by 1-M, and alpha becomes alpha*(1-M)/Z. The engine's
-existing lexicon fallback handles removed words. Serialized models pass the
-independent normalization verifier; a tiny conditional-distribution check covers
-the formula. This generic rule is measured on dev alongside the selected plain
-models with the incumbent lexicon (the McBopomofo component ablation).
+最後一個只動資料的對照組，處理均勻的零延續下限蓋過校準後詞頻的問題。`fallback.py`
+只在沒有任何已儲存的 bigram／backoff 參照時，移除處於下限的詞：33,385 個 Wiki 詞（unigram
+質量 0.0000797647000363）與 166,977 個 chat 詞（質量 0.0135700757306）。設移除的質量為
+M、上下文 backoff 為 alpha，則 Z = 1-alpha*M；已儲存的機率除以 Z，保留的 unigram 除以
+1-M，alpha 變為 alpha*(1-M)/Z。被移除的詞由引擎既有的詞庫退回機制處理。序列化後的模型
+通過獨立的正規化驗證器；一個很小的條件分布檢查涵蓋這個公式。這個通用規則在 dev 上與
+選定的一般模型一起量測，搭配現行詞庫（即小麥注音元件的消融）。
 
-### Fit inventory
+### 擬合清單
 
-Token mass includes source weights and fractional posteriors before final MKN
-rounding. Full precision, discounts, thresholds and normalization checks are in
-each model's `stats.json` / `validation.json`.
+token 質量包含來源權重，以及最終 MKN 四捨五入前的分數後驗。完整精度、折扣、門檻與
+正規化檢查記錄在每個模型的 `stats.json`／`validation.json`。
 
-| Fit | Word-token mass | Stored bigrams |
+| 擬合 | 詞 token 質量 | 儲存的 bigram |
 |---|---:|---:|
 | `chat_hard` | 5225352.0000 | 373,672 |
 | `chat_expected` | 5264683.3208 | 376,116 |
@@ -169,68 +141,55 @@ each model's `stats.json` / `validation.json`.
 | `chat_fresh_generated01` | 11650408.4531 | 635,974 |
 | `wiki_hard` | 464498221.0000 | 2,938,277 |
 | `wiki_expected` | 467369692.5271 | 2,947,897 |
-| `wiki_expected_wide` | Reuses `wiki_expected` counts | 5,357,836 |
+| `wiki_expected_wide` | 沿用 `wiki_expected` 的計數 | 5,357,836 |
 
-## Execution, recovery and limits
+## 執行、復原與限制
 
-Python 3.12.15, uv 0.13.5, NumPy 2.5.4, Swift 6.4.1, ONNX Runtime 1.24.4,
-ONNX 1.20.1, OpenCC 1.4.2, mwparserfromhell 0.7.2, pyahocorasick 2.3.1.
-A project-local uv virtual environment reuses existing remote packages through
-read-only `.pth` references; no package is installed into an existing environment.
-Conversion uses ONNX CPU on the GPU host, not a Mac model run. Concurrent jobs
-are respected: workers are RAM-budgeted, fitting waits for capacity, and no
-unrelated process or broad process-name pattern is stopped.
+Python 3.12.15、uv 0.13.5、NumPy 2.5.4、Swift 6.4.1、ONNX Runtime 1.24.4、
+ONNX 1.20.1、OpenCC 1.4.2、mwparserfromhell 0.7.2、pyahocorasick 2.3.1。
+專案內的 uv 虛擬環境透過唯讀的 `.pth` 參照沿用遠端既有套件；沒有在任何既有環境中安裝
+套件。轉換在 GPU 主機上以 ONNX CPU 執行，不是在 Mac 上執行模型。尊重同時執行的其他
+工作：worker 依記憶體預算配置，擬合會等待有餘裕時才開始，不停止任何無關的程序，也不使用
+範圍過寬的程序名稱比對。
 
-The first baseline accidentally used an older remote lexicon. The mutable shared
-chat model also changed during evaluation, to Chat2's no-generated TSVs. A clean
-habit replay exposed different outputs. Those confounded comparisons, habits
-and word audit are quarantined in `archive/pre-freeze/`. The corrected baseline
-uses task-start lexicon `9e651e…` and recovered task-start chat unigram `be917a…`.
-A 26-file hash guard now pins private incumbent TSVs, evaluation texts, typing
-lexicon, CLI and neural assets. Thirty-two standalone chat/prior rows had
-identical complete input fingerprints and were reused with receipts; all
-asset-dependent rows were rerun. These archived figures do not select a model.
+第一次的基準不小心使用了較舊的遠端詞庫。可變動的共用 chat 模型也在評估期間被換成
+Chat2 不含生成文字的 TSV。一次乾淨的使用習慣重播出現了不同的輸出。這些受干擾的比較、
+使用習慣分析與詞稽核都隔離在 `archive/pre-freeze/`。修正後的基準使用任務開始時的詞庫
+`9e651e…`，以及取回的任務開始時 chat unigram `be917a…`。現在由 26 個檔案的雜湊防護固定
+私有的現行 TSV、評估文字、打字詞庫、CLI 與神經網路資產。有 32 個獨立的 chat／先驗資料列
+的完整輸入指紋相同，附上收據後沿用；所有依賴資產的資料列都重新執行。這些封存的數字不用
+於選擇模型。
 
-One parser stop on `_punctuation_list` with a full-width space was fixed by
-excluding control rows before field splitting; a regression fixture covers it.
-One guessed libtabe archive URL was 404; the original SourceForge archive was
-retrieved and pinned. A length diagnostic initially assumed a newer vocabulary
-receipt existed for an older fit; its vocabulary is instead reconstructed from
-the verified serialized order. None of these failed probes supplies model data.
+解析器曾在含全形空白的 `_punctuation_list` 上停止一次，已改為在切分欄位前排除控制列來
+修正，並以回歸測試資料涵蓋。一個猜測的 libtabe 封存檔 URL 回傳 404；改為取回並固定
+SourceForge 上的原始封存檔。一個長度診斷原本假設較舊的擬合有較新的詞彙收據；改為從已
+驗證的序列化順序重建它的詞彙。這些失敗的嘗試都沒有提供任何模型資料。
 
-Remote focused checks pass: posterior counts versus exhaustive path enumeration,
-BOS/EOS/OOV handling, old reading/sandhi score preservation, extension Han and
-punctuation parsing, frozen-file rejection, edit distance/variant equality and
-frequency-prior normalization. CLI batches preserve diagnostics and stop on
-nonzero status or wrong output length. Clean habit replay must exactly reproduce
-its frozen dev predictions. Mac UI, memory and per-key latency are not validated.
-The larger Wikipedia model requires integration-side compilation/latency checks.
+遠端的重點檢查都通過：後驗計數與窮舉路徑列舉的比對、BOS/EOS/OOV 處理、舊讀音與變調
+分數的保留、擴充漢字與標點解析、拒絕凍結檔案的變更、編輯距離與寫法視為相同判斷，以及頻率
+先驗的正規化。CLI 批次保留診斷資訊，遇到非零狀態或輸出長度錯誤就停止。乾淨的使用習慣
+重播必須完全重現凍結的 dev 預測。Mac UI、記憶體與逐鍵延遲都尚未驗證。較大的維基百科
+模型需要在整合端做編譯與延遲檢查。
 
-## Results
+## 結果
 
-All cells below are percentages; 400 runs/view. `chat_*` changes only chat
-counts with the first merged lexicon and incumbent Wikipedia model. `wiki_*`
-changes only Wikipedia counts with the incumbent chat model. `combined_*`
-uses the corrected lexicon and wider Wikipedia model. `fresh` refits the chat
-tokenizer; `generated01` adds generated counts at weight 0.1. `selected_no_mc`
-keeps the selected new LMs but restores the incumbent lexicon. `unused_fallback`
-is the normalized vocabulary restriction described above.
+以下所有欄位都是百分比；每個檢視 400 次執行。`chat_*` 只變更 chat 計數，搭配第一版
+合併詞庫與現行維基百科模型。`wiki_*` 只變更維基百科計數，搭配現行 chat 模型。
+`combined_*` 使用修正後的詞庫與較寬的維基百科模型。`fresh` 重新擬合 chat 斷詞器；
+`generated01` 以權重 0.1 加入生成文字的計數。`selected_no_mc` 保留選定的新語言模型，
+但換回現行詞庫。`unused_fallback` 是上述正規化的詞彙限制。
 
-The selected `combined_chat_fresh_expected` has the highest engine primary
-score among configurations retaining the incumbent app primary score. The
-generated ablations lose balanced engine accuracy. The unused-floor fix has
-78.58% engine / 86.17% app versus the chosen 78.75 / 86.08, so it is retained
-as a rejected control. McBopomofo alone has 75.92% engine / 85.75% app, but
-removing it from the new LMs gives only 72.17 / 84.67. **Integrate the lexicon
-and word models together**: their segmentation vocabulary is coupled.
+在維持現行 App 主要分數的設定中，選定的 `combined_chat_fresh_expected` 有最高的引擎
+主要分數。加入生成文字的消融實驗降低了平衡後的引擎準確率。未使用下限的修正為引擎
+78.58% / App 86.17%，選定設定則為 78.75 / 86.08，因此它保留為不採用的對照組。單獨使用
+小麥注音為引擎 75.92% / App 85.75%，但從新語言模型中移除它只剩 72.17 / 84.67。
+**詞庫與詞模型必須一起整合**：兩者的斷詞詞彙互相依賴。
 
-The final files are byte-identical to the selected dev model. The frozen guard
-extends from 26 to 34 files, adding the seven final TSVs and the selection
-receipt. Tests run once after that receipt and track this choice without
-further selection.
+最終檔案與選定的 dev 模型逐位元組相同。凍結防護從 26 個檔案擴充為 34 個，加入七個最終
+TSV 與選擇收據。測試在該收據之後只執行一次，只追蹤這個選擇，不再做任何選擇。
 ### engine
 
-| Configuration | Colloquial | Wiki | Wiki + context | TT exact / variant | Primary |
+| 設定 | 口語 | Wiki | Wiki + 上下文 | TT 完全相同／變體 | 主要分數 |
 |---|---:|---:|---:|---:|---:|
 | `baseline` | 78.75 | 70.00 | 71.50 | 73.50 / 78.75 | 76.33 |
 | `lexicon` | 78.75 | 69.75 | 70.25 | 73.75 / 78.75 | 75.92 |
@@ -253,7 +212,7 @@ further selection.
 
 ### app
 
-| Configuration | Colloquial | Wiki | Wiki + context | TT exact / variant | Primary |
+| 設定 | 口語 | Wiki | Wiki + 上下文 | TT 完全相同／變體 | 主要分數 |
 |---|---:|---:|---:|---:|---:|
 | `baseline` | 87.00 | 80.50 | 85.75 | 70.50 / 84.75 | 85.83 |
 | `lexicon` | 86.75 | 80.50 | 85.75 | 70.50 / 84.75 | 85.75 |
@@ -275,9 +234,9 @@ further selection.
 | `selected_no_mc` | 84.75 | 79.50 | 84.75 | 70.50 / 84.50 | 84.67 |
 
 
-### Selected vs incumbent, paired dev
+### 選定組合與現行版本的成對 dev 比較
 
-| Mode | Dev view | Fixed / broken | Delta pp [95% CI] | McNemar p |
+| 模式 | Dev 檢視 | 修正／破壞 | 差異 pp [95% CI] | McNemar p |
 |---|---|---:|---:|---:|
 | engine | colloquial | 37 / 22 | +3.75 [+0.00, +7.50] | 0.0674 |
 | engine | wikipedia | 24 / 14 | +2.50 [-0.50, +5.50] | 0.1433 |
@@ -288,40 +247,36 @@ further selection.
 | app | wikipedia_context | 7 / 7 | +0.00 [-1.75, +1.75] | 1.0000 |
 | app | taiwan_tongues | 6 / 2 | +1.00 [-0.25, +2.50] | 0.2891 |
 
-TT uses variant-equal; other views use raw exact. Intervals are paired row bootstrap; p-values are uncorrected exact McNemar.
+TT 使用寫法視為相同；其他檢視使用原始的完全相同。區間為逐列成對 bootstrap；p 值為未校正的精確 McNemar。
 
-### Complete selected-word audit
+### 選定模型的完整詞稽核
 
-All 233,213 reading rows / 215,811 words were queried through the actual engine,
-with standard typo handling and the selected word models. A word with several
-readings is counted as losing under every reading only if none wins.
+全部 233,213 個讀音列／215,811 個詞都透過實際的引擎查詢，搭配標準錯字處理與選定的
+詞模型。有多個讀音的詞，只有在沒有任何讀音勝出時，才計為在每個讀音下都落敗。
 
-| Class | Loses / total | Loss % |
+| 類別 | 落敗／總數 | 落敗 % |
 |---|---:|---:|
-| Words, every reading loses | 66,499 / 215,811 | 30.8135 |
-| Words, preferred reading loses | 67,019 / 215,811 | 31.0545 |
-| All reading rows | 76,039 / 233,213 | 32.6050 |
-| New single-character rows | 9,921 / 9,931 | 99.8993 |
-| New two-character rows | 19,205 / 36,234 | 53.0027 |
-| Homophone reading rows | 50,451 / 64,487 | 78.2344 |
-| Unique full-word reading rows | 25,588 / 168,726 | 15.1654 |
-| Three-character rows | 5,255 / 51,400 | 10.2237 |
-| Four-character rows | 1,639 / 43,596 | 3.7595 |
+| 詞，每個讀音都落敗 | 66,499 / 215,811 | 30.8135 |
+| 詞，偏好讀音落敗 | 67,019 / 215,811 | 31.0545 |
+| 所有讀音列 | 76,039 / 233,213 | 32.6050 |
+| 新的單字列 | 9,921 / 9,931 | 99.8993 |
+| 新的兩字詞列 | 19,205 / 36,234 | 53.0027 |
+| 同音字讀音列 | 50,451 / 64,487 | 78.2344 |
+| 唯一讀音的整詞讀音列 | 25,588 / 168,726 | 15.1654 |
+| 三字詞列 | 5,255 / 51,400 | 10.2237 |
+| 四字詞列 | 1,639 / 43,596 | 3.7595 |
 
-Rows at the uniform continuation floor in both LMs lose 17,490 / 35,574
-(49.1651%); one LM at the floor loses 49,784 / 145,658 (34.1787%); neither at
-the floor loses 8,765 / 51,981 (16.8619%). This association and the source-code
-fallback override motivate the generic vocabulary control, but its lower engine
-primary score prevents adoption. The first-merge/incumbent-LM audit above uses a
-different dictionary; its loss percentage is not a paired lexical improvement.
-Homophone collisions, rare/cold-word priors and long-word decomposition remain.
-No individual word's score is hand-patched. Full failures, winners and source
-classes are in `audit-combined_chat_fresh_expected.tsv`; aggregates and floor
-classes are in the adjacent JSON files.
+在兩個語言模型中都處於均勻延續下限的列，落敗 17,490 / 35,574（49.1651%）；只在一個
+語言模型中處於下限的，落敗 49,784 / 145,658（34.1787%）；兩者都不在下限的，落敗
+8,765 / 51,981（16.8619%）。這個關聯以及原始碼中的退回覆蓋行為，促成了通用的詞彙對照組，
+但它的引擎主要分數較低，因此不採用。上方第一版合併／現行語言模型的稽核使用不同的詞典；
+它的落敗百分比不是成對的詞庫改善。同音字衝突、罕用詞與冷門詞的先驗，以及長詞的拆解
+問題仍然存在。沒有手動修補任何單一詞的分數。完整的失敗、勝出者與來源類別在
+`audit-combined_chat_fresh_expected.tsv`；彙總與下限類別在相鄰的 JSON 檔案中。
 
-### Typing habits (dev)
+### 打字習慣（dev）
 
-| Dev set / habit | N | Engine before -> after | App before -> after | Engine oracle@16 before -> after |
+| Dev 集／習慣 | N | 引擎 前 -> 後 | App 前 -> 後 | 引擎 oracle@16 前 -> 後 |
 |---|---:|---:|---:|---:|
 | colloquial / clean | 400 | 78.75 -> 82.50 | 87.00 -> 86.75 | 96.75 -> 97.00 |
 | colloquial / nospace | 320 | 61.25 -> 63.75 | 66.25 -> 65.94 | 75.31 -> 75.31 |
@@ -334,13 +289,13 @@ classes are in the adjacent JSON files.
 | wikipedia / neutral | 129 | 67.44 -> 69.77 | 80.62 -> 80.62 | 93.02 -> 94.57 |
 | wikipedia / sandhi | 48 | 60.42 -> 68.75 | 87.50 -> 81.25 | 87.50 -> 89.58 |
 
-Shown accuracy is raw exact; oracle@16 is always measured with the non-neural engine. Clean replays exactly match the saved dev captures. All 40 raw/variant paired habit comparisons are saved next to the ordered predictions. App typo5 drops 1 point on both sets; app sandhi drops 1/53 colloquial and 3/48 Wikipedia runs. These tradeoffs prevent a blanket claim that the stronger engine lifts every app behavior.
+顯示準確率為原始的完全相同；oracle@16 一律以不含神經模型的引擎量測。乾淨重播與儲存的 dev 擷取完全一致。全部 40 個原始／變體的成對習慣比較都與依序排列的預測結果存放在一起。App 的 typo5 在兩個集合上都下降 1 個百分點；App 的 sandhi 在口語下降 1/53 次執行、維基百科下降 3/48 次執行。由於這些取捨，不能概括地說較強的引擎會提升 App 的每一種行為。
 
-### Frozen choice, test tracking only
+### 凍結的選擇，測試只用於追蹤
 
-The baseline and selected bundle were each run once in both modes: 20 completed views, 6,672 predictions. Selection and all 34 frozen inputs remain unchanged. TT cells are exact / variant-equal; other cells are exact. Smoke has 68 eligible runs (two three-Han lines are outside the shared 4–20-Han protocol).
+基準與選定組合在兩種模式下各執行一次：20 個完成的檢視，6,672 個預測。選擇與全部 34 個凍結輸入都維持不變。TT 欄位為完全相同／寫法視為相同；其他欄位為完全相同。冒煙測試有 68 個符合條件的執行（兩行三個漢字的句子不在共用的 4–20 字實驗流程範圍內）。
 
-| Test view | N | Engine before -> after | App before -> after |
+| 測試檢視 | N | 引擎 前 -> 後 | App 前 -> 後 |
 |---|---:|---:|---:|
 | colloquial | 400 | 71.00 -> 80.25 | 83.25 -> 84.00 |
 | wikipedia | 400 | 66.50 -> 72.00 | 81.00 -> 82.50 |
@@ -348,7 +303,7 @@ The baseline and selected bundle were each run once in both modes: 20 completed 
 | taiwan_tongues | 400 | 73.75 / 79.75 -> 65.75 / 76.50 | 74.25 / 85.50 -> 74.25 / 85.50 |
 | smoke | 68 | 97.06 -> 92.65 | 100.00 -> 100.00 |
 
-| Mode | Test view / metric | Fixed / broken | Delta pp [95% CI] | McNemar p |
+| 模式 | 測試檢視／指標 | 修正／破壞 | 差異 pp [95% CI] | McNemar p |
 |---|---|---:|---:|---:|
 | engine | colloquial / raw | 47 / 10 | +9.25 [+5.75, +12.75] | 7.513e-07 |
 | engine | wikipedia / raw | 36 / 14 | +5.50 [+2.00, +8.75] | 0.0026022 |
@@ -363,6 +318,6 @@ The baseline and selected bundle were each run once in both modes: 20 completed 
 | app | taiwan_tongues / variants | 7 / 7 | +0.00 [-1.75, +1.75] | 1 |
 | app | smoke / raw | 0 / 0 | +0.00 [+0.00, +0.00] | 1 |
 
-Test primary means are 72.58 -> 76.00% engine and 85.25 -> 85.33% app. Colloquial and Wikipedia engine gains are supported by the paired results. Literal TT accuracy falls significantly; variant-equal TT and smoke have uncertain point regressions. App changes are small and individually inconclusive. These are tracking results: no other model is tested or reselected afterward.
+測試的主要分數平均為引擎 72.58 -> 76.00%、App 85.25 -> 85.33%。口語與維基百科的引擎進步有成對結果支持。TT 的字面準確率顯著下降；TT 寫法視為相同與冒煙測試的點估計退步並不確定。App 的變化很小，個別來看都無法下結論。這些是追蹤結果：之後沒有測試其他模型，也沒有重新選擇。
 
-A1 acceptance is **not achieved**. Colloquial remains below the historical 82.3% reference point, TT falls short, and the new base does not uniformly lift app behavior. The 0c reference run is not repeated in this frozen cohort, so these figures are not a direct comparison with 0c. Deliver this as a dev-selected research bundle, with the coupled lexicon/LM requirement, the TT/smoke regressions, app noise regressions and unmeasured Mac mmap/latency clearly carried into integration. Further decisions need fresh dev evidence.
+A1 驗收標準**未達成**。口語仍低於歷史上 82.3% 的參考點，TT 未達標，而新的基底也沒有一致地提升 App 的行為。0c 的參考執行沒有在這組凍結樣本中重做，因此這些數字不能與 0c 直接比較。以 dev 選出的研究組合交付，並在整合時明確帶入以下事項：詞庫與語言模型必須一起使用、TT 與冒煙測試的退步、App 在雜訊情境下的退步，以及尚未量測的 Mac mmap 與延遲。後續決策需要新的 dev 證據。

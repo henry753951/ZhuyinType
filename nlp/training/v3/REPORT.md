@@ -1,70 +1,70 @@
-# ZhuyinType v3 — M3/M4 execution report
+# ZhuyinType v3：M3/M4 執行報告
 
-Training, export, compilation, CPU latency and interface validation are complete. Detailed results and scope limits follow.
+訓練、匯出、編譯、CPU 延遲量測與介面驗證都已完成。以下是詳細結果與範圍限制。
 
-## Scope and provenance
+## 範圍與來源
 
-- Only `nlp/training/v3/` and `data/build/v3/` are written locally. No Swift, docs, existing training code, Git history changes, or engine integration changes.
-- Remote: `$ZHUYIN_REMOTE_HOST`, `~/zhuyintype`; NVIDIA H100L-3-47C MIG, 48,128 MiB, initially idle; 384 GiB disk available.
-- Existing remote runtime: Python 3.12.15, torch 2.13.0+cu130, coremltools 9.0, numpy 2.3.5. Existing `.venv` contains mwparserfromhell 0.7.2; reuse its site-packages after `.venv-gen` rather than change either environment.
-- Read MODEL_V3.md, MODEL.md, all reranker Python files, lm/pipeline.py, corpus/README.md before implementation.
-- The original remote lexicon was stale (`e7cc8a1e...`); Mac lexicon SHA256 `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60` was snapshotted under v3; the final Mac lexicon still matches it.
-- All four holdouts already match Mac SHA256. They are exclusion-only; only dev is scored. Short exact holdout sentences are excluded in addition to the required 8-character overlap.
+- 本機只寫入 `nlp/training/v3/` 與 `data/build/v3/`。沒有變更 Swift、文件、既有訓練程式碼、Git 歷史，也沒有變更引擎整合。
+- 遠端：`$ZHUYIN_REMOTE_HOST`，`~/zhuyintype`；NVIDIA H100L-3-47C MIG，48,128 MiB，起始時閒置；可用磁碟 384 GiB。
+- 遠端既有執行環境：Python 3.12.15、torch 2.13.0+cu130、coremltools 9.0、numpy 2.3.5。既有的 `.venv` 含 mwparserfromhell 0.7.2；做法是在 `.venv-gen` 之後沿用它的 site-packages，而不變更任何一個環境。
+- 實作前已閱讀 MODEL_V3.md、MODEL.md、所有 reranker Python 檔案、lm/pipeline.py 與 corpus/README.md。
+- 遠端原本的詞庫是舊版（`e7cc8a1e...`）；Mac 詞庫 SHA256 `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60` 已快照到 v3 下；最終的 Mac 詞庫仍與它一致。
+- 四個保留測試集都已與 Mac 的 SHA256 一致。它們只用於排除；只對 dev 計分。除了規定的 8 字重疊之外，也排除與保留測試集完全相同的短句。
 
-## Decisions
+## 決策
 
-- Preserve original article and paragraph order; reuse existing Wikipedia markup cleaning and OpenCC s2twp. Do not manufacture extra paragraphs to meet the 10M target.
-- Remove contaminated paragraphs entirely and break context at removals. Context and targets must both be leakage-free.
-- No optional dialogue generation: existing corpus is available and core data/training/export work has priority.
-- Core ML contract follows the task: stateless macOS 14 fp16 packages, candidate-only float32 log probabilities, projected per-layer context memory.
-- Use bounded RangeDim shapes as documented by Apple: https://apple.github.io/coremltools/docs-guides/source/flexible-inputs.html .
+- 保留原始的文章與段落順序；沿用既有的維基百科標記清理與 OpenCC s2twp。不為了達到 10M 目標而另外製造段落。
+- 受污染的段落整段移除，並在移除處中斷上下文。上下文與目標都必須沒有洩漏。
+- 不做選用的對話生成：既有語料已可使用，核心的資料、訓練與匯出工作優先。
+- Core ML 介面依照任務規格：無狀態的 macOS 14 fp16 套件、只輸出候選字的 float32 對數機率、已投影的逐層上下文記憶。
+- 依照 Apple 文件使用有界的 RangeDim 形狀：https://apple.github.io/coremltools/docs-guides/source/flexible-inputs.html 。
 
-## Initial implementation checks
+## 初期實作檢查
 
-- Remote invariant self-check passed: 3,303 valid changed readings from 10,000 attempted corruptions; every resulting input remains in the lexicon syllable inventory.
-- Checked causal prefix invariance, candidate padding, probability normalization, projected memory shape/dtype, Torch tracing and shorter dynamic dimensions.
-- A temporary remote transfer file was initially placed one level above v3 and immediately moved into v3; no existing remote data was replaced. All persistent outputs remain inside v3 (apart from the requested remote logs).
-- Local uv environment: Python 3.12.14, torch 2.7.0, coremltools 9.0, numpy 2.3.5, uv 0.12.7; lockfile under nlp/training/v3, environment under data/build/v3/.venv.
+- 遠端不變量自我檢查通過：嘗試 10,000 次擾動，得到 3,303 個有效且有改變的讀音；每個結果輸入都仍在詞庫的音節清單內。
+- 已檢查因果前綴不變性、候選字填充、機率正規化、投影後記憶的形狀與資料型態、Torch tracing，以及較短的動態維度。
+- 一個暫時的遠端傳輸檔一開始被放在 v3 的上一層，隨即移入 v3；沒有取代任何既有的遠端資料。除了要求的遠端紀錄檔外，所有持久輸出都留在 v3 內。
+- 本機 uv 環境：Python 3.12.14、torch 2.7.0、coremltools 9.0、numpy 2.3.5、uv 0.12.7；鎖定檔在 nlp/training/v3 下，環境在 data/build/v3/.venv 下。
 
-- Wikipedia completed: 10,101,669 leakage-filtered paragraphs from 1,130,481 articles, 643,655,802 characters, 12.11 minutes; capped in dump order.
-- Latest Core ML smoke check passed min/default/max shapes (Lc/Ls/C = 1/1/1, 64/10/32, 256/64/64); fp32-vs-fp16 logprob max differences 0, 0.01266, 0.02508 on random weights. These are export checks, not model-quality results.
-- Explicit self- and cross-attention padding masks preserve predictions under padded syllables or context; invariant self-check rerun passed.
+- 維基百科完成：來自 1,130,481 篇文章、經洩漏篩選的 10,101,669 個段落，643,655,802 個字元，12.11 分鐘；依傾印檔順序截斷。
+- 最新的 Core ML 冒煙測試在最小／預設／最大形狀（Lc/Ls/C = 1/1/1、64/10/32、256/64/64）下通過；以隨機權重比較 fp32 與 fp16，logprob 最大差異為 0、0.01266、0.02508。這些是匯出檢查，不是模型品質結果。
+- 自注意力與交叉注意力都有明確的填充遮罩，在填充音節或上下文時預測不變；重新執行不變量自我檢查，通過。
 
-- Candidate inventory: 1,569 toned readings, 419 syllable tokens including specials; mapped-union candidate median 32, p95 89.6, maximum 190; 199 reading unions exceed the export C=64 ceiling. Training keeps the complete union; export scores any caller-supplied subset up to 64.
+- 候選字清單：1,569 個帶聲調的讀音，419 個音節 token（含特殊 token）；對應後的候選聯集中位數 32，p95 89.6，最大 190；有 199 個讀音的聯集超過匯出的 C=64 上限。訓練保留完整聯集；匯出的模型可以為呼叫端提供的任一子集（最多 64 個）評分。
 
-- Audited all encoded colloquial streams, including previous-line/current-line concatenation boundaries: zero heldout 8-gram matches. No checkpoint invalidation needed.
-- Syllable context and reference inference map paragraph newlines to reserved SEP id 3; paragraph boundaries are not stripped or concatenated.
+- 稽核了所有編碼後的口語串流，包括上一行與目前行串接的邊界：與保留測試集的 8-gram 相符數為零。不需要作廢任何檢查點。
+- syllable 的上下文與參考推論把段落換行對應到保留的 SEP id 3；段落邊界不會被去除或串接。
 
-- Polyphone training reached its 1.5M-example cap in the colloquial source (1,500,001 examples after completing a word). No Wikipedia examples were added to that classifier; its internal accuracy does not establish coverage of Wikipedia-specific senses. Low-confidence filtering and reading priors remain necessary.
+- 多音字訓練在口語來源中達到 1.5M 個樣本的上限（補完一個詞後為 1,500,001 個樣本）。這個分類器沒有加入維基百科樣本；它的內部準確率無法證明能涵蓋維基百科特有的字義。低信心篩選與讀音先驗仍然必要。
 
-- Every lexicon candidate is represented in training: characters absent from the corpus vocabulary share UNK id 2 as a negative bucket. Reference inference also maps unseen candidate characters to UNK; dev OOV positions count as errors.
+- 每個詞庫候選字在訓練中都有代表：不在語料詞彙中的字元共用 UNK id 2 作為負例桶。參考推論同樣把未見過的候選字元對應到 UNK；dev 中的 OOV 位置計為錯誤。
 
-- First syllable-stage launch failed before training while building dev readings: Torch checkpoint labels were tuples, but Lexicon.label compared lists, producing an empty allowed-reading set. Fixed tuple comparisons at the shared caller and added an actual checkpoint-backed ambiguous-character regression check. Encoded annotations already used tuple keys and are unaffected. Initial failure log retained at remote data/build/v3/first-syllable-failure.log. Resume uses --from-syllable and preserves the completed context checkpoint.
+- 第一次啟動 syllable 階段時，在建立 dev 讀音的過程中、訓練開始前就失敗了：Torch 檢查點的標籤是 tuple，但 Lexicon.label 比較的是 list，導致允許的讀音集合為空。已在共用的呼叫端修正 tuple 比較，並加入以實際檢查點為依據的歧義字回歸檢查。編碼後的標註原本就使用 tuple 鍵，不受影響。最初的失敗紀錄保留在遠端 data/build/v3/first-syllable-failure.log。接續執行使用 --from-syllable，保留已完成的 context 檢查點。
 
-- Syllable training reached its initial 60,000-step ceiling without plateau (selected 57,000; NLL 0.1432105). Paused only the coordinator before evaluation/export, then continued from that selected checkpoint at 6e-5 initial LR with a fresh data seed and fresh optimizer. Cumulative steps/time and the original history are retained; completion requires the same four-evaluation plateau criterion.
+- syllable 訓練達到最初 60,000 步上限時仍未平穩（選定 57,000 步；NLL 0.1432105）。在評估與匯出前只暫停協調程序，接著從選定的檢查點繼續，初始學習率 6e-5，使用新的資料種子與新的最佳化器。累計步數、時間與原始歷史紀錄都保留；完成條件同樣是連續四次評估的平穩準則。
 
-- Wikipedia paragraph counts refer to nonempty cleaned source lines; list items and source soft-wrap lines remain separate blocks, preserving article order.
-- On-the-fly augmentation: sigma_x=0.9 and sigma_y=0.45 key units; uniform 0-15% attempted syllable noise, invalid outcomes revert to clean. 一/不 sandhi 50%, neutral-as-first 30%, Taiwan sense alternatives 10%, implicit first-tone boundary 20%. Noise type weights: substitution/tone swap/transposition/extra/missing = 45/20/15/10/10.
+- 維基百科段落數指的是清理後非空的來源行；清單項目與來源中的軟換行各自保留為獨立區塊，維持文章順序。
+- 即時資料增強：sigma_x=0.9、sigma_y=0.45 個按鍵單位；嘗試的音節雜訊均勻分布於 0-15%，無效的結果還原為乾淨輸入。一／不變調 50%，輕聲當一聲 30%，台灣讀音替代 10%，隱含一聲邊界 20%。雜訊類型權重：替換／聲調互換／對調／多打／漏打 = 45/20/15/10/10。
 
-## Live execution
+## 實際執行
 
-Updated UTC: 2026-10-26T21:23:07.559490+00:00
+更新時間（UTC）：2026-10-26T21:23:07.559490+00:00
 
-Status: Complete: trained to plateau, exported on Mac, compiled, golden vectors checked and CPU latency measured.
+狀態：完成。已訓練至平穩，在 Mac 上匯出、編譯，檢查黃金向量並量測 CPU 延遲。
 
-Remote jobs use nohup, per-stage `logs/v3-*.log`, and stop at first failure. No automatic retries.
+遠端工作使用 nohup，每個階段有各自的 `logs/v3-*.log`，第一次失敗即停止。不自動重試。
 
-Wikipedia: **10,101,669 paragraphs**, 643,655,802 characters; 1,130,481 articles; 1,387,784 contaminated paragraphs removed; 12.11 minutes.
+維基百科：**10,101,669 個段落**，643,655,802 個字元；1,130,481 篇文章；移除 1,387,784 個受污染的段落；12.11 分鐘。
 
-Colloquial: 7,208,847 inputs → **5,908,512 kept**; normalized duplicates 1,238,732, near duplicates 60,737, family cap removals 863, heldout/empty exclusions 3; 18.03 minutes. Family maximum 100 (cap 100).
+口語：7,208,847 筆輸入 → **保留 5,908,512 筆**；正規化後重複 1,238,732，近似重複 60,737，因家族上限移除 863，保留測試集／空白排除 3；18.03 分鐘。家族最大值 100（上限 100）。
 
-64-permutation MinHash retrieval is probabilistic; exact 5-gram Jaccard confirms retrieved matches; family is normalized first 6 + last 4 characters.
+64 個排列的 MinHash 檢索是機率性的；檢索到的配對以精確的 5-gram Jaccard 確認；家族定義為正規化後的前 6 個字加最後 4 個字。
 
-Character vocabulary 22,791; single-character lexicon entries occurring in corpus 12,690. Vocabulary also retains observed punctuation, Latin and other corpus characters.
+字元詞彙量 22,791；在語料中出現的單字詞庫條目 12,690。詞彙表也保留語料中出現的標點、拉丁字母與其他字元。
 
-Polyphone classifier: 1,500,001 training-only word-supervised examples; 1033 classes, 760 character/reading pairs; 0.42 minutes. 9-character window, 48-dimensional embeddings, 192-hidden-unit MLP. Prediction is normalized over the central character's lexicon readings; p>=0.9 required.
+多音字分類器：1,500,001 個只用於訓練、以詞為監督的樣本；1033 個類別，760 個字元與讀音組合；0.42 分鐘。9 字視窗，48 維嵌入，192 個隱藏單元的 MLP。預測在中央字元的詞庫讀音上正規化；需要 p>=0.9。
 
-Internal seeded 10% validation (not an independent annotated G2P benchmark):
+內部以固定種子切出的 10% 驗證集（不是獨立標註的 G2P 基準）：
 
 ```json
 {
@@ -75,7 +75,7 @@ Internal seeded 10% validation (not an independent annotated G2P benchmark):
 }
 ```
 
-Encoded corpus:
+編碼後的語料：
 
 ```json
 {
@@ -88,24 +88,24 @@ Encoded corpus:
 }
 ```
 
-Encoding time: 3.31 minutes. Low-confidence examples are excluded from syllable training but retained for the context LM. Colloquial context is the preceding retained line; existing generated lines are independent messages, not genuine dialogue.
+編碼時間：3.31 分鐘。低信心樣本不納入 syllable 訓練，但保留給 context LM。口語的上下文是前一個保留的行；既有的生成行是彼此獨立的訊息，不是真正的對話。
 
-Full post-extraction leakage audit passed for wiki and colloquial; 20 encoded reading/context samples checked. Details: data/build/v3/data-audit.json.
+擷取後的完整洩漏稽核在 wiki 與口語兩者都通過；檢查了 20 個編碼後的讀音與上下文樣本。詳情：data/build/v3/data-audit.json。
 
-| Model | Parameters | Steps | Selected step | Minutes | Selected dev NLL | Plateau reached |
+| 模型 | 參數量 | 步數 | 選定步數 | 分鐘 | 選定 dev NLL | 已達平穩 |
 |---|---:|---:|---:|---:|---:|---|
 | context | 30,556,672 | 30000 | 26000 | 32.89 | 4.2591 | True |
 | syllable | 37,097,735 | 64000 | 57000 | 40.00 | 0.1432 | True |
 
-Both models: 6 layers, 512 width, 8 heads, 2048 FFN, pre-LN and RoPE. Context LM uses 256 positions and a tied character head; syllable self-attention/character embeddings initialize from it. The context encoder is frozen during syllable training; each syllable layer's cross K/V projections train and are copied into ContextEncoder export. Context drops for 30% of training batches. Wiki and colloquial shards are sampled by token/example count, with colloquial weighted twice. Validation every 1000 steps; improvement threshold 0.002 NLL; patience 4 after at least 5000 initial steps. Initial segment limits are 30000/60000 steps; syllable continuation uses 10000-step segments until plateau.
+兩個模型都是 6 層、寬度 512、8 個 head、2048 FFN、pre-LN 與 RoPE。context LM 使用 256 個位置與綁定權重的字元輸出層；syllable 的自注意力與字元嵌入由它初始化。syllable 訓練期間 context 編碼器凍結；每個 syllable 層的交叉 K/V 投影參與訓練，並複製到 ContextEncoder 的匯出中。30% 的訓練批次會丟棄上下文。wiki 與口語分片依 token／樣本數取樣，口語加權兩倍。每 1000 步驗證一次；改善門檻為 0.002 NLL；至少 5000 個初始步數後，耐心值為 4。最初的分段上限為 30000/60000 步；syllable 的接續訓練以 10000 步為一段，直到平穩。
 
-### Offline dev selection accuracy
+### 離線 dev 選字準確率
 
-Backend: PyTorch CUDA BF16. Core ML CPU parity is measured separately below.
+後端：PyTorch CUDA BF16。Core ML CPU 的一致性另外在下方量測。
 
-All dev lines; longest-match + polyphone labels. Score nonliteral reading positions; OOV predictions count wrong. Candidate union includes gold, no candidate cap (selection quality conditional on recall). Literal-inclusive accuracy also given. Wikipedia context is preceding text on same line; colloquial additionally uses previous dev line. 5% requested noise can revert to clean if invalid.
+所有 dev 行；標籤來自最長匹配加多音字分類。只對非字面的讀音位置計分；OOV 預測計為錯誤。候選聯集包含正確答案，候選數不設上限（即在召回成立的條件下衡量選字品質）。也另外提供包含字面字元的準確率。維基百科的上下文是同一行的前文；口語另外使用前一個 dev 行。要求的 5% 雜訊若無效，可能還原為乾淨輸入。
 
-| Dev | Context | Requested noise | Positions | Model top-1 % | Lexicon baseline % | Valid changed % | Candidates >64 |
+| Dev | 上下文 | 要求的雜訊 | 位置數 | 模型 top-1 % | 詞庫基準 % | 有效改變 % | 候選數 >64 |
 |---|---|---:|---:|---:|---:|---:|---:|
 | colloquial | False | 0% | 15837 | 95.05 | 65.79 | 0.00 | 5516 |
 | colloquial | False | 5% | 15837 | 94.85 | 64.52 | 1.82 | 5513 |
@@ -116,13 +116,13 @@ All dev lines; longest-match + polyphone labels. Score nonliteral reading positi
 | wikipedia | True | 0% | 60462 | 95.02 | 62.91 | 0.00 | 21490 |
 | wikipedia | True | 5% | 60462 | 94.84 | 62.00 | 1.54 | 21455 |
 
-Baseline uses the highest-prior **single-character** lexicon row for the typed reading. Training and offline selection evaluate the full candidate union, including gold; exported C<=64 requires caller pruning. This evaluates character selection conditional on gold recall, not the Swift decoder, whole-sentence correctness, or M4 engine adoption gate.
+基準採用所輸入讀音中先驗最高的**單字**詞庫條目。訓練與離線選字評估的是完整的候選聯集（含正確答案）；匯出的 C<=64 需要呼叫端先刪減。這衡量的是在正確答案已被召回的條件下的選字，不是 Swift 解碼器、整句正確率，也不是 M4 引擎採用的門檻。
 
-### Core ML CPU-only latency
+### Core ML 僅 CPU 延遲
 
-Machine: Apple M5; macOS-27.0.1-arm64-arm-64bit. 10 warmups then 100 wall-clock predict calls including Python/Core ML bridge; model load and first compilation excluded; projected memory reused for syllable calls.
+機器：Apple M5；macOS-27.0.1-arm64-arm-64bit。先暖機 10 次，再量測 100 次 predict 呼叫的實際經過時間，包含 Python／Core ML 橋接；不含模型載入與首次編譯；syllable 呼叫重複使用已投影的記憶。
 
-| Model | Length | p50 ms | p95 ms |
+| 模型 | 長度 | p50 ms | p95 ms |
 |---|---:|---:|---:|
 | context | 64 | 8.553 | 10.667 |
 | context | 128 | 13.590 | 18.521 |
@@ -131,20 +131,20 @@ Machine: Apple M5; macOS-27.0.1-arm64-arm-64bit. 10 warmups then 100 wall-clock 
 | syllable | 30 | 3.962 | 5.039 |
 | syllable | 60 | 9.369 | 12.542 |
 
-Syllable Ls=30, C=32, Lc=256 target <=15 ms: p50 PASS, p95 PASS.
+syllable 在 Ls=30、C=32、Lc=256 的目標為 <=15 ms：p50 通過，p95 通過。
 
-20 Core ML golden vectors passed shape/finite/normalization/parity checks. FP16 Core ML changed 2/504 argmax positions versus fp32 PyTorch on these synthetic interface cases. Maximum fp32 PyTorch logprob difference 0.072987; memory difference 0.089844. test_vectors.json contains exact CPU Core ML outputs, with float16 memories encoded as base64 little-endian bytes and SHA256. Core ML comparisons use atol/rtol 0.002; fp32 PyTorch uses atol 0.1. Both mlpackages compiled with the requested Xcode coremlcompiler.
+20 組 Core ML 黃金向量都通過形狀、有限值、正規化與一致性檢查。在這些合成的介面案例上，FP16 Core ML 與 fp32 PyTorch 相比，504 個 argmax 位置中有 2 個不同。與 fp32 PyTorch 的 logprob 最大差異為 0.072987；記憶差異為 0.089844。test_vectors.json 包含精確的 CPU Core ML 輸出，float16 記憶以 base64 little-endian 位元組加 SHA256 編碼。Core ML 比對使用 atol/rtol 0.002；fp32 PyTorch 使用 atol 0.1。兩個 mlpackage 都以指定的 Xcode coremlcompiler 編譯。
 
-### Limits
+### 限制
 
-No Swift changes, installation, engine integration, decoder recall, end-to-end UI tests, optional dialogue generation, int8 export, or held-out test scoring. Existing independent colloquial messages provide sequential context without conversational guarantees. Polyphone confidence relies on word-derived labels and has not been human-calibrated. Core ML CPU target is reported as measured, not assumed. Models are not promoted to app resources.
+沒有 Swift 變更、安裝、引擎整合、解碼器召回、端對端 UI 測試、選用的對話生成、int8 匯出，也沒有在保留測試集上計分。既有的獨立口語訊息提供了先後順序的上下文，但不保證是對話。多音字信心值依賴從詞推得的標籤，未經人工校準。Core ML CPU 的目標以實測結果報告，而非假設。模型沒有升級為 App 資源。
 
-## Artifacts and handoff
+## 產出物與交付
 
-The two fp16 packages total 129.38 MiB (64.43 + 64.95 MiB); compiled models total 129.42 MiB.
+兩個 fp16 套件合計 129.38 MiB（64.43 + 64.95 MiB）；編譯後的模型合計 129.42 MiB。
 
-Mac artifacts: `data/build/v3/{ContextEncoder,SyllableEncoder}.{mlpackage,mlmodelc}`, `chars.json`, `syllables.json`, `config.json`, `test_vectors.json`, `syllable.pt`, `polyphone.pt`, and `articles.tsv.gz`. `nlp/training/v3/reference.py` supports CPU Core ML and PyTorch; both backends were executed using `data/build/v3/example.json`.
+Mac 上的產出物：`data/build/v3/{ContextEncoder,SyllableEncoder}.{mlpackage,mlmodelc}`、`chars.json`、`syllables.json`、`config.json`、`test_vectors.json`、`syllable.pt`、`polyphone.pt` 與 `articles.tsv.gz`。`nlp/training/v3/reference.py` 支援 CPU Core ML 與 PyTorch；兩種後端都已用 `data/build/v3/example.json` 執行過。
 
-Raw ordered corpus and encoded shards remain on the remote under `~/zhuyintype/data/build/v3/`: `wiki.txt`, `colloquial.txt`, `wiki_shards/`, `encoded/`. No app-resource promotion or Git commit was performed.
+原始的有序語料與編碼後的分片留在遠端的 `~/zhuyintype/data/build/v3/` 下：`wiki.txt`、`colloquial.txt`、`wiki_shards/`、`encoded/`。沒有升級為 App 資源，也沒有做 Git commit。
 
-Paired checkpoint SHA256: `03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`. Exact CPU Core ML outputs are authoritative for Swift comparison; PyTorch is an approximate numerical reference.
+成對檢查點的 SHA256：`03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`。與 Swift 比對時以精確的 CPU Core ML 輸出為準；PyTorch 只是近似的數值參考。

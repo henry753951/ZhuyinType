@@ -4,13 +4,13 @@
 
 ## 1. 原則
 
-- **開發集調參數，測試集只在決定採用時跑一次。** 兩邊都不能出現在訓練資料裡：所有訓練語料都排除和評測集有連續 8 字相同的句子。
-- 主要指標是**整句全對率**：一段組字（4–20 個中文字）的結果和原文完全相同。另外報字準確率。
+- 開發集用來調參數，測試集只在決定採用時跑一次。兩邊都不能出現在訓練資料裡，所有訓練語料都排除和評測集有連續 8 字相同的句子。
+- 主要指標是整句全對率，也就是一段組字（4–20 個中文字）的結果和原文完全相同的比例。另外報字準確率。
 - 「台／臺」「妳／你」「裏／裡」這類兩種寫法都對的字，另外報一個「視為相同」的整句全對率（`conversion_eval.py` 的 `counting variants as equal`）。
-- 打字的讀音由詞庫最長比對推得，每個詞用最常見的讀音、一聲按空白，不是人工標注。
+- 打字的讀音由詞庫最長比對推得，每個詞用最常見的讀音，一聲按空白。讀音不是人工標注。
 - 引擎正在修改時，評測前先建一份固定的 CLI（例如 `.build-dev`），整組評測用同一份。
-- 每個 `zhuyin-cli` 只用一個 CPU 核心，而且批次輸入的每一行互相獨立；`conversion_eval.py --jobs N` 把一組評測分給 N 個程序平行跑，結果和單一程序相同（每個程序約 400 MB 記憶體）。
-- **評測與訓練都在遠端 GPU 主機（64 核心、H100）上跑**，不佔用開發用的 Mac：引擎在 Linux 上編譯，模型以 ONNX Runtime 執行（`nlp/remote/`）。Mac 只負責建置 app、Core ML 匯出與編譯，以及確認遠端結果和 Mac 一致（輸出不同的行數不超過 1%）。
+- 每個 `zhuyin-cli` 只用一個 CPU 核心，批次輸入的每一行互相獨立。`conversion_eval.py --jobs N` 把一組評測分給 N 個程序平行跑，結果和單一程序相同。每個程序約用 400 MB 記憶體。
+- 評測與訓練都在遠端 GPU 主機（64 核心、H100）上跑，不佔用開發用的 Mac。引擎在 Linux 上編譯，模型以 ONNX Runtime 執行（`nlp/remote/`）。Mac 只負責建置 app、Core ML 匯出與編譯，以及確認遠端結果和 Mac 一致，也就是輸出不同的行數不超過 1%。
 
 ## 2. 資料集
 
@@ -71,7 +71,9 @@ python3 nlp/eval/error_analysis.py --cli .build-dev/release/zhuyin-cli --reranke
 
 ## 5. 每版評測（ZhuyinBench）
 
-每次發布（`v*` tag）後，GitHub Actions 在 GPU 主機的自建 runner 上跑 `nlp/eval/bench/run.sh`：下載固定版本的資料與模型、編譯 Linux 版引擎、匯出 ONNX、跑完整套評測，把 `docs/benchmarks/<版本>.json`、每版頁面與歷代表提交到 main，Mac 上量到的延遲與能耗（發布流程附在 release 的 `metrics-mac.json`）一起列出。也可以手動執行 Benchmark workflow 評任何版本。套件內容固定（`SUITE = zhuyinbench-1`）；改變內容就換新的套件名稱，新舊數字不混在一起。
+每次發布（`v*` tag）後，GitHub Actions 在 GPU 主機的自建 runner 上跑 `nlp/eval/bench/run.sh`。這個腳本下載固定版本的資料與模型、編譯 Linux 版引擎、匯出 ONNX、跑完整套評測，再把 `docs/benchmarks/<版本>.json`、每版頁面與歷代表提交到 main。Mac 上量到的延遲與能耗由發布流程附在 release 的 `metrics-mac.json`，也一起列出。也可以手動執行 Benchmark workflow 評任何版本。
+
+套件內容固定（`SUITE = zhuyinbench-1`）。改變內容時換新的套件名稱，新舊數字不混在一起。
 
 測試集在這裡只用來追蹤；採用一項改變要看開發集上的成對比較，並記在 [research/log.md](research/log.md)。
 
@@ -86,9 +88,9 @@ python3 nlp/eval/error_analysis.py --cli .build-dev/release/zhuyin-cli --reranke
 | `--decoder slots\|boundaries\|reorder\|timed`、`--decoder-costs …`、`--hotspot` | 按鍵解碼方法、成本、熱點成本 |
 | `--typo off\|standard\|aggressive`、`--fuzzy zh,ch,…` | 容錯、模糊音 |
 | `--context TEXT` | 游標前的文字 |
-| `--forms standard\|common` | 「臺」或「台」；CLI 預設 `standard`（引擎原本的字，和評測文字、舊的數字可直接比較），app 預設 `common` |
+| `--forms standard\|common` | 「臺」或「台」。CLI 預設 `standard`，即引擎原本的字，可直接和評測文字、舊的數字比較；app 預設 `common` |
 | `--timing` | 印出每次模型呼叫的時間，最後加上延遲、CPU、能耗、記憶體摘要 |
-| `--rerank-gate τ`、`--rerank-switch δ` | 整句重排只在引擎前兩名差距小於 τ 時出手；換句要贏過 δ |
+| `--rerank-gate τ`、`--rerank-switch δ` | 整句重排只在引擎前兩名差距小於 τ 時使用；換句要贏過 δ |
 | `--freeze-on-pick on\|off` | 在清單選字後，其他已顯示的字是否固定 |
 | `--v3-list on\|off`、`--v3-boundaries on\|off` | 清單排序是否參考 v3；是否告訴 v3 哪些音節是一聲不按空白 |
 | `--report-list` | 批次模式印出打開的候選字清單（tab 分隔） |

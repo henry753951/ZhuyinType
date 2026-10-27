@@ -1,58 +1,45 @@
-# Chat2 corpus and word bigrams
+# Chat2 語料與詞 bigram
 
-Run CPU preparation/training and **all evaluations on the lab Linux host**. The
-Mac can cache public downloads and transfer files. No global tools are installed.
-Code is AGPL-3.0-only; model/corpus attribution is in `data/build/lm_chat2/NOTICE.md`.
+CPU 前處理、訓練與**所有評估都在實驗室的 Linux 主機上執行**。Mac 可以快取公開的下載內容並傳輸檔案。
+不安裝任何全域工具。程式碼採 AGPL-3.0-only 授權；模型與語料的出處標示見 `data/build/lm_chat2/NOTICE.md`。
 
-**Stopped incomplete:** repeated global kernel OOM kills interrupted the 60-worker
-conversion sweep (7/24 rows complete). No chat2 conversion/prior claim is established.
-Wait for sufficient dedicated host capacity before resuming. A concurrent runner
-layout change to `nlp/engine` also broke the retry's sync against the original
-snapshot. Preserve the isolated runtime and verify its `evaluation-manifest.json`
-hashes; do not mix new live sources/models into the partial comparison.
+**已停止，尚未完成：**反覆發生的全域 kernel OOM kill 中斷了 60 個 worker 的轉換掃描（24 列中完成 7 列）。
+目前不能得出任何 chat2 轉換或 prior 的結論。請等主機有足夠的專用資源後再續跑。同時進行的 runner 版面變更
+（改為 `nlp/engine`）也讓重試時與原始快照的同步失敗。請保留隔離的執行環境，並驗證其
+`evaluation-manifest.json` 的雜湊；不要把新的線上來源或模型混入這份部分比較。
 
-This experiment stopped new Qwen generation after two failed quality pilots.
-Both pilots remain in raw storage and are excluded. `lm_chat2` means compatible
-old Qwen/Common Voice text plus filtered new real transcripts; `no_generated/`
-contains only the real transcripts and Common Voice. Neither contains Taiwan
-Tongues training text. Do not treat the old model's TRAIL license as compatible.
+這個實驗在兩次品質試跑失敗後，停止了新的 Qwen 生成。兩次試跑都保留在原始資料儲存區，並已排除。
+`lm_chat2` 指相容的舊 Qwen／Common Voice 文字，加上經過過濾的新真實轉寫；`no_generated/` 只包含真實
+轉寫與 Common Voice。兩者都不含 Taiwan Tongues 的訓練文字。不要把舊模型的 TRAIL 授權視為相容。
 
-## Frozen data
+## 固定資料
 
-- Raw HTTP bodies and individual URL/date/license/SHA256 receipts:
-  `data/raw/lm_chat2/`. Government API errors stop after three attempts.
-  Wiki requests observe a ten-second interval and HTTP 429 Retry-After.
-- `real_dialogues.jsonl`: original source document, speaker, turn order, wiki
-  thread, revision and attribution links. Invalid turns remain empty barriers;
-  no context is joined across them. Wiki context is the previous signed turn in
-  source order, not a verified reply-tree edge.
-  The inherited four-character minimum discards minimal replies; this remains
-  a coverage limit for natural messaging.
-- `source_samples.json`, `quality-review.json`: sample review before training.
-  Summary-only data.gov.tw minutes and both generator pilots were rejected.
-- `dev_dialogue.txt` / `test_dialogue.txt`: 1,000 **turn pairs** each, TSV
-  `previous_turn<TAB>target_turn`; 900 gazette and 100 wiki pairs per split.
-  Whole documents are reserved for one split or excluded from training. Seed,
-  row-level source URLs, source hashes and existing evaluation hashes are in
-  `splits.json`. Test text is never scored or used to select a prior.
-- `inputs/evaluation/`: frozen existing dev/test text, including all present
-  homophone `dev_*` / `test_*` TXT and JSONL files and the short smoke set.
-  `inputs/local-input-manifest.json` maps back to original paths and hashes.
+- 原始 HTTP 回應本體，以及各自的 URL、日期、授權與 SHA256 收據：
+  `data/raw/lm_chat2/`。政府 API 錯誤在嘗試三次後停止。
+  維基請求遵守十秒間隔與 HTTP 429 的 Retry-After。
+- `real_dialogues.jsonl`：原始來源文件、發言者、發言順序、維基討論串、revision 與出處連結。無效的發言
+  保留為空的分隔；上下文不會跨越它們串接。維基的上下文是來源順序中前一則有簽名的發言，不是經過驗證的
+  回覆樹邊。
+  沿用的四字元下限會捨棄極短的回覆；這仍是自然訊息覆蓋範圍的一項限制。
+- `source_samples.json`、`quality-review.json`：訓練前的樣本審查。
+  只有摘要的 data.gov.tw 會議紀錄與兩次生成器試跑都被拒絕。
+- `dev_dialogue.txt`／`test_dialogue.txt`：各 1,000 個**發言對**，TSV
+  `previous_turn<TAB>target_turn`；每個分割有 900 個公報對與 100 個維基對。
+  整份文件只保留給一個分割，或從訓練中排除。seed、逐列的來源 URL、來源雜湊與既有評估雜湊記錄在
+  `splits.json`。test 文字從未被計分，也未用於選擇 prior。
+- `inputs/evaluation/`：固定的既有 dev／test 文字，包括目前所有的同音字 `dev_*`／`test_*` TXT 與 JSONL
+  檔，以及小型冒煙測試集。`inputs/local-input-manifest.json` 對應回原始路徑與雜湊。
 
-All training variants remove exact matches and any eight-character overlap
-with **both columns** of both new holdouts and every frozen old evaluation
-file. The filter also blocks OpenCC/common-台 normalized variants. A separate
-post-export scan checks every retained training sentence and context pair.
-`source-manifest.json` records the legacy corpus, metadata, estimator and
-generator weight hashes. Preserve it and the full attribution manifest.
-`attribution.jsonl` is the compact 0.49 MB redistribution manifest; the full
-transcript text is not needed in the app bundle.
+所有訓練版本都會移除與兩個新 holdout 的**兩欄**以及每個固定的舊評估檔完全相同，或有任何八字元重疊的
+內容。過濾也會擋下經 OpenCC 或常用「台」字正規化後的變體。另有一次匯出後掃描，檢查每個保留的訓練句與
+上下文對。`source-manifest.json` 記錄舊語料、中繼資料、估計器與生成器權重的雜湊。請保留它與完整的出處
+標示清單。`attribution.jsonl` 是精簡的 0.49 MB 重新散布清單；App 套件不需要完整的轉寫文字。
 
-## Reproduce
+## 重現
 
-Use the existing remote `.venv` (Python/NumPy/OpenCC/parser/Aho-Corasick) and
-`.venv-gen` (vLLM/aiohttp/datasketch). Do not install into either environment.
-The raw-source downloader is standard-library-only and can run on the Mac:
+使用遠端既有的 `.venv`（Python／NumPy／OpenCC／parser／Aho-Corasick）與 `.venv-gen`
+（vLLM／aiohttp／datasketch）。不要在任何一個環境中安裝套件。
+原始來源下載工具只使用標準函式庫，可以在 Mac 上執行：
 
 ```sh
 .venv/bin/python nlp/training/lm_chat2/sources.py government --documents 800
@@ -60,51 +47,43 @@ The raw-source downloader is standard-library-only and can run on the Mac:
 .venv/bin/python nlp/training/lm_chat2/sources.py similar
 ```
 
-The 800-document government request stopped at an upstream HTTP 500; the
-experiment freezes the 506 cached, receipt-verified documents. Do not silently
-redownload/resample for a published comparison. `prepare.py extract` can build
-an index from those cached receipts when a bulk request was interrupted.
+800 份文件的政府請求在上游回傳 HTTP 500 時停止；本實驗固定使用已快取、經收據驗證的 506 份文件。
+若要發表比較結果，不要默默重新下載或重新抽樣。大量請求中斷時，`prepare.py extract` 可以從這些
+快取收據建立索引。
 
-After reviewing the samples on the remote host:
+在遠端主機上審查樣本之後：
 
 ```sh
 export PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
 .venv/bin/python nlp/training/lm_chat2/test_pipeline.py
 .venv/bin/python nlp/training/lm_chat2/prepare.py extract
-# Review source_samples.json before freezing splits/counting training text.
+# 固定分割與計算訓練文字之前，先審查 source_samples.json。
 .venv/bin/python nlp/training/lm_chat2/prepare.py split
 nohup bash nlp/training/lm_chat2/run_train.sh \
   > logs/lm-chat2-train-final.log 2>&1 < /dev/null &
 ```
 
-Preparation refuses to overwrite a completed corpus or resample frozen splits.
-Training refuses changed inputs/code/config in an existing work tree. Preserve
-old trees and choose a separate experiment before changing the data. The two
-model outputs are the same natural-log `unigram.tsv`, `bigram.tsv`, `backoff.tsv`
-format, with an independent 60,000,000-byte cap. Reuse `nlp/training/lm/pipeline.py`
-three-pass Viterbi hard EM, 0.1 pseudocount, MKN and count-threshold pruning.
-Each clean adjacent turn pair contributes one additional last-word/first-word
-bigram; turn-internal sentences retain BOS/EOS events. This is a supplemental
-boundary-count estimator, not a learned long-context neural model.
+前處理不會覆寫已完成的語料，也不會重新抽樣已固定的分割。訓練不接受既有工作目錄中變更過的輸入、
+程式碼或設定。變更資料前，請保留舊目錄並另開一個實驗。兩個模型的輸出格式相同，都是自然對數的
+`unigram.tsv`、`bigram.tsv`、`backoff.tsv`，各自上限為 60,000,000 位元組。重用
+`nlp/training/lm/pipeline.py` 的三輪 Viterbi hard EM、0.1 pseudocount、MKN 與計數門檻剪枝。
+每個乾淨的相鄰發言對額外貢獻一個「前一則最後一個詞／下一則第一個詞」的 bigram；發言內的句子保留
+BOS／EOS 事件。這是補充性的邊界計數估計，不是學習而得的長上下文神經模型。
 
-## Remote evaluation
+## 遠端評估
 
-Use the README setup for `nlp/remote`, at
-`~/zhuyintype/work/onnx-eval-chat2/.venv`. Its `.pth` files reuse Torch from
-`.venv-gen` and the parser/OpenCC/Aho-Corasick packages from `.venv`, read-only.
-Install only the runner's pinned requirements into that isolated environment.
-The shared runner adds `chat2` for target-only TSV evaluation and `LOCAL_RESULTS`
-to keep collected logs inside this experiment. `EXTRA_SYNC` handles new files.
+依 README 的設定方式建立 `nlp/remote`，位置為 `~/zhuyintype/work/onnx-eval-chat2/.venv`。其 `.pth`
+檔以唯讀方式重用 `.venv-gen` 的 Torch，以及 `.venv` 的 parser／OpenCC／Aho-Corasick 套件。
+在這個隔離環境中只安裝 runner 固定版本的需求套件。共用 runner 新增了 `chat2`（只對目標做 TSV 評估）
+與 `LOCAL_RESULTS`（讓收集到的記錄留在本實驗內）。`EXTRA_SYNC` 處理新檔案。
 
-`ENGINE_SNAPSHOT=data/build/lm_chat2/engine` freezes the existing engine and
-conversion evaluator; their SHA256 inventory is `engine-manifest.json`.
-Identical existing remote checkpoint copies can seed the isolated directory
-after comparing hashes, avoiding a second network transfer.
+`ENGINE_SNAPSHOT=data/build/lm_chat2/engine` 固定既有的引擎與轉換評估工具；其 SHA256 清單為
+`engine-manifest.json`。比對雜湊後，可以用遠端既有、完全相同的檢查點副本初始化隔離目錄，
+省去第二次網路傳輸。
 
-Copy these completed directories/files to the same relative paths inside the
-isolated workspace: model TSVs, `no_generated/` TSVs, both dialogue files,
-`inputs/` (including the old chat tokenizer), `nlp/training/lm/pipeline.py`, and
-`nlp/training/lm_chat/train.py`. For Mac-driven sync, list them in `EXTRA_SYNC`:
+將下列已完成的目錄與檔案複製到隔離工作區中相同的相對路徑：模型 TSV、`no_generated/` TSV、兩個對話檔、
+`inputs/`（包括舊的聊天斷詞器）、`nlp/training/lm/pipeline.py` 與 `nlp/training/lm_chat/train.py`。
+由 Mac 同步時，將它們列在 `EXTRA_SYNC`：
 
 ```sh
 REMOTE_DIR=zhuyintype/work/onnx-eval-chat2 JOBS=60 BACKEND=cpu \
@@ -115,40 +94,27 @@ REMOTE_DIR=zhuyintype/work/onnx-eval-chat2 JOBS=60 BACKEND=cpu \
     nlp/remote/run.sh chat2 --phase conversion -n 400
 ```
 
-This invokes the preserved original launcher with its original script location
-as `$0`, retaining the frozen snapshot's root layout despite the concurrent live
-runner migration. Use only when current input files match the recorded hashes;
-otherwise use a new experiment rather than reusing the seven cached rows.
+這會以原本的腳本位置作為 `$0` 呼叫保留下來的原始啟動腳本，因此即使線上 runner 同時遷移，仍維持固定快照
+的根目錄版面。只在目前的輸入檔與記錄的雜湊一致時使用；否則請另開新實驗，不要重用已快取的七列。
 
-The runner launches the evaluator with `nohup` and records its PID. Evaluation
-uses ONNX CPU on the remote GPU host and refuses execution on macOS. The optional
-`BACKEND=cuda` uses the runner's private 2 GiB batching server; it was slower under
-  this run's shared load. The partial comparison uses CPU. The evaluator is configured for
-the exact requested v2b count 16 / v3 weight 0.5 configuration with both chat
-LMs at priors 0.3/0.5/0.7, 60 workers, 400 runs/set, seed 7. Standard sets use
-the existing evaluator's selection rules; dialogue targets alone supply runs,
-with preceding turn plus earlier target text as context (last 32 characters,
-matching `conversion_eval.py`). Ordered keys, targets, outputs and variant-equal
-accuracy are saved per row in `conversion/`. No test split is evaluated.
+runner 以 `nohup` 啟動評估工具並記錄其 PID。評估在遠端 GPU 主機上使用 ONNX CPU，並拒絕在 macOS 上執行。
+選用的 `BACKEND=cuda` 使用 runner 私有的 2 GiB 批次伺服器；在本次執行的共用負載下它比較慢。部分比較使用
+CPU。評估工具設定為所要求的 v2b count 16／v3 weight 0.5 組態，兩個聊天 LM 的 prior 分別為 0.3／0.5／0.7，
+60 個 worker，每個集合 400 次，seed 7。標準集合使用既有評估工具的選取規則；對話集只以目標發言產生測試
+片段，以前一則發言加上較早的目標文字作為上下文（最後 32 個字元，與 `conversion_eval.py` 一致）。
+有序的按鍵、目標、輸出與寫法視為相同的準確率逐列存於 `conversion/`。沒有評估任何 test 分割。
 
-Perplexity uses **one frozen old-chat final-E tokenizer** for all four models,
-including the ablation, on all dev lines. Include EOS, exclude BOS and context
-from the denominator. Novel target/context tokens map to each model's `<unk>`;
-unknown counts are reported. Dialogue scores predict only the target, seeded
-by the previous final word when it ends in Han, otherwise BOS. These are not
-the new model's independently retokenized training perplexities. Counts and
-per-line log likelihoods allow reconstruction.
+perplexity 對四個模型（包括消融模型）都使用**同一個固定的舊聊天模型最終 E-step 斷詞器**，在所有 dev 行上
+計算。分母包括 EOS，不含 BOS 與上下文。新出現的目標與上下文 token 對應到各模型的 `<unk>`；未知詞數量
+另行回報。對話分數只預測目標，若前一則的最後一個詞以漢字結尾，就以它作為起始上下文，否則用 BOS。
+這些不是新模型以自己的斷詞器重新斷詞後的訓練 perplexity。計數與逐行對數概似可用於重建結果。
 
-## Generator boundary
+## 生成器的使用範圍
 
-`serve.sh` uses private port 8112 and requires >=40,500 MiB GPU memory free;
-inspect **host RAM as well** before starting it. Never restart an existing
-server or stop another job. The stopped server PIDs and its logs are retained.
-`generate.py` sends bounded requests and stops after three request errors.
-`clean.py` checks 4–12 turns, finishes, Taiwan vocabulary and length, then uses
-exact/template deduplication, 64-permutation MinHash + exact 5-gram Jaccard >=.8,
-and v3's first-six/last-four family cap 100. Rejected turns break adjacency.
-MinHash retrieval is probabilistic. These filters cannot certify semantics or
-zero typos: **both actual pilots failed human sample review**. Nonempty generated
-training text additionally needs `generation-review.json` with a reviewed
-`approved_sha256`; no such approval was granted in this experiment.
+`serve.sh` 使用私有連接埠 8112，並要求至少 40,500 MiB 的 GPU 記憶體空閒；啟動前**也要檢查主機 RAM**。
+絕不重新啟動既有的伺服器，也不停止其他工作。已停止的伺服器 PID 與其記錄都保留。
+`generate.py` 送出有上限的請求，並在三次請求錯誤後停止。
+`clean.py` 檢查 4–12 則發言、是否完整結束、台灣用詞與長度，接著進行完全相同與模板去重、64-permutation
+MinHash 加上完全 5-gram Jaccard >=.8，以及 v3 的前六字／後四字家族上限 100。被拒絕的發言會切斷相鄰關係。
+MinHash 檢索是機率性的。這些過濾無法保證語意正確或完全沒有錯字：**兩次實際試跑都沒有通過人工樣本審查**。
+非空的生成訓練文字另外需要帶有已審查 `approved_sha256` 的 `generation-review.json`；本實驗沒有核准任何生成文字。

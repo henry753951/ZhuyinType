@@ -23,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "data" / "build"
 MANIFEST = Path(__file__).with_name("assets.json")
 REPOSITORY = "henry753951/ZhuyinType"
+DATA_NOTES = ("建置 ZhuyinType 所需的詞庫、語言模型、神經模型與評測集。使用的版本記錄在 nlp/data/assets.json。"
+              "授權見 nlp/data/SOURCES.md 與各壓縮檔內的 NOTICE 檔。")
 
 # Paths relative to data/build.  "app" components are what the macOS app bundles; the rest serve evaluation.
 COMPONENTS = {
@@ -94,10 +96,7 @@ def publish(release):
              if c["release"] == release and (ROOT / "dist" / "assets" / c["file"]).exists()]
     if subprocess.run(["gh", "release", "view", release, "-R", REPOSITORY], capture_output=True).returncode:
         subprocess.run(["gh", "release", "create", release, "-R", REPOSITORY, "--latest=false", "--title",
-                        f"Data and models {release}", "--notes",
-                        "Lexicon, language models, neural models and evaluation sets for ZhuyinType builds. "
-                        "Pinned by nlp/data/assets.json; licenses: see nlp/data/SOURCES.md and the NOTICE files "
-                        "inside each archive."], check=True)
+                        f"資料與模型 {release}", "--notes", DATA_NOTES], check=True)
     subprocess.run(["gh", "release", "upload", release, "-R", REPOSITORY, "--clobber", *map(str, files)], check=True)
 
 

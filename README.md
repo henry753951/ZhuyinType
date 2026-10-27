@@ -2,13 +2,14 @@
 
 開源、在本機運作的 macOS 注音輸入法。
 
-- 整句連續輸入，依前後文選字；聊天和專業用語各有語言模型，依游標前的文字調整比重。
-- 按到相鄰鍵、多按、漏按、兩鍵順序打反、一聲不按空白，都能找到想打的字；打對的鍵優先。
-- 候選字清單只列照按鍵打出的字詞，⇧↑ 列出修正，⇧↓ 只列單字。
-- 加入自訂詞，記住你選過的字詞與常按錯的鍵。
-- 快捷鍵可以重新指定，也能還原預設值。
+- 整句連續輸入，依前後文選字。
+- 依游標前的文字，自動調整日常口語與正式用語的比重。
+- 按到相鄰鍵、多按、漏按、兩鍵順序打反、一聲沒按空白時，仍能選出想打的字。
+- 記住你選過的字詞、自訂詞，以及你常按錯的鍵。
+- 有新版本時自動更新。
+- 所有輸入都在本機處理。
 
-目前為 0.3.0 開發版本，需要 macOS 14 或更新版本。所有輸入都在本機處理。
+目前版本為 0.4.0，需要 macOS 14 或更新版本。各版本的變更見 [發布說明](docs/releases/)。
 
 ## 安裝
 
@@ -92,9 +93,3 @@ make pkg           # dist/ZhuyinType-<版本>.pkg
 程式碼採 [GNU AGPL 3.0 授權](LICENSE)（`AGPL-3.0-only`）；產生的詞庫採 CC BY-SA 4.0。
 詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、立法院公報、維基百科討論頁、Common Voice 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](nlp/data/SOURCES.md) 及 [授權文字](clients/macos/Resources/Licenses)。
 發布修改過的詞庫或模型時，請保留來源、修改說明與各自的授權。
-
-## English
-
-ZhuyinType is an open-source macOS Zhuyin input method. It converts whole sentences using the text before the cursor, tolerates typing slips (neighbouring keys, extra or missing keys, swapped keys, first tone without Space), and remembers your choices. Everything runs locally.
-Version 0.3.0 is a development build for macOS 14 or later. Install the `.pkg`, then add **ZhuyinType 注音** in System Settings → Keyboard → Input Sources → Traditional Chinese.
-Build with `make app` (requires Xcode), install for your account with `make install`, and run core checks with `make checks`. Code is AGPL-3.0-only; the lexicon is CC BY-SA 4.0; model data sources are listed in `nlp/data/SOURCES.md`.

@@ -1,3 +1,3 @@
 # CLAUDE.md
 
-See [AGENTS.md](AGENTS.md): layout, commands and rules for working on this repository.
+請見 [AGENTS.md](AGENTS.md)：目錄、指令與參與開發的規則。

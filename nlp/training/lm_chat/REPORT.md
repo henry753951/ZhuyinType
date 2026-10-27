@@ -1,68 +1,68 @@
-# Chat word LM execution report
+# 聊天詞 LM 執行報告
 
-**Complete and validated; dev results do not support assuming that a chat-default mix improves real-speech prediction.**
+**已完成並通過驗證；dev 結果不支持「以聊天為預設的混合能改善真實語音預測」這個假設。**
 
-## Scope and reproduction
+## 範圍與重現
 
-- Writes only `nlp/training/lm_chat/` and `data/build/lm_chat/`, plus the explicitly requested remote `logs/lm-chat-*.log`. No Swift/docs/existing training edits, dependency changes, Git commits, stash, reset or checkout.
-- The strict write boundary conflicts with the requested sibling corpus paths. Both holdouts are delivered as `data/build/lm_chat/{test,dev}_chat_tt.txt`; the integrating engineer must promote them if the corpus paths are required.
-- Read all five requested files first. Reuse `pipeline.py` Viterbi, three segmentation passes, count merging and MKN directly. `train2.py` delegates estimation to KenLM; no new estimator or dependency is introduced.
-- Remote: `$ZHUYIN_REMOTE_HOST`, `~/zhuyintype`; existing uv-managed Python 3.12.15, NumPy 2.5.4, OpenCC 1.4.2, mwparserfromhell 0.7.2, pyahocorasick 2.3.1. 48 CPU workers; no GPU.
-- Run: `nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -u nlp/training/lm_chat/train.py --workers 48 > logs/lm-chat-train-20261027.log 2>&1 < /dev/null &`. See README.md for tests/input layout.
-- Finished 2026-10-26T21:47:46.575354+00:00; 94.30 seconds. Remote checkpoints and frozen inputs remain under `data/build/lm_chat/`; local `training.log` preserves the nohup log. Code/input hashes are in stats.json. Remote shared pipeline/train2 hashes matched the Mac before execution.
-- Snapshot current Mac lexicon (SHA256 `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60`) and baseline TSVs into the allowed remote input tree. All 11 copied inputs matched Mac hashes; all 11 original Mac inputs still matched after completion. Existing untracked `nlp/training/v3/` was left alone.
+- 只寫入 `nlp/training/lm_chat/` 與 `data/build/lm_chat/`，以及明確要求的遠端 `logs/lm-chat-*.log`。沒有修改 Swift、文件或既有的訓練程式，沒有變更相依套件，也沒有 Git commit、stash、reset 或 checkout。
+- 嚴格的寫入範圍與要求的同層語料路徑互相衝突。兩個 holdout 交付為 `data/build/lm_chat/{test,dev}_chat_tt.txt`；若需要放在語料路徑，負責整合的工程師必須自行搬移。
+- 先讀過要求的全部五個檔案。直接重用 `pipeline.py` 的 Viterbi、三輪斷詞、計數合併與 MKN。`train2.py` 把估計交給 KenLM；沒有引入新的估計器或相依套件。
+- 遠端：`$ZHUYIN_REMOTE_HOST`，`~/zhuyintype`；既有的 uv 管理 Python 3.12.15、NumPy 2.5.4、OpenCC 1.4.2、mwparserfromhell 0.7.2、pyahocorasick 2.3.1。48 個 CPU worker；未使用 GPU。
+- 執行：`nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -u nlp/training/lm_chat/train.py --workers 48 > logs/lm-chat-train-20261027.log 2>&1 < /dev/null &`。測試與輸入配置見 README.md。
+- 完成於 2026-10-26T21:47:46.575354+00:00；耗時 94.30 秒。遠端的檢查點與固定輸入保留在 `data/build/lm_chat/`；本機的 `training.log` 保存 nohup 記錄。程式碼與輸入雜湊在 stats.json 中。執行前，遠端共用的 pipeline／train2 雜湊與 Mac 一致。
+- 將目前 Mac 上的詞庫（SHA256 `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60`）與基準 TSV 快照到允許寫入的遠端輸入目錄。複製的 11 個輸入全部與 Mac 雜湊一致；完成後，Mac 上 11 個原始輸入仍全部一致。既有未追蹤的 `nlp/training/v3/` 未被更動。
 
-## Corpus and holdouts
+## 語料與 holdout
 
-| Item | Count |
+| 項目 | 數量 |
 |---|---:|
-| Taiwan Tongues source train/test rows | 118,695 / 1,317 |
-| Accepted unique zh-TW transcripts, union | 17,137 |
-| Already in train_commonvoice.txt (exact) | 7,677 |
-| New test / dev holdouts | 1,500 / 1,500 |
-| v3 input / retained | 5,908,512 / 5,906,465 |
-| v3 holdout-overlap removals | 2,047 |
-| Additional TT training / duplicates / heldout exclusions | 2,162 / 7,589 / 7,386 |
-| Final unique training sentences / characters | 5,908,627 / 105,034,180 |
-| Final training word tokens | 74,800,171 |
+| Taiwan Tongues 來源 train／test 列數 | 118,695 / 1,317 |
+| 接受的不重複 zh-TW 轉寫，聯集 | 17,137 |
+| 已存在於 train_commonvoice.txt（完全相同） | 7,677 |
+| 新的 test／dev holdout | 1,500 / 1,500 |
+| v3 輸入／保留 | 5,908,512 / 5,906,465 |
+| v3 因與 holdout 重疊而移除 | 2,047 |
+| 額外的 TT 訓練句／重複／holdout 排除 | 2,162 / 7,589 / 7,386 |
+| 最終不重複訓練句／字元 | 5,908,627 / 105,034,180 |
+| 最終訓練詞 token | 74,800,171 |
 
-- Parse the untrusted sources only as TSV; ignore audio paths and participant metadata. Keep only locale `zh-TW`, >=2 Han characters and no Latin run longer than 3. NFC + whitespace normalization, exact deduplication; no Traditional conversion or additional domain filtering.
-- Select before training with seed 20261027. Exclude train_commonvoice equality and old dev/test equality/8-grams; new holdouts also share no 8-grams with each other or internally. Selection provenance and hashes: splits.json. These are read-speech transcripts, not a validated spontaneous-chat benchmark.
-- Filter the union corpus against equality and every contiguous 8-character substring from all four old and both new holdouts. Remove the whole matching sentence, then deduplicate across sources. Full independent post-export scan: 5,908,627 lines, zero duplicates, zero equality or 8-gram violations. New test is never scored or used for tuning.
+- 不受信任的來源只以 TSV 解析；忽略音訊路徑與參與者中繼資料。只保留 locale 為 `zh-TW`、至少 2 個漢字，且沒有超過 3 個連續拉丁字母的句子。做 NFC 與空白正規化、完全去重；不做繁體轉換，也不加其他領域過濾。
+- 在訓練前以 seed 20261027 選取。排除與 train_commonvoice 完全相同的句子，以及與舊 dev／test 完全相同或共有 8-gram 的句子；新的 holdout 彼此之間及各自內部也不共有 8-gram。選取來源與雜湊見 splits.json。這些是朗讀語音的轉寫，不是經過驗證的自然聊天基準。
+- 以四個舊 holdout 與兩個新 holdout 的完全相同句子與每個連續 8 字元子字串過濾聯集語料。移除整個符合的句子，再跨來源去重。匯出後的完整獨立掃描：5,908,627 行，零重複，零完全相同或 8-gram 違規。新的 test 從未被計分，也未用於調參。
 
-## Model and validation
+## 模型與驗證
 
-- Natural-log unigram.tsv / bigram.tsv / backoff.tsv: **28,219,837 bytes (28.22 MB)**. All root TSVs, including line_scores.tsv: 29,004,622 bytes; below 60 MB.
-- 124,573 unigram targets, 1,536,963 observed pair types, 864,293 stored pairs, 24,013 stored contexts. Global count threshold 2; no dev-selected hyperparameters.
-- Identical vocabulary/fallback handling, 0.1 hard-EM pseudocount, KN continuation floors, Chen–Goodman discounts and normalized post-pruning backoffs as the Wikipedia TSV pipeline. BOS context-only, EOS predicted, <unk> retained; no corpus repetition or spelling remapping.
-- Discounts D1/D2/D3+: 0.612266260, 1.029344986, 1.437795207. Serialized unigram error 4.55e-14; maximum conditional normalization error across all contexts 4.89e-13; full-vocabulary enumeration error 1.15e-13.
-- Three regression checks pass (TSV safety/filtering/deduplication; deterministic nonoverlapping holdouts; serialized pruned MKN and unknown lookup). Full training leakage audit passes. On Mac, all 15 original exported-file hashes match and all six perplexities reconstruct from line_scores.tsv within 1e-12 relative tolerance.
+- 自然對數的 unigram.tsv／bigram.tsv／backoff.tsv：**28,219,837 位元組（28.22 MB）**。根目錄所有 TSV，包括 line_scores.tsv：29,004,622 位元組；低於 60 MB。
+- 124,573 個 unigram 目標詞、1,536,963 個觀察到的詞對類型、864,293 個儲存的詞對、24,013 個儲存的上下文。全域計數門檻為 2；沒有以 dev 選擇的超參數。
+- 詞彙與 fallback 處理、0.1 的 hard-EM pseudocount、KN continuation 下限、Chen–Goodman 折扣，以及剪枝後正規化的 backoff，都與維基百科 TSV 流程相同。BOS 只作為上下文，EOS 作為預測目標，保留 <unk>；沒有語料重複，也沒有拼寫重新對應。
+- 折扣 D1／D2／D3+：0.612266260、1.029344986、1.437795207。序列化後的 unigram 誤差 4.55e-14；所有上下文的條件正規化最大誤差 4.89e-13；完整詞彙列舉誤差 1.15e-13。
+- 三項回歸檢查通過（TSV 安全性、過濾與去重；確定性且互不重疊的 holdout；序列化後剪枝的 MKN 與未知詞查詢）。完整的訓練洩漏稽核通過。在 Mac 上，15 個原始匯出檔案的雜湊全部一致，六個 perplexity 都能從 line_scores.tsv 以 1e-12 的相對容差重建。
 
-## Dev perplexity and domain scores
+## Dev perplexity 與領域分數
 
-Both models score **identical frozen final chat E-step word tokens**. Include EOS, exclude BOS; natural logs. These numbers are tokenizer-dependent and are not directly comparable to old reports using a different tokenizer. Unknown targets and contexts map to <unk>; known absent-context backoff is zero.
+兩個模型都在**完全相同的固定最終聊天 E-step 詞 token** 上計分。包括 EOS、不含 BOS；自然對數。這些數字取決於斷詞器，與使用不同斷詞器的舊報告不能直接比較。未知的目標詞與上下文對應到 <unk>；已知詞的上下文不存在時，backoff 為零。
 
-| Dev set | Lines | Word predictions + EOS | Wikipedia PPL | Chat PPL | Chat / wiki |
+| Dev 集 | 行數 | 詞預測數 + EOS | 維基百科 PPL | 聊天 PPL | 聊天／維基 |
 |---|---:|---:|---:|---:|---:|
 | dev_wikipedia | 2,000 | 52,831 | 455.540 | 29,584.005 | 64.94x |
 | dev_colloquial | 2,000 | 12,113 | 1,349.236 | 4,863.629 | 3.60x |
 | dev_chat_tt | 1,500 | 8,894 | 1,242.673 | 3,084.437 | 2.48x |
 
-Per-line delta = logP(chat) − logP(wikipedia), nats. Full raw values and sentence text are in line_scores.tsv; all quantiles, standard deviations and per-prediction distributions are in stats.json.
+逐行 delta = logP(chat) − logP(wikipedia)，單位為 nats。完整的原始值與句子文字在 line_scores.tsv；所有分位數、標準差與逐預測分布在 stats.json。
 
-| Dev set | Mean | p05 | p25 | Median | p75 | p95 | Delta > 0 |
+| Dev 集 | 平均 | p05 | p25 | 中位數 | p75 | p95 | Delta > 0 |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | dev_wikipedia | -110.245 | -262.045 | -144.820 | -92.559 | -53.375 | -22.334 | 0.10% |
 | dev_colloquial | -7.766 | -28.090 | -15.463 | -7.819 | -0.855 | 12.245 | 23.15% |
 | dev_chat_tt | -5.390 | -22.676 | -12.950 | -5.891 | 1.906 | 12.609 | 29.73% |
 
-Chat is worse on all three heldout sets; the requested synthetic-heavy corpus does not establish a better real-speech LM. The dev delta distributions still separate encyclopedic from speech-like text, but raw zero-threshold/equal-prior classification favors chat on only 29.73% of new speech dev lines. Calibrate the domain prior/score scale before using these values as a posterior. No mixture weight or engine default was changed. Corpus-domain mismatch is a plausible explanation, not an established causal diagnosis.
+聊天模型在三個 holdout 集上都較差；所要求、以合成資料為主的語料，不足以得到在真實語音上更好的 LM。dev delta 的分布仍能區分百科文字與類似口語的文字，但以零為門檻、先驗相等的原始分類，只在 29.73% 的新語音 dev 句上偏向聊天模型。把這些值當成後驗機率之前，需要先校準領域先驗與分數尺度。沒有變更任何混合權重或引擎預設值。語料領域不符是一個合理的解釋，但不是已確立的因果診斷。
 
-## Sentence-start comparisons
+## 句首比較
 
-Rank the 30 most frequent two-syllable readings by final segmented training word count, apportioned among polyphones by normalized seed reading mass. For each reading, maximize P(word|<s>) over exact-reading lexicon entries, without adding a reading prior. Top word happens to agree for all 30; their probabilities differ substantially. Full precision: sentence_starts.json.
+依最終斷詞後的訓練詞計數，排出最常見的 30 個雙音節讀音，破音字的計數依正規化後的種子讀音質量分配。對每個讀音，在讀音完全相符的詞庫條目中取 P(word|<s>) 最大者，不加讀音 prior。這 30 個讀音的首選詞剛好全部一致；機率則差異很大。完整精度見 sentence_starts.json。
 
-| Rank | Reading | Wikipedia top | Chat top | Wiki BOS logp | Chat BOS logp |
+| 排名 | 讀音 | 維基百科首選 | 聊天首選 | 維基 BOS logp | 聊天 BOS logp |
 |---:|---|---|---|---:|---:|
 | 1 | ㄐㄧㄣ ㄊㄧㄢ | 今天 | 今天 | -8.643 | -2.540 |
 | 2 | ㄏㄠˇ ㄒㄧㄤˋ | 好像 | 好像 | -11.805 | -6.558 |
@@ -95,19 +95,19 @@ Rank the 30 most frequent two-syllable readings by final segmented training word
 | 29 | ㄅㄨˋ ㄋㄥˊ | 不能 | 不能 | -10.268 | -11.705 |
 | 30 | ㄅㄧㄢˋ ㄉㄤ | 便當 | 便當 | -13.941 | -6.422 |
 
-The requested ㄏㄨㄛˋ ㄕˋ example is supplementary (estimated 64 training occurrences). Both models choose 或是 by BOS alone. Including EOS in a complete one-word sentence produces the motivating difference: Wikipedia chooses 獲釋, chat chooses 或是. This is a TSV probability calculation, not a Swift decoder/UI test. Exact scores: example_scores.json.
+所要求的ㄏㄨㄛˋ ㄕˋ例子是補充資料（估計在訓練中出現 64 次）。只看 BOS 時，兩個模型都選或是。把一個詞當成完整句子並計入 EOS，就會出現促成這項工作的差異：維基百科模型選獲釋，聊天模型選或是。這是 TSV 機率計算，不是 Swift 解碼器或介面測試。確切分數見 example_scores.json。
 
-| Model | Word | logP(word|BOS) | logP(EOS|word) | Sum |
+| 模型 | 詞 | logP(word|BOS) | logP(EOS|word) | 合計 |
 |---|---|---:|---:|---:|
 | wikipedia | 或是 | -10.156 | -5.866 | -16.022 |
 | wikipedia | 獲釋 | -11.334 | -0.933 | -12.267 |
 | chat | 或是 | -13.834 | -4.628 | -18.462 |
 | chat | 獲釋 | -22.781 | -4.489 | -27.270 |
 
-## Provenance and limits
+## 來源與限制
 
-- Taiwan Tongues publisher revision `ff0e8047bdce71c881c6d26eec7b2bbab6381ac1`: both pinned upstream train/test TSV hashes exactly match the supplied Mac files. source_receipts.json records URLs, sizes and hashes.
-- [Publisher dataset card](https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw/blob/ff0e8047bdce71c881c6d26eec7b2bbab6381ac1/README.md) labels the license `other`; [its LICENSE](https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw/blob/ff0e8047bdce71c881c6d26eec7b2bbab6381ac1/LICENSE) supplies TRAIL v0.1. The exact license, use restrictions and attribution are retained. Do not label all artifacts CC0 or CC BY-SA-only. Distribution compatibility was not reviewed.
-- Existing synthetic corpus: Alibaba/Qwen Qwen3-8B revision `b968826d9c46dd6066d109eabc6255188de91218`, Apache-2.0 weights, upstream license retained. Existing sentence-collector source has the project's pinned CC0 receipt; current lexicon has its original CC BY-SA/component attribution. See NOTICE.md.
-- No training job failures or retries. One prelaunch hash check detected the still-transferring baseline bigram; the completed transfer then passed all hashes before launch. Regression checks initially emitted unclosed-file warnings; file handles were corrected before training and the checks passed cleanly.
-- No Swift integration, conversion accuracy/UI check, heldout test scoring, mixture tuning, or redistribution-license compatibility determination. The new test set is held out from this chat LM; no broader claim about unrelated pretrained components is made.
+- Taiwan Tongues 發布者 revision `ff0e8047bdce71c881c6d26eec7b2bbab6381ac1`：兩個固定版本的上游 train／test TSV 雜湊與提供的 Mac 檔案完全一致。source_receipts.json 記錄 URL、大小與雜湊。
+- [發布者的資料集卡片](https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw/blob/ff0e8047bdce71c881c6d26eec7b2bbab6381ac1/README.md)將授權標為 `other`；[其 LICENSE](https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw/blob/ff0e8047bdce71c881c6d26eec7b2bbab6381ac1/LICENSE) 提供 TRAIL v0.1。確切的授權、使用限制與出處標示均予保留。不要把所有產物都標為 CC0 或只標 CC BY-SA。散布相容性未經審查。
+- 既有的合成語料：Alibaba/Qwen Qwen3-8B revision `b968826d9c46dd6066d109eabc6255188de91218`，Apache-2.0 權重，保留上游授權。既有的 sentence-collector 來源有專案固定版本的 CC0 收據；目前的詞庫保留其原本的 CC BY-SA 與各組成來源的出處標示。見 NOTICE.md。
+- 訓練工作沒有失敗或重試。啟動前的一次雜湊檢查發現基準 bigram 仍在傳輸中；傳輸完成後，所有雜湊在啟動前都通過。回歸檢查起初出現檔案未關閉的警告；訓練前已修正檔案控制代碼，檢查也乾淨通過。
+- 沒有做 Swift 整合、轉換準確率或介面檢查、holdout test 計分、混合權重調整，也沒有判定重新散布的授權相容性。新的 test 集未用於這個聊天 LM；對於無關的預訓練元件不做更廣泛的宣稱。
