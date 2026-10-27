@@ -503,7 +503,12 @@ public final class Composer {
                 candidates[word.range.lowerBound + offset][character] = 0
             }
         }
-        let lists = candidates.map { $0.sorted { $0.value > $1.value }.prefix(Self.characterCandidates).map(\.key) }
+        // Equal priors by character, so the cut at `characterCandidates` does not depend on the Dictionary's order.
+        let lists = candidates.map {
+            $0.sorted {
+                $0.value == $1.value ? String($0.key).utf8.lexicographicallyPrecedes(String($1.key).utf8) : $0.value > $1.value
+            }.prefix(Self.characterCandidates).map(\.key)
+        }
         let syllables = tokens.map { token -> CharacterModelSyllable in
             guard case .syllable(let reading, let keys, let implicit) = token else {
                 return CharacterModelSyllable(base: nil, tone: 0, costBucket: 0)

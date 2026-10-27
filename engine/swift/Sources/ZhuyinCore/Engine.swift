@@ -275,7 +275,8 @@ public final class Engine: @unchecked Sendable {
                     if !penalty.isFinite { continue }
                 }
                 var entries = lexicalEntries(source)
-                for (word, phrase) in phraseIndex[source] ?? [:] {
+                // By word: the Dictionary's order would change the entries' order from run to run.
+                for (word, phrase) in (phraseIndex[source] ?? [:]).sorted(by: { $0.key.utf8.lexicographicallyPrecedes($1.key.utf8) }) {
                     if let index = entries.firstIndex(where: { $0.word == word }) {
                         entries[index].logp = phrase.logp
                         entries[index].readingPrior = 0
@@ -302,7 +303,7 @@ public final class Engine: @unchecked Sendable {
                 }
             }
             let now = personal.clock()
-            for word in learnedWords[reading] ?? [] {
+            for word in (learnedWords[reading] ?? []).sorted(by: { $0.utf8.lexicographicallyPrecedes($1.utf8) }) {
                 guard let value = learned[PhraseKey(reading: reading, word: word)], value.isActive(at: now) else { continue }
                 let source = bestReading(word)
                 result.append(WordEntry(word: word, logp: source?.1 ?? -7, recalled: true, wordID: resolveID(word),
@@ -356,13 +357,22 @@ public final class Engine: @unchecked Sendable {
         rebuildValidCodes()
     }
 
+    /// Three steps, each overriding the codes of the one before.  Within a step, two readings with one code (never
+    /// for canonical readings) resolve to the greater in UTF-8 order, whatever order the sets are visited in.
     private func rebuildValidCodes() {
         validCodes.removeAll(keepingCapacity: true)
-        for reading in syllables.union(learnedSyllables) { validCodes[KeyChannel.code(for: reading)] = reading }
-        for base in syllableBases { validCodes[KeyChannel.code(for: base + "˙")] = base + "˙" }
-        for base in neutralBases {
-            for tone in ["", "ˊ", "ˇ", "ˋ", "˙"] { validCodes[KeyChannel.code(for: base + tone)] = base + tone }
+        func assign<S: Sequence>(_ readings: S) where S.Element == String {
+            var step: [Int: String] = [:]
+            for reading in readings {
+                let code = KeyChannel.code(for: reading)
+                if let old = step[code], !old.utf8.lexicographicallyPrecedes(reading.utf8) { continue }
+                step[code] = reading
+            }
+            validCodes.merge(step) { $1 }
         }
+        assign(syllables.union(learnedSyllables))
+        assign(syllableBases.lazy.map { $0 + "˙" })
+        assign(neutralBases.lazy.flatMap { base in ["", "ˊ", "ˇ", "ˋ", "˙"].lazy.map { base + $0 } })
     }
 
     private func validSyllable(_ reading: String) -> Bool {
@@ -487,10 +497,12 @@ public final class Engine: @unchecked Sendable {
             if let old = best[key], old.1 > value || (old.1 == value && old.0.annotation == nil) { continue }
             best[key] = (match, value)
         }
+        // A word is kept once per span and recall kind, so these keys order every match.
         return best.values.map { $0.0 }.sorted {
             if $0.range.count != $1.range.count { return $0.range.count < $1.range.count }
             if $0.entry.penalty != $1.entry.penalty { return $0.entry.penalty < $1.entry.penalty }
-            return $0.entry.word < $1.entry.word
+            if $0.entry.word != $1.entry.word { return $0.entry.word < $1.entry.word }
+            return !$0.entry.wholeOnly && $1.entry.wholeOnly
         }
     }
 

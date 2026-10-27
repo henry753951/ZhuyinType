@@ -22,26 +22,27 @@ public enum KeyDecoderMethod: String, Sendable, CaseIterable {
 /// Closing a syllable costs nothing when it is valid and the keyboard channel's cheapest correction otherwise, so
 /// the per-syllable typo correction stays where it was.
 public struct KeyDecoder {
-    struct Key: Equatable {
-        var character: Character
+    public struct Key: Equatable {
+        public var character: Character
         /// Key-down time in seconds, when known.
-        var time: TimeInterval?
+        public var time: TimeInterval?
+        public init(character: Character, time: TimeInterval?) { self.character = character; self.time = time }
     }
 
-    struct Syllable: Equatable {
+    public struct Syllable: Equatable {
         /// Zhuyin symbols in slot order plus the tone mark: the token's reading.
-        var reading: String
+        public var reading: String
         /// The keys behind it, in the order taken, ending with the tone key or Space.
-        var keys: String
-        var implicit: Bool
+        public var keys: String
+        public var implicit: Bool
     }
 
-    struct Result: Equatable {
-        var syllables: [Syllable]
+    public struct Result: Equatable {
+        public var syllables: [Syllable]
         /// The unfinished last syllable: its slots and keys.
-        var buffer: [Character?]
-        var bufferKeys: String
-        var cost: Double
+        public var buffer: [Character?]
+        public var bufferKeys: String
+        public var cost: Double
     }
 
     /// Costs on the keyboard channel's scale (KeyChannel: transposition 9, extra or missing key 12.5, neighbour 11).
@@ -69,6 +70,12 @@ public struct KeyDecoder {
     /// Cost of closing a syllable from these slots and keys: 0 when valid, a correction cost, or nil when impossible.
     let closingCost: (_ reading: String, _ keys: String) -> Double?
 
+    /// A decoder; `closingCost(reading, keys)` prices closing a syllable (0 valid, a correction, nil impossible).
+    public init(method: KeyDecoderMethod, closingCost: @escaping (_ reading: String, _ keys: String) -> Double?) {
+        self.method = method
+        self.closingCost = closingCost
+    }
+
     private struct State {
         var slots: [Character?] = [nil, nil, nil]
         var keys = ""
@@ -81,20 +88,44 @@ public struct KeyDecoder {
         }
     }
 
+    /// The best state per signature at one key position, in the order the signatures were first reached.  States of
+    /// equal cost rank in that order, so every run (and the Rust engine) decodes alike; a Dictionary's order changes
+    /// with each process's hash seed.
+    private struct Position {
+        var states: [State] = []
+        var index: [String: Int] = [:]
+
+        /// Keeps `state` unless its signature already has a state that costs no more.
+        mutating func offer(_ state: State) {
+            let signature = state.signature
+            if let i = index[signature] {
+                if states[i].cost <= state.cost { return }
+                states[i] = state
+            } else {
+                index[signature] = states.count
+                states.append(state)
+            }
+        }
+
+        /// The states by cost; equal costs in the order their signatures were first reached.
+        func ranked() -> [State] {
+            states.indices.sorted { a, b in
+                states[a].cost == states[b].cost ? a < b : states[a].cost < states[b].cost
+            }.map { states[$0] }
+        }
+    }
+
     private static let beamWidth = 24
 
-    /// The `limit` cheapest splits, cheapest first (each a different unfinished syllable or a different history).
-    func decode(_ keys: [Key], limit: Int) -> [Result] {
+    /// The `limit` cheapest splits, cheapest first (each a different unfinished syllable or a different history);
+    /// equal costs in the order the search first reached their states.
+    public func decode(_ keys: [Key], limit: Int) -> [Result] {
         // states[i]: the best states after consuming the first i typed keys.
-        var states = Array(repeating: [String: State](), count: keys.count + 1)
-        states[0][""] = State()
-        func offer(_ state: State, at index: Int) {
-            let signature = state.signature
-            if let old = states[index][signature], old.cost <= state.cost { return }
-            states[index][signature] = state
-        }
+        var states = Array(repeating: Position(), count: keys.count + 1)
+        states[0].offer(State())
+        func offer(_ state: State, at index: Int) { states[index].offer(state) }
         for index in 0..<keys.count {
-            let beam = states[index].values.sorted { $0.cost < $1.cost }.prefix(Self.beamWidth)
+            let beam = states[index].ranked().prefix(Self.beamWidth)
             for state in beam {
                 for next in take(state, keys[index], pressedWithPrevious: together(keys, index, index - 1)) {
                     offer(next, at: index + 1)
@@ -119,7 +150,7 @@ public struct KeyDecoder {
                 }
             }
         }
-        return Array(states[keys.count].values.sorted { $0.cost < $1.cost }.prefix(limit).map {
+        return Array(states[keys.count].ranked().prefix(limit).map {
             Result(syllables: $0.syllables, buffer: $0.slots, bufferKeys: $0.keys, cost: $0.cost)
         })
     }

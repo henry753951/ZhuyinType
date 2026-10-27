@@ -49,6 +49,9 @@ final class PersonalLanguageModel: @unchecked Sendable {
 
     struct Key: Hashable {
         var words: [UInt32]
+
+        /// Word by word, a shorter key first when one is a prefix of the other: the tie-break wherever order matters.
+        func precedes(_ other: Key) -> Bool { words.lexicographicallyPrecedes(other.words) }
     }
 
     struct Entry {
@@ -217,19 +220,48 @@ final class PersonalLanguageModel: @unchecked Sendable {
 
     private func trim(now: Double) {
         guard entries.count > options.capacity else { return }
-        let keep = entries.sorted { value($0.value, at: now) > value($1.value, at: now) }.prefix(options.capacity)
+        // The strongest first; equal strengths by key, so the cut does not depend on the Dictionary's order.
+        let keep = entries.map { (key: $0.key, value: $0.value, strength: value($0.value, at: now)) }.sorted {
+            $0.strength == $1.strength ? $0.key.precedes($1.key) : $0.strength > $1.strength
+        }.prefix(options.capacity)
         entries = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
         rebuildTotals()
     }
 
+    /// Each history's total is summed in ascending order of its n-grams' values, so the floating-point sum does not
+    /// depend on the Dictionary's order.
     private func rebuildTotals() {
         let now = clock()
-        totals.removeAll(keepingCapacity: true)
+        // Most histories have one n-gram: its values are kept inline, and only further ones go into arrays.
+        struct Parts {
+            var short: Double
+            var long: Double
+            var moreShort: [Double] = []
+            var moreLong: [Double] = []
+        }
+        var parts: [Key: Parts] = [:]
+        parts.reserveCapacity(entries.count)
         for (key, entry) in entries {
             let history = Key(words: Array(key.words.dropLast()))
-            var total = totals[history] ?? (DecayingCount(), DecayingCount())
-            total.short.add(entry.short.at(now, halfLife: options.shortHalfLife), at: now, halfLife: options.shortHalfLife)
-            total.long.add(entry.long.at(now, halfLife: options.longHalfLife), at: now, halfLife: options.longHalfLife)
+            let short = entry.short.at(now, halfLife: options.shortHalfLife)
+            let long = entry.long.at(now, halfLife: options.longHalfLife)
+            if parts[history] == nil {
+                parts[history] = Parts(short: short, long: long)
+            } else {
+                parts[history]!.moreShort.append(short)
+                parts[history]!.moreLong.append(long)
+            }
+        }
+        totals.removeAll(keepingCapacity: true)
+        for (history, part) in parts {
+            var total = (short: DecayingCount(), long: DecayingCount())
+            if part.moreShort.isEmpty {
+                total.short.add(part.short, at: now, halfLife: options.shortHalfLife)
+                total.long.add(part.long, at: now, halfLife: options.longHalfLife)
+            } else {
+                for value in ([part.short] + part.moreShort).sorted() { total.short.add(value, at: now, halfLife: options.shortHalfLife) }
+                for value in ([part.long] + part.moreLong).sorted() { total.long.add(value, at: now, halfLife: options.longHalfLife) }
+            }
             totals[history] = total
         }
     }
@@ -240,7 +272,9 @@ final class PersonalLanguageModel: @unchecked Sendable {
 
     func serialized() -> String {
         lock.withLock {
-            entries.values.sorted { $0.texts.lexicographicallyPrecedes($1.texts) }.map { entry in
+            entries.sorted {
+                $0.value.texts == $1.value.texts ? $0.key.precedes($1.key) : $0.value.texts.lexicographicallyPrecedes($1.value.texts)
+            }.map(\.value).map { entry in
                 [entry.texts.joined(separator: "\u{1F}"), entry.readings.joined(separator: "\u{1F}"),
                  "\(entry.short.value)", "\(entry.short.time)", "\(entry.long.value)", "\(entry.long.time)",
                  "\(entry.picks)", "\(entry.firstDay == Int.max ? -1 : entry.firstDay)", "\(entry.longDay)",

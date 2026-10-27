@@ -906,6 +906,18 @@ liveTypoOption.options.typoTolerance = .off
 _ = liveTypoOption.handle(.left)
 check(liveTypoOption.presentation.text == "八各", "changing typo option invalidates live conversion")
 
+// Key-run decoding is deterministic: equal-cost splits rank in the order the search first reached them (the Rust
+// engine decodes the same way; a Dictionary's order changed with every process's hash seed).
+let tieSyllables: Set<String> = ["ㄅㄚ", "ㄚ", "ㄅ"]
+func tieSplits() -> [String] {
+    KeyDecoder(method: .reorder) { reading, _ in tieSyllables.contains(reading) ? 0 : nil }
+        .decode("18 18 ".map { KeyDecoder.Key(character: $0, time: nil) }, limit: 6)
+        .map { $0.syllables.map { "\($0.reading)/\($0.keys)" }.joined(separator: ",") + " \(Int($0.cost))" }
+}
+check(tieSplits() == ["ㄅㄚ/18 ,ㄅㄚ/18  0", "ㄅㄚ/18 ,ㄅ/1  10", "ㄅㄚ/18 ,ㄅ/1  13", "ㄅㄚ/18 ,ㄚ/8  13",
+                      "ㄅ/1 ,ㄅㄚ/18  13", "ㄚ/8 ,ㄅㄚ/18  13"], "equal-cost splits rank in the order first reached")
+check(tieSplits() == tieSplits(), "a fresh decoder decodes alike")
+
 // Explicit correction recall beats even a much more frequent exact word, and survives disk reload.
 let recallDirectory = temp.appendingPathComponent("typo-recall")
 let recallLexicon = "ㄊㄜˇ\t甲\t0\nㄊㄜˋ\t乙\t-100\n"
