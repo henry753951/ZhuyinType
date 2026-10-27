@@ -24,7 +24,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ZHUYIN_CHECKS_TIMING: warn
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Gate
@@ -36,19 +36,19 @@ jobs:
           tools/check-public.sh
           echo "latest=$(gh release view --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
       - name: Data assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/assets
           key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
       - run: python3 nlp/data/assets.py fetch
       - name: SwiftPM build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build
           key: macos-${{ hashFiles('nlp/engine/Package.swift', 'clients/macos/Package.resolved', 'nlp/engine/Sources/**', 'clients/macos/Sources/**') }}
           restore-keys: macos-
       - name: Sparkle tools
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .tools
           key: sparkle-tools-${{ hashFiles('clients/macos/scripts/sparkle-tools.sh') }}

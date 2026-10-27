@@ -65,6 +65,18 @@ enum ControllerCoreSelfTest {
             _ = core.flagsChanged(keyCode: key, modifiers: [], physicallyDown: false, timestamp: start + 0.1)
         }
 
+        test("secure input: nothing is read, remembered or learned") {
+            let (core, _) = session()
+            core.secureInput = { true }
+            type("su3cl3", into: core)
+            try expect(core.composer.learningSuspended, "learning was not paused under secure input")
+            _ = core.keyDown(keyCode: 36, modifiers: [])
+            try expect(core.recentText.isEmpty, "secure input left text as context")
+            core.secureInput = { false }
+            type("su3", into: core)
+            try expect(!core.composer.learningSuspended, "learning stayed paused after secure input ended")
+        }
+
         test("normal typing and Enter commit") {
             let (core, client) = session()
             type("su3cl3", into: core)

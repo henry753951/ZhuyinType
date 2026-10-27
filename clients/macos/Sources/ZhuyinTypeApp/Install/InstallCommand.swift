@@ -15,8 +15,14 @@ enum InstallCommand {
             print("\(action): \(status == noErr ? "OK" : "failed (OSStatus \(status))")")
             if status != noErr { succeeded = false }
         }
-        if flags.contains("--install") || flags.contains("--register") {
+        // After the bundle has been replaced, registering or enabling again breaks the system's Caps Lock input-source
+        // switch until it is repaired by hand; an upgrade needs neither once the system lists the input mode.  So an
+        // install only registers and enables when the mode is not listed yet (a first install).
+        let alreadyListed = inputSources().contains { string($0, kTISPropertyInputSourceID) == modeID }
+        if flags.contains("--register") || (flags.contains("--install") && !alreadyListed) {
             report("Register \(Bundle.main.bundleURL.path)", TISRegisterInputSource(Bundle.main.bundleURL as CFURL))
+        } else if flags.contains("--install") {
+            print("Already registered; registration skipped.")
         }
 
         let sources = inputSources()
@@ -32,7 +38,7 @@ enum InstallCommand {
             }
             if sources.isEmpty { print("ZhuyinType is already absent from registered input sources.") }
         } else {
-            if enabling {
+            if enabling && !(flags.contains("--install") && alreadyListed) {
                 for source in parents + modes where !boolean(source, kTISPropertyInputSourceIsEnabled) {
                     if boolean(source, kTISPropertyInputSourceIsEnableCapable) {
                         report("Enable \(string(source, kTISPropertyInputSourceID) ?? bundleID)", TISEnableInputSource(source))

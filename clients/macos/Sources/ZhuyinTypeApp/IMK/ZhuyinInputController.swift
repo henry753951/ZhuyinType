@@ -60,7 +60,7 @@ final class IMKTextClient: TextClient {
                                                           actualRange: nil).standardized))
         }
         let chosen = sources.first { valid($0.1) }
-        Self.log.debug("caret \(self.bundleIdentifier, privacy: .public) cursor=\(cursorIndex) marked=\(marked.location),\(marked.length) chosen=\(chosen?.0 ?? "none", privacy: .public) \(sources.map { "\($0.0)=\(NSStringFromRect($0.1))" }.joined(separator: " "), privacy: .public)")
+        Self.log.debug("caret \(self.bundleIdentifier, privacy: .private) cursor=\(cursorIndex) marked=\(marked.location),\(marked.length) chosen=\(chosen?.0 ?? "none", privacy: .public) \(sources.map { "\($0.0)=\(NSStringFromRect($0.1))" }.joined(separator: " "), privacy: .public)")
         if let chosen {
             lastCaret = chosen.1
             return chosen.1
@@ -131,7 +131,7 @@ final class ZhuyinInputController: IMKInputController {
     /// this, typing and inline text work but the candidate window stays hidden.
     private func claimActive() {
         guard !active || Self.activeController !== self else { return }
-        EngineHost.logger.info("Claimed the candidate window for \(self.textClient?.bundleIdentifier ?? "?", privacy: .public) without activateServer")
+        EngineHost.logger.info("Claimed the candidate window for \(self.textClient?.bundleIdentifier ?? "?", privacy: .private) without activateServer")
         Self.activeController = self
         active = true
         installObservers()

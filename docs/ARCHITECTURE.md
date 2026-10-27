@@ -28,13 +28,13 @@ flowchart TD
 
 | 模組 | 位置 | 負責 |
 |---|---|---|
-| IMK 層 | `Sources/ZhuyinTypeApp/IMK/` | `ZhuyinInputController` 接 IMK 事件；`ControllerCore` 處理快捷鍵、中英切換、前文；`EngineHost` 在背景載入引擎與模型 |
-| 介面 | `Sources/ZhuyinTypeApp/UI/` | 候選字視窗（`CandidatePanel`）、設定視窗（`Settings/`） |
-| 共用設定 | `Sources/ZhuyinTypeApp/Shared/` | `Preferences`、`Shortcuts`（可重新指定的快捷鍵） |
-| 核心 | `Sources/ZhuyinCore/` | `Composer`（狀態機）、`KeyDecoder`、`KeyChannel`、`Engine`（詞庫、比對、學習）、`Conversion`（詞圖解碼）、`LanguageModel`（bigram、混合、個人模型） |
-| 神經模型 | `Sources/ZhuyinML/` | `NeuralReranker`（v2b 整句重排）、`SyllableScorer`（v3 前文編碼器＋音節對字編碼器） |
-| 命令列 | `Sources/zhuyin-cli/` | 與 app 相同的引擎；評測、參數掃描、模型一致性檢查 |
-| 檢查 | `Sources/ZhuyinCoreChecks/` | 核心行為與延遲檢查（`make checks`） |
+| IMK 層 | `clients/macos/Sources/ZhuyinTypeApp/IMK/` | `ZhuyinInputController` 接 IMK 事件；`ControllerCore` 處理快捷鍵、中英切換、前文；`EngineHost` 在背景載入引擎與模型 |
+| 介面 | `clients/macos/Sources/ZhuyinTypeApp/UI/` | 候選字視窗（`CandidatePanel`）、設定視窗（`Settings/`） |
+| 共用設定 | `clients/macos/Sources/ZhuyinTypeApp/Shared/` | `Preferences`、`Shortcuts`（可重新指定的快捷鍵） |
+| 核心 | `nlp/engine/Sources/ZhuyinCore/` | `Composer`（狀態機）、`KeyDecoder`、`KeyChannel`、`Engine`（詞庫、比對、學習）、`Conversion`（詞圖解碼）、`LanguageModel`（bigram、混合、個人模型） |
+| 神經模型 | `nlp/engine/Sources/ZhuyinML/` | `NeuralReranker`（v2b 整句重排）、`SyllableScorer`（v3 前文編碼器＋音節對字編碼器） |
+| 命令列 | `nlp/engine/Sources/zhuyin-cli/` | 與 app 相同的引擎；評測、參數掃描、模型一致性檢查 |
+| 檢查 | `nlp/engine/Sources/ZhuyinCoreChecks/` | 核心行為與延遲檢查（`make checks`） |
 
 ## 3. 逐鍵流程
 
@@ -137,7 +137,7 @@ flowchart LR
     B --> CLI["zhuyin-cli<br/>與 app 同一份引擎"]
     CLI --> E["training/eval/*<br/>開發集調參數"]
     E --> X["測試集驗收一次"]
-    X --> APP["scripts/build-app.sh → pkg"]
+    X --> APP["clients/macos/scripts/release.sh<br/>pkg、Sparkle"]
 ```
 
 評測方式與指令見 [EVALUATION.md](EVALUATION.md)。

@@ -12,7 +12,7 @@
 
 ## 安裝
 
-下載 `ZhuyinType-0.3.0.pkg`，開啟後依指示安裝。
+從 [GitHub Releases](https://github.com/henry753951/ZhuyinType/releases/latest) 下載 `ZhuyinType-<版本>.pkg`，開啟後依指示安裝。之後的版本會自動更新（設定 → 關於 → 更新），更新檔都經過簽章驗證，在組字結束後換上。
 套件安裝到 `/Library/Input Methods/ZhuyinType.app`，需要管理員權限。
 目前套件使用建置機的架構；app 採 ad-hoc 簽章，pkg 的簽署與公證尚待完成。
 若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」查看開啟選項。
@@ -46,28 +46,31 @@
 
 ## 從原始碼建置
 
-需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 make。
-`xcode-select -p` 指向 Command Line Tools 時，`make app` 會自動改用 `/Applications/Xcode.app`。
-首次產生詞庫時需要網路與 uv；腳本會準備專案的 `.venv` 與 wordfreq。
+需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 make。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。
 
 ```sh
-make lexicon       # 沿用現有詞庫，或下載來源並產生詞庫
-make app           # release app：dist/ZhuyinType.app
-make debug-app     # debug app
-make install       # 安裝到目前帳號
-make checks        # 核心檢查
+python3 nlp/data/assets.py fetch   # 下載詞庫、語言模型與神經模型（依 nlp/data/assets.json 驗證雜湊）
+make app           # dist/ZhuyinType.app
+make install       # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
+make checks        # 引擎檢查
 make pkg           # dist/ZhuyinType-<版本>.pkg
 ```
 
-平行建置可指定獨立目錄，例如 `SWIFT_SCRATCH_PATH=.build-pkg make app`。
+| 目錄 | 內容 |
+|---|---|
+| `nlp/engine/` | 跨平台的引擎（Swift package）：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
+| `nlp/data/` | 詞庫工具、資料編譯、資料與模型的版本清單 |
+| `training/` | 每個模型與資料的訓練流程，`training/eval/` 是評測工具與每版評測 |
+| `clients/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
+| `docs/` | 設計、架構、模型、評測、規劃、研究、每版成績、發布說明 |
 
-語言模型與神經模型放在 `data/build/`（不在 git 裡）。沒有這些檔案時，app 仍可建置，改用只有詞頻的轉換；產生方式見 [training/README.md](training/README.md)。
+給 AI 代理與貢獻者的說明在 [AGENTS.md](AGENTS.md)。
 
 ## 移除
 
 先切換至英文輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除安裝的 app。
-原始碼提供 `scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定。
-執行 `scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
+原始碼提供 `clients/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定。
+執行 `clients/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
 
 ## 文件
 
@@ -79,17 +82,19 @@ make pkg           # dist/ZhuyinType-<版本>.pkg
 | [v3 模型設計](docs/MODEL_V3.md) | 按鍵層級解碼器與音節對字模型的設計與實驗紀錄 |
 | [評測](docs/EVALUATION.md) | 資料集、評測工具與指令 |
 | [規劃](docs/ROADMAP.md) | 開發階段、下一步與待決事項 |
+| [研究](docs/research/) | 研究紀錄、與其他注音輸入法的對打、超越計畫 |
+| [每版成績](docs/benchmarks/) | 每個版本在同一套評測（ZhuyinBench）上的結果 |
 | [訓練](training/README.md) | 各模型的訓練流程與產物 |
 | [文案準則](docs/WRITING.md) | 介面與文件用語 |
 
 ## 資料與授權
 
 程式碼採 [GNU AGPL 3.0 授權](LICENSE)（`AGPL-3.0-only`）；產生的詞庫採 CC BY-SA 4.0。
-詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、Common Voice、Taiwan Tongues 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](data/SOURCES.md) 及 [授權文字](Resources/Licenses)。
+詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、Common Voice、Taiwan Tongues 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](nlp/data/SOURCES.md) 及 [授權文字](clients/macos/Resources/Licenses)。
 發布修改過的詞庫或模型時，請保留來源、修改說明與各自的授權。
 
 ## English
 
 ZhuyinType is an open-source macOS Zhuyin input method. It converts whole sentences using the text before the cursor, tolerates typing slips (neighbouring keys, extra or missing keys, swapped keys, first tone without Space), and remembers your choices. Everything runs locally.
 Version 0.3.0 is a development build for macOS 14 or later. Install the `.pkg`, then add **ZhuyinType 注音** in System Settings → Keyboard → Input Sources → Traditional Chinese.
-Build with `make app` (requires Xcode), install for your account with `make install`, and run core checks with `make checks`. Code is AGPL-3.0-only; the lexicon is CC BY-SA 4.0; model data sources are listed in `data/SOURCES.md`.
+Build with `make app` (requires Xcode), install for your account with `make install`, and run core checks with `make checks`. Code is AGPL-3.0-only; the lexicon is CC BY-SA 4.0; model data sources are listed in `nlp/data/SOURCES.md`.

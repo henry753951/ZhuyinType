@@ -34,7 +34,7 @@ flowchart LR
 - 訓練前先固定評測集；所有訓練語料排除和評測集有連續 8 字相同的句子（`reranker/prepare.py` 的做法）。
 - 每條流程把來源、版本、雜湊與授權記在產物旁（`NOTICE.md`、`provenance.json`、`source_receipts.json` 等），再散布模型時一起附上。
 - 評測在 Mac 上用固定的 `zhuyin-cli`，先用開發集選參數，測試集只在決定採用時跑一次。
-- 模型進 app：放到 `data/build/<名稱>/`，`scripts/build-app.sh` 會複製到 `Contents/Resources/`；預設權重寫在 `EngineHost`、`ControllerCore` 或模型的 `config.json`。
+- 模型進 app：放到 `data/build/<名稱>/`，`clients/macos/scripts/build-app.sh` 會複製到 `Contents/Resources/`；預設權重寫在 `EngineHost`、`ControllerCore` 或模型的 `config.json`。
 
 ## 遠端主機
 

@@ -65,6 +65,9 @@ public final class Composer {
         didSet { conversionDirty = true; refresh() }
     }
     public var characterWeight = 1.0
+    /// Learning paused for now (secure input: a password field may be focused); the setting itself is unchanged.
+    public var learningSuspended = false
+    private var learns: Bool { options.learningEnabled && !learningSuspended }
     /// Also order the candidate list by the character model's scores at each position.
     public var characterScoresInList = true
     /// The character model's scores for the current tokens, recomputed when they change.
@@ -283,7 +286,7 @@ public final class Composer {
             fixed.removeAll { $0.range.overlaps(choice.range) }
             tokens[choice.range.lowerBound] = .literal(choice.text)
         } else {
-            if options.learningEnabled, let annotation = choice.annotation {
+            if learns, let annotation = choice.annotation {
                 // A picked correction: the keys typed against the reading meant teach this user's slips.
                 let meant = annotation.split(separator: " ").map { part in
                     part.first == "˙" ? String(part.dropFirst()) + "˙" : String(part)
@@ -294,7 +297,7 @@ public final class Composer {
                 }
                 if typed.count == meant.count { engine.recordTypos(Array(zip(typed, meant))) }
             }
-            if options.learningEnabled {
+            if learns {
                 // What was shown there loses some of the user's evidence in its context.
                 for word in conversion where word.range.overlaps(choice.range) && word.text != choice.text && !word.reading.isEmpty {
                     engine.weaken(text: word.text, reading: word.reading, wordID: word.wordID, history: word.history)
@@ -322,7 +325,7 @@ public final class Composer {
         }
         refresh()
         let text = presentation.text
-        if options.learningEnabled, !text.isEmpty {
+        if learns, !text.isEmpty {
             var committed = conversion.map { word in
                 CommittedWord(range: word.range, text: word.text, reading: word.reading, wordID: word.wordID,
                               picked: fixed.contains { $0.range == word.range && $0.text == word.text })

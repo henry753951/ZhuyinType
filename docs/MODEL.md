@@ -23,14 +23,14 @@
 
 ## 2. 詞庫與讀音
 
-- **來源**：CC-CEDICT（詞彙、正體字形、讀音，有標註時優先採用台灣讀音）、Unicode Unihan（Big5 字元與讀音）、wordfreq（詞頻）。產生方式見 `data/tools/build_lexicon.py` 與 [data/SOURCES.md](../data/SOURCES.md)。
+- **來源**：CC-CEDICT（詞彙、正體字形、讀音，有標註時優先採用台灣讀音）、Unicode Unihan（Big5 字元與讀音）、wordfreq（詞頻）。產生方式見 `nlp/data/tools/build_lexicon.py` 與 [data/SOURCES.md](../nlp/data/SOURCES.md)。
 - **分數**：每行是 log P(詞, 讀音)。引擎讀詞庫時拆成詞的機率（取最常見讀音的分數）和讀音的相對機率：分數 = log P(詞 | 前文) + log P(讀音 | 詞)。
 - **讀音機率**：多音字依 Unihan kHanyuPinlu 的讀音次數分配字頻（加一平滑），所以「說」打 ㄕㄨㄛ 時分數不變，打 ㄕㄨㄟˋ 時低 9 分，「睡」就排在前面。CC-CEDICT 標成整筆台灣讀音的（「微」/Taiwan pr. [wei2]/）承接大陸讀音的次數；只寫在某個義項裡的（「和」當連詞時的 ㄏㄢˋ、「行」的品行義）不改變主要讀音，但至少分到該字頻率的 25%，因為 kHanyuPinlu 統計的是大陸用法，台灣讀音的次數在裡面是零。同一個詞同時以完全符合與聲調容錯對上時，取扣分後較高的那個，所以「吧」打成 ㄅㄚ 時用 ㄅㄚ˙ 的分數。開發集（加選字模型）：口語 79.0% → 80.8%、維基 77.2% → 78.8%；測試集：維基 77.8% → 80.2%、口語 78.8% → 80.0%、日常短句 98.5% → 100%。
 - **一、不變調**：很多人照實際發音打，所以另外收變調後的讀音：詞裡的「一」在四聲與輕聲前收 ㄧˊ、其他聲調前收 ㄧˋ（一定 ㄧˊ ㄉㄧㄥˋ、一直 ㄧˋ ㄓˊ），「不」在四聲前收 ㄅㄨˊ（不要 ㄅㄨˊ ㄧㄠˋ）；單獨的「一」「不」打變調時扣 2.5 分。
 
 ## 3. 按鍵層級解碼器（KeyDecoder）
 
-`Sources/ZhuyinCore/KeyDecoder.swift`。組字器保留聲母、介音、韻母三格，所以同一個音節裡的鍵序本來就不重要；解碼器決定音節在哪裡結束，並修復跨音節的順序錯亂。
+`nlp/engine/Sources/ZhuyinCore/KeyDecoder.swift`。組字器保留聲母、介音、韻母三格，所以同一個音節裡的鍵序本來就不重要；解碼器決定音節在哪裡結束，並修復跨音節的順序錯亂。
 
 - **搜尋**：對按鍵位置做 Viterbi，每個位置保留 24 個狀態。狀態 = 三格內容 + 這個音節的按鍵 + 最後兩個音節；最後兩個音節不同的切法分開保留，留給語言模型判斷。
 - **音節邊界**：聲調鍵或空白是明確邊界；音節已是完整的一聲、下一鍵是聲母時，可以隱含地結束（一聲不按空白），成本 4。
@@ -59,7 +59,7 @@
 
 ## 4. 容錯（KeyChannel）
 
-`Sources/ZhuyinCore/KeyChannel.swift`、`Engine.swift`。
+`nlp/engine/Sources/ZhuyinCore/KeyChannel.swift`、`Engine.swift`。
 
 ### 4.1 演算法
 - 每個音節的按鍵各自修正：以 Mac 鍵盤（US ANSI）實際的相鄰關係，嘗試換一個鍵、多一個鍵、少一個鍵、兩鍵對調、換聲調，留下合法讀音中成本最低的 8 個。音節有 4 個以上的鍵時，才在最好的結果上再改第二處。
@@ -186,7 +186,7 @@ App 不提供時，改用同一個 App 在 10 分鐘內送出的字。空白、R
 
 ## 9. 個人模型
 
-`Sources/ZhuyinCore/PersonalLanguageModel.swift`、`Engine.swift`。
+`nlp/engine/Sources/ZhuyinCore/PersonalLanguageModel.swift`、`Engine.swift`。
 
 ### 9.1 記住選過的字詞（recall）
 以「打的讀音 + 寫法」為 key，記住四種：整段、部分、修正（照打錯的鍵記）、詞庫沒有的詞。只在手動選字、送出後刪掉重打時建立；下次打一樣的讀音時，這個寫法不再經過語言模型評分。容量約 20,000 筆，分數同樣以 8 小時與 90 天兩種半衰期衰減，手動選過 3 次以上有最低分數。

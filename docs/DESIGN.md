@@ -120,7 +120,7 @@ ZhuyinType 是開源、在本機運作的 macOS 注音輸入法。
   - 下方固定：頁碼與 ‹ › 翻頁按鈕、「⇧↓ 單字」「⇧↑ 修正」兩個開關（開著時以強調色顯示，可點），按鍵依目前的快捷鍵設定顯示。
   - 需要時在下方顯示一行提示。
 - **狀態提示**：中英切換時在游標旁以同樣的玻璃材質顯示「中」或「英」0.8 秒。
-- **App 圖示**：Icon Composer 格式（`Resources/AppIcon.icon`），藍色背景加上一層玻璃材質的「ㄓ」字形（取自 PingFang TC），由系統渲染淺色、深色與透明外觀；`scripts/make_icons.swift` 產生並以 actool 編譯。
+- **App 圖示**：Icon Composer 格式（`clients/macos/Resources/AppIcon.icon`），藍色背景加上一層玻璃材質的「ㄓ」字形（取自 PingFang TC），由系統渲染淺色、深色與透明外觀；`clients/macos/scripts/make_icons.swift` 產生並以 actool 編譯。
 - **輸入法圖示**：16 × 16 pt 正方形、2.5 pt 圓角，鏤空細字重的「ㄓ」，比例與系統內建輸入法相同；為 template 向量 PDF，選單列、輸入法選單與游標旁的指示器由系統著色。
 - **設定視窗**：與系統設定相同的版面——左側原生 source list 側欄（彩色圖示），右側為 SwiftUI 分組表單。
   1. 一般：空白鍵、Esc、中英切換鍵、切換提示、開始時的語言、改游標左邊或右邊的字、按錯鍵修正、台／臺、參考游標前的文字、模糊音。
@@ -158,7 +158,7 @@ macos-ZhuyinType/
 ## 6. 授權
 
 - 程式碼：AGPL-3.0-only。
-- 詞庫：只使用允許再散布的開放資料，每個來源記錄在 `data/SOURCES.md`（網址、版本、授權、署名）。
-- 模型：訓練資料與各自的授權列在 `data/SOURCES.md`，條款隨模型一起放進 app（`Contents/Resources/lm_chat/` 等）。
+- 詞庫：只使用允許再散布的開放資料，每個來源記錄在 `nlp/data/SOURCES.md`（網址、版本、授權、署名）。
+- 模型：訓練資料與各自的授權列在 `nlp/data/SOURCES.md`，條款隨模型一起放進 app（`Contents/Resources/lm_chat/` 等）。
 
 開發階段與後續規劃見 [ROADMAP.md](ROADMAP.md)。

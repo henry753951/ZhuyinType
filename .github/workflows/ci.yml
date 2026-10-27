@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: tools/check-public.sh
 
   engine-linux:
@@ -33,26 +33,27 @@ jobs:
       ORT_VERSION: 1.24.4
       ZHUYIN_CHECKS_TIMING: warn
     steps:
-      - uses: actions/checkout@v5
+      - name: Tools in the Swift image
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends curl python3 ca-certificates >/dev/null
+      - uses: actions/checkout@v7
       - name: ONNX Runtime
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /opt/onnxruntime
           key: ort-linux-x64-${{ env.ORT_VERSION }}
       - run: |
           if [ ! -d /opt/onnxruntime/lib ]; then
-            apt-get update -qq && apt-get install -y -qq curl >/dev/null
             curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-linux-x64-$ORT_VERSION.tgz" | tar -xz -C /opt
             mv "/opt/onnxruntime-linux-x64-$ORT_VERSION" /opt/onnxruntime
           fi
       - name: Data assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/assets
           key: assets-lexicon-lm-${{ hashFiles('nlp/data/assets.json') }}
       - run: python3 nlp/data/assets.py fetch lexicon lm
       - name: SwiftPM build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build
           key: engine-linux-${{ hashFiles('nlp/engine/Package.swift', 'nlp/engine/Sources/**') }}
@@ -66,15 +67,15 @@ jobs:
     env:
       ZHUYIN_CHECKS_TIMING: warn
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Data assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/assets
           key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
       - run: python3 nlp/data/assets.py fetch
       - name: SwiftPM build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .build
           key: macos-${{ hashFiles('nlp/engine/Package.swift', 'clients/macos/Package.resolved', 'nlp/engine/Sources/**', 'clients/macos/Sources/**') }}

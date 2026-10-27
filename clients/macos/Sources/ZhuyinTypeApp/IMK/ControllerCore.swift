@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ZhuyinCore
 import ZhuyinML
 
@@ -143,6 +144,13 @@ final class ControllerCore {
     /// Before a composition starts: the app's text before the insertion point, or what was committed in this app
     /// recently.  The composer continues its last words; the reranker reads all of it.
     private func prepareContext() {
+        // Secure input (a password field, or an app protecting what is typed): no text is read or remembered, and
+        // nothing is learned from this composition.
+        composer.learningSuspended = secureInput()
+        if composer.learningSuspended {
+            recentText = ""
+            return
+        }
         let time = now()
         if time.timeIntervalSince(recentTime) > Self.contextWindow { recentText = "" }
         guard usesPrecedingText else { return }
@@ -156,7 +164,11 @@ final class ControllerCore {
         recentTime = time
     }
 
+    /// Whether the system's secure event input is on; a closure so the self-test can switch it.
+    var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
+
     private func remember() {
+        guard !secureInput() else { recentText = ""; return }
         recentText = String(recentText.suffix(Self.contextKept))
         recentTime = now()
         if usesPrecedingText { Self.appContext[client.bundleIdentifier] = (recentText, recentTime) }
