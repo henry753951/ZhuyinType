@@ -13,7 +13,8 @@
   - `variants`：Wiktionary 標為異讀、口語或常見誤讀的詞讀音；
   - `loan`：台灣華語從台語借的詞，一個字打台語音（仔 ㄚ），聲調不限；
   - `misread`：不熟悉的字在詞裡打成它的其他讀音（蚵仔煎 ㄎㄜ ㄗˇ ㄐㄧㄢ）。
-- 每一列都比該詞最常見的讀音低，所以照詞典讀音打時分數和原本相同。每一類可以用 `--offset` 加上成本，在開發集上調整：照標準讀音打的結果不能變差，照實際讀音打（`misread-dev`）的要變好。
+- 每一列都比該詞最常見的讀音低，所以照詞典讀音打時分數和原本相同。每一類可以用 `--offset` 加上成本，在開發集上調整：照標準讀音打的結果不能變差。`misread-dev` 和字音表同源，只用來確認解碼。
+- 分工：台灣讀音與詞專屬的讀音是詞庫的列；系統性、能從單一字推出的變體（輕聲打本調、三聲變調、聲旁誤讀、台語音、語氣詞的聲調）交給引擎的讀音通道，引擎讀 `channel.tsv` 與 `taiwan.tsv`，格式見 [reading-channel.md](../../../../../resources/formats/reading-channel.md)。`merge` 步驟的預設是資料端的合併候選（`--data-only`，各類加 2 nats）；`--option expanded=1` 產生每一類都展開的對照版，`--option standard=1` 讓強的台灣讀音直接成為詞的讀音。
 - 自動找詞：在維基百科、聊天語料（立法院公報、維基討論頁、Common Voice）、營業稅籍登記的名稱與地址上，挑出凝固度、自由度至少是同長度詞典詞中位數、邊界字不常單獨成詞的 2–6 字 n-gram；用目前的引擎單獨打一次，打錯的才收。讀音用 v3 的讀音標注，詞頻由次數換算，依語料分成詞包。
 - 新詞要有語言模型的計數才選得上：`lm` 步驟把基本詞庫加詞包當成斷詞詞彙，重新斷詞並重算維基百科與聊天兩個 bigram（文字、保留集、平滑與剪枝都和出貨的模型相同）。
 - 評測集：`misread-dev`（開發集文字照實際讀音打，依機制分子集）與 `wiki-new-dev`（傾印檔之後新建的維基條目名稱）。
@@ -46,18 +47,18 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 | `mine` | n-gram 次數、分支熵、選詞 | GPU 主機（16 程序，numpy） |
 | `vocabulary` | 讀音、詞頻、引擎檢查，依語料分成詞包 | GPU 主機（`train` 相依群組） |
 | `lm` | 以詞包重新斷詞，重算維基百科與聊天兩個 bigram | GPU 主機（16 程序） |
-| `merge` | `lexicon.tsv`：基本詞庫、讀音變體、詞包 | 任一 |
+| `merge` | `lexicon.tsv`：資料端的合併候選（基本詞庫、全字庫讀音、詞層級的台灣讀音與異讀、詞包） | 任一 |
 
 ## 輸入與輸出
 
 路徑相對於資料目錄。
 
-讀取：`../raw/lexicon/`（Unihan 18.0.0、Wiktextract 的 Wiktionary 中文資料、BabelStone IDS、小麥注音 data.txt、營業稅籍登記，雜湊固定在 `sources.py`）、`../raw/cedict.txt`、`lm/`（維基模型與 `lm/work` 的訓練句）、`lm_chat/`、`lm_chat2/`（聊天語料與準備好的句子）、`corpus/`、`v3_030/polyphone.pt` 與 `chars.json`，以及所有評測集（只用來排除）。
+讀取：`../raw/lexicon/`（Unihan 18.0.0、Wiktextract 的 Wiktionary 中文資料、CNS11643 全字庫、BabelStone IDS、小麥注音 data.txt、營業稅籍登記，雜湊固定在 `sources.py`）、`../raw/cedict.txt`、`lm/`（維基模型與 `lm/work` 的訓練句）、`lm_chat/`、`lm_chat2/`（聊天語料與準備好的句子）、`corpus/`、`v3_030/polyphone.pt` 與 `chars.json`，以及所有評測集（只用來排除）。
 
 寫入 `lexicon_coverage/`：
 
 - `base.tsv`、`wiktionary.tsv`；
-- `channel/`：`channel.tsv`（字、讀音、機制、log P）、`taiwan.tsv`、`familiar.txt`、`v3_noise.tsv`、`channel.json`（估計出的比例與次數）；
+- `channel/`：`channel.tsv`（字、讀音、類別、log P、來源組；ZTRC/1）、`taiwan.tsv`（ZTRT/1）、`familiar.txt`、`v3_noise.tsv`、`channel.json`（估計出的比例與次數）；`channel.validate` 檢查格式；
 - `misread/`、`wiki-new/`：評測集；
 - `mined/`：`<語料>.ngrams.tsv`、`<語料>.mined.tsv`、`<語料>.json`（門檻與數量）；
 - `packs/<語料>.tsv` 與 `vocabulary.json`；
@@ -89,3 +90,4 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 - [docs/research/lexicon-survey.md](../../../../../docs/research/lexicon-survey.md)：其他輸入法的詞庫與公開資料
 - [docs/engine/MODEL.md](../../../../../docs/engine/MODEL.md) §2：詞庫與讀音
 - [resources/formats/lexicon.md](../../../../../resources/formats/lexicon.md)：詞庫的二進位格式
+- [resources/formats/reading-channel.md](../../../../../resources/formats/reading-channel.md)：字音表的格式與引擎該用的成本
