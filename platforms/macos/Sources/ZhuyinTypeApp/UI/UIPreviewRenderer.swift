@@ -44,6 +44,9 @@ enum UIPreviewRenderer {
             let settings = SettingsWindowController.shared
             CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
+            if only == "storyboard" || only == "wizard" || only == nil {
+                try renderWizard(to: directory.appendingPathComponent("wizard"))
+            }
             if only == "storyboard" {
                 // The planned 設定嚮導, frame by frame, for docs/product/SETUP_WIZARD.md.
                 try FileManager.default.createDirectory(at: directory.appendingPathComponent("storyboard"), withIntermediateDirectories: true)
@@ -622,6 +625,44 @@ enum UIPreviewRenderer {
         frameView.display()
         try write(view: frameView, rect: frameView.bounds, to: url, grid: grid ? .zero : nil, page: url.lastPathComponent,
                   checks: grid)
+    }
+
+    /// The setup wizard: every kind of step at the three window sizes, light and dark; the transition between two
+    /// steps frame by frame; the finish page with changes.
+    private static func renderWizard(to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            Preferences.shared.resetToDefaults()
+            func model() -> WizardModel {
+                let model = WizardModel(original: Preferences.shared, mode: .quick)
+                model.choosePreset(.windows)
+                model.sandbox.typoTolerance = .aggressive
+                _ = model.sandbox.unbind(.nextPage, at: 2)
+                model.completed = ["paging"]
+                return model
+            }
+            let steps: [(String, WizardStep)] = [("welcome", .welcome), ("preset", .preset), ("punctuation", .lesson("punctuation")),
+                                                 ("paging", .lesson("paging")), ("finish", .finish), ("keys", .keys)]
+            for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (720, 560, "-min"), (1000, 760, "-large")] {
+                for (stepName, step) in steps {
+                    let wizard = model()
+                    wizard.jump(to: step)
+                    try capture(swiftUI: WizardView(model: wizard).frame(width: width, height: height), width: width,
+                                to: directory.appendingPathComponent("\(stepName)\(label)-\(name).png"), settle: 0.3)
+                }
+            }
+            // preset → punctuation, frame by frame.
+            for progress in [0.0, 0.3, 0.6, 1.0] {
+                let wizard = model()
+                wizard.jump(to: .lesson("punctuation"))
+                DemoPinning.wizardTransition = (.preset, progress)
+                try capture(swiftUI: WizardView(model: wizard).frame(width: 760, height: 600), width: 760,
+                            to: directory.appendingPathComponent("transition-\(Int(progress * 100))-\(name).png"), settle: 0.2)
+            }
+            DemoPinning.wizardTransition = nil
+        }
+        Preferences.shared.resetToDefaults()
     }
 
     /// Measures the rows again from scratch: views that left the window (the page a sub-page replaced) report nothing,

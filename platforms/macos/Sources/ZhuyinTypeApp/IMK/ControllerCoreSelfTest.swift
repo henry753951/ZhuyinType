@@ -1195,6 +1195,26 @@ enum ControllerCoreSelfTest {
             }
         }
 
+        test("setup wizard: steps from the lessons; nothing is written until 套用; 全部捨棄 writes nothing") {
+            let original = Preferences(defaults: MemorySettingsStorage())
+            let quick = WizardModel(original: original, mode: .quick)
+            try expect(quick.steps.count == 2 + 5 + 2, "快速設定 has \(quick.steps.count) steps")
+            try expect(WizardModel(original: original, mode: .full).steps.count == 2 + Lesson.all.count + 2, "完整導覽 steps")
+            try expect(WizardModel(original: original, mode: .newSince("0.4.2")).lessons.isEmpty, "新功能導覽 listed old lessons")
+            quick.choosePreset(.mac)
+            quick.sandbox.typoTolerance = .aggressive
+            try expect(original.spaceAction == .commitAndSpace && original.typoTolerance == .standard, "the sandbox wrote through")
+            try expect(Set(quick.changes.map(\.id)) == ["spaceAction", "typoTolerance"], "changes \(quick.changes.map(\.id))")
+            if let typo = quick.changes.first(where: { $0.id == "typoTolerance" }) { quick.revert(typo) }
+            try expect(quick.changes.map(\.id) == ["spaceAction"], "改回 did not revert")
+            let discarded = WizardModel(original: original, mode: .quick)
+            discarded.choosePreset(.mac)
+            discarded.discard()
+            try expect(original.spaceAction == .commitAndSpace, "全部捨棄 wrote")
+            quick.apply()
+            try expect(original.spaceAction == .openCandidates && original.typoTolerance == .standard, "套用 did not write the changes")
+        }
+
         test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
             try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
             let problems = focus.check()

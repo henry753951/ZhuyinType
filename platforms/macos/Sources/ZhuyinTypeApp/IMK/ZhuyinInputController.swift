@@ -210,6 +210,12 @@ final class ZhuyinInputController: IMKInputController {
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
         }
+        let wizard = menu.addItem(withTitle: "設定嚮導…", action: #selector(openWizard(_:)), keyEquivalent: "")
+        wizard.target = self
+        if WizardProgress.hasNewLessons {
+            let tour = menu.addItem(withTitle: "新功能導覽…", action: #selector(openTour(_:)), keyEquivalent: "")
+            tour.target = self
+        }
         menu.addItem(.separator())
         let about = menu.addItem(withTitle: "關於 ZhuyinType", action: #selector(openAbout(_:)), keyEquivalent: "")
         about.target = self
@@ -219,6 +225,10 @@ final class ZhuyinInputController: IMKInputController {
     @objc private func openSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
     @objc private func openWords(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.words)) }
     @objc private func openAbout(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.about)) }
+    @objc private func openWizard(_ sender: Any?) { WizardWindowController.shared.show(.quick) }
+    @objc private func openTour(_ sender: Any?) {
+        WizardWindowController.shared.show(.newSince(WizardProgress.seenVersion ?? "0"))
+    }
 
     private func bind(_ sender: Any?) -> Bool {
         guard let input = (sender as? IMKTextInput) ?? client() else { return false }

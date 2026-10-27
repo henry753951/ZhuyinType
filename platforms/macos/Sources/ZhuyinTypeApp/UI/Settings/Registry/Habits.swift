@@ -29,7 +29,8 @@ struct HabitStyle: Identifiable {
 
     /// A style that is one key of a command, alongside its others.
     static func key(_ command: ShortcutCommand, _ shortcut: Shortcut, title: String) -> HabitStyle {
-        HabitStyle(id: "keys.\(command.rawValue)+\(shortcut.compact)", title: title, detail: shortcut.spoken,
+        HabitStyle(id: "keys.\(command.rawValue)+\(shortcut.compact)", title: title,
+                   detail: shortcut.spoken == title || shortcut.compact == title ? nil : shortcut.spoken,
                    isActive: { $0.bindings[command]?.contains(shortcut) == true },
                    set: { p, on in
                        let list = p.bindings[command] ?? []
@@ -90,7 +91,7 @@ enum Habits {
     ])
     static let paging = HabitGroup(id: "paging", title: "翻頁", exclusive: false, styles: [
         .key(.nextPage, Shortcut("Tab"), title: "Tab"),
-        .key(.nextPage, Shortcut("PageDown"), title: "Page Down（fn ↓）"),
+        .key(.nextPage, Shortcut("PageDown"), title: "fn ↓（Page Down）"),
         .key(.nextPage, Shortcut("↓", option: true), title: "⌥↓"),
         .value("pageAtListEdge", .bool(true), title: "在頁底按 ↓ 翻到下一頁"),
     ])

@@ -1,6 +1,6 @@
-# 設定嚮導（分鏡，待確認）
+# 設定嚮導
 
-這份文件是「設定嚮導」的流程與分鏡，確認後才開始實作。圖片是依照設計畫出的靜止畫面（`ZhuyinType --render-ui <資料夾> --only storyboard`），不是可以操作的程式。
+這份文件是「設定嚮導」的流程與分鏡。程式在 `platforms/macos/Sources/ZhuyinTypeApp/UI/Wizard/Flow/`（流程）與 `UI/Wizard/Practice/`（練習欄位）；步驟、習慣組合與課程是設定的資料（SETTINGS_API.md），嚮導本身不寫設定的內容。分鏡的圖片是設計時畫的靜止畫面（`--render-ui <資料夾> --only storyboard`）；實際的畫面以 `--render-ui <資料夾> --only wizard` 產生。
 
 ## 1. 目的
 

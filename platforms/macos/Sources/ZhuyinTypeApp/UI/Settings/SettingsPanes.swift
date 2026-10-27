@@ -21,6 +21,8 @@ enum DemoPinning {
     static var previewState: (state: PreviewState, frame: Int)?
     /// The floating preview after a change, drawn at this point (window coordinates, top left).
     static var flashAt: CGPoint?
+    /// The setup wizard's step transition drawn still: the step it leaves, and the progress (0…1).
+    static var wizardTransition: (from: WizardStep, progress: Double)?
     /// A row drawn as if the pointer were over it.
     static var hoveredRow: String?
     /// A list row being removed, drawn still at `progress` (0: in place, 1: gone).
