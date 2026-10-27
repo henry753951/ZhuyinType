@@ -34,6 +34,7 @@ pub(crate) fn parity_directory() -> PathBuf {
 
 /// The digests and input sizes the Swift engine's tool recorded.
 pub(crate) struct Golden {
+    path: PathBuf,
     pub(crate) sizes: HashMap<String, u64>,
     pub(crate) digests: HashMap<String, (usize, String)>,
 }
@@ -43,8 +44,8 @@ impl Golden {
         // ZHUYIN_GOLDEN: digests regenerated elsewhere (parity/gate.sh on another machine's data).
         let path = std::env::var_os("ZHUYIN_GOLDEN")
             .map_or_else(|| parity_directory().join("golden/digests.tsv"), PathBuf::from);
-        let text = std::fs::read_to_string(path).ok()?;
-        let mut golden = Golden { sizes: HashMap::new(), digests: HashMap::new() };
+        let text = std::fs::read_to_string(&path).ok()?;
+        let mut golden = Golden { path, sizes: HashMap::new(), digests: HashMap::new() };
         for line in text.lines() {
             let fields: Vec<&str> = line.split('\t').collect();
             match fields.as_slice() {
@@ -88,8 +89,17 @@ impl Golden {
     }
 
     pub(crate) fn check(&self, name: &str, lines: &[String]) {
-        let (count, digest) = self.digests.get(name).unwrap_or_else(|| panic!("no Swift digest for {name}"));
         let actual = format!("{:016x}", fnv(lines));
+        // Behaviour the Swift engine never had (it was removed in phase 5) has digests recorded from the Rust engine:
+        // ZHUYIN_GOLDEN_RECORD=1 appends the missing ones to the digests file, to be reviewed and committed.
+        if !self.digests.contains_key(name) && std::env::var_os("ZHUYIN_GOLDEN_RECORD").is_some() {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new().append(true).open(&self.path).unwrap();
+            writeln!(file, "{name}\t{}\t{actual}", lines.len()).unwrap();
+            eprintln!("{name}: recorded {} lines from the Rust engine", lines.len());
+            return;
+        }
+        let (count, digest) = self.digests.get(name).unwrap_or_else(|| panic!("no digest for {name}"));
         if lines.len() == *count && actual == *digest {
             eprintln!("{name}: {count} lines identical to Swift");
             return;

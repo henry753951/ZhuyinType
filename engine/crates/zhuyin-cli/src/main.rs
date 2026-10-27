@@ -27,7 +27,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -258,6 +258,8 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 s.config.chat_prior = value.unwrap_or_else(|| fail(USAGE));
             }
             "--hotspot" => s.config.hotspot = on_off(next_value(&arguments), USAGE),
+            // Moving the highlight past a page's edge turns the page (the app's 到頁底時 ↓ 翻到下一頁).
+            "--page-at-list-edge" => s.options.page_at_list_edge = on_off(next_value(&arguments), USAGE),
             "--report-nbest" => {
                 let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
                 s.report_nbest = count;

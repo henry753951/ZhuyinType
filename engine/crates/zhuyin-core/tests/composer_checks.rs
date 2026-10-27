@@ -1152,3 +1152,35 @@ fn backtick_undo() {
     undo_gone.handle(KeyInput::Escape);
     assert!(!undo_gone.is_composing(), "after another key, Esc clears as usual");
 }
+
+#[test]
+fn page_at_list_edge_off() {
+    let tiny = engine(TINY);
+    let list = |c: &Composer| c.presentation().candidates.clone().unwrap();
+    let options = ComposerOptions { selection_keys: vec!['1', '2'], page_at_list_edge: false, ..legacy() };
+    let mut stay = composer_with(&tiny, "18 ", options.clone());
+    stay.handle(KeyInput::Down);
+    stay.handle(KeyInput::Down);
+    assert_eq!(list(&stay).selection, 1, "↓ moves within the page");
+    stay.handle(KeyInput::Down);
+    assert!(list(&stay).selection == 1 && list(&stay).page() == 0, "↓ at the page's last candidate stays");
+    stay.handle(KeyInput::Tab);
+    assert_eq!(list(&stay).selection, 2, "the page keys still turn pages");
+    stay.handle(KeyInput::Up);
+    assert_eq!(list(&stay).selection, 2, "↑ at the page's first candidate stays");
+    let horizontal = ComposerOptions { vertical_list: false, ..options };
+    let mut sideways = composer_with(&tiny, "18 ", horizontal);
+    sideways.handle(KeyInput::Down);
+    sideways.handle(KeyInput::Right);
+    sideways.handle(KeyInput::Right);
+    assert_eq!(list(&sideways).selection, 1, "horizontal → at the page's edge stays");
+    sideways.handle(KeyInput::Down);
+    assert_eq!(list(&sideways).page(), 1, "horizontal ↓ still turns the page");
+    sideways.handle(KeyInput::Left);
+    assert_eq!(list(&sideways).selection, 2, "horizontal ← at the page's first candidate stays");
+    let mut across = composer_with(&tiny, "18 ", ComposerOptions { selection_keys: vec!['1', '2'], ..legacy() });
+    across.handle(KeyInput::Down);
+    across.handle(KeyInput::Down);
+    across.handle(KeyInput::Down);
+    assert!(list(&across).selection == 2 && list(&across).page() == 1, "on (the default): ↓ crosses the page");
+}

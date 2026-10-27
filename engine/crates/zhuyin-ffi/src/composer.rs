@@ -190,6 +190,8 @@ pub struct ZtComposerOptions {
     pub key_decoder: u32,
     /// The candidate window lists top to bottom.
     pub vertical_list: bool,
+    /// Moving the highlight past a page's edge turns the page (stopping at the list's ends); false: it stays.
+    pub page_at_list_edge: bool,
     /// One of `ZT_FORMS_*`.
     pub character_forms: u32,
     /// One of `ZT_PUNCTUATION_*`.
@@ -212,6 +214,7 @@ pub extern "C" fn zt_composer_options_default() -> ZtComposerOptions {
         candidate_anchor: options.candidate_anchor as u32,
         key_decoder: options.key_decoder as u32,
         vertical_list: options.vertical_list,
+        page_at_list_edge: options.page_at_list_edge,
         character_forms: options.character_forms as u32,
         punctuation_keys: options.punctuation_keys as u32,
     }
@@ -245,6 +248,7 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
         candidate_anchor: [CandidateAnchor::AfterCursor, CandidateAnchor::BeforeCursor][o.candidate_anchor as usize],
         key_decoder: KeyDecoderMethod::ALL[o.key_decoder as usize],
         vertical_list: o.vertical_list,
+        page_at_list_edge: o.page_at_list_edge,
         character_forms: CharacterForms::ALL[o.character_forms as usize],
         punctuation_keys: PunctuationKeys::ALL[o.punctuation_keys as usize],
     })

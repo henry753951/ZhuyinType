@@ -142,6 +142,7 @@ public final class Composer {
         o.candidate_anchor = UInt32(options.candidateAnchor == .afterCursor ? ZT_ANCHOR_AFTER_CURSOR : ZT_ANCHOR_BEFORE_CURSOR)
         o.key_decoder = UInt32(decoders[options.keyDecoder]!)
         o.vertical_list = options.verticalList
+        o.page_at_list_edge = options.pageAtListEdge
         o.character_forms = UInt32(options.characterForms == .common ? ZT_FORMS_COMMON : ZT_FORMS_STANDARD)
         o.punctuation_keys = UInt32(options.punctuationKeys == .windows ? ZT_PUNCTUATION_WINDOWS : ZT_PUNCTUATION_MAC)
         return String(options.selectionKeys).withCString { keys in

@@ -203,6 +203,8 @@ typedef struct {
   uint32_t key_decoder;
   // The candidate window lists top to bottom.
   bool vertical_list;
+  // Moving the highlight past a page's edge turns the page (stopping at the list's ends); false: it stays.
+  bool page_at_list_edge;
   // One of `ZT_FORMS_*`.
   uint32_t character_forms;
   // One of `ZT_PUNCTUATION_*`.

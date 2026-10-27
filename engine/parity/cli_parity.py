@@ -80,6 +80,7 @@ CONFIGS = [
     ("list-before", ["--report-list", "--anchor", "before"], "<left><down>"),
     ("list-corrections", ["--report-list"], "<home><sup>"),
     ("list-single", ["--report-list"], "<end><sdown>"),
+    ("list-edge-stays", ["--page-at-list-edge", "off"], "<home><down>" + "<down>" * 9 + "<enter><enter>"),
     ("pick-second", [], "<home><down><down><enter><enter>"),
     ("pick-and-learn", ["--keep-memory"], "<home><down><down><enter><enter>"),
     ("delete-and-retype", ["--keep-memory"], "<enter><bs><bs>{keys}<enter>"),

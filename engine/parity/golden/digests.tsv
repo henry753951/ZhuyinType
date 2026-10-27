@@ -46,9 +46,11 @@ learning.files	2853	dc69662808f66f6d
 learning.export	2850	88f3b49688c1e6c2
 learning.import	2851	16f8662517f1c607
 learning.reload	124	3fed733d532df698
-composer.app	11029	0d9fc31cd770ca5b
-composer.standard-forms	11029	ca480336792b3775
-composer.legacy	11029	b92f66b34999dc61
-composer.other	11029	543d463ffefbbd2a
-composer.commit	11029	71fda88e645d0ddf
-composer.insert-space	11029	55faf99da88b210a
+composer.app	11081	593b8e52d27db31b
+composer.standard-forms	11081	770574bc24d2a48d
+composer.legacy	11081	01baf30d9bcaac1d
+composer.other	11081	ff82eb14f41c8ce8
+composer.commit	11081	6f78ad7dcb07eea3
+composer.insert-space	11081	7442fc8175662cb5
+# Recorded from the Rust engine (behaviour the Swift engine never had):
+composer.edge-stays	11081	0f15fe2e0cf17efa

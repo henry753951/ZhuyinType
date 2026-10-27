@@ -543,6 +543,10 @@ pub struct ComposerOptions {
     /// The candidate window lists top to bottom: ↑↓ move the highlight and ←→ move to the neighbouring character.
     /// Left to right, ←→ move the highlight and ↑↓ turn pages.
     pub vertical_list: bool,
+    /// Moving the highlight past a page's last candidate goes to the next page's first (and past the first, back to
+    /// the previous page's last), stopping at the ends of the list without wrapping.  Off, the highlight stays at the
+    /// edge of its page; the page keys still turn pages.
+    pub page_at_list_edge: bool,
     /// Which of two interchangeable character forms to write (台 or 臺).
     pub character_forms: CharacterForms,
     /// What Shift and Control with a symbol key type.
@@ -574,6 +578,7 @@ impl Default for ComposerOptions {
             candidate_anchor: CandidateAnchor::AfterCursor,
             key_decoder: KeyDecoderMethod::Timed,
             vertical_list: true,
+            page_at_list_edge: true,
             character_forms: CharacterForms::Common,
             punctuation_keys: PunctuationKeys::Windows,
         }

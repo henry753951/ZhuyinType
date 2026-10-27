@@ -644,6 +644,10 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
     let targeted = [
         "18 q8 a8 <left><left><bs>18 <home><del><end><bs><S-,>18 ek4`<bs><enter>".to_owned(),
         "18 q8 <space>a8 <space><enter>".to_owned(),
+        "18 <down><down><down><down><down><down><down><down><down><down><down><up><up><enter>".to_owned(),
+        "18 <down><right><right><right><right><right><right><right><right><right><right><left><left><enter><enter>"
+            .to_owned(),
+        "su3 <down><pgdown><up><down><down><enter><enter>".to_owned(),
         "18 <space><space><bs><bs><enter>".to_owned(),
         "18 q8<space><space><left><left><down><enter><enter>".to_owned(),
         "18 q8 ``<enter>".to_owned(),
@@ -705,6 +709,8 @@ fn composer_configurations() -> Vec<(&'static str, ComposerOptions)> {
         ("other", other),
         ("commit", commit),
         ("insert-space", ComposerOptions { space_action: SpaceAction::InsertSpace, ..ComposerOptions::default() }),
+        // Recorded from the Rust engine: the Swift engine always paged at the list's edge.
+        ("edge-stays", ComposerOptions { page_at_list_edge: false, ..ComposerOptions::default() }),
     ]
 }
 

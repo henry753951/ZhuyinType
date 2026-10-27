@@ -1170,9 +1170,15 @@ impl Composer {
                 self.candidate_selection = (page_count - 1).min(page + 1) * page_size;
             }
             KeyInput::Down if !vertical => self.candidate_selection = (page_count - 1).min(page + 1) * page_size,
-            KeyInput::Up | KeyInput::Left => self.candidate_selection = self.candidate_selection.saturating_sub(1),
+            KeyInput::Up | KeyInput::Left => {
+                if self.options.page_at_list_edge || !self.candidate_selection.is_multiple_of(page_size) {
+                    self.candidate_selection = self.candidate_selection.saturating_sub(1);
+                }
+            }
             KeyInput::Down | KeyInput::Right => {
-                self.candidate_selection = (self.choices.len() - 1).min(self.candidate_selection + 1);
+                if self.options.page_at_list_edge || self.candidate_selection % page_size != page_size - 1 {
+                    self.candidate_selection = (self.choices.len() - 1).min(self.candidate_selection + 1);
+                }
             }
             KeyInput::Space => self.candidate_selection = ((page + 1) % page_count) * page_size,
             _ => {
