@@ -48,8 +48,8 @@ struct AnalyticsPane: View {
     @ViewBuilder
     private func content(_ summary: UsageSummary, _ metrics: ProcessMetrics) -> some View {
         let counting = preferences.recordsUsageStats
-        Form {
-            SettingsSection {
+        SettingsForm {
+            SettingsSection(card: false) {
                 Picker("期間", selection: $period) {
                     Text("過去 30 天").tag(Period.month)
                     Text("全部").tag(Period.all)
@@ -62,11 +62,10 @@ struct AnalyticsPane: View {
                 SettingsSection("每天送出的字") {
                     DailyChart(days: summary.days)
                         .frame(height: 150)
-                        .padding(.vertical, 6)
                 }
             }
             RhythmSection(summary: summary, rhythm: store.rhythm)
-            SettingsSection("打字") {
+            SettingsSection("打字", card: false) {
                 StatGrid(stats: [
                     ("送出的字", summary.counters.characters, "character"),
                     ("組字", summary.counters.compositions, "text.cursor"),
@@ -75,7 +74,6 @@ struct AnalyticsPane: View {
                     ("改字", summary.counters.corrections, "pencil"),
                     ("加入自訂詞", summary.counters.phrasesAdded, "plus.square.on.square"),
                 ])
-                .padding(.vertical, 4)
             }
             SettingsSection("從清單選字") {
                 Breakdown(rows: [
@@ -183,14 +181,13 @@ private struct RecapHero: View {
                 if !counting { Chip(symbol: "pause.circle", text: "已暫停記錄") }
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(RowMetrics.tilePadding)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RowMetrics.cardRadius, style: .continuous)
                 .fill(LinearGradient(colors: [Color.accentColor.opacity(0.16), Color.accentColor.opacity(0.04)],
                                      startPoint: .topLeading, endPoint: .bottomTrailing))
         )
-        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 }
@@ -261,7 +258,8 @@ private struct DailyChart: View {
 private struct StatGrid: View {
     let stats: [(title: String, value: Int, symbol: String)]
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: RowMetrics.tileSpacing), count: 3),
+                  spacing: RowMetrics.tileSpacing) {
             ForEach(stats, id: \.title) { stat in
                 VStack(alignment: .leading, spacing: 4) {
                     Label(stat.title, systemImage: stat.symbol)
@@ -271,9 +269,9 @@ private struct StatGrid: View {
                         .font(.system(size: 20, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
-                .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.quaternary.opacity(0.35)))
+                .padding(RowMetrics.tilePadding)
+                .background(RoundedRectangle(cornerRadius: RowMetrics.cardRadius, style: .continuous).fill(Color.primary.opacity(0.03)))
                 .accessibilityElement(children: .combine)
             }
         }
@@ -304,7 +302,7 @@ struct PerformancePage: View {
     @State private var tick = 0
     var body: some View {
         let _ = tick
-        Form { PerformanceSection(latency: store.data.latency, metrics: ProcessMetrics.sample()) }
+        SettingsForm { PerformanceSection(latency: store.data.latency, metrics: ProcessMetrics.sample()) }
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -332,7 +330,7 @@ private struct PerformanceSection: View {
                 SettingRow(title: "按鍵反應", subtitle: "從按鍵到畫面更新；\(latency.total.formatted()) 個按鍵",
                            value: ["p50 \(ms(latency.percentile(0.5)))", "p95 \(ms(latency.percentile(0.95)))",
                                    "最慢 \(ms(latency.maximum))"].joined(separator: "・"))
-                LatencyChart(latency: latency).frame(height: 110).padding(.vertical, 4)
+                LatencyChart(latency: latency).frame(height: 110)
             } else {
                 SettingRow(title: "按鍵反應", value: "還沒有資料")
             }
@@ -415,13 +413,14 @@ private struct RhythmSection: View {
 
     var body: some View {
         let c = summary.counters
-        SettingsSection("打字節奏") {
+        SettingsSection("打字節奏", card: false) {
             StatGrid(stats: [
                 ("打字速度（字/分鐘）", Int((c.activeSpeed ?? 0).rounded()), "speedometer"),
                 ("一次就對（%）", Int(((c.firstTimeRight ?? 0) * 100).rounded()), "checkmark.seal"),
                 ("最長連續（字）", rhythm.longestRun, "arrow.right.to.line"),
             ])
-            .padding(.vertical, 4)
+        }
+        SettingsSection {
             SettingRow(title: "打字時間・思考停頓",
                        subtitle: "停頓超過 \(String(format: "%.0f", rhythm.pauseThreshold)) 秒算思考，超過 1 分鐘不計",
                        value: "\(duration(c.typingMilliseconds))・\(duration(c.thinkingMilliseconds))") {
@@ -435,7 +434,6 @@ private struct RhythmSection: View {
                 Text("什麼時候打字")
                 WeekHeatMap(hours: rhythm.hours)
             }
-            .padding(.vertical, 4)
         } footer: {
             FooterText("打字速度只算連續打字的時間；一次就對是沒有選字、⌫ 或 Esc 就送出的組字。")
         }

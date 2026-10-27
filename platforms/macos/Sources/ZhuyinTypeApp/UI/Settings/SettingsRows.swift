@@ -14,16 +14,43 @@ import SwiftUI
 // Controls come from the same few views (`RowSwitch`, `RowPicker`, `KeyCombo`, `ShortcutField`), so a switch, a
 // picker, a keycap group, a chevron and an ⓘ are the same size wherever they appear.
 
+/// Spacing and insets of the settings pages, in one place.  Every page, card and row uses these; nothing pads itself.
 enum RowMetrics {
+    // The page.
+    /// Left and right of the cards, and of the sub-page header.
+    static let pageInset: CGFloat = 20
+    static let pageTop: CGFloat = 16
+    static let pageBottom: CGFloat = 24
+    /// The cards' widest; wider windows centre the column.
+    static let maxWidth: CGFloat = 700
+    /// Between one section's card (or footer) and the next section's header.
+    static let sectionSpacing: CGFloat = 22
+    // A section.
+    /// Header to its card, and card to its footer.
+    static let headerGap: CGFloat = 7
+    static let footerGap: CGFloat = 7
+    // A card.
+    /// Left and right inside a card, for every row, divider, header and footer: one value, so both sides match.
+    static let cardInset: CGFloat = 16
+    /// Above and below every row inside a card.
+    static let rowPadding: CGFloat = 10
+    static let cardRadius: CGFloat = 10
+    /// Between tiles (分析), which are small cards: their padding is the card inset all round.
+    static let tileSpacing: CGFloat = 10
+    static let tilePadding: CGFloat = 14
+    // A row.
     static let minHeight: CGFloat = 24
-    static let verticalPadding: CGFloat = 3
+    /// A sub-row's (快捷鍵 under its feature) left indent; its right edge is the parent's.
     static let indent: CGFloat = 18
-    static let accessoryWidth: CGFloat = 20
+    /// Between the left block and the right block.
     static let gap: CGFloat = 12
+    /// Between the value, the control and the ⓘ or ›.
     static let trailingSpacing: CGFloat = 8
+    /// The arrival tint, inset from the card's edges.
+    static let tintInset: CGFloat = 4
 }
 
-/// What sits in the accessory column at the right edge.
+/// What ends a row on the right, after its control.
 enum RowAccessory {
     case none
     case chevron
@@ -45,43 +72,132 @@ enum RowSections {
     static func headerID(_ section: String) -> String { "section-" + section }
 }
 
-/// A section of a settings page: its header (which lights up with the arrival cue) and its rows.
+/// A settings page: its sections in a column, scrolled, with the page insets.
+struct SettingsForm<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    init(@ViewBuilder content: @escaping () -> Content) { self.content = content }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: RowMetrics.sectionSpacing) { content() }
+                .frame(maxWidth: RowMetrics.maxWidth)
+                .padding(.horizontal, RowMetrics.pageInset)
+                .padding(.top, RowMetrics.pageTop)
+                .padding(.bottom, RowMetrics.pageBottom)
+                .frame(maxWidth: .infinity)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+/// A section of a settings page: its header (which lights up with the arrival cue), its card of rows and a footer.
 struct SettingsSection<Content: View, Footer: View>: View {
     let title: String?
+    /// False: the content brings its own cards (tiles) and sits on the page.
+    var card = true
     @ViewBuilder let content: () -> Content
     @ViewBuilder let footer: () -> Footer
 
     var body: some View {
-        Section {
-            content().environment(\.settingsSection, title)
-        } header: {
-            if let title { SettingsSectionHeader(title: title) }
-        } footer: {
-            footer()
+        VStack(alignment: .leading, spacing: 0) {
+            if let title {
+                SettingsSectionHeader(title: title)
+                    .padding(.horizontal, RowMetrics.cardInset)
+                    .padding(.bottom, RowMetrics.headerGap)
+            }
+            if card {
+                SettingsCard(section: title) { content().environment(\.settingsSection, title) }
+            } else {
+                VStack(alignment: .leading, spacing: RowMetrics.tileSpacing) { content() }
+                    .environment(\.settingsSection, title)
+            }
+            if Footer.self != EmptyView.self {
+                footer()
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, RowMetrics.cardInset)
+                    .padding(.top, RowMetrics.footerGap)
+            }
         }
     }
 }
 
 extension SettingsSection where Footer == EmptyView {
-    init(_ title: String? = nil, @ViewBuilder content: @escaping () -> Content) {
-        self.init(title: title, content: content, footer: { EmptyView() })
+    init(_ title: String? = nil, card: Bool = true, @ViewBuilder content: @escaping () -> Content) {
+        self.init(title: title, card: card, content: content, footer: { EmptyView() })
     }
 }
 
 extension SettingsSection {
     init(_ title: String? = nil, @ViewBuilder content: @escaping () -> Content, @ViewBuilder footer: @escaping () -> Footer) {
-        self.init(title: title, content: content, footer: footer)
+        self.init(title: title, card: true, content: content, footer: footer)
     }
 }
 
-/// A section's header: in the accent colour while the arrival cue is on a row of the section.
+/// A section's header: in the accent colour while the arrival cue is on the section or one of its rows.
 struct SettingsSectionHeader: View {
     let title: String
     @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
     var body: some View {
         Text(title)
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(model.arrivedSection == title ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
             .id(RowSections.headerID(title))
+    }
+}
+
+/// A view that spans the card edge to edge (a list), without the card's insets.
+private struct FullBleed: _ViewTraitKey { static let defaultValue = false }
+extension View {
+    func cardFullBleed() -> some View { _trait(FullBleed.self, true) }
+}
+
+/// A section's rows on one card: the same inset on both sides of every row and divider, the same padding above and
+/// below every row.  When a link leads to the whole section, the card tints once.
+struct SettingsCard<Content: View>: View {
+    let section: String?
+    @ViewBuilder let content: () -> Content
+    @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
+    @State private var probe = UUID()
+
+    var body: some View {
+        let lit = section != nil && model.arrivedRow == nil && model.arrivedSection == section
+        _VariadicView.Tree(CardRows(card: probe)) { content() }
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: RowMetrics.cardRadius, style: .continuous)
+                        .fill(Color.primary.opacity(0.03))
+                    RoundedRectangle(cornerRadius: RowMetrics.cardRadius, style: .continuous)
+                        .fill(Color.accentColor.opacity(lit ? (DemoPinning.arrivalOpacity ?? ArrivalHighlight.peakOpacity) : 0))
+                }
+            }
+            .background(CardProbe(card: probe))
+    }
+}
+
+private struct CardRows: _VariadicView_MultiViewRoot {
+    let card: UUID
+    func body(children: _VariadicView.Children) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(children) { child in
+                if child.id != children.first?.id {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 1)
+                        .padding(.horizontal, RowMetrics.cardInset)
+                }
+                if child[FullBleed.self] {
+                    child.frame(maxWidth: .infinity)
+                } else {
+                    child
+                        .background(ChildProbe(card: card))
+                        .padding(.horizontal, RowMetrics.cardInset)
+                        .padding(.vertical, RowMetrics.rowPadding)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
     }
 }
 
@@ -128,7 +244,6 @@ struct SettingRow<Control: View>: View {
                 }
                 control()
                 accessoryView
-                    .frame(width: RowMetrics.accessoryWidth)
             }
             .layoutPriority(1)
             .anchorPreference(key: RowBlocks.self, value: .bounds) { RowBlocks.Value(trailing: $0) }
@@ -143,14 +258,13 @@ struct SettingRow<Control: View>: View {
             }
         }
         .frame(minHeight: RowMetrics.minHeight)
-        .padding(.vertical, RowMetrics.verticalPadding)
-        .background { ArrivalHighlight(id: anchor, section: section) }
+        .background { ArrivalHighlight(id: anchor) }
         .id(anchor ?? title)
     }
 
     @ViewBuilder private var accessoryView: some View {
         switch accessory {
-        case .none: Color.clear.frame(height: 1)
+        case .none: EmptyView()
         case .chevron:
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
@@ -168,22 +282,19 @@ extension SettingRow where Control == EmptyView {
     }
 }
 
-/// The arrival cue: when a link leads to a row, its background tints with the accent colour once, softly, and
-/// fades (`SettingsPaneView.reveal` times it).  Drawn behind the row, so it never changes the layout.
+/// The arrival cue: when a link leads to a row, the row's cell tints with the accent colour once, softly, and fades
+/// (`SettingsPaneView.reveal` times it); a section target tints its card (`SettingsCard`).  Drawn behind the row, so
+/// it never changes the layout.
 struct ArrivalHighlight: View {
     let id: String?
-    var section: String?
     @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
     static let peakOpacity = 0.17
     var body: some View {
-        // The row a link led to, or every row of a section a link led to.
-        let lit = (id != nil && model.arrivedRow == id) || (section != nil && model.arrivedRow == nil
-                                                            && model.arrivedSection == section)
-        let opacity = lit ? (DemoPinning.arrivalOpacity ?? Self.peakOpacity) : 0
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(Color.accentColor.opacity(opacity))
-            .padding(.horizontal, -8)
-            .padding(.vertical, -1)
+        let lit = id != nil && model.arrivedRow == id
+        RoundedRectangle(cornerRadius: RowMetrics.cardRadius - RowMetrics.tintInset, style: .continuous)
+            .fill(Color.accentColor.opacity(lit ? (DemoPinning.arrivalOpacity ?? Self.peakOpacity) : 0))
+            .padding(.horizontal, RowMetrics.tintInset - RowMetrics.cardInset)
+            .padding(.vertical, RowMetrics.tintInset - RowMetrics.rowPadding)
             .allowsHitTesting(false)
     }
 }
@@ -233,6 +344,7 @@ struct RowPicker<Value: Hashable>: View {
         }
         .labelsHidden()
         .fixedSize()
+        .controlSize(.small)
         if segmented { picker.pickerStyle(.segmented) } else { picker.pickerStyle(.menu) }
     }
 }
@@ -243,10 +355,13 @@ struct RowPicker<Value: Hashable>: View {
 /// renderer can verify that the trailing block is centred on the leading one and draw a grid over the pages.
 enum RowGeometry {
     struct Row { let id: String; let leading: CGRect; let trailing: CGRect }
+    struct Card { var frame: CGRect = .zero; var children: [CGRect] = [] }
     static var recording = false
     private static var rows: [UUID: Row] = [:]
+    private static var cardFrames: [UUID: CGRect] = [:]
+    private static var childFrames: [UUID: [CGRect]] = [:]
 
-    static func reset() { rows = [:] }
+    static func reset() { rows = [:]; cardFrames = [:]; childFrames = [:] }
 
     /// Records a row's two blocks, measured in the same layout pass; a later pass replaces them.
     static func record(_ probe: UUID, title: String, leading: CGRect, trailing: CGRect, origin: CGPoint) {
@@ -255,11 +370,70 @@ enum RowGeometry {
                           trailing: trailing.offsetBy(dx: origin.x, dy: origin.y))
     }
 
+    static func recordCard(_ card: UUID, _ frame: CGRect) {
+        guard recording, frame.width > 0 else { return }
+        if let old = cardFrames[card], old != frame { childFrames[card] = [] }
+        cardFrames[card] = frame
+    }
+
+    static func recordChild(_ card: UUID, _ frame: CGRect) {
+        guard recording, frame.height > 0 else { return }
+        var list = childFrames[card] ?? []
+        list.removeAll { abs($0.minY - frame.minY) < 0.5 || $0.intersects(frame.insetBy(dx: 0, dy: 1)) }
+        list.append(frame)
+        childFrames[card] = list
+    }
+
     static var all: [Row] { Array(rows.values) }
+    static var cards: [Card] {
+        cardFrames.map { id, frame in Card(frame: frame, children: (childFrames[id] ?? []).filter { frame.insetBy(dx: -1, dy: -1).contains($0) }) }
+    }
 
     /// Rows whose trailing block is not centred on the leading block (more than half a point off).
     static func misaligned(_ rows: [Row]) -> [Row] {
         rows.filter { abs($0.leading.midY - $0.trailing.midY) > 0.5 }
+    }
+
+    /// What is unbalanced on a card: a row whose left inset differs from its right one, or a first row whose space
+    /// above differs from the last row's space below.
+    static func imbalances(cards: [Card], rows: [Row]) -> [String] {
+        var problems: [String] = []
+        for card in cards {
+            for row in rows where card.frame.insetBy(dx: -1, dy: -1).contains(row.leading) {
+                let left = row.leading.minX - card.frame.minX, right = card.frame.maxX - row.trailing.maxX
+                if abs(left - right) > 0.5 { problems.append("「\(row.id)」 inset left \(left) pt, right \(right) pt") }
+            }
+            guard let top = card.children.map(\.minY).min(), let bottom = card.children.map(\.maxY).max() else { continue }
+            let above = top - card.frame.minY, below = card.frame.maxY - bottom
+            if abs(above - below) > 0.5 {
+                problems.append("card at y \(Int(card.frame.minY)): \(above) pt above the first row, \(below) pt below the last")
+            }
+        }
+        return problems
+    }
+}
+
+private struct CardProbe: View {
+    let card: UUID
+    var body: some View {
+        if RowGeometry.recording {
+            GeometryReader { proxy in
+                let _ = RowGeometry.recordCard(card, proxy.frame(in: .global))
+                Color.clear
+            }
+        }
+    }
+}
+
+private struct ChildProbe: View {
+    let card: UUID
+    var body: some View {
+        if RowGeometry.recording {
+            GeometryReader { proxy in
+                let _ = RowGeometry.recordChild(card, proxy.frame(in: .global))
+                Color.clear
+            }
+        }
     }
 }
 

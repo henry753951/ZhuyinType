@@ -93,7 +93,8 @@ final class ControllerCore {
 
     private var capsLock = false
     /// Rebindable shortcuts, by key.
-    var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(uniqueKeysWithValues: ShortcutCommand.defaults.map { ($1, $0) })
+    var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(
+        ShortcutCommand.defaultBindings.flatMap { command, list in list.map { ($0, command) } }, uniquingKeysWith: { first, _ in first })
 
     func update(options: ComposerOptions, shiftToggle: ShiftToggle, popupCompositionApps: [String]) {
         composer.options = options
@@ -116,7 +117,8 @@ final class ControllerCore {
             return false
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
-            return handle(command.input, time: time)
+            if let input = command.input { return handle(input, time: time) }
+            return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
@@ -163,6 +165,20 @@ final class ControllerCore {
             remember()
         }
         return result.handled
+    }
+
+    /// 改前一個字／改後一個字: with the list open, the list moves to the neighbouring character in the same mode.  A
+    /// vertical list does it with ← →; a horizontal one uses ← → for the highlight, so the list is closed, the cursor
+    /// moved and the list opened again.  With no list the key is ← or →: it moves the cursor, or goes to the app.
+    private func neighbour(_ delta: Int, time: TimeInterval?) -> Bool {
+        let arrow: KeyInput = delta < 0 ? .left : .right
+        guard let list = composer.presentation.candidates, !composer.options.verticalList else { return handle(arrow, time: time) }
+        let reopen: KeyInput = list.singleCharacter ? .shiftDown : list.tolerant == true ? .shiftUp : .down
+        _ = composer.handle(.escape)
+        _ = composer.handle(arrow)
+        _ = composer.handle(reopen)
+        render()
+        return true
     }
 
     private static func startsComposition(_ key: KeyInput) -> Bool {
