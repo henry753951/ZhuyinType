@@ -50,5 +50,6 @@ Builds need full Xcode (SwiftUI macros); `build-app.sh` switches `DEVELOPER_DIR`
 - **Privacy:** no private hosts or keys in tracked files (`.remote.env` is local); no user text in logs (log app
   bundle IDs only as `.private`); secure input pauses context reading and learning.
 - **UI copy** follows `docs/WRITING.md` (Taiwan Traditional Chinese, plain, no slogans).
+- **Other IMEs in docs** are related work: credit their contributions, cite sources, state comparison conditions and limits, and never frame them as opponents to beat (`docs/WRITING.md`, 提到其他專案).
 - Long jobs on the GPU host: `nohup`, logs in `~/zhuyintype/logs/`; never kill processes by broad name patterns.
 - Commits end with the attribution lines the session asks for; never force-push `main`.

@@ -82,7 +82,7 @@ make pkg           # dist/ZhuyinType-<版本>.pkg
 | [v3 模型設計](docs/MODEL_V3.md) | 按鍵層級解碼器與音節對字模型的設計與實驗紀錄 |
 | [評測](docs/EVALUATION.md) | 資料集、評測工具與指令 |
 | [規劃](docs/ROADMAP.md) | 開發階段、下一步與待決事項 |
-| [研究](docs/research/) | 研究紀錄、與其他注音輸入法的對打、超越計畫 |
+| [研究](docs/research/) | 研究紀錄、相關工作與比較、研究計畫 |
 | [每版成績](docs/benchmarks/) | 每個版本在同一套評測（ZhuyinBench）上的結果 |
 | [訓練](nlp/training/README.md) | 各模型的訓練流程與產物 |
 | [文案準則](docs/WRITING.md) | 介面與文件用語 |

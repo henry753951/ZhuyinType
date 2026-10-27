@@ -20,7 +20,7 @@ No Git commit, push, stash, reset or checkout is performed by this task.
 keys for every model. Wikipedia is measured without and with 32-character line
 context. TT cells report exact / variant-equal. Engine mode uses the word-model
 mixture with chat prior 0.5 and standard typo handling; app mode adds unchanged
-v2b top-16, rerank weight 1 and v3 weight 0.5. The quoted competitor/test figures
+v2b top-16, rerank weight 1 and v3 weight 0.5. The quoted 0c reference/test figures
 in the task are not this dev cohort's baseline.
 
 Dev selection uses the equal-weight mean of colloquial exact, Wikipedia with
@@ -365,4 +365,4 @@ The baseline and selected bundle were each run once in both modes: 20 completed 
 
 Test primary means are 72.58 -> 76.00% engine and 85.25 -> 85.33% app. Colloquial and Wikipedia engine gains are supported by the paired results. Literal TT accuracy falls significantly; variant-equal TT and smoke have uncertain point regressions. App changes are small and individually inconclusive. These are tracking results: no other model is tested or reselected afterward.
 
-A1 acceptance is **not achieved**. Colloquial remains below the historical 82.3% reference point, TT falls short, and the new base does not uniformly lift app behavior. The historical competitor is not rerun in this frozen cohort, so these figures do not establish direct competitor parity. Deliver this as a dev-selected research bundle, with the coupled lexicon/LM requirement, the TT/smoke regressions, app noise regressions and unmeasured Mac mmap/latency clearly carried into integration. Further decisions need fresh dev evidence.
+A1 acceptance is **not achieved**. Colloquial remains below the historical 82.3% reference point, TT falls short, and the new base does not uniformly lift app behavior. The 0c reference run is not repeated in this frozen cohort, so these figures are not a direct comparison with 0c. Deliver this as a dev-selected research bundle, with the coupled lexicon/LM requirement, the TT/smoke regressions, app noise regressions and unmeasured Mac mmap/latency clearly carried into integration. Further decisions need fresh dev evidence.

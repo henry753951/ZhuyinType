@@ -99,9 +99,7 @@ def main():
                     + " | ".join(cell(r, "conversion/app", file) for _, file, _ in SETS)
                     + f" | {cell(r, 'context/app', 'test_sentences.txt')} | {pct(nospace['shown']) if nospace else '—'}"
                     + f" | {str(mac['median']['p95_ms']) + ' ms' if mac else '—'} |")
-    competitors = os.path.join(DIR, "competitors.md")
-    if os.path.exists(competitors):
-        rows += ["", "其他輸入法在同一批句子上的結果見 [competitors.md](competitors.md)。"]
+    rows += ["", "和其他注音輸入法在同一批句子上的比較（含條件與限制）見 [research/related-work.md](../research/related-work.md)。"]
     with open(os.path.join(DIR, "README.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
     print(f"{len(records)} versions")
