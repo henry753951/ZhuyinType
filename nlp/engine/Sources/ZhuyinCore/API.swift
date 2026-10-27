@@ -126,6 +126,16 @@ public enum PunctuationKeys: String, Sendable, CaseIterable {
     case mac
 }
 
+/// Space in a composition with no unfinished syllable.
+public enum SpaceAction: String, Sendable, CaseIterable {
+    /// Opens the candidate window; in the window, Space turns the page.
+    case openCandidates
+    /// Commits the composition; the app does not receive the Space.
+    case commit
+    /// Commits the composition, then the app receives the Space, so a space follows the text.
+    case commitAndSpace
+}
+
 public enum TypoTolerance: String, Sendable, CaseIterable {
     case off, standard, aggressive
     var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
@@ -195,8 +205,14 @@ public struct ScoredSentence: Equatable, Sendable {
 public struct ComposerOptions: Equatable, Sendable {
     /// Keys that pick candidates 1..n on the current page.  Also sets the page size.
     public var selectionKeys: [Character] = Array("123456789")
-    /// Space with no unfinished syllable opens the candidate window (true) or commits the composition (false).
-    public var spaceOpensCandidates: Bool = true
+    /// What Space does when no syllable is being typed (with one, Space is the first tone).  The engine default
+    /// opens the candidate window; the app's own default is set in its preferences.
+    public var spaceAction: SpaceAction = .openCandidates
+    /// Space opens the candidate window (true) or commits the composition (false).
+    public var spaceOpensCandidates: Bool {
+        get { spaceAction == .openCandidates }
+        set { spaceAction = newValue ? .openCandidates : .commit }
+    }
     /// Escape with no candidate window open clears the whole composition (true) or only the unfinished syllable.
     public var escapeClearsComposition: Bool = true
     /// Learn from commits and candidate picks.

@@ -13,7 +13,8 @@ struct SettingsPaneView: View {
             case .general: GeneralPane(preferences: preferences)
             case .keys: KeysPane(preferences: preferences)
             case .candidates: CandidatesPane(preferences: preferences)
-            case .phrases: PhrasesPane(model: model)
+            case .context: ContextPane(preferences: preferences, pinnedScene: DemoPinning.context)
+            case .phrases: PhrasesPane(model: model, preferences: preferences)
             case .learned: LearnedPane(model: model, preferences: preferences)
             case .advanced: AdvancedPane(model: model, preferences: preferences)
             case .about: AboutPane()
@@ -24,10 +25,34 @@ struct SettingsPaneView: View {
     }
 }
 
-/// A two-way binding to a `Preferences` property.
-private func binding<Value>(_ preferences: Preferences, _ keyPath: ReferenceWritableKeyPath<Preferences, Value>) -> Binding<Value> {
-    Binding(get: { preferences[keyPath: keyPath] }, set: { preferences[keyPath: keyPath] = $0 })
+/// Fixed frames for the demos, so the UI previews show a chosen moment.  Nil while the app runs.
+enum DemoPinning {
+    static var stage: Int?
+    static var context: Int?
+    static var mini: Int?
 }
+
+/// A setting with its title and a one-line description on the leading side; the control and an ⓘ button on the
+/// trailing side.  Rows without an ⓘ keep its place, so the controls of a section line up.
+private struct OptionRow<Info: View, Control: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let info: () -> Info
+    @ViewBuilder let control: () -> Control
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 6) {
+                control()
+                info().frame(width: 20)
+            }
+        } label: {
+            RowLabel(title, subtitle)
+        }
+    }
+}
+
+// MARK: - 一般
 
 private struct GeneralPane: View {
     @ObservedObject var preferences: Preferences
@@ -36,46 +61,94 @@ private struct GeneralPane: View {
     ]
 
     var body: some View {
+        let corrections = preferences.shortcuts[.correctionsList]?.compact ?? "⇧↑"
         Form {
-            Section {
-                Picker("空白鍵", selection: binding(preferences, \.spaceOpensCandidates)) {
-                    Text("開啟候選字視窗").tag(true)
-                    Text("送出文字").tag(false)
+            Section("按鍵") {
+                OptionRow(title: "空白鍵", subtitle: OptionDemos.spaceSubtitle(preferences.spaceAction)) {
+                    InfoButton(title: "空白鍵") { SpaceInfo(current: preferences.spaceAction) }
+                } control: {
+                    Picker("空白鍵", selection: binding(preferences, \.spaceAction)) {
+                        Text("開啟候選字視窗").tag(SpaceAction.openCandidates)
+                        Text("送出文字").tag(SpaceAction.commit)
+                        Text("送出並輸入空白").tag(SpaceAction.commitAndSpace)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                Picker("Esc", selection: binding(preferences, \.escapeClearsComposition)) {
-                    Text("清除整段組字").tag(true)
-                    Text("只清除注音").tag(false)
+                OptionRow(title: "Esc", subtitle: preferences.escapeClearsComposition
+                          ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音") {
+                    InfoButton(title: "Esc") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            ChoiceDemo(title: "清除整段組字", selected: preferences.escapeClearsComposition,
+                                       frames: OptionDemos.escape(clearsComposition: true), pinned: DemoPinning.mini)
+                            ChoiceDemo(title: "只清除注音", selected: !preferences.escapeClearsComposition,
+                                       frames: OptionDemos.escape(clearsComposition: false), pinned: DemoPinning.mini)
+                        }
+                    }
+                } control: {
+                    Picker("Esc", selection: binding(preferences, \.escapeClearsComposition)) {
+                        Text("清除整段組字").tag(true)
+                        Text("只清除注音").tag(false)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                Picker("標點按法", selection: binding(preferences, \.punctuationKeys)) {
-                    Text("Windows").tag(PunctuationKeys.windows)
-                    Text("macOS").tag(PunctuationKeys.mac)
+                OptionRow(title: "標點按法", subtitle: preferences.punctuationKeys == .windows
+                          ? "⇧ 加符號鍵打出鍵上的符號，例如 <" : "⇧ 加符號鍵打出中文標點，例如 ，") {
+                    InfoButton(title: "標點按法") { PunctuationTable(current: preferences.punctuationKeys) }
+                } control: {
+                    Picker("標點按法", selection: binding(preferences, \.punctuationKeys)) {
+                        Text("Windows").tag(PunctuationKeys.windows)
+                        Text("macOS").tag(PunctuationKeys.mac)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-            } header: {
-                Text("按鍵")
-            } footer: {
-                FooterText(preferences.punctuationKeys == .windows
-                    ? "Windows：Shift 加符號鍵打出鍵上的符號（< > _ ?），Control 加符號鍵打出中文標點（，。、？！）。所有按鍵列在「快捷鍵」。"
-                    : "macOS：Shift 加符號鍵打出中文標點（，。？！——），Option 加符號鍵打出鍵上的符號。所有按鍵列在「快捷鍵」。")
             }
-            Section {
-                Picker("游標在句中時改", selection: binding(preferences, \.candidateAnchor)) {
-                    Text("游標右邊的字").tag(AnchorSetting.after)
-                    Text("游標左邊的字").tag(AnchorSetting.before)
+            Section("選字") {
+                OptionRow(title: "游標在句中時改", subtitle: "要改的字以底線標出") {
+                    InfoButton(title: "游標在句中時改") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            ChoiceDemo(title: "游標右邊的字", selected: preferences.candidateAnchor == .after,
+                                       frames: OptionDemos.anchor(.after), pinned: DemoPinning.mini)
+                            ChoiceDemo(title: "游標左邊的字", selected: preferences.candidateAnchor == .before,
+                                       frames: OptionDemos.anchor(.before), pinned: DemoPinning.mini)
+                        }
+                    }
+                } control: {
+                    Picker("游標在句中時改", selection: binding(preferences, \.candidateAnchor)) {
+                        Text("游標右邊的字").tag(AnchorSetting.after)
+                        Text("游標左邊的字").tag(AnchorSetting.before)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                Picker("按錯鍵修正", selection: binding(preferences, \.typoTolerance)) {
-                    Text("關閉").tag(TypoSetting.off)
-                    Text("標準").tag(TypoSetting.standard)
-                    Text("積極").tag(TypoSetting.aggressive)
+                OptionRow(title: "按錯鍵修正", subtitle: OptionDemos.typoSubtitle(preferences.typoTolerance)) {
+                    InfoButton(title: "按錯鍵修正") {
+                        TypoInfo(current: preferences.typoTolerance, correctionsKey: corrections)
+                    }
+                } control: {
+                    Picker("按錯鍵修正", selection: binding(preferences, \.typoTolerance)) {
+                        Text("關閉").tag(TypoSetting.off)
+                        Text("標準").tag(TypoSetting.standard)
+                        Text("積極").tag(TypoSetting.aggressive)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
-                Picker("台／臺", selection: binding(preferences, \.characterForms)) {
-                    Text("台").tag(CharacterForms.common)
-                    Text("臺").tag(CharacterForms.standard)
+                OptionRow(title: "台／臺", subtitle: "顯示與送出的寫法") {
+                    Color.clear.frame(height: 1)
+                } control: {
+                    Picker("台／臺", selection: binding(preferences, \.characterForms)) {
+                        Text("台").tag(CharacterForms.common)
+                        Text("臺").tag(CharacterForms.standard)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
                 }
-                Toggle("參考游標前的文字", isOn: binding(preferences, \.usesPrecedingText))
-            } header: {
-                Text("選字")
-            } footer: {
-                FooterText("游標在句尾時改最後的字詞；在句中時，要改的字有底線。按錯相鄰的鍵或聲調時自動修正，候選字視窗只列照按鍵打出的字，修正的字按 Shift-↑ 才列出。選字參考游標前約 120 個字（包括同一個 App 裡 10 分鐘內打的字），只在這台 Mac 上使用。")
+                PaneLink(title: "參考游標前的文字", subtitle: "依前文選字；只在記憶體中",
+                         value: preferences.usesPrecedingText ? "開啟" : "關閉", pane: .context)
             }
             Section {
                 ForEach(Self.fuzzyPairs, id: \.label) { pair in
@@ -88,9 +161,13 @@ private struct GeneralPane: View {
                         }))
                 }
             } header: {
-                Text("模糊音")
+                HStack {
+                    Text("模糊音")
+                    Spacer()
+                    InfoButton(title: "模糊音") { FuzzyInfo() }
+                }
             } footer: {
-                FooterText("開啟的兩個音互相通用。讀音完全符合的字詞仍排在前面，除非另一個詞明顯更常用。")
+                FooterText("開啟的兩個音互相通用。")
             }
             Section("中英切換") {
                 Picker("切換鍵", selection: binding(preferences, \.shiftToggle)) {
@@ -99,12 +176,101 @@ private struct GeneralPane: View {
                     Text("右 Shift").tag(ShiftToggle.right)
                     Text("不使用").tag(ShiftToggle.none)
                 }
-                Toggle("切換時在游標旁顯示「中」或「英」", isOn: binding(preferences, \.showModeToast))
+                Toggle(isOn: binding(preferences, \.showModeToast)) {
+                    RowLabel("中英提示", "切換時在游標旁顯示「中」或「英」")
+                }
                 Toggle("開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
             }
         }
     }
 }
+
+/// A row that opens another page, like the rows of System Settings that end in a chevron.
+private struct PaneLink: View {
+    let title: String
+    let subtitle: String
+    let value: String
+    let pane: SettingsPane
+
+    var body: some View {
+        Button {
+            SettingsWindowController.shared.select(pane)
+        } label: {
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Text(value).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            } label: {
+                RowLabel(title, subtitle)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("開啟「\(pane.title)」")
+    }
+}
+
+struct SpaceInfo: View {
+    let current: SpaceAction
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("打注音時，空白是一聲；打完以後，空白依這個設定。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ChoiceDemo(title: "開啟候選字視窗", selected: current == .openCandidates,
+                       frames: OptionDemos.space(.openCandidates), pinned: DemoPinning.mini)
+            ChoiceDemo(title: "送出文字", selected: current == .commit,
+                       frames: OptionDemos.space(.commit), pinned: DemoPinning.mini)
+            ChoiceDemo(title: "送出並輸入空白", selected: current == .commitAndSpace,
+                       frames: OptionDemos.space(.commitAndSpace), pinned: DemoPinning.mini)
+        }
+    }
+}
+
+struct TypoInfo: View {
+    let current: TypoSetting
+    let correctionsKey: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            MiniDemo(frames: OptionDemos.typo(correctionsKey: correctionsKey), restingFrame: 2, pinned: DemoPinning.mini)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach([TypoSetting.off, .standard, .aggressive]) { setting in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(setting == .off ? "關閉" : setting == .standard ? "標準" : "積極")
+                            .fontWeight(setting == current ? .semibold : .regular)
+                            .frame(width: 34, alignment: .leading)
+                        Text(OptionDemos.typoSubtitle(setting))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.callout)
+                }
+            }
+            Text("照按鍵打出的字優先；修正過的字也在 \(correctionsKey) 的清單中。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+struct FuzzyInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            MiniDemo(frames: OptionDemos.fuzzy, pinned: DemoPinning.mini)
+            Text("兩個詞同樣常用時，讀音完全符合的排在前面。")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+// MARK: - 快捷鍵
 
 /// Every key, most used first, in the words of what it does.  Typing keys are fixed; the commands below them can be
 /// rebound (click the keycaps, press the new keys) and restored to their defaults.
@@ -113,24 +279,27 @@ private struct KeysPane: View {
 
     var body: some View {
         let vertical = preferences.candidateLayout == .vertical
-        let keys = preferences.selectionKeys == .digits ? "1–9" : "A S D F…"
+        let pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
+        let keys = preferences.selectionKeys == .digits ? "1–\(pageKeys.count)" : pageKeys.joined(separator: " ")
         let shift: [String] = switch preferences.shiftToggle {
         case .both: ["Shift"]
         case .left: ["左 Shift"]
         case .right: ["右 Shift"]
         case .none: []
         }
+        let space = preferences.spaceAction
         Form {
             Section("打字") {
                 KeyRow("拼注音", ["注音鍵"])
                 KeyRow("聲調：二聲、三聲、四聲、輕聲", ["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"])
                 KeyRow("一聲（完成這個音）", ["空白"])
-                KeyRow("送出", ["Return"])
+                KeyRow("送出", ["Return"], space == .commit ? ["空白"] : [])
+                if space == .commitAndSpace { KeyRow("送出並輸入空白", ["空白"]) }
                 KeyRow("刪掉注音符號，或游標前的字", ["⌫"])
                 KeyRow("在組字中移動游標", ["←"], ["→"], joiner: "")
             }
             Section {
-                KeyRow("開啟候選字", ["↓"], preferences.spaceOpensCandidates ? ["空白"] : [])
+                KeyRow("開啟候選字", ["↓"], space == .openCandidates ? ["空白"] : [])
                 KeyRow("選字", [keys])
                 KeyRow("移動選取", vertical ? ["↑"] : ["←"], vertical ? ["↓"] : ["→"], joiner: "")
                 if vertical { KeyRow("改前一個或後一個字", ["←"], ["→"], joiner: "") }
@@ -149,7 +318,7 @@ private struct KeysPane: View {
                 Text("可以自訂的按鍵")
             } footer: {
                 HStack(alignment: .firstTextBaseline) {
-                    FooterText("點按鍵，再按下新的組合；Esc 取消。沒有指定給功能的按鍵交給 App。")
+                    FooterText("點按鍵，再按下新的組合；Esc 取消。")
                     Spacer()
                     Button("還原預設值") { preferences.resetShortcuts() }
                         .disabled(preferences.shortcuts == ShortcutCommand.defaults)
@@ -245,7 +414,7 @@ private struct KeyRow: View {
     let action: String
     let keys: [String]
     let alternative: [String]
-    /// Between the two groups: "或" for alternatives, "" for a pair such as ← →, "+" for keys used together.
+    /// Between the two groups: "或" for alternatives, "" for a pair such as ← →.
     let joiner: String
     init(_ action: String, _ keys: [String], _ alternative: [String] = [], joiner: String = "或") {
         self.action = action
@@ -266,99 +435,99 @@ private struct KeyRow: View {
     }
 }
 
-private struct KeyCombo: View {
-    let keys: [String]
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(keys, id: \.self) { key in
-                Text(key)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .frame(minWidth: 22, minHeight: 20)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.6)))
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(.quaternary, lineWidth: 0.5))
-            }
-        }
-    }
-}
+// MARK: - 候選字視窗
 
 private struct CandidatesPane: View {
     @ObservedObject var preferences: Preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let labels = preferences.candidateKeyLabels
+        let pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
         Form {
             Section {
+                CandidateStage(preferences: preferences, pinned: DemoPinning.stage)
+                    .padding(.vertical, 6)
+            }
+            Section("版面") {
                 Picker("排列", selection: binding(preferences, \.candidateLayout)) {
                     Text("直式").tag(CandidateLayout.vertical)
                     Text("橫式").tag(CandidateLayout.horizontal)
                 }
                 .pickerStyle(.segmented)
                 LabeledContent("字級") {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Text("字").font(.system(size: 11)).foregroundStyle(.secondary)
                         Slider(value: Binding(get: { preferences.candidateFontSize },
                                               set: { preferences.candidateFontSize = $0.rounded() }), in: 13...28)
-                            .frame(maxWidth: 220)
+                            .frame(maxWidth: 200)
+                            .accessibilityValue("\(Int(preferences.candidateFontSize)) pt")
+                        Text("字").font(.system(size: 17)).foregroundStyle(.secondary)
                         Text("\(Int(preferences.candidateFontSize)) pt")
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
-                            .frame(width: 42, alignment: .trailing)
+                            .frame(width: 40, alignment: .trailing)
                     }
+                }
+                LabeledContent {
+                    Stepper(value: binding(preferences, \.candidatesPerPage), in: 3...9) {
+                        Text("\(preferences.candidatesPerPage) 個").monospacedDigit()
+                    }
+                } label: {
+                    RowLabel("每頁的候選字", "用 \(pageKeys.first ?? "1") 到 \(pageKeys.last ?? "9") 選字")
                 }
                 Picker("選字鍵", selection: binding(preferences, \.selectionKeys)) {
                     Text("1 2 3 4 5 6 7 8 9").tag(SelectionKeySet.digits)
                     Text("A S D F G H J K L").tag(SelectionKeySet.homeRow)
                 }
-            }
-            Section("預覽") {
-                HStack {
-                    CandidatePreview(layout: preferences.candidateLayout, fontSize: preferences.candidateFontSize,
-                                     keys: Array(preferences.selectionKeys.rawValue),
-                                     keyLabels: preferences.candidateKeyLabels)
-                    Spacer(minLength: 0)
+                Picker("間距", selection: binding(preferences, \.candidateDensity)) {
+                    Text("標準").tag(CandidateDensity.standard)
+                    Text("緊湊").tag(CandidateDensity.compact)
                 }
-                .padding(.vertical, 6)
+                .pickerStyle(.segmented)
+            }
+            Section("內容") {
+                Toggle(isOn: binding(preferences, \.showsZhuyinHint)) {
+                    RowLabel("顯示注音", "列在候選字上方，點一下打出注音")
+                }
+                Toggle(isOn: binding(preferences, \.showsAnnotations)) {
+                    RowLabel("標出修正的讀音", "修正過的字旁邊以灰字標出注音")
+                }
+                Toggle(isOn: binding(preferences, \.showsListSwitches)) {
+                    RowLabel("單字與修正按鈕", "\(labels.single) 單字、\(labels.corrections) 修正；關閉時只在使用中顯示")
+                }
+            }
+            Section("位置與外觀") {
+                Picker(selection: binding(preferences, \.candidatePlacement)) {
+                    Text("游標下方").tag(CandidatePlacement.below)
+                    Text("游標上方").tag(CandidatePlacement.above)
+                } label: {
+                    RowLabel("位置", "空間不足時換到另一邊，一律留在螢幕內")
+                }
+                Picker("外觀", selection: binding(preferences, \.panelAppearance)) {
+                    Text("跟隨系統").tag(PanelAppearance.system)
+                    Text("淺色").tag(PanelAppearance.light)
+                    Text("深色").tag(PanelAppearance.dark)
+                }
+                Toggle(isOn: binding(preferences, \.panelAnimation)) {
+                    RowLabel("動畫", reduceMotion ? "候選字視窗淡入；已開啟「減少動態效果」，不滑動"
+                                              : "候選字視窗淡入，「中」「英」提示淡出")
+                }
             }
         }
     }
 }
 
-/// The real candidate window surface, so the preview matches what appears while typing.
-/// The candidate window as it looks while typing: the same header, rows and footer, with the current keys.
-private struct CandidatePreview: NSViewRepresentable {
-    let layout: CandidateLayout
-    let fontSize: Double
-    let keys: [Character]
-    let keyLabels: CandidateKeyLabels
-
-    private static let list = CandidateList(items: ["今天", "金天", "今", "斤", "巾"].map { Candidate(text: $0) },
-                                            pageSize: 9, tolerant: false)
-
-    func makeNSView(context: Context) -> InputSurface { InputSurface(content: CandidateContentView(frame: .zero)) }
-
-    func updateNSView(_ surface: InputSurface, context: Context) {
-        layOut(surface)
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: InputSurface, context: Context) -> CGSize? {
-        layOut(nsView)
-    }
-
-    @discardableResult
-    private func layOut(_ surface: InputSurface) -> CGSize {
-        let content = surface.content as! CandidateContentView
-        content.keyLabels = keyLabels
-        let size = content.update(list: Self.list, preview: nil, keys: keys, layout: layout, fontSize: fontSize,
-                                  maxWidth: 460, zhuyinHint: "ㄐㄧㄣ ㄊㄧㄢ")
-        surface.fitContent()
-        return size
-    }
-}
+// MARK: - 自訂詞、記住的字詞
 
 private struct PhrasesPane: View {
     @ObservedObject var model: SettingsModel
+    @ObservedObject var preferences: Preferences
 
     var body: some View {
+        let shortcuts = preferences.shortcuts
+        let left = shortcuts[.selectLeft]?.compact ?? "⇧←"
+        let right = shortcuts[.selectRight]?.compact ?? "⇧→"
         Form {
             Section {
                 if model.engine == nil {
@@ -369,7 +538,7 @@ private struct PhrasesPane: View {
                         .listRowInsets(EdgeInsets())
                 }
             } footer: {
-                FooterText("自訂詞在選字時優先列出。")
+                FooterText("自訂詞在選字時優先列出；打字時用 \(left) \(right) 選取字詞，再按 Return 也能加入。")
             }
         }
     }
@@ -382,9 +551,13 @@ private struct LearnedPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("記住選過的字詞", isOn: binding(preferences, \.learningEnabled))
-            } footer: {
-                FooterText("選過的字詞下次會排在前面。資料只存在這台 Mac。")
+                OptionRow(title: "記住選過的字詞", subtitle: "下次打同樣的讀音時排在前面；只存在這台 Mac") {
+                    InfoButton(title: "記住的字詞") { LearnedInfo() }
+                } control: {
+                    Toggle("記住選過的字詞", isOn: binding(preferences, \.learningEnabled))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
             }
             Section {
                 if model.engine == nil {
@@ -398,6 +571,22 @@ private struct LearnedPane: View {
         }
     }
 }
+
+/// What is remembered and for how long (docs/DESIGN.md §2.5).
+struct LearnedInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            FactRow(symbol: "checkmark.circle", text: "選過的字詞：同樣的讀音直接採用")
+            FactRow(symbol: "link", text: "常接在一起的詞：送出時學習，選字時參考")
+            FactRow(symbol: "keyboard", text: "按錯習慣：常按錯的鍵更容易修正")
+            FactRow(symbol: "clock", text: "近期與長期分開記，半衰期 8 小時與 90 天")
+            FactRow(symbol: "lock", text: "密碼欄位中暫停學習")
+            FactRow(symbol: "nosign", text: "設為「不記住」的字詞之後不再學")
+        }
+    }
+}
+
+// MARK: - 進階、關於
 
 private struct AdvancedPane: View {
     @ObservedObject var model: SettingsModel
@@ -413,11 +602,13 @@ private struct AdvancedPane: View {
             } header: {
                 Text("在候選字視窗顯示組字的 App")
             } footer: {
-                FooterText("清單中的 App，組字會顯示在候選字視窗上方。")
+                FooterText("清單中的 App，組字顯示在候選字視窗上方。")
             }
             Section {
-                LabeledContent("回復預設設定") {
+                LabeledContent {
                     Button("回復…") { confirmingReset = true }
+                } label: {
+                    RowLabel("回復預設設定", "自訂詞與記住的字詞會保留")
                 }
             }
         }
@@ -435,15 +626,6 @@ private struct AdvancedPane: View {
 
 private struct AboutPane: View {
     @ObservedObject private var updater = Updater.shared
-
-    private var updateFooter: String {
-        var parts = ["每天向 GitHub 確認一次有沒有新版本；更新檔都經過簽章驗證。自動安裝時，新版本在組字結束後換上。"]
-        if let pending = updater.pendingVersion { parts.append("已下載 \(pending)，組字結束後安裝。") }
-        if let last = updater.lastCheck {
-            parts.append("上次檢查：" + last.formatted(date: .abbreviated, time: .shortened) + "。")
-        }
-        return parts.joined(separator: "")
-    }
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -468,19 +650,24 @@ private struct AboutPane: View {
                 .padding(.vertical, 12)
             }
             if updater.isAvailable {
-                Section {
-                    Toggle("自動檢查更新", isOn: Binding(get: { updater.automaticallyChecks },
-                                                    set: { updater.automaticallyChecks = $0 }))
-                    Toggle("自動安裝更新", isOn: Binding(get: { updater.automaticallyInstalls },
-                                                    set: { updater.automaticallyInstalls = $0 }))
-                        .disabled(!updater.automaticallyChecks)
-                    LabeledContent("檢查更新") {
-                        Button("立即檢查…") { updater.checkNow() }
+                Section("更新") {
+                    Toggle(isOn: Binding(get: { updater.automaticallyChecks }, set: { updater.automaticallyChecks = $0 })) {
+                        RowLabel("自動檢查更新", "每天一次；更新檔都經過簽章驗證")
                     }
-                } header: {
-                    Text("更新")
-                } footer: {
-                    FooterText(updateFooter)
+                    Toggle(isOn: Binding(get: { updater.automaticallyInstalls }, set: { updater.automaticallyInstalls = $0 })) {
+                        RowLabel("自動安裝更新", "在組字結束後換上新版本")
+                    }
+                    .disabled(!updater.automaticallyChecks)
+                    if let pending = updater.pendingVersion {
+                        LabeledContent("已下載", value: "\(pending)，組字結束後安裝")
+                    }
+                    LabeledContent {
+                        Button("立即檢查…") { updater.checkNow() }
+                    } label: {
+                        RowLabel("檢查更新", updater.lastCheck.map {
+                            "上次檢查：" + $0.formatted(date: .abbreviated, time: .shortened)
+                        })
+                    }
                 }
             }
             Section {
@@ -499,16 +686,5 @@ private struct LoadingRow: View {
             Text("正在載入詞庫…").foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 120)
-    }
-}
-
-private struct FooterText: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

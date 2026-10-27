@@ -5,6 +5,8 @@ import ZhuyinCore
 /// The settings window: a source-list sidebar and one pane at a time, like System Settings.
 final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
     static let shared = SettingsWindowController()
+    /// Rendering previews: the window's frame and the last pane are not saved.
+    static var isPreview = false
 
     /// Set once the engine has loaded; the word lists read and edit through it.
     var engine: Engine? {
@@ -44,7 +46,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
-        window.setFrameAutosaveName("ZhuyinTypeSettings")
+        if !Self.isPreview { window.setFrameAutosaveName("ZhuyinTypeSettings") }
         split.onSelect = { [weak self, weak window] pane in
             window?.title = pane.title
             self?.paneChanged(pane, toolbar: toolbar)
@@ -53,6 +55,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         self.window = window
         self.split = split
         return window
+    }
+
+    /// Shows `pane`, as when its row in the sidebar is clicked.
+    func select(_ pane: SettingsPane) {
+        split?.select(pane)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -122,13 +129,17 @@ final class SettingsModel: ObservableObject {
 }
 
 enum SettingsPane: String, CaseIterable {
-    case general, keys, candidates, phrases, learned, advanced, about
+    case general, keys, candidates, context, phrases, learned, advanced, about
+
+    /// The sidebar's groups, separated by a little space as in System Settings.
+    static let groups: [[SettingsPane]] = [[.general, .keys, .candidates, .context], [.phrases, .learned], [.advanced, .about]]
 
     var title: String {
         switch self {
         case .general: return "一般"
         case .keys: return "快捷鍵"
         case .candidates: return "候選字視窗"
+        case .context: return "前文"
         case .phrases: return "自訂詞"
         case .learned: return "記住的字詞"
         case .advanced: return "進階"
@@ -140,7 +151,8 @@ enum SettingsPane: String, CaseIterable {
         switch self {
         case .general: return "gearshape.fill"
         case .keys: return "keyboard.fill"
-        case .candidates: return "list.bullet.rectangle.fill"
+        case .candidates: return "list.bullet.rectangle"
+        case .context: return "text.alignleft"
         case .phrases: return "character.book.closed.fill"
         case .learned: return "clock.arrow.circlepath"
         case .advanced: return "slider.horizontal.3"
@@ -153,6 +165,7 @@ enum SettingsPane: String, CaseIterable {
         case .general: return .systemGray
         case .keys: return .systemIndigo
         case .candidates: return .systemBlue
+        case .context: return .systemTeal
         case .phrases: return .systemOrange
         case .learned: return .systemPurple
         case .advanced: return .systemGray
@@ -163,7 +176,7 @@ enum SettingsPane: String, CaseIterable {
     private static let defaultsKey = "settingsLastPane"
     static var lastSelected: SettingsPane {
         get { UserDefaults.standard.string(forKey: defaultsKey).flatMap(SettingsPane.init(rawValue:)) ?? .general }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
+        set { if !SettingsWindowController.isPreview { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) } }
     }
 
     /// A System Settings style icon: a white symbol on a rounded colour tile.  Drawn on demand, so it stays sharp at
@@ -202,7 +215,9 @@ final class SettingsSplitViewController: NSSplitViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        // Offscreen drawing leaves the sidebar material blank, so previews draw the sidebar on a plain background.
+        let sidebarItem = SettingsWindowController.isPreview
+            ? NSSplitViewItem(viewController: sidebar) : NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.canCollapse = false
         sidebarItem.minimumThickness = 190
         sidebarItem.maximumThickness = 230
@@ -229,7 +244,10 @@ final class SettingsSplitViewController: NSSplitViewController {
 final class SettingsSidebarViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     var onSelect: ((SettingsPane) -> Void)?
     private let table = NSTableView()
-    private let panes = SettingsPane.allCases
+    /// Panes, with nil for the small gap between groups.
+    private let rows: [SettingsPane?] = SettingsPane.groups.enumerated().flatMap { index, group in
+        (index == 0 ? [] : [nil]) + group.map { Optional($0) }
+    }
     private var icons: [SettingsPane: NSImage] = [:]
 
     override func loadView() {
@@ -239,7 +257,8 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         let column = NSTableColumn(identifier: .init("pane"))
         table.addTableColumn(column)
         table.headerView = nil
-        table.style = .sourceList
+        // Previews draw the sidebar without its material, where the source-list selection would be drawn black.
+        table.style = SettingsWindowController.isPreview ? .inset : .sourceList
         table.rowSizeStyle = .custom
         table.rowHeight = 32
         table.backgroundColor = .clear
@@ -248,18 +267,23 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         table.setAccessibilityLabel("設定項目")
         scroll.documentView = table
         view = scroll
-        panes.forEach { icons[$0] = $0.icon }
+        SettingsPane.allCases.forEach { icons[$0] = $0.icon }
     }
 
     func select(_ pane: SettingsPane) {
         _ = view
-        guard let row = panes.firstIndex(of: pane), table.selectedRow != row else { return }
+        guard let row = rows.firstIndex(of: pane), table.selectedRow != row else { return }
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { panes.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { rows[row] == nil ? 10 : 32 }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { rows[row] != nil }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard let pane = rows[row] else { return NSView() }
         let identifier = NSUserInterfaceItemIdentifier("SidebarCell")
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? {
             let cell = NSTableCellView()
@@ -285,15 +309,14 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
             cell.textField = text
             return cell
         }()
-        let pane = panes[row]
         cell.imageView?.image = icons[pane]
         cell.textField?.stringValue = pane.title
         return cell
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard panes.indices.contains(table.selectedRow) else { return }
-        onSelect?(panes[table.selectedRow])
+        guard rows.indices.contains(table.selectedRow), let pane = rows[table.selectedRow] else { return }
+        onSelect?(pane)
     }
 }
 

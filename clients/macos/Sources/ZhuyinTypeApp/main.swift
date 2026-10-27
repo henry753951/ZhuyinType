@@ -4,9 +4,9 @@ import InputMethodKit
 if InstallCommand.handle(arguments: CommandLine.arguments) { exit(0) }
 
 let arguments = CommandLine.arguments
-if let index = arguments.firstIndex(of: "--render-ui-preview") {
+if let index = arguments.firstIndex(where: { $0 == "--render-ui" || $0 == "--render-ui-preview" }) {
     guard arguments.indices.contains(index + 1) else {
-        fputs("--render-ui-preview requires an output directory\n", stderr)
+        fputs("--render-ui requires an output directory\n", stderr)
         exit(2)
     }
     _ = NSApplication.shared

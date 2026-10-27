@@ -230,8 +230,11 @@ public final class Composer {
             case .space:
                 if hasBuffer { finishBuffer(); result = .consumed }
                 else if hasComposition {
-                    if options.spaceOpensCandidates { openCandidates(); result = .consumed }
-                    else { return KeyResult(handled: true, commit: commitAll()) }
+                    switch options.spaceAction {
+                    case .openCandidates: openCandidates(); result = .consumed
+                    case .commit: return KeyResult(handled: true, commit: commitAll())
+                    case .commitAndSpace: return KeyResult(handled: false, commit: commitAll())
+                    }
                 } else { result = .passThrough }
             case .shiftSpace:
                 if hasComposition {

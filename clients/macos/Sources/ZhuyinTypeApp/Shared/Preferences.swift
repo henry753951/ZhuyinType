@@ -1,5 +1,6 @@
 // User settings, stored in the app's UserDefaults domain.  The settings window binds to these; the input controller
 // reads them and listens for `Preferences.didChange`.
+import AppKit
 import Combine
 import Foundation
 import ZhuyinCore
@@ -25,6 +26,31 @@ enum AnchorSetting: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Where the candidate window opens; either side flips to the other when the screen has no room.
+enum CandidatePlacement: String, CaseIterable, Identifiable {
+    case below, above
+    var id: String { rawValue }
+}
+
+/// Row height and margins of the candidate window.
+enum CandidateDensity: String, CaseIterable, Identifiable {
+    case standard, compact
+    var id: String { rawValue }
+}
+
+/// The floating panels' appearance: the system's, or always light or dark.
+enum PanelAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 enum SelectionKeySet: String, CaseIterable, Identifiable {
     case digits = "123456789"
     case homeRow = "asdfghjkl"
@@ -32,7 +58,8 @@ enum SelectionKeySet: String, CaseIterable, Identifiable {
 }
 
 final class Preferences: ObservableObject {
-    static let shared = Preferences()
+    /// The app's settings.  The UI preview renderer swaps in a throwaway suite so it never touches the user's.
+    static var shared = Preferences()
     static let didChange = Notification.Name("ZhuyinTypePreferencesDidChange")
 
     private let defaults: UserDefaults
@@ -43,7 +70,14 @@ final class Preferences: ObservableObject {
             Key.candidateLayout: CandidateLayout.vertical.rawValue,
             Key.candidateFontSize: 18.0,
             Key.selectionKeys: SelectionKeySet.digits.rawValue,
-            Key.spaceOpensCandidates: true,
+            Key.candidatesPerPage: 9,
+            Key.candidatePlacement: CandidatePlacement.below.rawValue,
+            Key.candidateDensity: CandidateDensity.standard.rawValue,
+            Key.showsZhuyinHint: true,
+            Key.showsAnnotations: true,
+            Key.showsListSwitches: true,
+            Key.panelAppearance: PanelAppearance.system.rawValue,
+            Key.panelAnimation: true,
             Key.escapeClearsComposition: true,
             Key.shiftToggle: ShiftToggle.both.rawValue,
             Key.showModeToast: true,
@@ -63,7 +97,17 @@ final class Preferences: ObservableObject {
         static let candidateLayout = "candidateLayout"
         static let candidateFontSize = "candidateFontSize"
         static let selectionKeys = "selectionKeys"
-        static let spaceOpensCandidates = "spaceOpensCandidates"
+        /// Earlier versions stored Space as a Bool (true: open the candidate window); read while `spaceAction` is unset.
+        static let legacySpaceOpensCandidates = "spaceOpensCandidates"
+        static let spaceAction = "spaceAction"
+        static let candidatesPerPage = "candidatesPerPage"
+        static let candidatePlacement = "candidatePlacement"
+        static let candidateDensity = "candidateDensity"
+        static let showsZhuyinHint = "showsZhuyinHint"
+        static let showsAnnotations = "showsAnnotations"
+        static let showsListSwitches = "showsListSwitches"
+        static let panelAppearance = "panelAppearance"
+        static let panelAnimation = "panelAnimation"
         static let escapeClearsComposition = "escapeClearsComposition"
         static let shiftToggle = "shiftToggle"
         static let showModeToast = "showModeToast"
@@ -80,10 +124,11 @@ final class Preferences: ObservableObject {
         static let characterForms = "characterForms"
         static let punctuationKeys = "punctuationKeys"
 
-        static let all = [candidateLayout, candidateFontSize, selectionKeys, spaceOpensCandidates, escapeClearsComposition,
-                          shiftToggle, showModeToast, startInEnglish, learningEnabled, popupCompositionApps,
-                          typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, characterForms,
-                          punctuationKeys]
+        static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
+                          escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
+                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts,
+                          characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
+                          showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation]
     }
 
     func resetToDefaults() {
@@ -108,10 +153,66 @@ final class Preferences: ObservableObject {
         get { SelectionKeySet(rawValue: defaults.string(forKey: Key.selectionKeys) ?? "") ?? .digits }
         set { defaults.set(newValue.rawValue, forKey: Key.selectionKeys); changed() }
     }
-    var spaceOpensCandidates: Bool {
-        get { defaults.bool(forKey: Key.spaceOpensCandidates) }
-        set { defaults.set(newValue, forKey: Key.spaceOpensCandidates); changed() }
+    /// What Space does with no syllable being typed; by default it commits.  Not registered, so that a choice saved
+    /// by an earlier version (the Bool) is kept.
+    var spaceAction: SpaceAction {
+        get {
+            if let action = defaults.string(forKey: Key.spaceAction).flatMap(SpaceAction.init(rawValue:)) { return action }
+            if let opens = defaults.object(forKey: Key.legacySpaceOpensCandidates) as? Bool { return opens ? .openCandidates : .commit }
+            return .commit
+        }
+        set {
+            defaults.removeObject(forKey: Key.legacySpaceOpensCandidates)
+            defaults.set(newValue.rawValue, forKey: Key.spaceAction)
+            changed()
+        }
     }
+    /// Candidates on a page, 3–9: the first that many selection keys pick them.
+    var candidatesPerPage: Int {
+        get { min(9, max(3, defaults.integer(forKey: Key.candidatesPerPage))) }
+        set { defaults.set(min(9, max(3, newValue)), forKey: Key.candidatesPerPage); changed() }
+    }
+    var candidatePlacement: CandidatePlacement {
+        get { CandidatePlacement(rawValue: defaults.string(forKey: Key.candidatePlacement) ?? "") ?? .below }
+        set { defaults.set(newValue.rawValue, forKey: Key.candidatePlacement); changed() }
+    }
+    var candidateDensity: CandidateDensity {
+        get { CandidateDensity(rawValue: defaults.string(forKey: Key.candidateDensity) ?? "") ?? .standard }
+        set { defaults.set(newValue.rawValue, forKey: Key.candidateDensity); changed() }
+    }
+    /// The reading of the part being changed, above the candidates.
+    var showsZhuyinHint: Bool {
+        get { defaults.bool(forKey: Key.showsZhuyinHint) }
+        set { defaults.set(newValue, forKey: Key.showsZhuyinHint); changed() }
+    }
+    /// The corrected reading in grey after a corrected candidate.
+    var showsAnnotations: Bool {
+        get { defaults.bool(forKey: Key.showsAnnotations) }
+        set { defaults.set(newValue, forKey: Key.showsAnnotations); changed() }
+    }
+    /// The ⇧↓ 單字 and ⇧↑ 修正 switches at the bottom of the window; when off, a switch shows only while it is on.
+    var showsListSwitches: Bool {
+        get { defaults.bool(forKey: Key.showsListSwitches) }
+        set { defaults.set(newValue, forKey: Key.showsListSwitches); changed() }
+    }
+    var panelAppearance: PanelAppearance {
+        get { PanelAppearance(rawValue: defaults.string(forKey: Key.panelAppearance) ?? "") ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: Key.panelAppearance); changed() }
+    }
+    /// The candidate window fades in and the 中/英 badge fades out; with Reduce Motion, nothing slides.
+    var panelAnimation: Bool {
+        get { defaults.bool(forKey: Key.panelAnimation) }
+        set { defaults.set(newValue, forKey: Key.panelAnimation); changed() }
+    }
+
+    /// Everything the candidate window's look depends on, for the window and the settings preview alike.
+    var candidateStyle: CandidateStyle {
+        CandidateStyle(layout: candidateLayout, fontSize: candidateFontSize, density: candidateDensity,
+                       showsZhuyinHint: showsZhuyinHint, showsAnnotations: showsAnnotations,
+                       showsListSwitches: showsListSwitches, keyLabels: candidateKeyLabels)
+    }
+    /// The keys that pick candidates on a page, as many as `candidatesPerPage`.
+    var pageSelectionKeys: [Character] { Array(Array(selectionKeys.rawValue).prefix(candidatesPerPage)) }
     var escapeClearsComposition: Bool {
         get { defaults.bool(forKey: Key.escapeClearsComposition) }
         set { defaults.set(newValue, forKey: Key.escapeClearsComposition); changed() }
@@ -197,8 +298,8 @@ final class Preferences: ObservableObject {
 
     var composerOptions: ComposerOptions {
         var o = ComposerOptions()
-        o.selectionKeys = Array(selectionKeys.rawValue)
-        o.spaceOpensCandidates = spaceOpensCandidates
+        o.selectionKeys = pageSelectionKeys
+        o.spaceAction = spaceAction
         o.escapeClearsComposition = escapeClearsComposition
         o.learningEnabled = learningEnabled
         o.typoTolerance = typoTolerance.tolerance

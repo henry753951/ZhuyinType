@@ -307,6 +307,31 @@ for shifted in [false, true] {
 var commitSpace = ComposerOptions(); commitSpace.spaceOpensCandidates = false
 let spaced = composer(engine, "18 ", options: commitSpace)
 check(spaced.handle(.space).commit == "八" && !spaced.isComposing, "space option commits")
+check(spaced.handle(.space) == .passThrough, "space with nothing composed goes to the app")
+check(ComposerOptions().spaceAction == .openCandidates, "the engine default for Space opens the candidate window")
+for action in SpaceAction.allCases {
+    var options = legacyOptions; options.spaceAction = action
+    // An unfinished syllable takes Space as its first tone, whatever the setting.
+    let typing = composer(engine, "18 q8", options: options)
+    check(typing.handle(.space) == .consumed && typing.presentation.text == "八趴" && typing.presentation.candidates == nil,
+          "\(action): space completes a first-tone syllable")
+    let result = typing.handle(.space)
+    switch action {
+    case .openCandidates:
+        check(result == .consumed && typing.presentation.candidates != nil, "openCandidates: space opens the list")
+        _ = typing.handle(.space)
+        check(typing.isComposing && typing.presentation.candidates != nil, "openCandidates: space in the list pages, keeps composing")
+    case .commit:
+        check(result == KeyResult(handled: true, commit: "八趴") && !typing.isComposing, "commit: space commits, app gets nothing")
+    case .commitAndSpace:
+        check(result == KeyResult(handled: false, commit: "八趴") && !typing.isComposing,
+              "commitAndSpace: space commits and goes on to the app")
+    }
+    // With the list open Space turns the page in every setting.
+    let listed = composer(engine, "18 ", options: options)
+    _ = listed.handle(.down)
+    check(listed.handle(.space) == .consumed && listed.isComposing, "\(action): space in an open list stays in the list")
+}
 let escape = composer(engine, "18 q8")
 _ = escape.handle(.escape)
 check(escape.presentation.text == "八", "escape clears only buffer first")

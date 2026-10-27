@@ -143,7 +143,7 @@ final class ZhuyinInputController: IMKInputController {
         active = false
         if Self.activeController === self {
             CandidatePanelController.shared.hide()
-            // TODO(UI): dismiss ModeToast here once its contract exposes hide(); it currently uses its own timer.
+            ModeToast.shared.hide()
             Self.activeController = nil
         }
     }

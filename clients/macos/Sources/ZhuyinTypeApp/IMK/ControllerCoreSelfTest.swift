@@ -398,7 +398,7 @@ enum ControllerCoreSelfTest {
             panel.onZhuyin = { core.selectZhuyin() }
             content.onZhuyin = { panel.onZhuyin?() }
             _ = content.update(list: core.composer.presentation.candidates, preview: nil, keys: [],
-                               layout: .vertical, fontSize: 18, zhuyinHint: hint)
+                               style: CandidateStyle(), zhuyinHint: hint)
             guard let button = content.subviews.compactMap({ $0 as? NSButton }).first(where: {
                 $0.accessibilityLabel()?.hasPrefix("`，") == true
             }) else { throw Failure(description: "missing hint button") }

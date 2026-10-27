@@ -68,6 +68,7 @@ private final class CandidateRow: NSView {
     private var candidate = Candidate(text: "")
     private var key = ""
     private var fontSize: CGFloat = 18
+    private var compact = false
     private var selected = false
     private var hovered = false
     private var tracking: NSTrackingArea?
@@ -75,19 +76,23 @@ private final class CandidateRow: NSView {
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
     private var annotationAttributes: [NSAttributedString.Key: Any] = [:]
     var action: (() -> Void)?
-    var textInset: CGFloat { 8 + ceil(fontSize * 0.68) + 8 }
+    private var keyInset: CGFloat { compact ? 6 : 8 }
+    var textInset: CGFloat { keyInset + ceil(fontSize * 0.68) + (compact ? 5 : 8) }
+    private var trailingPad: CGFloat { compact ? 7 : 10 }
     var preferredWidth: CGFloat = 0
 
-    func update(candidate: Candidate, key: String, fontSize: CGFloat, selected: Bool) {
-        if self.candidate == candidate, self.key == key, self.fontSize == fontSize, self.selected == selected { return }
+    func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool) {
+        if self.candidate == candidate, self.key == key, self.fontSize == fontSize, self.compact == compact,
+           self.selected == selected { return }
         self.candidate = candidate
         self.key = key
         self.fontSize = fontSize
+        self.compact = compact
         self.selected = selected
         refreshAttributes()
         let textWidth = (candidate.text as NSString).size(withAttributes: textAttributes).width
         let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width + 10 } ?? 0
-        preferredWidth = ceil(textInset + textWidth + annotationWidth + 10)
+        preferredWidth = ceil(textInset + textWidth + annotationWidth + trailingPad)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityLabel(([key, candidate.text, candidate.annotation].compactMap { $0 }).joined(separator: "，"))
@@ -114,12 +119,14 @@ private final class CandidateRow: NSView {
     override func draw(_ dirtyRect: NSRect) {
         if selected || hovered {
             (selected ? NSColor.controlAccentColor : NSColor.quaternaryLabelColor).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 8, yRadius: 8).fill()
+            let radius: CGFloat = compact ? 6 : 8
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
         }
         let textHeight = (candidate.text as NSString).size(withAttributes: textAttributes).height
         let keyHeight = (key as NSString).size(withAttributes: keyAttributes).height
-        (key as NSString).draw(in: NSRect(x: 8, y: (bounds.height - keyHeight) / 2, width: textInset - 12, height: keyHeight), withAttributes: keyAttributes)
-        let available = max(0, bounds.width - textInset - 10)
+        (key as NSString).draw(in: NSRect(x: keyInset, y: (bounds.height - keyHeight) / 2, width: textInset - keyInset - 4,
+                                          height: keyHeight), withAttributes: keyAttributes)
+        let available = max(0, bounds.width - textInset - trailingPad)
         let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width } ?? 0
         let mainWidth = min((candidate.text as NSString).size(withAttributes: textAttributes).width, max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
         (candidate.text as NSString).draw(in: NSRect(x: textInset, y: (bounds.height - textHeight) / 2, width: mainWidth, height: textHeight), withAttributes: textAttributes)
@@ -276,6 +283,17 @@ private final class KeycapToggle: NSButton {
     }
 }
 
+/// The settings that shape the candidate window, from the 候選字視窗 page.
+struct CandidateStyle: Equatable {
+    var layout: CandidateLayout = .vertical
+    var fontSize: Double = 18
+    var density: CandidateDensity = .standard
+    var showsZhuyinHint = true
+    var showsAnnotations = true
+    var showsListSwitches = true
+    var keyLabels = CandidateKeyLabels()
+}
+
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
     private var rows: [CandidateRow] = []
@@ -334,9 +352,14 @@ final class CandidateContentView: InputMaterialView {
     @objc private func toggleCorrections() { onCorrections?() }
     @objc private func toggleSingleCharacter() { onSingleCharacter?() }
 
+    /// Lays the window out for `list` and returns its size.  `style` holds the settings of the 候選字視窗 page.
     @discardableResult
-    func update(list: CandidateList?, preview: String?, keys: [Character], layout: CandidateLayout,
-                fontSize: CGFloat, maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil) -> NSSize {
+    func update(list: CandidateList?, preview: String?, keys: [Character], style: CandidateStyle,
+                maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil) -> NSSize {
+        keyLabels = style.keyLabels
+        let layout = style.layout
+        let fontSize = CGFloat(style.fontSize)
+        let compact = style.density == .compact
         let indices: [Int]
         if let list, list.items.indices.contains(list.selection) { indices = Array(list.pageRange) }
         else { indices = [] }
@@ -345,16 +368,21 @@ final class CandidateContentView: InputMaterialView {
             rows.append(row)
             addSubview(row)
         }
-        let rowHeight = ceil(fontSize * 1.55)
-        let padding: CGFloat = 6
-        let spacing: CGFloat = 10
+        let rowHeight = ceil(fontSize * (compact ? 1.32 : 1.55))
+        let padding: CGFloat = compact ? 4 : 6
+        let spacing: CGFloat = compact ? 4 : 10
+        let hintHeight: CGFloat = compact ? 23 : 26
+        let footerHeight: CGFloat = compact ? 23 : 25
         let hasPreview = !(preview ?? "").isEmpty
-        let hasPages = (list?.pageCount ?? 1) > 1 && !indices.isEmpty
+        let listOpen = !indices.isEmpty
+        let hasPages = (list?.pageCount ?? 1) > 1 && listOpen
         // The reading being changed heads the list and never sets the width; the footer holds only fixed-width
-        // controls, so nothing moves as the reading grows or the page count changes.
-        let hasHint = !(zhuyinHint ?? "").isEmpty && !indices.isEmpty
-        let hasToggle = list?.tolerant != nil && !indices.isEmpty
-        let hasSingle = hasHint
+        // controls, so nothing moves as the reading grows or the page count changes.  With the switches hidden, a
+        // switch still shows while it is on, so the list in use is always visible.
+        let readable = !(zhuyinHint ?? "").isEmpty && listOpen
+        let hasHint = readable && style.showsZhuyinHint
+        let hasToggle = list?.tolerant != nil && listOpen && (style.showsListSwitches || list?.tolerant == true)
+        let hasSingle = readable && (style.showsListSwitches || list?.singleCharacter == true)
         let hasFooter = hasPages || hasToggle || hasSingle
         let pageWidth: CGFloat = hasFooter ? 90 : 0
         zhuyinButton.hint = zhuyinHint ?? ""
@@ -369,7 +397,7 @@ final class CandidateContentView: InputMaterialView {
         let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
         let footerWidth = pageWidth + singleWidth + toggleWidth
         // A notice on its own is a compact pill; above candidates it is a row of the window.
-        var width: CGFloat = hasPreview || !indices.isEmpty ? 160 : 0
+        var width: CGFloat = hasPreview || listOpen ? (compact ? 96 : 160) : 0
         var y: CGFloat = padding
         noticeView.isHidden = notice == nil
         noticeView.message = notice ?? ""
@@ -377,7 +405,7 @@ final class CandidateContentView: InputMaterialView {
         let noticeHeight = ceil(fontSize * 1.25)
         if notice != nil {
             width = max(width, noticeView.preferredWidth + 28)
-            y += noticeHeight + (hasPreview || !indices.isEmpty ? 3 : 0)
+            y += noticeHeight + (hasPreview || listOpen ? 3 : 0)
         }
         let previewY = y
         previewLabel.isHidden = !hasPreview
@@ -386,16 +414,18 @@ final class CandidateContentView: InputMaterialView {
                 .foregroundColor: NSColor.labelColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
             previewLabel.attributedStringValue = NSAttributedString(string: preview, attributes: attributes)
             width = max(width, previewLabel.intrinsicContentSize.width + 28)
-            y += rowHeight + (indices.isEmpty ? 0 : 5)
+            y += rowHeight + (listOpen ? 5 : 0)
         }
         let hintY = y
-        if hasHint { y += 26 }
+        if hasHint { y += hintHeight }
         for (offset, row) in rows.enumerated() {
             row.isHidden = offset >= indices.count
             guard offset < indices.count, let list else { row.action = nil; continue }
             let index = indices[offset]
-            row.update(candidate: list.items[index], key: offset < keys.count ? String(keys[offset]) : "",
-                       fontSize: fontSize, selected: index == list.selection)
+            var candidate = list.items[index]
+            if !style.showsAnnotations { candidate.annotation = nil }
+            row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
+                       fontSize: fontSize, compact: compact, selected: index == list.selection)
             row.action = { [weak self] in self?.onSelect?(index) }
         }
         let activeRows = rows.prefix(indices.count)
@@ -415,9 +445,9 @@ final class CandidateContentView: InputMaterialView {
             row.frame = NSRect(x: x, y: y, width: max(0, rowWidth), height: rowHeight)
             if layout == .vertical { y += rowHeight } else { x += rowWidth + spacing }
         }
-        let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + 3
-        if layout == .horizontal && !indices.isEmpty { y += rowHeight }
-        candidateTextInset = indices.isEmpty ? 14 : padding + (activeRows.first?.textInset ?? 29)
+        let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
+        if layout == .horizontal && listOpen { y += rowHeight }
+        candidateTextInset = listOpen ? padding + (activeRows.first?.textInset ?? 29) : 14
         pageLabel.isHidden = !hasFooter
         previous.isHidden = !hasFooter
         next.isHidden = !hasFooter
@@ -425,7 +455,7 @@ final class CandidateContentView: InputMaterialView {
         correctionButton.isHidden = !hasToggle
         singleButton.isHidden = !hasSingle
         if hasHint {
-            zhuyinButton.frame = NSRect(x: padding + 4, y: hintY + 2,
+            zhuyinButton.frame = NSRect(x: padding + 4, y: hintY + (compact ? 1 : 2),
                                         width: min(ceil(zhuyinButton.preferredWidth), width - padding * 2 - 8), height: 22)
         }
         if hasFooter {
@@ -440,7 +470,7 @@ final class CandidateContentView: InputMaterialView {
             next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
             previous.isEnabled = list.page > 0
             next.isEnabled = list.page + 1 < list.pageCount
-            if layout == .vertical { y += 25 }
+            if layout == .vertical { y += footerHeight }
         }
         let size = NSSize(width: width, height: y + padding)
         if frame.size != size { setFrameSize(size) }
@@ -451,16 +481,65 @@ final class CandidateContentView: InputMaterialView {
 
 /// Pure geometry shared by the panel, toast and offscreen checks.
 enum InputPanelPlacement {
+    /// The gap between the line and the window.
+    static let gap: CGFloat = 4
+
+    /// Below the caret's line (or above it, `above`), its text lined up with the composition; on the other side
+    /// when the screen has no room, and always inside the visible frame.
     static func frame(size: NSSize, caret: NSRect, visible: NSRect, textInset: CGFloat,
-                      previousX: CGFloat? = nil) -> NSRect {
+                      previousX: CGFloat? = nil, above: Bool = false) -> NSRect {
         let x = min(max(previousX ?? caret.minX - textInset, visible.minX), max(visible.minX, visible.maxX - size.width))
-        var y = caret.minY - 4 - size.height
-        if y < visible.minY { y = caret.maxY + 4 }
+        let below = caret.minY - gap - size.height
+        let over = caret.maxY + gap
+        var y = above ? over : below
+        if above, over + size.height > visible.maxY, below >= visible.minY { y = below }
+        if !above, below < visible.minY { y = over }
         y = min(max(y, visible.minY), max(visible.minY, visible.maxY - size.height))
         return NSRect(origin: NSPoint(x: x, y: y), size: size)
     }
     static func screen(at caret: NSRect) -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSPoint(x: caret.midX, y: caret.midY)) } ?? NSScreen.main
+    }
+}
+
+/// Motion for the floating panels: the 動畫 setting, with Reduce Motion turning slides into fades.
+enum PanelMotion {
+    static var animates: Bool { Preferences.shared.panelAnimation }
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// How long the candidate window takes to appear.
+    static let appear: TimeInterval = 0.12
+    /// How far it travels towards its place, without Reduce Motion.
+    static let slide: CGFloat = 4
+
+    /// Orders `panel` in at `frame`, fading (and without Reduce Motion, sliding a few points away from `caret`) when
+    /// it was hidden and animation is on.
+    static func present(_ panel: NSPanel, frame: NSRect, caret: NSRect) {
+        let appearing = !panel.isVisible
+        guard appearing, animates else {
+            if panel.alphaValue < 1 {
+                // Still fading in: finish at once at the new place, so the window follows every key.
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0
+                    panel.animator().alphaValue = 1
+                    panel.animator().setFrame(frame, display: true)
+                }
+            } else {
+                panel.setFrame(frame, display: true)
+            }
+            panel.orderFrontRegardless()
+            return
+        }
+        var start = frame
+        if !reduceMotion { start.origin.y += frame.midY < caret.midY ? slide : -slide }
+        panel.setFrame(start, display: true)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = appear
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+            if start != frame { panel.animator().setFrame(frame, display: true) }
+        }
     }
 }
 
@@ -486,24 +565,24 @@ final class CandidatePanelController {
         content.onZhuyin = { [weak self] in self?.onZhuyin?() }
         content.onCorrections = { [weak self] in self?.onCorrections?() }
         content.onSingleCharacter = { [weak self] in self?.onSingleCharacter?() }
-        content.keyLabels = Preferences.shared.candidateKeyLabels
         let preferences = Preferences.shared
-        let size = content.update(list: list, preview: preview, keys: keys, layout: preferences.candidateLayout,
-                                  fontSize: preferences.candidateFontSize, maxWidth: visible.width,
-                                  notice: notice, zhuyinHint: zhuyinHint)
+        panel.appearance = preferences.panelAppearance.appearance
+        let size = content.update(list: list, preview: preview, keys: keys, style: preferences.candidateStyle,
+                                  maxWidth: visible.width, notice: notice, zhuyinHint: zhuyinHint)
         let sameLine = panel.isVisible && lastScreen == visible && lastCaret.map { abs($0.minY - caret.minY) < 2 && abs($0.maxY - caret.maxY) < 2 } == true
         let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: visible, textInset: content.candidateTextInset,
-                                             previousX: sameLine ? panel.frame.minX : nil)
+                                             previousX: sameLine ? panel.frame.minX : nil,
+                                             above: preferences.candidatePlacement == .above)
         panel.level = windowLevel
         surface.fitContent()
-        panel.setFrame(frame, display: true)
         lastCaret = caret
         lastScreen = visible
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
-        panel.orderFrontRegardless()
+        PanelMotion.present(panel, frame: frame, caret: caret)
     }
     func hide() {
         panel.orderOut(nil)
+        panel.alphaValue = 1
         lastCaret = nil
         content.resetHover()
     }
@@ -550,14 +629,19 @@ final class ModeToast {
         badge.label.stringValue = text
         let visible = InputPanelPlacement.screen(at: caret)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         panel.level = windowLevel
-        panel.setFrame(InputPanelPlacement.frame(size: badge.frame.size, caret: caret, visible: visible, textInset: 0), display: true)
+        panel.appearance = Preferences.shared.panelAppearance.appearance
+        panel.setFrame(InputPanelPlacement.frame(size: badge.frame.size, caret: caret, visible: visible, textInset: 0,
+                                                 above: Preferences.shared.candidatePlacement == .above), display: true)
         panel.alphaValue = 1
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         panel.orderFrontRegardless()
+        // Shown for `Self.duration`, then faded out over `Self.fade` (or removed at once, with animation off).
+        let animates = PanelMotion.animates
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == current else { return }
+            guard animates else { self.panel.orderOut(nil); return }
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.2
+                context.duration = Self.fade
                 self.panel.animator().alphaValue = 0
             } completionHandler: { [weak self] in
                 guard let self, self.generation == current else { return }
@@ -565,6 +649,10 @@ final class ModeToast {
             }
         }
         dismissal = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration + (animates ? 0 : Self.fade), execute: work)
     }
+
+    /// How long the badge stays, and how long it takes to fade (docs/DESIGN.md §4.2).
+    static let duration: TimeInterval = 0.8
+    static let fade: TimeInterval = 0.2
 }
