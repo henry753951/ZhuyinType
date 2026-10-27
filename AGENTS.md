@@ -9,7 +9,7 @@ platforms/*  ──C 介面──▶  engine/  ◀──命令列行程──  m
 platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──  ml/
 ```
 
-- `engine/` 是所有平台共用的輸入法引擎：Rust workspace（`engine/crates/`）。App 目前仍使用 Swift 版（`engine/swift/`），Rust 版完成模型與 C 介面（第 4 階段）後換上，再刪除 Swift 版。兩者的輸出逐位元相同。
+- `engine/` 是所有平台共用的輸入法引擎：Rust workspace（`engine/crates/`）。App 預設仍使用 Swift 版（`engine/swift/`）；`ZHUYIN_ENGINE=rust make app` 建置使用 Rust 版的 App（第 4 階段），第 5 階段改為預設並刪除 Swift 版。兩者的輸出逐位元相同。
 - `platforms/` 是各作業系統的輸入法前端，目前只有 macOS。前端只透過引擎的公開介面使用它。
 - `ml/` 是研發：資料、訓練、評測，以及在 GPU 主機上執行這些工作。它不隨 App 出貨，只透過 `zhuyin-cli` 使用引擎。
 - `resources/` 是兩邊之間的契約：資料與模型的版本、來源與授權、二進位格式。
@@ -20,7 +20,7 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 
 | 路徑 | 內容 | 文件 |
 |---|---|---|
-| `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型介面）、`zhuyin-cli`；`parity/` 是和 Swift 版的一致性比對 | `engine/README.md`、`engine/DESIGN.md` |
+| `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型的判斷邏輯與 ONNX Runtime）、`zhuyin-ffi`（C 介面）、`zhuyin-cli`；`parity/` 是和 Swift 版的一致性比對 | `engine/README.md`、`engine/DESIGN.md` |
 | `engine/swift/` | 目前 App 使用的 Swift 引擎（參考實作，第 5 階段移除） | `docs/engine/ARCHITECTURE.md`、`docs/engine/MODEL.md` |
 | `platforms/macos/` | InputMethodKit 輸入法、設定介面、Sparkle 更新、建置與發布腳本 | `docs/product/DESIGN.md` |
 | `ml/` | Python 專案（uv）：`src/zhuyintype_ml/` 底下是 `core`（共用核心）、`cli`（`zt` 指令）、`eval`（評測、ZhuyinBench）、`training`（每個模型一個流程）、`data`（資料版本、詞庫建置）、`remote`（GPU 主機） | `ml/README.md`、`ml/CONVENTIONS.md`、`docs/ml/EVALUATION.md` |
@@ -80,5 +80,5 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
   - 提到其他輸入法時視為相關工作：說明對方的貢獻、註明出處、寫出比較的條件與限制，不寫成要打敗的對象。
 - GPU 主機上的長時間工作用 `nohup`，記錄放在 `~/zhuyintype/logs/`。不要用模糊的名稱比對來終止程序。
 - Python 用 uv、ruff 與 mypy，`tools/zt check all` 必須通過。Rust 在 `engine/` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo deny check`，必須零警告。
-- 引擎的行為改變要同時改 Swift 與 Rust 兩版，並用 `engine/parity/` 確認輸出仍然相同，直到 Swift 版移除。
+- 引擎的行為改變要同時改 Swift 與 Rust 兩版，並用 `engine/parity/` 確認輸出仍然相同，直到 Swift 版移除。比對在 GPU 主機上跑（`engine/README.md`「比對」）：開發時每次修改跑快速比對 `engine/parity/gate.sh --quick`（幾分鐘），合併前與合併 main 之後跑完整比對 `engine/parity/gate.sh`；只有完整比對 0 差異才合併。比對優先於主機上其他工作，不加 `nice`；主機上另開一份 checkout 跑快速比對與 `cargo` 檢查，不和完整比對共用建置目錄。
 - 提交訊息結尾附上工作階段要求的署名行；不要對 `main` 強制推送。

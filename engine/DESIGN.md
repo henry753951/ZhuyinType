@@ -23,20 +23,20 @@ engine/
 ├── rustfmt.toml、deny.toml
 ├── crates/
 │   ├── zhuyin-core/      純 Rust 引擎：資料層、解碼、組字、API 型別（第 1–3 階段）
-│   ├── zhuyin-models/    模型的計分 trait（第 3 階段）；ONNX Runtime 實作與 Rust 的判斷邏輯（第 4 階段）
-│   ├── zhuyin-ffi/       C ABI：cdylib 與 staticlib，`include/zhuyin.h`（第 4 階段）
+│   ├── zhuyin-models/    reranker 與 v3 的判斷邏輯、推論的 trait、ONNX Runtime 後端（feature `onnx`）（第 3–4 階段）
+│   ├── zhuyin-ffi/       C ABI：cdylib 與 staticlib，`include/zhuyin.h`、C 範例（第 4 階段）
 │   └── zhuyin-cli/       取代 Swift 的 zhuyin-cli：相同的旗標與 batch 協定（第 3 階段）
 ├── swift/                Swift 引擎（參考實作，第 5 階段移除）
 └── parity/               Swift 量測工具：產生 golden 值與 Swift 端的效能數字
 ```
 
-目前有 `zhuyin-core`（第 1–3 階段）、`zhuyin-models`（只有計分 trait）與 `zhuyin-cli`（第 3 階段）。`zhuyin-ffi` 在第 4 階段加入。
+四個 crate 都已完成（第 1–4 階段）。macOS 的 Swift 包裝在 `platforms/macos/Sources/ZhuyinRust`（§7）。
 
 - Edition 2024，工具鏈固定在 1.98.0（`rust-toolchain.toml`）。
 - `[workspace.lints]`：`unsafe_code = "deny"`、`missing_docs`、`unreachable_pub`；clippy `all` 為 deny、`pedantic` 為 warn，少數放寬的項目在 `Cargo.toml` 註明理由。`cargo clippy --all-targets -- -D warnings` 必須通過。
 - Release：`lto = "fat"`、`codegen-units = 1`、`panic = "abort"`。輸入法程序裡 panic 不能跨過 C ABI 繼續執行，直接結束程序最安全；測試與 benchmark 不受這個設定影響。
-- 依賴只有 `memmap2`（映射資料檔）與 `serde_json`（`lm.json`，之後的模型設定檔）。開發用 `criterion`。沒有任何會連網的依賴。`cargo deny check` 檢查授權、重複版本與來源。
-- `unsafe` 只在 `zhuyin_core::binary`：建立映射，以及把開檔時已驗證過的 UTF-8 區段轉成 `&str`。每個 unsafe 區塊個別允許，並附 SAFETY 說明（clippy `undocumented_unsafe_blocks` 為 deny）。
+- 依賴只有 `memmap2`（映射資料檔）、`serde_json`（`lm.json`、模型的字表與設定；開啟 `float_roundtrip`，數字的解析和 Swift 一樣正確捨入）與 `onnx` feature 的 `ort`（不含下載二進位檔的預設功能，連結系統的 ONNX Runtime）。開發用 `criterion`。沒有任何會連網的依賴。`cargo deny check`（所有 feature）檢查授權、重複版本與來源。
+- `unsafe` 只在 `zhuyin_core::binary`（建立映射，以及把開檔時已驗證過的 UTF-8 區段轉成 `&str`）、`zhuyin-cli` 的資源量測，以及整個 `zhuyin-ffi`（C 邊界）。每個 unsafe 區塊附 SAFETY 說明（clippy `undocumented_unsafe_blocks` 為 deny）。
 
 ## 3. 模組對照
 
@@ -63,6 +63,7 @@ engine/
 | `zhuyin-cli/main.swift`（含 refactor-tools 分支的 `--models`）、`Usage.swift` | `zhuyin-cli`（`main.rs`、`usage.rs`） | 3 |
 | `zhuyin-cli/ModelServer.swift` | `zhuyin-cli` 的 `--model-server` | 4 |
 | `ZhuyinCoreChecks` | `zhuyin-core/tests/` | 1（資料層）、2（引擎、個人資料、轉換）、3（組字） |
+| `ZhuyinMLTests/BackendTests.swift` | `zhuyin-models/tests/backend.rs`；`tests/onnx_vectors.rs`（ONNX 對 Core ML 的參考值） | 4 |
 
 型別名稱沿用 Swift（`KeyChannel` 的函式在 `key_channel`，`MappedLexicon` 不改名），方便對照兩邊的程式。
 
@@ -100,66 +101,57 @@ Swift 的 Dictionary 與 Set 每個程序重新取雜湊種子。原本有幾處
 
 四個開發集各 400 段的轉換在修改前後完全相同，KeyDecoder 的計時不變。
 
-## 5. 模型的計分介面
+## 5. 模型
 
-Swift 的模型類別已經把「推論」和「其他邏輯」分開：`SyllableScorer.Prediction`、`NeuralReranker.Prediction` 與 `treePrediction` 是純粹的張量推論（Linux 與 `--model-server` 就是換掉這幾個 closure）；字表、斷字、前綴樹、快取、閘門與 `exactMargin` 的判斷都在外面。Rust 沿用這條界線：判斷邏輯在 Rust（三個平台共用，所以行為相同），只有推論經由 trait。
+Swift 的模型類別已經把「推論」和「其他邏輯」分開：`SyllableScorer.Prediction`、`NeuralReranker.Prediction` 與 `treePrediction` 是純粹的張量推論（Linux 與 `--model-server` 就是換掉這幾個 closure）；字表、斷字、前綴樹、快取、閘門與 `exactMargin` 的判斷都在外面。Rust 沿用這條界線：判斷邏輯在 `zhuyin-models`（三個平台共用，所以行為相同），只有推論經由 trait。
+
+- **`NeuralReranker`**：`vocab.json` 的字表、`<unk>` 的分攤（log 5465）、前文最多 24 字、32 句以內用前綴樹模型（`RerankerTree`）、否則逐句的批次、`candidate_scores` 每 32 句一批；`choose` 依序是閘門 τ（`gate_margin`，8）、上次結果的快取、切換門檻 δ（`switch_margin`，0）與 `exact_margin`（8，App 的設定下調整；main 的 70b14e7）。`configured` 讀 `config.json` 的 `weight` 與 `count`。
+- **`SyllableScorer`**：`chars.json`、`syllables.json`、前文最多 255 字（換行是 `<sep>`）、每個音節最多 64 個候選字、上次請求的快取；`check_vectors` 對 `test_vectors.json` 檢查（`--check-v3`）。音節的成本級距、隱含邊界與 −12 的下限在組字器（第 3 階段已移植）。
+- 推論的 trait（呼叫由上面兩者以鎖序列化，和 Swift 的 `NSLock` 相同）：
 
 ```rust
-/// v2b：每個位置的 log P(target | 前面的字)。
-pub trait RerankerModel: Send + Sync {
-    fn logprob(&self, ids: &[i32], targets: &[i32], rows: usize, length: usize) -> Result<Vec<f64>, ModelError>;
-    /// 前綴樹模型（RerankerTree）；沒有時回傳 None，改用逐句的模型。
-    fn tree_logprob(&self, tree: &PackedTree) -> Option<Result<Vec<f64>, ModelError>>;
+pub trait RerankerModel: Send {
+    fn logprob(&mut self, ids: &[i32], targets: &[i32], rows: usize, length: usize) -> Result<Vec<f64>, ModelError>;
+    fn has_tree(&self) -> bool { false }
+    fn tree_logprob(&mut self, tree: &PackedTree) -> Result<Vec<f64>, ModelError> { … }
 }
-
-/// v3：每個音節在候選字上的 log P。實作可以依前文快取前文編碼器的輸出。
-pub trait SyllableModel: Send + Sync {
-    fn predict(&self, input: &SyllableInput<'_>) -> Result<Vec<Vec<f64>>, ModelError>;
+pub trait SyllableModel: Send {
+    fn predict(&mut self, input: &SyllableInput<'_>) -> Result<Vec<Vec<f64>>, ModelError>;
 }
 ```
 
-- **macOS**：Swift 以 Core ML 實作推論，透過 `zhuyin-ffi` 註冊一組 C callback（`ctx` 指標、`logprob`、`tree_logprob`、`predict`、`release`）。Rust 端的 `CallbackRerankerModel`、`CallbackSyllableModel` 包裝這組 callback 實作上面的 trait。輸入、輸出都是呼叫端配置的連續陣列，callback 不保留指標。callback 在呼叫 `zt_composer_handle` 的執行緒上同步執行，和現在一樣。
-- **Linux、Windows**：`zhuyin-models` 的 `onnx` feature 以 ONNX Runtime 載入 `Reranker.onnx`、`RerankerTree.onnx`、`ContextEncoder.onnx`、`SyllableEncoder.onnx`，以動態載入的方式使用輸入法附帶的 onnxruntime 函式庫。精度與現在 Linux 的 `ONNXBridge` 相同（fp32）。
-- **評測**：`zhuyin-cli --model-server` 也實作成這兩個 trait（JSON-lines socket），GPU 主機上的評測流程不變。
-- **驗證**：沿用 `--check-v3` 的 test vectors（`ml/src/zhuyintype_ml/training/v3`），並為 v2b 加上同樣的向量；相同輸入的模型輸出差距在現有的容許範圍內（0.002 + 0.002 × |值|），決定（選哪一句）在開發集上逐句比對。
+三種實作：
+
+- **ONNX Runtime**（`zhuyin-models` 的 `onnx` feature，Linux、Windows）：`ort` crate 連結系統的 ONNX Runtime 1.24（`ORT_LIB_PATH` 指向它的 `lib/`，`engine/.cargo/config.toml` 要求動態連結，不下載任何二進位檔）；session 設定和 Swift 的 `ONNXBridge` 相同（CPU、intra/inter 各 1 個執行緒、全部圖最佳化、不送遙測），`float32` 輸出轉成 `f64`。前文編碼器的輸出依前文 ID 快取。
+- **主機的 callback**（`zhuyin-ffi`，macOS）：Swift 以 Core ML 推論，註冊 `logprob`、`tree_logprob`、`predict` 與 `release`（§6）。Core ML 的呼叫和 `ZhuyinML` 的完全相同，所以分數相同。
+- **模型伺服器**（`zhuyin-cli --model-server`，任何平台）：JSON-lines Unix socket，協定和 Swift 的 `ModelServer` 相同。
 
 ## 6. C ABI
 
-`zhuyin-ffi` 產生 `libzhuyin.dylib`／`.so`／`zhuyin.dll` 與靜態函式庫，標頭 `include/zhuyin.h` 以 cbindgen（開發工具，不是依賴）產生後提交，CI 檢查是否最新，並編譯一個 C 範例確認可用。
+`zhuyin-ffi`（函式庫名稱 `zhuyin`）產生 cdylib 與 staticlib，標頭 `crates/zhuyin-ffi/include/zhuyin.h` 由 cbindgen 產生後提交（`cbindgen.toml` 寫了指令；`tests/c_program.rs` 檢查標頭宣告了每個匯出的函式，並編譯、執行 `tests/c/smoke.c`）。
 
-```c
-typedef struct ZtEngine ZtEngine;       // 不透明
-typedef struct ZtComposer ZtComposer;   // 不透明
-
-uint32_t zt_abi_version(void);
-ZtEngine *zt_engine_open(const ZtEngineConfig *config, ZtError **error);  // 失敗時回傳 NULL
-void zt_engine_flush(ZtEngine *engine);                                   // 寫完個人資料
-void zt_engine_free(ZtEngine *engine);
-ZtComposer *zt_composer_new(ZtEngine *engine, const ZtComposerOptions *options);
-ZtKeyResult zt_composer_handle(ZtComposer *composer, ZtKey key);          // key：種類、Unicode 純量、時間
-const ZtPresentation *zt_composer_presentation(ZtComposer *composer);     // 下次呼叫前有效
-void zt_string_free(char *string);
-void zt_error_free(ZtError *error);
-```
-
-- **所有權**：handle 由 `*_open`／`*_new` 建立、`*_free` 釋放；Composer 持有 Engine 的參考計數，Engine 可以先釋放。Rust 配置的字串由 `zt_string_free` 釋放。借出的指標（`zt_composer_presentation`）在同一個 Composer 的下一次呼叫前有效。
-- **字串**：一律 UTF-8、以 NUL 結尾。輸入的字串無效時回傳錯誤，不 panic。`Presentation` 的游標與底線範圍保留 UTF-16 單位（IMK 與 TSF 都用 UTF-16），另外提供位元組範圍給 fcitx5、IBus。
-- **執行緒**：Engine 可以在多個執行緒共用（內部以鎖保護，和 Swift 的 `NSLock` 相同）；個人資料在 Engine 自己的背景執行緒寫入（150 毫秒延遲、原子取代檔案）。Composer 同一時間只能由一個執行緒使用（IMK 的主執行緒、fcitx5 的事件迴圈、TSF 的 STA 執行緒），不需要鎖。
-- **錯誤**：可能失敗的函式回傳 NULL 或錯誤碼，詳細訊息經 `ZtError**`。Release 版 panic 直接結束程序（§2）；ABI 函式內不使用會 panic 的索引或 `unwrap`，除錯版以 `catch_unwind` 檢查。
-- **版本**：`zt_abi_version()`。Swift 端在載入時比對，不相符就不使用。
+- **Handle**：`ZtEngine`（詞庫、語言模型、個人資料）、`ZtComposer`、`ZtReranker`、`ZtSyllableScorer` 都是不透明指標，由 `zt_*_open`／`zt_*_new`／`zt_reranker_configured` 建立、`zt_*_free` 釋放；Composer 持有 Engine 的參考計數，Engine 可以先釋放。
+- **字串與資料**：輸入的字串是 UTF-8、以 NUL 結尾，只在呼叫期間借用。傳回的 `char *` 歸呼叫端，以 `zt_string_free` 釋放；`ZtPresentation`、`ZtPhraseList`、`ZtStringList` 有各自的 `_free`。按鍵是 `ZtKey`（`ZT_KEY_*` 種類與 Unicode 純量），選項是 `ZtComposerOptions`（列舉以 `ZT_*` 常數表示，超出範圍時拒絕），呈現是 `ZtPresentation`（UTF-16 的游標與子句、候選字清單、提示）。
+- **個人資料**：自訂詞的新增與移除、學到的字詞與排除清單、單一字詞的遺忘、全部遺忘、匯出與匯入、立即寫入。
+- **Hook**：組字器的三個模型 hook（`zt_composer_set_reranker`、`_set_candidate_scorer`、`_set_character_scorer`）是 C 函式加上 `context` 與 `release`。Hook 收到的是組字器資料的檢視（`ZtSentences`、`ZtStrings`、`ZtCandidateRows`），可以直接交給 `zt_reranker_choose`、`zt_reranker_candidate_scores_view`、`zt_syllable_scorer_scores_rows`，資料不必經過主機複製。
+- **主機的模型**：`ZtRerankerModel`、`ZtSyllableModel` 是推論的 C callback（輸入、輸出都是呼叫端配置的連續陣列）；建立失敗時也會呼叫 `release`。
+- **執行緒**：Engine 可以在多個執行緒同時使用；Composer 同一時間只能由一個執行緒使用；Reranker 與 SyllableScorer 可以共用，模型呼叫會序列化。Callback 在呼叫者的執行緒上同步執行，不能回頭呼叫同一個 Composer；檢視只在 callback 期間有效。標頭開頭寫明這些規則。
+- **錯誤**：可能失敗的函式回傳 NULL、`false` 或 −1，訊息經 `char **error`。Release 版 panic 直接結束程序（§2）。
 
 ## 7. 切換
 
-**macOS App**：
+**macOS App**（第 4 階段完成，預設仍是 Swift 引擎）：
 
-1. `build-app.sh` 以 cargo 建置 `zhuyin-ffi` 的靜態函式庫（arm64 與 x86_64，再以 `lipo` 合併）。
-2. `clients/macos` 加入一個 Swift 包裝模組（system library target，以 module map 引入 `zhuyin.h`），提供和 `ZhuyinCore` 相同的 `Engine`、`Composer`、`Presentation` 介面，`ControllerCore` 幾乎不用改。
-3. Core ML 推論改寫成註冊給 Rust 的 callback（§5）。
-4. 第 4 階段以建置旗標並存兩個引擎，同一份按鍵檔比對結果與延遲；第 5 階段移除 Swift 引擎與 `engine/swift`。
+1. `ZHUYIN_ENGINE=rust make app`：`build-app.sh` 先以 cargo 建置 `engine/target/release/libzhuyin.a`（本機架構），再以 `.build-rust` 建置 App；不設定時建置方式和以前相同。
+2. `platforms/macos/Package.swift` 在 `ZHUYIN_ENGINE=rust` 時加入 `CZhuyin`（module map 引入 `zhuyin.h`）與 `ZhuyinRust`（Swift 包裝）兩個 target，App 以 `ZHUYIN_RUST_ENGINE` 編譯，並靜態連結函式庫。
+3. `ZhuyinRust` 提供 `RustEngine`、`RustComposer`、`RustReranker`、`RustSyllableScorer`，介面和 App 用到的 `Engine`、`Composer`、`NeuralReranker`、`SyllableScorer` 相同；值型別（`KeyInput`、`ComposerOptions`、`Presentation`…）仍用 `ZhuyinCore` 的。`Shared/EngineSelection.swift` 在 Rust 模式下以 typealias 讓這四個名稱指向包裝類別，其餘程式碼不變。
+4. Core ML 留在 Swift（`RustModels.swift`），以 callback 交給 Rust 的判斷邏輯。
+5. `EngineBench`（`platforms/macos/Sources/EngineBench`）是不含 App 的引擎路徑：照 `EngineHost` 載入引擎與模型、照 `ControllerCore` 設定組字器，接受 `zt eval latency` 傳的參數，所以 `ZT_CLI=… tools/zt eval latency` 可以量兩種模式。
+6. 第 5 階段移除 Swift 引擎與 `engine/swift`，Rust 成為唯一的引擎。
 
-**Python 工具**：`zt eval` 的工具都以 `--cli PATH` 指定執行檔，並透過 `--batch` 的標準輸入、輸出溝通。Rust 的 `zhuyin-cli` 重現所有旗標、usage 文字、按鍵跳脫語法（`<space>`、`<S-x>`、`<dt:MS>`…）、輸出格式、錯誤訊息與結束碼。切換時只要把 `--cli` 指到 `engine/target/release/zhuyin-cli`；確認一致後再改各工具的預設路徑與 GPU 主機（`ml/src/zhuyintype_ml/remote`）的建置（cargo，Linux 上加 `onnx` feature）。
+**Python 工具**：`zt eval` 的工具都以 `ZT_CLI` 指定執行檔，並透過 `--batch` 的標準輸入、輸出溝通。Rust 的 `zhuyin-cli` 重現所有旗標、usage 文字、按鍵跳脫語法（`<space>`、`<S-x>`、`<dt:MS>`…）、輸出格式、錯誤訊息與結束碼，包括 `--models`、`--reranker`、`--v3`、`--model-server`、`--check-v3`。切換時把 `ZT_CLI` 指到 `engine/target/release/zhuyin-cli`；GPU 主機的建置改成 `ORT_LIB_PATH=$ONNXRUNTIME_ROOT/lib cargo build --release -p zhuyin-cli --features onnx`。
 
-第 3 階段的 Rust CLI 支援所有不需要神經模型的旗標，`--models DIR`（refactor-tools 分支）也照該分支的規則設定詞庫、`lm_chat/` 與 reranker 的 `count`。尚未支援、在第 4 階段加入的：`--reranker`、`--v3`、`--model-server`、`--check-v3`，以及目錄裡有 `reranker/` 或 `v3/` 時的 `--models`；用到時 CLI 印出說明後以結束碼 1 結束。只對模型有作用的 `--rerank-weight`、`--rerank-count`、`--exact-margin`、`--rerank-gate`、`--rerank-switch`、`--v3-weight`、`--v3-list`、`--v3-boundaries` 照 Swift 的規則檢查數值，沒有模型時不影響結果。usage 文字已包含 `--models`（main 分支的 Swift CLI 尚未加入）。`--timing` 在 macOS 上和 Swift 一樣回報延遲、CPU、能耗、指令數與記憶體。
+和 Swift CLI 的差異只剩一項：macOS 上的 Rust CLI 沒有 Core ML，`--reranker`、`--v3`、`--check-v3` 與含模型的 `--models` 需要 `--model-server` 或 `onnx` feature，否則印出說明後以結束碼 1 結束；`ZHUYIN_UNITS`（Core ML 的運算單元）不適用。Mac 上 App 的模型路徑由 `EngineBench` 量測與檢查（`--check-v3` 經 Rust 與 Core ML callback）。
 
 ## 8. 驗收條件
 
@@ -190,7 +182,7 @@ Golden 測試的輸入：0.4.0 App 內建的 `lexicon.bin`、`lexicon.tsv`、`lm
 | 轉換（app 的引擎：mmap 詞庫、混合模型）：首選的詞、範圍、ID 與歷史；16 句與分數；逐音節輸入與中間刪改的快取；固定字詞與分組；v3 字分數；維基的前文（`adaptDomain`、`trailingWords`）；按錯一鍵的版本 | 592 份按鍵稿 × 5 項，2,958 行 | 位元相同 |
 | 模糊音與三種容錯強度；TSV 詞庫、不含語言模型的引擎 | 210 行 | 位元相同 |
 | 學習：180 次送出（選字、減弱、自訂詞、按錯習慣，時間每次加 5 小時）後的轉換、`remembers`、修正讀音、記住的字詞；五個個人資料檔；匯出、匯入、重新載入 | 9,176 行 | 逐字相同 |
-| 組字器：303 份按鍵稿（開發集的段落以送出、選字、修正清單、刪除重打、標點、選取、清單內移動等方式結束；快速打錯順序；目標稿）× 5 組選項（app、臺的寫法、舊的鍵盤設定、反向錨點／橫式清單／空白送出並輸入空白、Slots 解碼），每個按鍵的結果與整個 `Presentation`（文字、游標、底線、焦點、候選字清單與註記、提示），每份稿最後的 4 句與記住的字詞 | 10,398 個按鍵 × 5 | 逐字相同 |
+| 組字器：310 份按鍵稿（開發集的段落以送出、選字、修正清單、刪除重打、標點、選取、清單內移動、` 與其復原（再按 ` 或 Esc）等方式結束；快速打錯順序；目標稿）× 5 組選項（app、臺的寫法、舊的鍵盤設定、反向錨點／橫式清單／空白送出並輸入空白、Slots 解碼），每個按鍵的結果與整個 `Presentation`（文字、游標、底線、焦點、候選字清單與註記、提示），每份稿最後的 4 句與記住的字詞 | 10,370 個按鍵 × 5 | 逐字相同 |
 
 CLI 比對（`parity/cli_parity.py`，GPU 主機）：Swift 與 Rust 的 `zhuyin-cli --batch` 在 21 組不含神經模型的設定（預設、容錯關閉與積極、三種非預設解碼器、全部模糊音、聊天混合、無句子邊界、`--end-share`、熱點、Mac 標點、通用字形、`--report-nbest 16`、四種 `--report-list`、選第二句、選字後學習與刪除重打（`--keep-memory`，依序執行））× 9 組輸入（口語、維基、聊天、維基加前文各 400 段，以 `zt eval conversion` 的方式選取；善解的 dev302 266 列、probe 71 列、typing76 49 列、fw 159 列、user-reported 77 列），共 189 組、46,662 行，全部逐字相同。
 
@@ -231,6 +223,51 @@ CLI 比對（`parity/cli_parity.py`，GPU 主機）：Swift 與 Rust 的 `zhuyin
 
 引擎檢查的延遲目標（40 個音節每鍵 < 3 ms 等）在 Rust 的 release 測試中同樣檢查，數字見 `tests/real_checks.rs` 的輸出：例如目前的百科模型逐鍵 p95 為 0.37／0.93 ms（一聲／輕聲容錯），`make checks` 中 Swift 為 0.91／2.39 ms（Swift 的檢查讀 `data/build` 的文字檔詞庫與模型，資料內容相同但載入方式不同，僅供參考；上表才是同條件的比較）。App 常駐記憶體的比較在第 4 階段。
 
+### 8.4 第 4 階段的結果
+
+**一致性**
+
+| 項目 | 結果 |
+|---|---|
+| `zhuyin-models` 對 Swift `BackendTests` 的移植（輸入組裝、`<unk>` 分攤、批次、閘門、快取、切換門檻、`exactMargin`、`configured`、音節輸入與上限） | 全部通過 |
+| v3 test vectors（Core ML 的參考值），GPU 主機以 ONNX Runtime：Swift CLI／Rust CLI | 兩邊都是 6/20 在 Core ML 的容許範圍內、最大差距 0.0828，數字完全相同（ONNX fp32 與 Core ML 本來就有這個差距，`zt models parity` 接受 0.1） |
+| v3 test vectors，Mac 上 Rust 的判斷邏輯加 Core ML callback（`EngineBench --check-v3`） | 20/20，最大差距 0（Swift CLI 為 20/20、4.3e-19） |
+| `onnx_vectors.rs`（GPU 主機）：v3 與 reranker 的 ONNX 輸出對 Core ML 的參考值（`zt models parity` 對 fp32 ONNX 接受 0.1） | v3 最大差距 0.083、reranker 0.061；`NeuralReranker::scores` 由文字組出的張量與參考資料相同 |
+| CLI 比對，不含神經模型（`cli_parity.py`，21 組設定 × 9 組輸入） | 189 組、46,662 行，全部相同 |
+| CLI 比對，App 的設定（`--models data/build`：reranker 含前綴樹模型、v3、聊天模型，兩邊都以 ONNX Runtime 推論；送出、16 句、兩種候選字清單、選第二句 5 組 × 9 組輸入） | 45 組、11,110 行，全部相同（main 的 70b14e7 之後，`exact_margin` 8） |
+| Mac 上 App 的引擎路徑（`EngineBench`，Swift 模式與 Rust 模式，App 內建的資料與 Core ML 模型）：延遲句 10 句加測試句 30 段，每段送出的文字 | 40/40 相同 |
+| `` ` `` 的復原（main 的 ece6f8d）：組字器 golden 加入 `` ` ` ``、`` ` Esc `` 的按鍵稿，`ZhuyinCoreChecks` 的新檢查移到 `composer_checks.rs` | 位元相同；通過 |
+| C ABI：Rust 測試（組字器逐鍵對照 Rust API、選項檢查、個人資料、hook、主機的模型）與 C 範例 | 全部通過 |
+| App 自我測試（`tools/zt check app`），Swift 模式與 Rust 模式 | 都是 40/40 |
+| Linux 上的 golden 摘要（`gate.sh` 在主機上以 Swift 工具重新產生，Rust 的 golden 測試對照） | 全部相同 |
+
+**效能**
+
+Mac 上 App 的引擎路徑（`ZT_CLI=…/EngineBench tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources`：延遲句 10 句，每句一次組字，Core ML 的 reranker 與 v3；5 次執行的中位數）：
+
+| 每鍵 | Swift 引擎 | Rust 引擎 |
+|---|---:|---:|
+| p50 | 7.4 ms | 3.35 ms |
+| p95 | 20.5 ms | 13.55 ms |
+| 最大值 | 23.3 ms | 16.7 ms |
+| CPU 時間 | 7.75 ms | 4.8 ms |
+| 能耗 | 41.67 mJ | 23.73 mJ |
+| 記憶體（結束時） | 15 MB | 15 MB |
+
+記憶體峰值（10 句在同一個程序裡打完，`/usr/bin/time -l` 的 peak memory footprint，3 次的中位數）：學習開啟（App 的預設）Swift 42.74 MB、Rust 42.66 MB；學習關閉 47.34 MB、46.99 MB。為了這一項，Rust 引擎的快取改成剛好大小的配置（比對結果、詞條、按錯的讀音），同一讀音的註記共用一份，模型的字表以 `char` 為鍵；修改前學習關閉時 Rust 多 6 MB。
+
+GPU 主機上的 CLI（Linux、ONNX Runtime，`zt eval latency` 的 App 設定 `--models data/build`：延遲句 10 句；5 次執行的中位數；主機同時有其他工作，負載約 50，數字起伏大，但每次 Rust 都較低）：
+
+| 每鍵 | Swift CLI | Rust CLI |
+|---|---:|---:|
+| p50 | 15.85 ms | 6.75 ms |
+| p95 | 76.25 ms | 59.75 ms |
+| 最大值 | 102.75 ms | 71.4 ms |
+| CPU 時間 | 24.35 ms | 17.6 ms |
+| 記憶體（結束時） | 739.0 MB | 720.5 MB |
+
+Linux 上的 golden 摘要：提交的摘要在 macOS 上產生。Linux 的 glibc 與 Apple 的 libm 在少數數學函式上差最後一位（例如語言模型的句尾分數 4 行），所以 Linux 上以提交的摘要比對會不同；`gate.sh` 在主機上用 Swift 工具重新產生摘要（`ZHUYIN_GOLDEN`），再和 Rust 比對，兩邊用同一個 libm。
+
 ## 9. 階段
 
 | 階段 | 內容 | 完成條件 |
@@ -238,7 +275,7 @@ CLI 比對（`parity/cli_parity.py`，GPU 主機）：Swift 與 Rust 的 `zhuyin
 | 1 資料層 | API 值型別、鍵盤與標點、詞庫（mmap 與 TSV）、語言模型（mmap、TSV、混合、無邊界）、容錯通道、KeyDecoder、音節表；Swift 量測工具 | 完成：§8.3 |
 | 2 解碼 | `Conversion`（詞圖 Viterbi、N-best、快取）、`Engine` 的比對與計分、`PersonalLanguageModel`、學習、自訂詞、記住的字詞、按錯習慣、個人資料檔與匯出匯入、背景寫入；Swift 引擎的決定性順序（§4） | 完成：§8.3 |
 | 3 組字、API、CLI | `Composer`、`zhuyin-cli`（所有旗標與 batch 協定、`--models`；模型旗標除外，§7）、`zhuyin-models` 的計分 trait、其餘全部 `ZhuyinCoreChecks`（含延遲檢查） | 完成：§8.3 |
-| 4 模型與整合 | `zhuyin-models`（Rust 判斷邏輯、ONNX Runtime）、`zhuyin-ffi` 與標頭、macOS App 經 callback 接 Core ML、Linux 建置 | 模型向量檢查通過；加上模型的 batch 輸出相同；`mac_metrics.py` 的延遲、能耗、記憶體不高於 Swift |
+| 4 模型與整合 | `zhuyin-models`（Rust 判斷邏輯、ONNX Runtime）、CLI 的模型旗標、`zhuyin-ffi` 與標頭、macOS App 經 callback 接 Core ML（建置開關）、`EngineBench` | 完成：§8.4 |
 | 5 切換 | App、評測工具、GPU 主機改用 Rust；文件更新；移除 Swift 引擎 | 一個版本以 Rust 引擎發布，ZhuyinBench 成績相同 |
 
-第 4 階段從 `zhuyin-models` 開始：先把 `NeuralReranker` 與 `SyllableScorer` 的判斷邏輯（斷字、前綴樹、快取、閘門、`exactMargin`、字表與音節表）移到 Rust，以 `--check-v3` 的 test vectors 與 reranker 的向量檢查；接著是 ONNX Runtime 後端與 CLI 的 `--reranker`、`--v3`、`--model-server`，在 GPU 主機上比對 app 設定（含模型）的 batch 輸出；最後是 `zhuyin-ffi` 與 macOS App 的整合。
+第 5 階段：App 預設改用 Rust 引擎（`ZHUYIN_ENGINE` 的預設值）、`zt` 的建置與 GPU 主機改用 Rust 的 `zhuyin-cli`（`onnx` feature）、移除 `engine/swift` 與 `parity/` 的 Swift 量測工具（或保留到最後一次比對），並更新 `AGENTS.md` 與 `docs/engine/`。
