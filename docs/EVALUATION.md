@@ -35,7 +35,7 @@
 | `training/eval/error_analysis.py` | 依打字習慣（標準、一不變調、輕聲打一聲、一聲不按空白、5% 按錯）分組，報「顯示正確」與「前 16 句命中」 |
 | `training/eval/typing_errors.py` | 有按鍵時間的打字錯誤：對調、幾乎同時按下、熱區誤觸、多按、漏按、一聲省略空白、混合；見 `training/eval/TYPING_ERRORS.md` |
 | `training/eval/typo_eval.py` | 依比例隨機按錯（10%、20%）的整句全對率 |
-| `training/eval/candidate_eval.py` | 候選字清單：整句轉錯時，到每個錯字打開清單，正確答案排第幾（第一個、第一頁、平均名次） |
+| `training/eval/candidate_eval.py` | 候選字清單：整句轉錯時，到每個錯字打開清單，正確答案在其他候選裡排第幾（略過目前顯示的那一項；第一個、第一頁、平均名次） |
 | `training/eval/repick_eval.py` | 免選字：模擬使用者錯了就到第一個錯字選正確的候選，量「不用選字就對」「最多選 1／2／3 次」、平均選字次數、選字改壞其他字的比例 |
 | `training/eval/rows_eval.py`、`training/eval/stats.py` | 善解格式（`前文|答案|注音`）的評測，與兩組逐句結果的成對比較：McNemar、bootstrap 信賴區間、改對／改壞、改壞率上界、最小可偵測效果 |
 | `training/eval/mac_metrics.py` | 固定 10 句在這台 Mac 上的每鍵延遲、CPU、能耗、記憶體（app 設定；`--engine-data` 指向 app 的 Resources） |

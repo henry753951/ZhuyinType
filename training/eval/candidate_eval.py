@@ -6,7 +6,8 @@ put on it, the list is opened, and the rank of the first right entry is recorded
         --cli-arg=--reranker --cli-arg=data/build/reranker \
         --test data/build/corpus/dev_colloquial.txt data/build/corpus/dev_wikipedia.txt
 
-A list entry is right when it equals the reference text from the cursor on (any length).  Reported: how often the
+A list entry is right when it equals the reference text from the cursor on (any length).  Entries that are what is
+already shown there are skipped: the rank is among the alternatives the user would scan.  Reported: how often the
 first right entry is first, on the first page (9), anywhere in the list, and its mean rank where found.  The runs and
 their typed readings are chosen exactly as in conversion_eval.py (same seed), so the two tools see the same runs.
 """
@@ -70,12 +71,13 @@ def main():
                 continue
             for position in range(len(want)):
                 if got[position] != want[position]:
-                    probes.append((want[position:], keys + "<home>" + "<right>" * position + "<down>"))
-        lists = run_cli(base + ["--report-list"], [keys for _, keys in probes], args.jobs) if probes else []
+                    probes.append((want[position:], got[position:], keys + "<home>" + "<right>" * position + "<down>"))
+        lists = run_cli(base + ["--report-list"], [keys for _, _, keys in probes], args.jobs) if probes else []
         ranks = []
-        for (target, _), line in zip(probes, lists):
-            items = line.split("\t") if line else []
-            ranks.append(next((i + 1 for i, item in enumerate(items) if item and target.startswith(item)), None))
+        for (target, shown, _), line in zip(probes, lists):
+            # The list starts with what is shown there (wrong by construction); rank among the alternatives.
+            items = [item for item in (line.split("\t") if line else []) if item and not shown.startswith(item)]
+            ranks.append(next((i + 1 for i, item in enumerate(items) if target.startswith(item)), None))
         count = max(1, len(ranks))
         found_ranks = [r for r in ranks if r]
         print(f"[{os.path.basename(test)}] {len(runs)} runs, {len(ranks)} wrong characters: first "
