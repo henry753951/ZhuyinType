@@ -25,6 +25,7 @@ private final class FakeTextClient: TextClient {
     }
 
     func caretRect(cursorIndex: Int) -> NSRect { NSRect(x: 100, y: 100, width: 1, height: 20) }
+    var hasInsertionPoint = true
     /// The document before the insertion point, or nil for an app that does not say.
     var documentText: String?
     func textBeforeInsertion(maxLength: Int) -> String? { documentText.map { String($0.suffix(maxLength)) } }
@@ -115,6 +116,18 @@ enum ControllerCoreSelfTest {
             shift(core)
             try expect(core.isEnglish && callbackSawCommit, "mode changed without preserving typed text")
             try expect(!core.keyDown(keyCode: 0, modifiers: []) && client.inserts == [visible], "English key consumed")
+        }
+        test("Shift outside a text field neither switches the mode nor shows the badge") {
+            let (core, client) = session()
+            client.hasInsertionPoint = false
+            var toggles = 0
+            core.modeChanged = { _, _ in toggles += 1 }
+            shift(core)
+            _ = core.flagsChanged(keyCode: 57, modifiers: .capsLock, physicallyDown: true, timestamp: 2)
+            try expect(!core.isEnglish && toggles == 0, "mode switched or badge shown without a text field")
+            client.hasInsertionPoint = true
+            shift(core)
+            try expect(core.isEnglish && toggles == 1, "Shift no longer switches in a text field")
         }
         test("Chromium duplicate and phantom Shift flags") {
             let (core, _) = session()

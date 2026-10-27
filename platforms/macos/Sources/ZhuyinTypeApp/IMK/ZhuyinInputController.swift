@@ -70,6 +70,13 @@ final class IMKTextClient: TextClient {
         return NSRect(x: mouse.x, y: mouse.y - 10, width: 0, height: 20)
     }
 
+    var hasInsertionPoint: Bool {
+        if input.selectedRange().location != NSNotFound || input.markedRange().location != NSNotFound { return true }
+        var line = NSRect.zero
+        _ = input.attributes(forCharacterIndex: 0, lineHeightRectangle: &line)
+        return valid(line.standardized)
+    }
+
     private static let log = Logger(subsystem: "org.zhuyintype", category: "caret")
 
     /// A caret is a zero-width rectangle, so only the height must be positive — and plausible: a line between 4 and

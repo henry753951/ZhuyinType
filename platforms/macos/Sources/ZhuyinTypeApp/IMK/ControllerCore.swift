@@ -10,6 +10,9 @@ protocol TextClient: AnyObject {
     var selectedRange: NSRange { get }
     var bundleIdentifier: String { get }
     func caretRect(cursorIndex: Int) -> NSRect
+    /// Whether the focus is a place to type: the app reports a selection, a composition or the caret's line.  False in
+    /// games and other windows without a text field, where Shift is not a mode switch.
+    var hasInsertionPoint: Bool { get }
     /// Up to `maxLength` UTF-16 units of the document before the insertion point; "" at its start, nil when the app
     /// does not say.
     func textBeforeInsertion(maxLength: Int) -> String?
@@ -208,7 +211,7 @@ final class ControllerCore {
             if on != capsLock {
                 capsLock = on
                 commit()
-                if !isEnglish { modeChanged?(on, client.caretRect(cursorIndex: 0)) }
+                if !isEnglish, client.hasInsertionPoint { modeChanged?(on, client.caretRect(cursorIndex: 0)) }
             }
             return false
         }
@@ -236,7 +239,7 @@ final class ControllerCore {
             shiftTap = nil
             if let tap, tap.key == keyCode, heldShifts.isEmpty,
                modifiers.intersection([.command, .control, .option, .capsLock, .function]).isEmpty,
-               timestamp >= tap.time, timestamp - tap.time <= 0.35 {
+               timestamp >= tap.time, timestamp - tap.time <= 0.35, client.hasInsertionPoint {
                 commit()
                 isEnglish.toggle()
                 breakContext()
