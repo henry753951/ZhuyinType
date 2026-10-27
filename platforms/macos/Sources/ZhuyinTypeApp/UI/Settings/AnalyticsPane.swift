@@ -1,7 +1,7 @@
 import AppKit
 import Charts
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// 分析: a recap of this Mac's typing (counts only, from `UsageStatsStore`), how the input method itself performs,
 /// and the switch for counting.  Refreshes every two seconds only while the page is on screen; nothing runs otherwise.

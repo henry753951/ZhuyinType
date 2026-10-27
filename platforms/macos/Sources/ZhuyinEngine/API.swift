@@ -1,6 +1,7 @@
-// The contract between ZhuyinCore and the app.  The app turns hardware keys into `KeyInput`, hands them to a
+// The contract between the engine and the app.  The app turns hardware keys into `KeyInput`, hands them to a
 // `Composer`, inserts `KeyResult.commit` into the client, then draws `Composer.presentation` (marked text and the
-// candidate window).  Nothing here touches AppKit, so every behaviour can be checked from the command line.
+// candidate window).  The engine is Rust (engine/crates, through the C ABI in zhuyin-ffi); these are its value types
+// on the Swift side, as zhuyin-core's `api` module defines them.
 import Foundation
 
 /// A key as the composer sees it.  The app maps hardware key codes on the US layout to these, so a character is the
@@ -138,7 +139,6 @@ public enum SpaceAction: String, Sendable, CaseIterable {
 
 public enum TypoTolerance: String, Sendable, CaseIterable {
     case off, standard, aggressive
-    var costMultiplier: Double { self == .aggressive ? 0.7 : 1 }
 }
 
 /// Sound pairs many speakers merge.  With a pair on, each sound also matches the other one at a small cost, so an
@@ -157,11 +157,6 @@ public struct FuzzySounds: OptionSet, Hashable, Sendable {
     /// ㄢ and ㄤ
     public static let anAng = FuzzySounds(rawValue: 1 << 4)
 
-    /// Each pair, and whether it is an initial (true) or a final.
-    static let pairs: [(set: FuzzySounds, a: Character, b: Character, initial: Bool)] = [
-        (.zZh, "ㄗ", "ㄓ", true), (.cCh, "ㄘ", "ㄔ", true), (.sSh, "ㄙ", "ㄕ", true),
-        (.enEng, "ㄣ", "ㄥ", false), (.anAng, "ㄢ", "ㄤ", false),
-    ]
 }
 
 public enum CandidateAnchor: Sendable {
@@ -182,24 +177,6 @@ public struct CharacterModelSyllable: Equatable, Sendable {
     public init(base: String?, tone: Int, costBucket: Int, implicit: Bool = false) {
         self.base = base; self.tone = tone; self.costBucket = costBucket; self.implicit = implicit
     }
-}
-
-/// Ranges are composition token offsets, not UTF-16 offsets. Literals have an empty reading.
-public struct SentenceWord: Equatable, Sendable {
-    public var range: Range<Int>
-    public var text: String
-    public var reading: String
-    /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
-    public var corrected = false
-}
-
-public struct ScoredSentence: Equatable, Sendable {
-    public var words: [SentenceWord]
-    /// Natural-log decoder score, including sentence boundaries.
-    public var score: Double
-    public var text: String { words.map(\.text).joined() }
-    /// Some word differs from the keys as typed.
-    public var corrected: Bool { words.contains(where: \.corrected) }
 }
 
 public struct ComposerOptions: Equatable, Sendable {
@@ -244,10 +221,17 @@ public enum CharacterForms: String, Sendable, CaseIterable {
     /// The forms of the Ministry of Education's standard: 臺.
     case standard
 
-    static let commonForms: [Character: Character] = ["臺": "台"]
+}
 
-    func apply(_ text: String) -> String {
-        guard self == .common, text.contains(where: { Self.commonForms[$0] != nil }) else { return text }
-        return String(text.map { Self.commonForms[$0] ?? $0 })
-    }
+/// How a run of typed keys is split into syllables and whether key order mistakes are repaired.
+public enum KeyDecoderMethod: String, Sendable, CaseIterable {
+    /// Every key goes into the current syllable's slots; only a tone key or Space ends it (the original behaviour).
+    case slots
+    /// Also ends a first-tone syllable when the next key starts another one (Space left out).
+    case boundaries
+    /// Boundaries, plus two neighbouring keys taken in the other order, and an extra key skipped, at fixed costs.
+    case reorder
+    /// Like `reorder`, but keys pressed almost together cost little to reorder or skip: fast typing presses keys out
+    /// of order or two at once, while keys typed apart are meant as typed.
+    case timed
 }

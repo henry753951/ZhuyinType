@@ -6,7 +6,7 @@
 // and commit together with the presentation before and after, and it never changes what the core does.
 // `CorrectionLog` appends the records off the main thread, as the engine writes personal data.
 import AppKit
-import ZhuyinCore
+import ZhuyinEngine
 
 /// Engine settings that change what the keys produce, recorded with each composition.
 struct CorrectionSettings: Encodable, Equatable {

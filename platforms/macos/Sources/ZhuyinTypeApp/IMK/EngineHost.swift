@@ -1,8 +1,7 @@
 import Carbon
 import Foundation
 import os
-import ZhuyinCore
-import ZhuyinML
+import ZhuyinEngine
 
 /// Loads the engine and models, and keeps them current: models and data placed in the models folder are loaded in the
 /// background and swapped in between compositions; a new version of the app itself is picked up by restarting the

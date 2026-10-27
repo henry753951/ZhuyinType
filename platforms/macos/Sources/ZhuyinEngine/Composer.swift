@@ -1,12 +1,11 @@
-// The Rust composer behind the API the app uses from ZhuyinCore's `Composer`.  The model hooks receive views of the
-// composer's own data (sentences, candidates) that go straight back to the Rust reranker and character model, so
+// The composer: keys in, commits and the presentation out (Rust, through zhuyin-ffi).  The model hooks receive views
+// of the composer's own data (sentences, candidates) that go straight back to the Rust reranker and character model, so
 // nothing is copied into Swift on the way.
 import CZhuyin
 import Foundation
-import ZhuyinCore
 
-/// One of the engine's best sentences (as ZhuyinCore's `ScoredSentence` shows it to the app).
-public struct RustSentence {
+/// One of the engine's best sentences, as the reranker hook shows it.
+public struct ScoredSentence {
     public let text: String
     public let score: Double
     /// Some word differs from the keys as typed.
@@ -14,19 +13,19 @@ public struct RustSentence {
 }
 
 /// The engine's best sentences, as the reranker hook receives them; valid only during the hook.
-public struct RustSentences: RandomAccessCollection {
+public struct ScoredSentences: RandomAccessCollection {
     let pointer: OpaquePointer
     public var startIndex: Int { 0 }
     public var endIndex: Int { zt_sentences_count(pointer) }
-    public subscript(index: Int) -> RustSentence {
-        RustSentence(text: take(zt_sentences_text(pointer, index)) ?? "", score: zt_sentences_score(pointer, index),
+    public subscript(index: Int) -> ScoredSentence {
+        ScoredSentence(text: take(zt_sentences_text(pointer, index)) ?? "", score: zt_sentences_score(pointer, index),
                      corrected: zt_sentences_corrected(pointer, index))
     }
 }
 
 /// The candidates of a span and room for their scores, as the candidate scorer hook receives them; valid only during
 /// the hook.
-public struct RustCandidates {
+public struct CandidateTexts {
     let pointer: OpaquePointer
     let scores: UnsafeMutablePointer<Double>
     public var count: Int { zt_strings_count(pointer) }
@@ -34,7 +33,7 @@ public struct RustCandidates {
 
 /// Each syllable's candidate characters and room for their scores, as the character scorer hook receives them; valid
 /// only during the hook.
-public struct RustCandidateRows {
+public struct CandidateRows {
     let pointer: OpaquePointer
     let scores: UnsafeMutablePointer<Double>
     let lengths: UnsafeMutablePointer<Int>
@@ -42,7 +41,7 @@ public struct RustCandidateRows {
 }
 
 /// Scores written into the hook's buffers (a scorer returns this, or nil when it could not score).
-public struct RustScores {
+public struct ScoresWritten {
     init() {}
 }
 
@@ -53,9 +52,9 @@ private final class Box<T> {
 
 private func retained<T>(_ value: T) -> UnsafeMutableRawPointer { Unmanaged.passRetained(Box(value)).toOpaque() }
 
-private typealias RerankerClosure = (RustSentences) -> Int
-private typealias CandidateClosure = (String, RustCandidates) -> RustScores?
-private typealias CharacterClosure = ([CharacterModelSyllable], RustCandidateRows) -> RustScores?
+private typealias RerankerClosure = (ScoredSentences) -> Int
+private typealias CandidateClosure = (String, CandidateTexts) -> ScoresWritten?
+private typealias CharacterClosure = ([CharacterModelSyllable], CandidateRows) -> ScoresWritten?
 
 private let releaseReranker: @convention(c) (UnsafeMutableRawPointer?) -> Void = {
     Unmanaged<Box<RerankerClosure>>.fromOpaque($0!).release()
@@ -107,9 +106,9 @@ private func result(_ result: ZtKeyResult) -> KeyResult {
     KeyResult(handled: result.handled, commit: take(result.commit))
 }
 
-public final class RustComposer {
+public final class Composer {
     let handle: OpaquePointer
-    private let engine: RustEngine
+    private let engine: Engine
     private var cached: Presentation?
 
     public var options: ComposerOptions {
@@ -120,7 +119,7 @@ public final class RustComposer {
         }
     }
 
-    public init(engine: RustEngine, options: ComposerOptions = ComposerOptions()) {
+    public init(engine: Engine, options: ComposerOptions = ComposerOptions()) {
         self.engine = engine
         self.options = options
         handle = Self.withOptions(options) { zt_composer_new(engine.handle, $0) }!
@@ -234,7 +233,7 @@ public final class RustComposer {
     }
 
     /// Chooses the displayed sentence among the engine's best (an index into them).
-    public var reranker: ((RustSentences) -> Int)? {
+    public var reranker: ((ScoredSentences) -> Int)? {
         didSet {
             guard let reranker else {
                 zt_composer_set_reranker(handle, ZtRerankerHook(context: nil, choose: nil, release: nil))
@@ -242,14 +241,14 @@ public final class RustComposer {
             }
             let hook = ZtRerankerHook(context: retained(reranker as RerankerClosure), choose: { context, sentences in
                 let closure = Unmanaged<Box<RerankerClosure>>.fromOpaque(context!).takeUnretainedValue().value
-                return closure(RustSentences(pointer: sentences!))
+                return closure(ScoredSentences(pointer: sentences!))
             }, release: releaseReranker)
             zt_composer_set_reranker(handle, hook)
         }
     }
 
     /// Scores a span's candidates for list order: `before` is the composition text before the span.
-    public var candidateScorer: ((_ before: String, _ candidates: RustCandidates) -> RustScores?)? {
+    public var candidateScorer: ((_ before: String, _ candidates: CandidateTexts) -> ScoresWritten?)? {
         didSet {
             guard let candidateScorer else {
                 zt_composer_set_candidate_scorer(handle, ZtCandidateScorerHook(context: nil, score: nil, release: nil))
@@ -257,14 +256,14 @@ public final class RustComposer {
             }
             let hook = ZtCandidateScorerHook(context: retained(candidateScorer as CandidateClosure), score: { context, before, candidates, scores in
                 let closure = Unmanaged<Box<CandidateClosure>>.fromOpaque(context!).takeUnretainedValue().value
-                return closure(String(cString: before!), RustCandidates(pointer: candidates!, scores: scores!)) != nil
+                return closure(String(cString: before!), CandidateTexts(pointer: candidates!, scores: scores!)) != nil
             }, release: releaseCandidates)
             zt_composer_set_candidate_scorer(handle, hook)
         }
     }
 
     /// Scores each syllable's candidate characters for the lattice.
-    public var characterScorer: ((_ syllables: [CharacterModelSyllable], _ candidates: RustCandidateRows) -> RustScores?)? {
+    public var characterScorer: ((_ syllables: [CharacterModelSyllable], _ candidates: CandidateRows) -> ScoresWritten?)? {
         didSet {
             guard let characterScorer else {
                 zt_composer_set_character_scorer(handle, ZtCharacterScorerHook(context: nil, score: nil, release: nil))
@@ -277,7 +276,7 @@ public final class RustComposer {
                     return CharacterModelSyllable(base: s.base.map { String(cString: $0) }, tone: Int(s.tone),
                                                   costBucket: Int(s.cost_bucket), implicit: s.implicit)
                 }
-                return closure(list, RustCandidateRows(pointer: candidates!, scores: scores!, lengths: lengths!)) != nil
+                return closure(list, CandidateRows(pointer: candidates!, scores: scores!, lengths: lengths!)) != nil
             }, release: releaseCharacters)
             zt_composer_set_character_scorer(handle, hook)
         }

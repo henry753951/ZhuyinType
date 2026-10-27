@@ -1,7 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import ZhuyinCore
-import ZhuyinML
+import ZhuyinEngine
 
 protocol TextClient: AnyObject {
     func insertText(_ text: String, replacementRange: NSRange)

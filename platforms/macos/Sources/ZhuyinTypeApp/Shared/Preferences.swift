@@ -3,7 +3,7 @@
 import AppKit
 import Combine
 import Foundation
-import ZhuyinCore
+import ZhuyinEngine
 
 enum CandidateLayout: String, CaseIterable, Identifiable {
     case vertical, horizontal

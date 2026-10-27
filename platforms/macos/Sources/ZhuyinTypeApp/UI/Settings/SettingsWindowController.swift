@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The settings window: a source-list sidebar and one pane at a time, like System Settings.
 final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {

@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// 介紹: the typing story, then the main features, each leading to its settings.
 struct IntroPane: View {

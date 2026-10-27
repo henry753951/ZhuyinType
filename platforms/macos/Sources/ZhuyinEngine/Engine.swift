@@ -1,11 +1,9 @@
-// The Rust engine (engine/crates/zhuyin-ffi) behind the API the app uses from ZhuyinCore's `Engine`.  The value types
-// (KeyInput, ComposerOptions, Presentation, …) stay ZhuyinCore's; only the classes are replaced.
+// The engine: lexicon, language models and personal data, in Rust (engine/crates, through zhuyin-ffi's C ABI).
 import CZhuyin
 import Foundation
-import ZhuyinCore
 
 /// An error from the Rust engine, with its message.
-public struct RustEngineError: LocalizedError {
+public struct EngineError: LocalizedError {
     public let message: String
     public var errorDescription: String? { message }
 }
@@ -21,10 +19,10 @@ func take(_ pointer: UnsafeMutablePointer<CChar>?) -> String? {
 func checked<T>(_ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> T?) throws -> T {
     var error: UnsafeMutablePointer<CChar>?
     if let value = body(&error) { return value }
-    throw RustEngineError(message: take(error) ?? "unknown error")
+    throw EngineError(message: take(error) ?? "unknown error")
 }
 
-public final class RustEngine: @unchecked Sendable {
+public final class Engine: @unchecked Sendable {
     let handle: OpaquePointer
 
     /// The chat-domain model directory, read when an engine is created (Swift's `Engine.chatModelDirectory`).

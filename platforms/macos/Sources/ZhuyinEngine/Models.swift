@@ -1,10 +1,8 @@
-// The neural models for the Rust engine: their decisions (gate, margins, tokenization, caching) run in Rust
-// (zhuyin-models), their inference here with Core ML, called back from Rust.  The Core ML calls are the ones
-// ZhuyinML makes, so the scores are the same.
+// The neural models: their decisions (gate, margins, tokenization, caching) run in Rust (zhuyin-models), their
+// inference here with Core ML, called back from Rust.
 import CoreML
 import CZhuyin
 import Foundation
-import ZhuyinCore
 
 private func compiledModel(_ directory: URL, _ name: String, _ configuration: MLModelConfiguration) throws -> MLModel {
     let compiled = directory.appendingPathComponent(name + ".mlmodelc")
@@ -106,12 +104,12 @@ private let releaseObject: @convention(c) (UnsafeMutableRawPointer?) -> Void = {
     Unmanaged<AnyObject>.fromOpaque($0!).release()
 }
 
-/// The sentence reranker: `NeuralReranker`'s decisions in Rust, Core ML inference here.
-public final class RustReranker: @unchecked Sendable {
+/// The sentence reranker (v2b): its decisions in Rust (`zhuyin_models::NeuralReranker`), Core ML inference here.
+public final class NeuralReranker: @unchecked Sendable {
     let handle: OpaquePointer
 
     /// The reranker as the app loads it: weight and sentence count from the directory's config.json.
-    public static func configured(directory: URL, computeUnits: MLComputeUnits = .cpuOnly) throws -> RustReranker {
+    public static func configured(directory: URL, computeUnits: MLComputeUnits = .cpuOnly) throws -> NeuralReranker {
         let model = try CoreMLReranker(directory: directory, computeUnits: computeUnits)
         let host = ZtRerankerModel(
             context: Unmanaged.passRetained(model as AnyObject).toOpaque(),
@@ -124,7 +122,7 @@ public final class RustReranker: @unchecked Sendable {
                 return model.treeLogprob(tree!.pointee, out: out!)
             },
             release: releaseObject)
-        return RustReranker(handle: try checked { error in zt_reranker_configured(directory.path, host, error) })
+        return NeuralReranker(handle: try checked { error in zt_reranker_configured(directory.path, host, error) })
     }
 
     private init(handle: OpaquePointer) { self.handle = handle }
@@ -134,13 +132,13 @@ public final class RustReranker: @unchecked Sendable {
     public var candidateCount: Int { zt_reranker_candidate_count(handle) }
 
     /// The index of the sentence to display.
-    public func choose(_ sentences: RustSentences, context: String) -> Int {
+    public func choose(_ sentences: ScoredSentences, context: String) -> Int {
         zt_reranker_choose(handle, sentences.pointer, context)
     }
 
     /// `weight` × log P(candidate | context) for candidate-list order, written into the hook's buffer.
-    public func candidateScores(context: String, candidates: RustCandidates) -> RustScores? {
-        zt_reranker_candidate_scores_view(handle, context, candidates.pointer, candidates.scores) ? RustScores() : nil
+    public func candidateScores(context: String, candidates: CandidateTexts) -> ScoresWritten? {
+        zt_reranker_candidate_scores_view(handle, context, candidates.pointer, candidates.scores) ? ScoresWritten() : nil
     }
 
     /// log P(candidate | context) for each candidate; nil when the model cannot score them.
@@ -156,8 +154,8 @@ public final class RustReranker: @unchecked Sendable {
     }
 }
 
-/// The v3 character model: `SyllableScorer`'s decisions in Rust, Core ML inference here.
-public final class RustSyllableScorer: @unchecked Sendable {
+/// The v3 character model: its decisions in Rust (`zhuyin_models::SyllableScorer`), Core ML inference here.
+public final class SyllableScorer: @unchecked Sendable {
     /// How much the model's scores count in the lattice in the app.
     public static let appWeight = 0.5
 
@@ -196,7 +194,7 @@ public final class RustSyllableScorer: @unchecked Sendable {
     }
 
     /// For each syllable, log P over its candidate characters, written into the hook's buffers.
-    public func scores(context: String, syllables: [Syllable], candidates: RustCandidateRows) -> RustScores? {
+    public func scores(context: String, syllables: [Syllable], candidates: CandidateRows) -> ScoresWritten? {
         let bases = syllables.map { $0.base.flatMap { strdup($0) } }
         defer { bases.forEach { free($0) } }
         let views = zip(syllables, bases).map { syllable, base in
@@ -207,6 +205,6 @@ public final class RustSyllableScorer: @unchecked Sendable {
             zt_syllable_scorer_scores_rows(handle, context, list.baseAddress, list.count, candidates.pointer,
                                            candidates.scores, candidates.lengths)
         }
-        return ok ? RustScores() : nil
+        return ok ? ScoresWritten() : nil
     }
 }

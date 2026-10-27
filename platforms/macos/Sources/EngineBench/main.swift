@@ -1,13 +1,11 @@
 // The app's engine path outside the app, for measuring it: the engine and models loaded as EngineHost loads them, a
-// composer set up as ControllerCore sets it up, keys typed one at a time.  Built on the Swift or the Rust engine like
-// the app (ZHUYIN_ENGINE, Package.swift).  Accepts the zhuyin-cli options `zt eval latency` passes, so
+// composer set up as ControllerCore sets it up, keys typed one at a time, with Core ML as in the app.  Accepts the zhuyin-cli options `zt eval latency` passes, so
 //   ZT_CLI=.build/release/EngineBench tools/zt eval latency
 // measures it the same way:
 //   EngineBench --models DIR [--timing] "<keys>"
 // prints each commit and, with --timing, the per-key latency, CPU, energy and memory summary.
 import Foundation
-import ZhuyinCore
-import ZhuyinML
+import ZhuyinEngine
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -27,19 +25,15 @@ while let option = arguments.first, option.hasPrefix("--") {
         timing = true
         arguments.removeFirst()
     case "--check-v3":
-        // The v3 golden outputs through this build's character model (on the Rust engine: Rust with Core ML called
-        // back), as zhuyin-cli --check-v3.
+        // The v3 golden outputs through the app's character model (Rust with Core ML called back), as
+        // zhuyin-cli --check-v3 does with ONNX Runtime.
         guard arguments.count >= 2 else { fail("--check-v3 needs a directory") }
-        #if ZHUYIN_RUST_ENGINE
         do {
             let directory = URL(fileURLWithPath: arguments[1])
             let check = try SyllableScorer(directory: directory).checkVectors(directory: directory)
             print("v3 test vectors: \(check.passed)/\(check.total) within tolerance; largest difference \(check.worst)")
             exit(check.passed == check.total ? 0 : 1)
         } catch { fail(error.localizedDescription) }
-        #else
-        fail("--check-v3 is zhuyin-cli's on the Swift engine")
-        #endif
     default: fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"")
     }
 }

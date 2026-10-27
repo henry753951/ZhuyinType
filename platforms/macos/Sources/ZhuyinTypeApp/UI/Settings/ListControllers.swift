@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ZhuyinCore
+import ZhuyinEngine
 
 /// 自訂詞: user phrases, edited through the engine.
 final class PhraseListController: NSObject, NSTextFieldDelegate {
