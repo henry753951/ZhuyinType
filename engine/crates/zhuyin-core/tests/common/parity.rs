@@ -1,4 +1,5 @@
-//! The golden-test harness: Swift digests (`parity/golden/digests.tsv`), the shared inputs, and line hashing.
+//! The golden-test harness: Swift digests (`parity/golden/digests.tsv`, or the file `ZHUYIN_GOLDEN` names), the shared
+//! inputs, and line hashing.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -39,13 +40,23 @@ pub(crate) struct Golden {
 
 impl Golden {
     pub(crate) fn load() -> Option<Golden> {
-        let text = std::fs::read_to_string(parity_directory().join("golden/digests.tsv")).ok()?;
+        // ZHUYIN_GOLDEN: digests regenerated elsewhere (parity/gate.sh on another machine's data).
+        let path = std::env::var_os("ZHUYIN_GOLDEN")
+            .map_or_else(|| parity_directory().join("golden/digests.tsv"), PathBuf::from);
+        let text = std::fs::read_to_string(path).ok()?;
         let mut golden = Golden { sizes: HashMap::new(), digests: HashMap::new() };
         for line in text.lines() {
             let fields: Vec<&str> = line.split('\t').collect();
             match fields.as_slice() {
                 ["#size", name, size] => {
                     golden.sizes.insert((*name).to_owned(), size.parse().unwrap());
+                }
+                // The C libraries' math functions differ in the last bit between systems (glibc and Apple's libm
+                // round a few results of `log` and `exp` differently), so digests hold for the system they were made
+                // on; parity/gate.sh regenerates them on the Linux host.
+                ["#system", system] if *system != std::env::consts::OS => {
+                    eprintln!("skipped: the golden digests were made on {system}, this is {}", std::env::consts::OS);
+                    return None;
                 }
                 [name, count, digest] => {
                     golden.digests.insert((*name).to_owned(), (count.parse().unwrap(), (*digest).to_owned()));

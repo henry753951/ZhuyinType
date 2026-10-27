@@ -620,6 +620,8 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
         "<left><down><right><down><enter><esc><esc>",
         "<home><sdown><down><enter><end><bs><obs><enter>",
         "<down><space><tab><stab><pgdown><pgup><up>`<enter>",
+        "``<enter>",
+        "<left>`<esc><enter>",
     ];
     let mut scripts = vec![];
     for (index, (file, _, before, tokens)) in dev_scripts(inputs, files, 60).into_iter().enumerate() {
@@ -641,6 +643,13 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
     }
     let targeted = [
         "18 q8 a8 <left><left><bs>18 <home><del><end><bs><S-,>18 ek4`<bs><enter>".to_owned(),
+        "18 q8 ``<enter>".to_owned(),
+        "18 q8 `<esc>a8 <enter>".to_owned(),
+        "18 q8`<esc> <enter>".to_owned(),
+        "18 q8 <down>``<enter>".to_owned(),
+        "18 q8 `a8 <esc><esc>".to_owned(),
+        "su3cl3`<bs>`<esc><enter>".to_owned(),
+        "18 q8 <down>`<esc><enter>".to_owned(),
         "su3cl38 <sleft><sleft><enter><end>18 <enter>".to_owned(),
         "su3cl38 <left><sleft><sright><sright><esc><enter>".to_owned(),
         "rup wu0 wu0 fu4cp3cl3<home><down><down><down><enter><right><down><sdown><down><enter><enter>".to_owned(),

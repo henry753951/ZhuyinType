@@ -1,3 +1,4 @@
+#system	macos
 #size	lexicon.bin	17012566
 #size	lexicon.tsv	5053414
 #size	lm/lm.bin	37648528
@@ -45,8 +46,8 @@ learning.files	2853	dc69662808f66f6d
 learning.export	2850	88f3b49688c1e6c2
 learning.import	2851	16f8662517f1c607
 learning.reload	124	3fed733d532df698
-composer.app	11005	6baa91a2ae9ba26f
-composer.standard-forms	11005	36d6a75c330ede4f
-composer.legacy	11005	fd7c8032cfeee248
-composer.other	11005	36606fc3cc043c7a
-composer.commit	11005	e8e2d569fb0b7c35
+composer.app	10991	6f881e788ace1f0a
+composer.standard-forms	10991	c730108e3bb6dd24
+composer.legacy	10991	665e258fecd655c6
+composer.other	10991	e269f5aaaba63125
+composer.commit	10991	8f2bb2f3e0b7d02f

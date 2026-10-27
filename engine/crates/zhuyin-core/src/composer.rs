@@ -67,6 +67,9 @@ pub struct Composer {
     key_time: Option<f64>,
     run: Vec<Key>,
     run_tokens: usize,
+    /// The composition before and right after the last backtick: pressing it again or Esc, with nothing changed in
+    /// between, puts the syllables back.
+    literal_undo: Option<(Snapshot, Snapshot)>,
     leading_history: LanguageModelHistory,
     leading_words: Vec<ConvertedWord>,
     last_commit: Option<LastCommit>,
@@ -91,6 +94,18 @@ pub struct Composer {
     /// The key decoder's costs (Swift's shared `KeyDecoder.costs`).
     pub decoder_costs: Costs,
     presentation: Presentation,
+}
+
+/// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
+#[derive(Clone, Debug, PartialEq)]
+struct Snapshot {
+    tokens: Vec<CompositionToken>,
+    cursor: usize,
+    buffer: [Option<char>; 3],
+    buffer_keys: String,
+    fixed: Vec<FixedWord>,
+    run: Vec<Key>,
+    run_tokens: usize,
 }
 
 /// The history each word was scored after (a converted word carries the history that follows it).
@@ -147,6 +162,7 @@ impl Composer {
             key_time: None,
             run: vec![],
             run_tokens: 0,
+            literal_undo: None,
             leading_history: LanguageModelHistory::default(),
             leading_words: vec![],
             last_commit: None,
@@ -333,8 +349,43 @@ impl Composer {
     }
 
     #[allow(clippy::too_many_lines)]
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            tokens: self.tokens.clone(),
+            cursor: self.cursor,
+            buffer: self.buffer,
+            buffer_keys: self.buffer_keys.clone(),
+            fixed: self.fixed.clone(),
+            run: self.run.clone(),
+            run_tokens: self.run_tokens,
+        }
+    }
+
+    fn restore(&mut self, state: Snapshot) {
+        self.tokens = state.tokens;
+        self.cursor = state.cursor;
+        self.buffer = state.buffer;
+        self.buffer_keys = state.buffer_keys;
+        self.fixed = state.fixed;
+        self.run = state.run;
+        self.run_tokens = state.run_tokens;
+        self.conversion_dirty = true;
+    }
+
+    // One branch per key, as Swift's `process`.
+    #[allow(clippy::too_many_lines)]
     fn process(&mut self, key: KeyInput) -> KeyResult {
         self.notice = None;
+        if let Some((before, after)) = self.literal_undo.take()
+            && (key == KeyInput::Char('`') || key == KeyInput::Escape)
+            && self.choices.is_empty()
+            && self.snapshot() == after
+        {
+            self.restore(before);
+            self.refresh();
+            return KeyResult::CONSUMED;
+        }
+        let before_key = self.snapshot();
         if !self.continues_run(key) {
             self.settle_run();
         }
@@ -396,6 +447,7 @@ impl Composer {
                 let text = self.buffer_text();
                 self.clear_buffer();
                 self.insert(CompositionToken::Literal(text.into()));
+                self.literal_undo = Some((before_key, self.snapshot()));
                 result = KeyResult::CONSUMED;
             } else if self.cursor > 0
                 && let Some(reading) = self.tokens[self.cursor - 1].reading().map(str::to_owned)
@@ -403,6 +455,7 @@ impl Composer {
                 let target = self.cursor - 1;
                 self.delete(target..self.cursor);
                 self.insert(CompositionToken::Literal(keyboard::plain(&reading).into()));
+                self.literal_undo = Some((before_key, self.snapshot()));
                 result = KeyResult::CONSUMED;
             } else {
                 result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
@@ -1084,10 +1137,12 @@ impl Composer {
                     return Some(KeyResult::CONSUMED);
                 }
                 let text = keyboard::plain(&self.readings(&range).join(" "));
+                let before = self.snapshot();
                 self.delete(range.clone());
                 self.cursor = range.start;
                 self.insert(CompositionToken::Literal(text.into()));
                 self.close_candidates();
+                self.literal_undo = Some((before, self.snapshot()));
             }
             KeyInput::Enter => return Some(self.select_candidate(self.candidate_selection)),
             KeyInput::ShiftDown => self.open_candidates(!self.single_character_list, self.tolerant_list),

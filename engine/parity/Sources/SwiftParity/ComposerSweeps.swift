@@ -50,7 +50,8 @@ func presentationLine(_ p: Presentation) -> String {
 func composerScripts(_ inputs: Inputs, files: [String]) -> [(context: String, keys: String)] {
     let endings = ["<enter>", "<home><down><down><enter><enter>", "<down><sup><down><enter><enter>", "<enter><bs><bs>{keys}<enter>",
                    "<S-,><C-.>18 <enter>", "<sleft><sleft><enter><enter>", "<left><down><right><down><enter><esc><esc>",
-                   "<home><sdown><down><enter><end><bs><obs><enter>", "<down><space><tab><stab><pgdown><pgup><up>`<enter>"]
+                   "<home><sdown><down><enter><end><bs><obs><enter>", "<down><space><tab><stab><pgdown><pgup><up>`<enter>",
+                   "``<enter>", "<left>`<esc><enter>"]
     var scripts: [(String, String)] = []
     for (index, (file, _, before, tokens)) in devScripts(inputs, files: files, limit: 60).enumerated() {
         let keys = tokens.map(\.keysText).joined()
@@ -68,6 +69,7 @@ func composerScripts(_ inputs: Inputs, files: [String]) -> [(context: String, ke
     }
     let targeted = [
         "18 q8 a8 <left><left><bs>18 <home><del><end><bs><S-,>18 ek4`<bs><enter>",
+        "18 q8 ``<enter>", "18 q8 `<esc>a8 <enter>", "18 q8`<esc> <enter>", "18 q8 <down>``<enter>", "18 q8 `a8 <esc><esc>", "su3cl3`<bs>`<esc><enter>", "18 q8 <down>`<esc><enter>",
         "su3cl38 <sleft><sleft><enter><end>18 <enter>", "su3cl38 <left><sleft><sright><sright><esc><enter>",
         "rup wu0 wu0 fu4cp3cl3<home><down><down><down><enter><right><down><sdown><down><enter><enter>",
         "ji3ap7g4<enter><bs>g4<enter><bs><bs><bs>ji3ap7<enter>", "jia3p7g4<enter>", "suc3<dt:6>l3<enter>",

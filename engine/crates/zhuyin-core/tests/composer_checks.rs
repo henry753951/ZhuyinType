@@ -1096,3 +1096,42 @@ fn recall_budget_backtick_and_hints() {
         "multi-syllable neutral hint"
     );
 }
+
+#[test]
+fn backtick_undo() {
+    let tiny = engine(TINY);
+    // A ` pressed by mistake: ` again or Esc right after puts the syllables back; any other key keeps the literal.
+    let mut undo_again = composer(&tiny, "18 q8 ");
+    undo_again.handle(KeyInput::Char('`'));
+    assert_eq!(text(&undo_again), "八ㄆㄚ", "backtick before undo");
+    undo_again.handle(KeyInput::Char('`'));
+    assert!(
+        text(&undo_again) == "八趴" && undo_again.presentation().cursor == 2,
+        "second backtick restores the syllable"
+    );
+    undo_again.handle(KeyInput::Char('`'));
+    assert_eq!(text(&undo_again), "八ㄆㄚ", "a third backtick converts again");
+    let mut undo_escape = composer(&tiny, "18 q8 ");
+    undo_escape.handle(KeyInput::Char('`'));
+    undo_escape.handle(KeyInput::Escape);
+    assert!(
+        text(&undo_escape) == "八趴" && undo_escape.is_composing(),
+        "Esc right after a backtick restores instead of clearing"
+    );
+    let mut undo_buffer = composer(&tiny, "18 q8");
+    undo_buffer.handle(KeyInput::Char('`'));
+    undo_buffer.handle(KeyInput::Escape);
+    type_keys(" ", &mut undo_buffer);
+    assert_eq!(text(&undo_buffer), "八趴", "restored unfinished syllable completes as typed");
+    let mut undo_list = composer(&tiny, "18 q8 ");
+    undo_list.handle(KeyInput::Down);
+    undo_list.handle(KeyInput::Char('`'));
+    let list_literal = text(&undo_list).to_owned();
+    undo_list.handle(KeyInput::Char('`'));
+    assert!(list_literal != "八趴" && text(&undo_list) == "八趴", "backtick from the candidate list is undone too");
+    let mut undo_gone = composer(&tiny, "18 q8 ");
+    undo_gone.handle(KeyInput::Char('`'));
+    type_keys("a8 ", &mut undo_gone);
+    undo_gone.handle(KeyInput::Escape);
+    assert!(!undo_gone.is_composing(), "after another key, Esc clears as usual");
+}
