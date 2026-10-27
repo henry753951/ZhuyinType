@@ -12,10 +12,9 @@ struct ContextPane: View {
 
     var body: some View {
         let on = preferences.usesPrecedingText
-        Form {
+        SettingsForm {
             SettingsSection {
                 ContextIllustration(pinned: pinnedScene)
-                    .padding(.vertical, 6)
             }
             SettingsSection {
                 SettingRow(title: "參考游標前的文字", subtitle: "依前文選字，並調整成口語或書面的用語") {

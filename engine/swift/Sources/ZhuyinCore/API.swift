@@ -234,6 +234,10 @@ public struct ComposerOptions: Equatable, Sendable {
     public var characterForms: CharacterForms = .common
     /// What Shift and Control with a symbol key type.
     public var punctuationKeys: PunctuationKeys = .windows
+    /// ↓ on a page's last candidate goes to the next page's first (↑ on the first goes back), stopping at the end of
+    /// the list without wrapping.  The Swift composer always moves across pages and ignores this; the Rust engine
+    /// implements both (`page_at_list_edge`).
+    public var pageAtListEdge: Bool = true
 
     public init() {}
 }

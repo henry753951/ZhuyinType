@@ -338,7 +338,7 @@ extension ShortcutCommand {
     var section: KeySection {
         switch self {
         case .commitWithNewline, .deleteWord: return .composing
-        case .nextPage, .previousPage, .singleCharacterList, .correctionsList: return .list
+        case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
         case .typeZhuyin, .selectLeft, .selectRight: return .editing
         }
     }

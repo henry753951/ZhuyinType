@@ -131,6 +131,8 @@ enum KeyFeature: String, CaseIterable, Identifiable {
 enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     case singleCharacterList, correctionsList, typeZhuyin, nextPage, previousPage
     case selectLeft, selectRight, deleteWord, commitWithNewline
+    /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
+    case previousCharacter, nextCharacter
 
     var id: String { rawValue }
 
@@ -145,6 +147,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectRight: return "往右選取，再按 Return 加入自訂詞"
         case .deleteWord: return "刪掉一個詞"
         case .commitWithNewline: return "送出並換行"
+        case .previousCharacter: return "清單開著時改前一個字"
+        case .nextCharacter: return "清單開著時改後一個字"
         }
     }
 
@@ -159,12 +163,15 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectRight: return Shortcut("→", shift: true)
         case .deleteWord: return Shortcut("⌫", option: true)
         case .commitWithNewline: return Shortcut("Return", shift: true)
+        case .previousCharacter: return Shortcut("←", option: true)
+        case .nextCharacter: return Shortcut("→", option: true)
         }
     }
 
-    /// What the composer receives for the command.
-    var input: KeyInput {
+    /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
+    var input: KeyInput? {
         switch self {
+        case .previousCharacter, .nextCharacter: return nil
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
         case .typeZhuyin: return .char("`")
@@ -189,6 +196,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectRight: return "往右選取"
         case .deleteWord: return "刪掉一個詞"
         case .commitWithNewline: return "送出並換行"
+        case .previousCharacter: return "改前一個字"
+        case .nextCharacter: return "改後一個字"
         }
     }
 
@@ -204,8 +213,17 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         return nil
     }
 
-    /// The default bindings: one each.
-    var defaultBindings: [Shortcut] { [defaultShortcut] }
+    /// The default bindings.  Paging has the common ways at once: Tab, Page Down (fn ↓ on a laptop) and ⌥↓.
+    var defaultBindings: [Shortcut] {
+        switch self {
+        case .nextPage: return [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)]
+        case .previousPage: return [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
+        default: return [defaultShortcut]
+        }
+    }
+    /// The defaults of earlier versions, which stored every command's keys once any was changed: a stored list equal
+    /// to these is read as the current default.
+    var legacyDefaultBindings: [Shortcut] { [defaultShortcut] }
     static var defaultBindings: [ShortcutCommand: [Shortcut]] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
     }
@@ -219,12 +237,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
-        case .commitWithNewline: return nil
+        case .commitWithNewline, .previousCharacter, .nextCharacter: return nil
         }
     }
 
     /// Inputs that mean a command: produced only through a binding, never straight from a key.
-    static let commandInputs = Set(allCases.map(\.input))
+    static let commandInputs = Set(allCases.compactMap(\.input))
 
     static var defaults: [ShortcutCommand: Shortcut] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultShortcut) })
