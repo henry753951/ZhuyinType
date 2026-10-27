@@ -5,7 +5,7 @@
 //   Resources/AppIcon.icon/          Icon Composer source: a blue background and ㄓ on a Liquid Glass layer
 //   Resources/Assets.car             compiled icon, rendered by macOS 26 and later with the system glass material
 //   Resources/AppIcon.icns           the same icon for earlier systems
-//   Resources/InputSourceTemplate.pdf   input-source icon (template), 16 × 16 pt vector
+//   Resources/InputSourceTemplate.pdf   input-source icon (template), 22 × 16 pt vector
 import AppKit
 import CoreText
 
@@ -120,20 +120,32 @@ try? fileManager.removeItem(at: resources.appendingPathComponent("AppIcon.iconse
 
 // MARK: - Menu bar icon
 
-/// The input-source badge, in the proportions of the system's own input-source icons: a 16 × 16 pt square with
-/// 2.5 pt corners and a regular-weight glyph about two thirds of its height cut out, as a vector PDF.  Black on clear;
-/// Info.plist marks it as a template, so macOS tints it for the menu bar, the input menu and the indicator by the
-/// insertion point.
-let badgeSize = CGSize(width: 16, height: 16)
+/// The input-source badge, drawn like the system's own ABC badge: a 22 × 16 pt rectangle with 4.5 pt corners and the
+/// glyph cut out in 1.5 pt strokes, 10 pt tall.  The font's ㄓ comes out thin and blurred at this size, so the strokes
+/// are drawn as rectangles on the half-point grid, which keeps every edge on a pixel at 2×; the glyph sits a quarter
+/// point left of centre so the stem can.  Black on clear; Info.plist marks it as a template, so macOS tints it for
+/// the menu bar, the input menu and the indicator by the insertion point.
+let badgeSize = CGSize(width: 22, height: 16)
 let badgeURL = resources.appendingPathComponent("InputSourceTemplate.pdf")
 var mediaBox = CGRect(origin: .zero, size: badgeSize)
 let pdf = CGContext(badgeURL as CFURL, mediaBox: &mediaBox, nil)!
 pdf.beginPDFPage(nil)
 let badge = CGMutablePath()
-badge.addRoundedRect(in: mediaBox, cornerWidth: 2.5, cornerHeight: 2.5)
-// Union the glyph's contours first, so the even-odd fill cuts it out cleanly where strokes overlap.
-badge.addPath(glyphPath(height: 10.5, center: CGPoint(x: mediaBox.midX, y: mediaBox.midY), font: "PingFangTC-Regular")
-    .normalized(using: .winding))
+badge.addRoundedRect(in: mediaBox, cornerWidth: 4.5, cornerHeight: 4.5)
+// ㄓ, measured from the top-left corner.
+let strokes = [
+    CGRect(x: 10, y: 3, width: 1.5, height: 10),       // stem
+    CGRect(x: 5.5, y: 4.5, width: 1.5, height: 5),     // left post
+    CGRect(x: 14.5, y: 4.5, width: 1.5, height: 5),    // right post
+    CGRect(x: 5.5, y: 8, width: 10.5, height: 1.5),    // cup
+    CGRect(x: 4.5, y: 11.5, width: 12.5, height: 1.5), // base
+]
+let glyphStrokes = CGMutablePath()
+for stroke in strokes {
+    glyphStrokes.addRect(CGRect(x: stroke.minX, y: badgeSize.height - stroke.maxY, width: stroke.width, height: stroke.height))
+}
+// Union the strokes first, so the even-odd fill cuts them out cleanly where they cross.
+badge.addPath(glyphStrokes.normalized(using: .winding))
 pdf.addPath(badge)
 pdf.setFillColor(CGColor(gray: 0, alpha: 1))
 pdf.fillPath(using: .evenOdd)
