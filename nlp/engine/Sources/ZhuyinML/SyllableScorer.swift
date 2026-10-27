@@ -8,6 +8,8 @@ import Foundation
 /// characters it may be.  The engine adds these scores to its word lattice.  Model files and vocabularies come from
 /// nlp/training/v3 (data/build/v3/config.json).
 public final class SyllableScorer: @unchecked Sendable {
+    /// How much the model's scores count in the lattice in the app (docs/MODEL.md §6).
+    public static let appWeight = 0.5
     /// One syllable of the composition as the model reads it.
     public struct Syllable: Equatable {
         /// Toneless reading, e.g. "ㄓㄨㄥ"; nil for a literal (punctuation, symbols).

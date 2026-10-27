@@ -74,7 +74,7 @@ P(w2 | w1)    = bigram(w1 w2)                         if present
 
 ## 工具
 
-- `nlp/training/lm/lmbin.py`：寫入與驗證工具（`python3 nlp/training/lm/lmbin.py verify lm.bin`）。
-- `scripts/compile-data.sh OUT_DIR`：確定性的出貨 TSV 編譯器；只使用專案既有的 `.venv` 與
-  標準函式庫。其 TSV 相容設定由 `nlp/training/lm/test_compile_data.py` 與 Swift 二進位 fixture 檢查；
+- `nlp/training/lm/lmbin.py`：寫入與驗證工具（`python -m nlp.training.lm.lmbin verify lm.bin`）。
+- `zt data compile [OUT_DIR]`（`nlp/training/lm/compile_data.py`）：確定性的出貨 TSV
+  編譯器，只使用標準函式庫。其 TSV 相容設定由 `nlp/training/lm/test_compile_data.py` 與 Swift 二進位 fixture 檢查；
   上述 ARPA 驗證工具另外要求機率質量正規化與全域詞序。

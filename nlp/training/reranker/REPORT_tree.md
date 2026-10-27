@@ -61,16 +61,13 @@ Xcode Swift 6.4；Apple M5，32 GiB RAM。不需要安裝任何東西。遠端�
 環境與 Swift 6.4.1。
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 data/build/v3/.venv/bin/python \
-  nlp/training/reranker/export_tree.py --data data/build/reranker --format coreml
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  xcrun coremlcompiler compile data/build/reranker/RerankerTree.mlpackage data/build/reranker
+zt train reranker tree compile        # Mac：python -m nlp.training.reranker.export_tree --format coreml，再編譯
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   swift build -c release --scratch-path .build-codex4
 
-# Linux，在獨立的遠端評估目錄中：
-.venv/bin/python nlp/training/reranker/export_tree.py --data data/build/reranker --format onnx
-# 或使用既有的合併匯出程式，加上選用的 --tree 旗標。
+# Linux：
+python -m nlp.training.reranker.export_tree --format onnx
+# 或使用 nlp/remote 的合併匯出程式，加上選用的 --tree 旗標。
 ```
 
 `tree-validation/frozen` 固定了比較用的引擎、CLI、套件與評估器輸入。基準與樹狀版本的建置
@@ -124,13 +121,9 @@ Mac 上沒有執行任何準確率評估器。每個主要案例重新啟動 CLI
 與 `after-final` 下。**`after-int32` 之前的所有樹狀計時試驗都使用了會溢位的 uint16 模型，
 不能作為驗收依據**，包括先前回報的 38.6 ms。它們保留作為失敗的證據，不替換進最終比較。
 
-```sh
-data/build/v3/.venv/bin/python nlp/training/reranker/time_tree.py \
-  --cli data/build/reranker/tree-validation/zhuyin-cli-final \
-  --label before-control --reranker data/build/reranker/tree-validation/current
-data/build/v3/.venv/bin/python nlp/training/reranker/time_tree.py \
-  --cli data/build/reranker/tree-validation/zhuyin-cli-final --label after-int32
-```
+這些計時由已移除的一次性腳本 `time_tree.py` 產生：對上面兩句各以 `zhuyin-cli --timing` 執行三次（有無最後的
+`<down>`），旗標如上，從輸出解析 p50／p95、CPU、能耗與記憶體，寫到 `tree-validation/<label>/`。現行的延遲與能耗
+量測工具是 `nlp/eval/mac_metrics.py`。
 
 基準目錄只含指向 `../../Reranker.mlmodelc`、`../../vocab.json`、`../../config.json` 的連結，
 沒有樹狀模型。
@@ -160,19 +153,11 @@ data/build/v3/.venv/bin/python nlp/training/reranker/time_tree.py \
 以唯讀方式連結既有的評估環境；資料與模型輸入先從既有的評估目錄複製，再由 `run.sh` 依
 checksum 同步。沒有停止任何 GPU 訓練工作區或其他評估。
 
-```sh
-TREE_RERANKER=1 REMOTE_DIR=zhuyintype/work/onnx-eval-tree \
-ENGINE_SNAPSHOT=data/build/reranker/tree-validation/frozen JOBS=60 \
-EXTRA_SYNC='nlp/training/reranker/check_tree.swift nlp/training/reranker/validate_tree.py' \
-nlp/remote/run.sh sweep \
-  --matrix nlp/remote/tree_validation.json -n 400 \
-  --output data/build/remote_eval/tree
-
-# 十個矩陣列都完成後，在遠端執行腳本上：
-PATH="$HOME/opt/swift/usr/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 \
-OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-.venv/bin/python nlp/training/reranker/validate_tree.py --jobs 60
-```
+當時的做法：以 `nlp/remote/run.sh sweep --matrix nlp/remote/tree_validation.json -n 400`（`TREE_RERANKER=1`、
+`JOBS=60`、凍結的引擎快照）擷取十個矩陣列，再在遠端執行已移除的一次性腳本 `validate_tree.py`：它把
+`check_tree.swift`（也已移除）和 `nlp/engine/Sources/ZhuyinML` 一起編譯，連結建置好的 ZhuyinCore 與 ONNXBridge，
+以實際的 Composer 重播擷取到的輸入並比較每一次模型呼叫。原始證據在 `data/build/reranker/tree-validation/`；
+兩個腳本可從 git 歷史取回（0.4.0 的提交）。
 
 基準 ONNX 目錄 `data/build/reranker/tree-validation/current` 只含指向目前 `Reranker.onnx`、
 詞彙表與設定的連結。五個測試集是 dev_colloquial、dev_wikipedia、dev_chat_tt、維基百科

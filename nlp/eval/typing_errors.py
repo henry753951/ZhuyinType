@@ -1,43 +1,75 @@
-#!/usr/bin/env python3
-"""Timed keyboard-error evaluation. Run from the repository root; rebuild first (see TYPING_ERRORS.md)."""
+"""Timed keyboard errors: real typing slips with key timing, through the real composer (method: TYPING_ERRORS.md).
+
+    zt eval typing-errors --set colloquial-dev wiki-dev -n 300
+    zt eval typing-errors --config engine --variant current "" \\
+        --variant current+reranker "--reranker data/build/reranker --rerank-weight 1 --rerank-count 16"
+    zt eval typing-errors --conditions exact hotspot nospace-30 --examples 2
+
+Every key carries a `<dt:MS>` gap drawn from a log-normal around 120 ms (60 ms when fast), shorter across hands and
+longer on the same finger.  Conditions: exact, exact-fast, swaps within and across syllables, rollover (a swap typed
+almost at once), hotspot (a neighbouring key from a Gaussian landing point), an extra key, a missing key, a tone
+swap, first tones without Space (all or 30%), and a mixed condition with all of them at low rates.  Runs a condition
+does not apply to are left out of it.
+
+Reported per condition and variant: whole-run and character accuracy of what is committed, recall@16 of the engine
+alone (reranker options removed), and at exact/exact-fast the false-correction rate: output different from the
+variant's exact output.  Each variant adds its zhuyin-cli options to the configuration; all variants type the same
+scripts (a fixed generator per run and condition).  Each item is one run under one condition and variant (item group
+"CONDITION/VARIANT").
+"""
+
+from __future__ import annotations
+
 import argparse
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
-from datetime import datetime, timezone
 import hashlib
 import itertools
 import json
 import math
 import os
-from pathlib import Path
 import random
-import re
 import shlex
-import subprocess
-import sys
-import time
+from dataclasses import dataclass, replace
+from typing import Any
 
-sys.dont_write_bytecode = True
-from conversion_eval import KEYS, keys_for, load_lexicon, readings_for
-from typo_eval import metrics
+from nlp.common.engine import EnginePool, strip_options
+from nlp.common.results import Section
+from nlp.common.sets import EvalSet
+from nlp.common.zhuyin import Lexicon, keys, sample_runs
+from nlp.eval.base import Evaluator
+from nlp.eval.typo import metrics
 
 CONDITIONS = (
-    "exact", "exact-fast", "swap-in-syllable", "swap-across", "swap-across-2",
-    "rollover", "rollover-2", "hotspot", "hotspot-2", "extra-key", "missing-key",
-    "tone", "nospace-all", "nospace-30", "mixed",
+    "exact",
+    "exact-fast",
+    "swap-in-syllable",
+    "swap-across",
+    "swap-across-2",
+    "rollover",
+    "rollover-2",
+    "hotspot",
+    "hotspot-2",
+    "extra-key",
+    "missing-key",
+    "tone",
+    "nospace-all",
+    "nospace-30",
+    "mixed",
 )
-DEFAULT_TESTS = ["data/build/corpus/dev_colloquial.txt", "data/build/corpus/dev_wikipedia.txt"]
 RERANK_OPTIONS = {"--reranker", "--rerank-weight", "--rerank-count", "--exact-margin"}
+# Options that would break the isolation of batch lines or change what they print.
+FORBIDDEN = {"--keep-memory", "--report-nbest", "--batch", "--timing"}
 TONE_SWAP = dict(zip("3467", "4376"))
+RECALL = 16
 
 # Key centres in key-width units: number row is the origin, then real US stagger.
-POSITIONS = {}
-FINGERS = {}
-for y, (row, offset) in enumerate((("1234567890-=", 0), ("qwertyuiop[]\\", .25),
-                                     ("asdfghjkl;'", .5), ("zxcvbnm,./", 1))):
-    for x, key in enumerate(row):
-        POSITIONS[key] = (x + offset, y)
-        FINGERS[key] = ("L", min(x, 3)) if x < 5 else ("R", min(max(x - 6, 0), 3))
+POSITIONS: dict[str, tuple[float, float]] = {}
+FINGERS: dict[str, tuple[str, int]] = {}
+for _y, (_row, _offset) in enumerate(
+    (("1234567890-=", 0), ("qwertyuiop[]\\", 0.25), ("asdfghjkl;'", 0.5), ("zxcvbnm,./", 1))
+):
+    for _x, _key in enumerate(_row):
+        POSITIONS[_key] = (_x + _offset, _y)
+        FINGERS[_key] = ("L", min(_x, 3)) if _x < 5 else ("R", min(max(_x - 6, 0), 3))
 POSITIONS["`"] = (-1, 0)
 FINGERS["`"] = ("L", 0)
 POSITIONS[" "] = (5.5, 4.25)
@@ -52,25 +84,33 @@ class Stroke:
     first_tone: bool = False
 
 
-def canonical(readings):
-    return [Stroke(key, i, first_tone=key == " ") for i, reading in enumerate(readings)
-            for key in keys_for([reading]).replace("<space>", " ")]
+Edit = tuple[int, ...]
 
 
-def neighbour(key, rng):
+def canonical(readings: list[str]) -> list[Stroke]:
+    return [
+        Stroke(key, i, first_tone=key == " ")
+        for i, reading in enumerate(readings)
+        for key in keys([reading]).replace("<space>", " ")
+    ]
+
+
+def neighbour(key: str, rng: random.Random) -> str:
     """Sample a Gaussian landing point, snap to a key centre, condition on a local slip."""
     x, y = POSITIONS[key]
     while True:
-        px, py = rng.gauss(x, .45), rng.gauss(y, .3)
+        px, py = rng.gauss(x, 0.45), rng.gauss(y, 0.3)
         other = min(POSITIONS, key=lambda k: (POSITIONS[k][0] - px) ** 2 + (POSITIONS[k][1] - py) ** 2)
         ox, oy = POSITIONS[other]
         if other != key and math.hypot(ox - x, oy - y) <= 1.6:
             return other
 
 
-def mutation(strokes, kind, rng, count=1, syllable=None):
+def mutation(
+    strokes: list[Stroke], kind: str, rng: random.Random, count: int = 1, syllable: int | None = None
+) -> tuple[list[Stroke], tuple[Edit, ...]] | None:
     """Return changed strokes and disjoint edit sites, or None when inapplicable."""
-    sites = []
+    sites: list[Edit] = []
     for i, stroke in enumerate(strokes):
         if syllable is not None and stroke.syllable != syllable:
             continue
@@ -87,8 +127,11 @@ def mutation(strokes, kind, rng, count=1, syllable=None):
                 sites.append((i,))
         elif kind == "missing-key" or kind == "tone" and stroke.key in TONE_SWAP:
             sites.append((i,))
-    choices = [group for group in itertools.combinations(sites, count)
-               if len({i for site in group for i in site}) == sum(map(len, group))]
+    choices = [
+        group
+        for group in itertools.combinations(sites, count)
+        if len({i for site in group for i in site}) == sum(map(len, group))
+    ]
     if not choices:
         return None
     chosen = rng.choice(choices)
@@ -103,9 +146,9 @@ def mutation(strokes, kind, rng, count=1, syllable=None):
             result[i] = replace(result[i], key=neighbour(result[i].key, rng))
         elif kind == "extra-key":
             extra = replace(result[i], key=neighbour(result[i].key, rng), gap=None)
-            pair = [extra, result[i]] if rng.random() < .5 else [result[i], extra]
+            pair = [extra, result[i]] if rng.random() < 0.5 else [result[i], extra]
             pair[1] = replace(pair[1], gap=rng.uniform(0, 20))
-            result[i:i + 1] = pair
+            result[i : i + 1] = pair
         elif kind == "missing-key":
             del result[i]
         elif kind == "tone":
@@ -114,280 +157,223 @@ def mutation(strokes, kind, rng, count=1, syllable=None):
     return result, chosen
 
 
-def omit_spaces(strokes, rng, rate, last_syllable):
-    return [s for s in strokes if not (s.first_tone and s.key == " " and s.syllable < last_syllable and rng.random() < rate)]
+def omit_spaces(strokes: list[Stroke], rng: random.Random, rate: float, last_syllable: int) -> list[Stroke]:
+    return [
+        s for s in strokes if not (s.first_tone and s.key == " " and s.syllable < last_syllable and rng.random() < rate)
+    ]
 
 
-def condition(readings, name, rng):
+def condition(readings: list[str], name: str, rng: random.Random) -> tuple[list[Stroke], bool, int] | None:
+    """Strokes for `readings` typed under a condition, whether typed fast, and how many errors were made; None when
+    the condition does not apply."""
     strokes = canonical(readings)
     fast = name == "exact-fast"
     edits = 0
     if name.startswith("nospace-"):
-        changed = omit_spaces(strokes, rng, 1 if name == "nospace-all" else .3, len(readings) - 1)
+        changed = omit_spaces(strokes, rng, 1 if name == "nospace-all" else 0.3, len(readings) - 1)
         edits = len(strokes) - len(changed)
         if not edits:
             return None
         strokes = changed
     elif name == "mixed":
-        fast = rng.random() < .3
+        fast = rng.random() < 0.3
         for sid in range(len(readings)):
             draw = rng.random()
-            kind = next((kind for threshold, kind in ((.03, "hotspot"), (.05, "rollover"),
-                        (.06, "extra-key"), (.07, "missing-key"), (.08, "tone")) if draw < threshold), None)
-            if kind and (changed := mutation(strokes, kind, rng, syllable=sid)):
-                strokes = changed[0]
+            kind = next(
+                (
+                    kind
+                    for threshold, kind in (
+                        (0.03, "hotspot"),
+                        (0.05, "rollover"),
+                        (0.06, "extra-key"),
+                        (0.07, "missing-key"),
+                        (0.08, "tone"),
+                    )
+                    if draw < threshold
+                ),
+                None,
+            )
+            if kind and (mutated := mutation(strokes, kind, rng, syllable=sid)):
+                strokes = mutated[0]
                 edits += 1
-        changed = omit_spaces(strokes, rng, .3, len(readings) - 1)
+        changed = omit_spaces(strokes, rng, 0.3, len(readings) - 1)
         edits += len(strokes) - len(changed)
         strokes = changed
     elif name not in ("exact", "exact-fast"):
         count = 2 if name.endswith("-2") else 1
         kind = name.removesuffix("-2")
-        changed = mutation(strokes, kind, rng, count)
-        if changed is None:
+        mutated = mutation(strokes, kind, rng, count)
+        if mutated is None:
             return None
-        strokes, _ = changed
+        strokes, _ = mutated
         edits = count
     return strokes, fast, edits
 
 
-def timed_script(strokes, rng, fast=False):
+def timed_script(strokes: list[Stroke], rng: random.Random, fast: bool = False) -> str:
     result = []
     previous = None
     for stroke in strokes:
         hand, finger = FINGERS[stroke.key]
-        factor = 1
+        factor = 1.0
         if previous is not None:
             if previous[0] != hand:
-                factor = .75
+                factor = 0.75
             elif previous == (hand, finger):
                 factor = 1.4
-        gap = stroke.gap if stroke.gap is not None else rng.lognormvariate(math.log((60 if fast else 120) * factor), .35)
+        gap = (
+            stroke.gap if stroke.gap is not None else rng.lognormvariate(math.log((60 if fast else 120) * factor), 0.35)
+        )
         result.append(f"<dt:{gap:.3f}>" + ("<space>" if stroke.key == " " else stroke.key))
         previous = (hand, finger)
     return "".join(result)
 
 
-def seeded(seed, *parts):
-    # Stable across Python versions/processes; adding a config never changes its test inputs.
+def seeded(seed: int, *parts: object) -> random.Random:
+    """Stable across Python versions and processes; adding a variant never changes the typed inputs."""
     return random.Random(int.from_bytes(hashlib.sha256(json.dumps([seed, *parts]).encode()).digest(), "big"))
 
 
-def select_runs(path, lexicon, count, seed):
-    found = re.findall(r"[\u4e00-\u9fff]{4,20}", Path(path).read_text(encoding="utf-8"))
-    random.Random(seed).shuffle(found)
-    selected = []
-    for run in found:
-        readings = readings_for(run, lexicon)
-        if readings and len(readings) == len(run):
-            selected.append((run, readings))
-            if len(selected) == count:
-                return selected
-    raise ValueError(f"{path}: only {len(selected)} readable runs; requested {count}")
+def seed_key(eval_set: EvalSet) -> str:
+    """The set's path as the original tool was given it (data/build/...), which seeds its scripts, so the typed
+    inputs stay identical to earlier results whatever the data directory is."""
+    if eval_set.source == "file" or eval_set.path.startswith("nlp/"):
+        return eval_set.path
+    return f"data/build/{eval_set.path}"
 
 
-def without_reranker(extra):
-    result = []
-    i = 0
-    while i < len(extra):
-        if extra[i].split("=", 1)[0] in RERANK_OPTIONS:
-            i += 1 if "=" in extra[i] else 2
-        else:
-            result.append(extra[i])
-            i += 1
-    return result
-
-
-def convert(cli, lexicon, extra, scripts, nbest=False):
-    if not scripts:
-        return []
-    command = [cli, "--lexicon", lexicon, "--batch", *extra]
-    if nbest:
-        command += ["--report-nbest", "16"]
-    start = time.monotonic()
-    result = subprocess.run(command, input="\n".join(scripts) + "\n", capture_output=True,
-                            text=True, timeout=600)
-    if result.returncode:
-        raise RuntimeError(f"{shlex.join(command)} exited {result.returncode}: {result.stderr[-4000:]}")
-    outputs = result.stdout.splitlines()
-    if len(outputs) != len(scripts):
-        raise RuntimeError(f"{shlex.join(command)}: expected {len(scripts)} lines, got {len(outputs)}")
-    print(f"  {'recall' if nbest else 'commit'}: {len(scripts)} runs, {time.monotonic() - start:.1f}s", file=sys.stderr, flush=True)
-    return outputs
-
-
-def condition_outputs(cli, lexicon, configs, scripts):
-    # Three isolated batch processes overlap CPU work; shared engine recall runs only once.
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        commits, recalls = {}, {}
-        for label, extra in configs:
-            commits[label] = pool.submit(convert, cli, lexicon, extra, [s + "<enter>" for s in scripts])
-            engine_args = tuple(without_reranker(extra))
-            if engine_args not in recalls:
-                recalls[engine_args] = pool.submit(convert, cli, lexicon, list(engine_args), scripts, True)
-        return {label: (commits[label].result(), recalls[tuple(without_reranker(extra))].result())
-                for label, extra in configs}
-
-
-def digest(path):
-    with open(path, "rb") as source:
-        return hashlib.file_digest(source, "sha256").hexdigest()
-
-
-def artifacts(args, configs):
-    paths = {Path(args.cli), Path(args.lexicon), *(Path(p) for p in args.test)}
-    roots = {Path(args.lexicon).parent / "lm"}
-    for _, extra in configs:
-        for i, option in enumerate(extra):
-            if option == "--reranker" and i + 1 < len(extra):
-                roots.add(Path(extra[i + 1]))
-            elif option.startswith("--reranker="):
-                roots.add(Path(option.split("=", 1)[1]))
-    for root in roots:
-        if root.is_dir():
-            paths.update(p for p in root.rglob("*") if p.is_file())
-    return {str(p): digest(p) for p in sorted(paths)}
-
-
-def table(rows):
-    lines = ["| Dataset | Condition | Config | N | Whole | Char | Recall@16 | False corr. |",
-             "|---|---|---|---:|---:|---:|---:|---:|"]
+def table(rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "| Set | Condition | Variant | N | Whole | Char | Recall@16 | False corr. |",
+        "|---|---|---|---:|---:|---:|---:|---:|",
+    ]
     for row in rows:
-        def percent(key):
-            value = row.get(key)
-            return "—" if value is None else f"{value:.1%}"
-        lines.append(f"| {Path(row['dataset']).stem.removeprefix('dev_')} | {row['condition']} | {row['config']} | {row['runs']} | "
-                     + " | ".join(percent(k) for k in ("whole_run_accuracy", "character_accuracy", "recall_at_16", "false_correction_rate")) + " |")
+        values = [
+            "—" if row.get(k) is None else f"{row[k]:.1%}"
+            for k in ("whole_run_accuracy", "character_accuracy", "recall_at_16", "false_correction_rate")
+        ]
+        lines.append(
+            f"| {row['dataset']} | {row['condition']} | {row['config']} | {row['runs']} | " + " | ".join(values) + " |"
+        )
     return "\n".join(lines)
 
 
-def self_check():
-    readings = ["ㄋㄧˇ", "ㄏㄠˇ", "ㄊㄧㄢ", "ㄑㄧˋ"]
-    original = canonical(readings)
-    assert "".join(s.key for s in original) == "su3cl3wu0 fu4"
-    assert POSITIONS["q"] == (.25, 1) and FINGERS["u"] == ("R", 0)
-    for name in CONDITIONS:
-        for seed in range(30):
-            result = condition(readings, name, random.Random(seed))
-            if result is None:
-                assert name == "nospace-30"
-                continue
-            strokes, fast, edits = result
-            assert all(s.key in POSITIONS for s in strokes)
-            if name not in ("exact", "exact-fast", "mixed"):
-                assert [s.key for s in strokes] != [s.key for s in original]
-            if name.endswith("-2"):
-                assert edits == 2
-            if name.startswith("rollover"):
-                assert sum(s.gap is not None and 0 <= s.gap <= 15 for s in strokes) == edits
-            if name == "extra-key":
-                assert len(strokes) == len(original) + 1
-                assert sum(s.gap is not None and 0 <= s.gap <= 20 for s in strokes) == 1
-            if name == "missing-key":
-                assert len(strokes) == len(original) - 1
-            script = timed_script(strokes, random.Random(seed), fast)
-            assert script.count("<dt:") == len(strokes) and "<enter>" not in script
-    for kind in ("swap-in-syllable", "swap-across", "rollover", "hotspot"):
-        changed, sites = mutation(original, kind, random.Random(7), 2)
-        assert len({i for site in sites for i in site}) == sum(map(len, sites))
-        assert sum(a.key != b.key for a, b in zip(original, changed)) == (2 if kind == "hotspot" else 4)
-        for site in sites:
-            if kind.startswith("swap-"):
-                across = original[site[0]].syllable != original[site[1]].syllable
-                assert across == (kind == "swap-across")
-    assert condition(["ㄚ", "ㄚ"], "swap-across-2", random.Random(7)) is None
-    assert condition(["ㄚ", "ㄚ"], "tone", random.Random(7)) is None
-    assert omit_spaces(canonical(["ㄚ", "ㄚ"]), random.Random(7), 1, 1)[-1].key == " "
-    assert omit_spaces([Stroke(" ", 0)], random.Random(7), 1, 1) == [Stroke(" ", 0)]
-    assert without_reranker(["--decoder", "future", "--reranker", "dir", "--rerank-weight=1", "--rerank-count", "16"]) == ["--decoder", "future"]
-    assert metrics(["甲乙丙"], ["甲丙"])["character_accuracy"] == 1 - 1 / 3
-    normal = timed_script(original * 100, random.Random(7))
-    fast = timed_script(original * 100, random.Random(7), True)
-    gaps = lambda s: [float(x) for x in re.findall(r"<dt:([\d.]+)>", s)]
-    assert all(abs(a - 2 * b) <= .002 for a, b in zip(gaps(normal), gaps(fast)))
-    assert seeded(7, "x").random() == seeded(7, "x").random()
+class TypingErrors(Evaluator):
+    name = "typing-errors"
+    help = "timed typing errors (swaps, rollover, hotspots, missing Space) per condition"
+    default_n = 300
+    n_help = "runs per set before leaving out runs a condition does not apply to (default: 300)"
 
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--variant",
+            nargs=2,
+            action="append",
+            metavar=("LABEL", "OPTIONS"),
+            help='a labelled set of extra zhuyin-cli options, e.g. timed "--decoder timed" (repeatable; '
+            'default: current "")',
+        )
+        parser.add_argument(
+            "--conditions", nargs="+", choices=CONDITIONS, default=list(CONDITIONS), help="conditions (default: all)"
+        )
+        parser.add_argument("--examples", type=int, default=0, metavar="N", help="failures to keep per row")
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", nargs=2, action="append", metavar=("LABEL", "EXTRA CLI ARGS"))
-    parser.add_argument("--test", nargs="+", default=DEFAULT_TESTS, help="corpus paths (default: both dev sets)")
-    parser.add_argument("-n", type=int, default=300, help="base runs per dataset, before applicability filtering")
-    parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--json", metavar="OUT")
-    parser.add_argument("--examples", type=int, default=0, metavar="N")
-    parser.add_argument("--cli", default=".build-eval/release/zhuyin-cli")
-    parser.add_argument("--lexicon", default="data/build/lexicon.tsv")
-    parser.add_argument("--self-test", action="store_true", help="assert-based checks; no build/data/CLI needed")
-    args = parser.parse_args()
-    if args.n < 1 or args.examples < 0:
-        parser.error("-n must be positive and --examples nonnegative")
-    self_check()
-    if args.self_test:
-        print("typing_errors self-checks passed")
-        return
-    configs = [(label, shlex.split(extra)) for label, extra in (args.config or [("current", "")])]
-    if len({label for label, _ in configs}) != len(configs):
-        parser.error("configuration labels must be unique")
-    for _, extra in configs:
-        if any(x.split("=", 1)[0] in {"--keep-memory", "--report-nbest", "--batch", "--timing"} for x in extra):
-            parser.error("configs must not override batch isolation/output (--keep-memory/--report-nbest/--batch/--timing)")
-    started = time.monotonic()
-    before = artifacts(args, configs)
-    report = dict(started_utc=datetime.now(timezone.utc).isoformat(), command=shlex.join(sys.argv),
-                  seed=args.seed, requested_per_dataset=args.n, configs=dict(configs),
-                  coreml_units=os.environ.get("ZHUYIN_UNITS", "cpuOnly"),
-                  artifact_sha256=before, rows=[])
-    lexicon = load_lexicon(args.lexicon)
-    datasets = {path: select_runs(path, lexicon, args.n, args.seed) for path in args.test}
-    clean = {}
-    for name in CONDITIONS:
-        items = []
-        for path, selected in datasets.items():
-            for index, (run, readings) in enumerate(selected):
-                result = condition(readings, name, seeded(args.seed, path, index, name, "errors"))
+    def variants(self, args: argparse.Namespace, base: list[str]) -> list[tuple[str, list[str]]]:
+        variants = [(label, shlex.split(extra)) for label, extra in (args.variant or [("current", "")])]
+        if len({label for label, _ in variants}) != len(variants):
+            raise SystemExit("zt eval typing-errors: variant labels must be unique")
+        for _, extra in variants:
+            if any(x.split("=", 1)[0] in FORBIDDEN for x in base + extra):
+                raise SystemExit(f"zt eval typing-errors: options must not include {', '.join(sorted(FORBIDDEN))}")
+        return variants
+
+    def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
+        if args.n < 1 or args.examples < 0:
+            raise SystemExit("zt eval typing-errors: -n must be positive and --examples nonnegative")
+        base = pool.config.options
+        variants = self.variants(args, base)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed, whole_readings=True)
+        if len(runs) < args.n:
+            raise SystemExit(
+                f"zt eval typing-errors: {eval_set.name} has only {len(runs)} readable runs, need {args.n}"
+            )
+        key = seed_key(eval_set)
+        commit_pools = {
+            label: EnginePool(pool.config.with_options(base + extra), pool.jobs, pool.cli) for label, extra in variants
+        }
+        recall_options = {label: tuple(strip_options(base + extra, RERANK_OPTIONS)) for label, extra in variants}
+        recall_pools = {
+            options: EnginePool(pool.config.with_options(list(options)), pool.jobs, pool.cli)
+            for options in recall_options.values()
+        }
+        clean: dict[str, dict[int, str]] = {}
+        rows: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
+        for name in args.conditions:
+            cases = []  # run index, reference, script, errors, fast
+            for index, run in enumerate(runs):
+                result = condition(run.readings, name, seeded(args.seed, key, index, name, "errors"))
                 if result is not None:
                     strokes, fast, edits = result
                     timing_name = "exact" if name == "exact-fast" else name
-                    script = timed_script(strokes, seeded(args.seed, path, index, timing_name, "timing"), fast)
-                    items.append((path, index, run, script, edits, fast))
-        print(f"[{name}] {len(items)} applicable", file=sys.stderr, flush=True)
-        scripts = [item[3] for item in items]
-        batches = condition_outputs(args.cli, args.lexicon, configs, scripts)
-        for label, extra in configs:
-            print(f" {label}", file=sys.stderr, flush=True)
-            outputs, recalled = batches[label]
-            best = [line.split("\t") for line in recalled]
-            if name == "exact":
-                clean[label] = {(item[0], item[1]): got for item, got in zip(items, outputs)}
-            for path in datasets:
-                subset = [(item, got, candidates) for item, got, candidates in zip(items, outputs, best) if item[0] == path]
-                wanted = [item[2] for item, _, _ in subset]
-                committed = [got for _, got, _ in subset]
-                row = dict(dataset=path, condition=name, config=label, runs=len(subset),
-                           injected_errors=sum(i[4] for i, _, _ in subset), fast_runs=sum(i[5] for i, _, _ in subset),
-                           **(metrics(wanted, committed) if subset else dict(character_accuracy=None, whole_run_accuracy=None)),
-                           recall_at_16=sum(item[2] in candidates for item, _, candidates in subset) / len(subset) if subset else None)
-                if name in ("exact", "exact-fast"):
-                    row["false_correction_rate"] = sum(got != clean[label][item[0], item[1]] for item, got, _ in subset) / len(subset)
-                row["examples"] = [dict(wanted=w, committed=o, nbest=b, script=s)
-                                   for (_, _, w, s, _, _), o, b in subset if w != o][:args.examples]
-                row["cases"] = [dict(index=item[1], wanted=item[2], script=item[3], errors=item[4], fast=item[5], committed=o, nbest=b)
-                                for item, o, b in subset]
-                report["rows"].append(row)
-                if args.json:
-                    Path(args.json).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                for example in row["examples"]:
-                    print(f"  {example['wanted']} → {example['committed']}", file=sys.stderr)
-    report["elapsed_seconds"] = time.monotonic() - started
-    after = artifacts(args, configs)
-    report["artifacts_changed_during_run"] = before != after
-    if before != after:
-        print("WARNING: CLI/model/corpus artifacts changed during evaluation; rerun before comparing configs.", file=sys.stderr)
-    if args.json:
-        Path(args.json).write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(table(report["rows"]), flush=True)
+                    script = timed_script(strokes, seeded(args.seed, key, index, timing_name, "timing"), fast)
+                    cases.append((index, run.text, script, edits, fast))
+            scripts = [case[2] for case in cases]
+            recalls = {
+                options: [line.split("\t") for line in recall_pool.run(scripts, "--report-nbest", str(RECALL))]
+                for options, recall_pool in recall_pools.items()
+            }
+            for label, _ in variants:
+                outputs = commit_pools[label].run([s + "<enter>" for s in scripts])
+                best = recalls[recall_options[label]]
+                if name == "exact":
+                    clean[label] = {case[0]: got for case, got in zip(cases, outputs)}
+                wanted = [case[1] for case in cases]
+                row: dict[str, Any] = {
+                    "dataset": eval_set.name,
+                    "condition": name,
+                    "config": label,
+                    "runs": len(cases),
+                    "injected_errors": sum(case[3] for case in cases),
+                    "fast_runs": sum(case[4] for case in cases),
+                    **(metrics(wanted, outputs) if cases else {"character_accuracy": None, "whole_run_accuracy": None}),
+                    "recall_at_16": (
+                        sum(case[1] in candidates for case, candidates in zip(cases, best)) / len(cases)
+                        if cases
+                        else None
+                    ),
+                }
+                if name in ("exact", "exact-fast") and label in clean and cases:
+                    row["false_correction_rate"] = sum(
+                        got != clean[label][case[0]] for case, got in zip(cases, outputs)
+                    ) / len(cases)
+                row["examples"] = [
+                    {"wanted": case[1], "committed": got, "nbest": candidates, "script": case[2]}
+                    for case, got, candidates in zip(cases, outputs, best)
+                    if case[1] != got
+                ][: args.examples]
+                rows.append(row)
+                group = f"{name}/{label}"
+                items += [
+                    {
+                        "id": f"{group}/{case[0]}",
+                        "group": group,
+                        "reference": case[1],
+                        "output": got,
+                        "nbest": candidates,
+                        "keys": case[2],
+                        "errors": case[3],
+                        "fast": case[4],
+                    }
+                    for case, got, candidates in zip(cases, outputs, best)
+                ]
+        metrics_ = {
+            "runs": len(runs),
+            "variants": {label: shlex.join(extra) for label, extra in variants},
+            "coreml_units": os.environ.get("ZHUYIN_UNITS", "cpuOnly"),
+            "rows": rows,
+        }
+        return Section(eval_set.name, metrics_, items=items)
 
-
-if __name__ == "__main__":
-    main()
+    def describe(self, m: dict[str, Any]) -> str:
+        return f"{m['runs']} runs\n" + table(m["rows"])

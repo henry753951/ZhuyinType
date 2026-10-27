@@ -30,17 +30,21 @@ ZhuyinType 是開源的注音輸入法。
 
 ## 指令（在版本庫根目錄執行）
 
+所有工作都由 `tools/zt` 執行（`tools/zt help` 列出全部指令，說明見 [tools/README.md](tools/README.md)）。任何指令前加 `--remote`，就在 `.remote.env` 指定的 GPU 主機上執行同一個指令。
+
 ```sh
-python3 nlp/data/assets.py fetch           # 下載資料與模型到 data/build（版本由 nlp/data/assets.json 固定）
-make cli                                    # zhuyin-cli 與檢查程式（nlp/engine）
-make checks                                 # 引擎行為與延遲檢查（較慢的機器設 ZHUYIN_CHECKS_TIMING=warn）
-make app / make install                     # dist/ZhuyinType.app／安裝到 ~/Library/Input Methods
-dist/ZhuyinType.app/Contents/MacOS/ZhuyinType --self-test --lexicon data/build/lexicon.tsv
-nlp/remote/run.sh conversion_eval -n 400 ...   # 在 GPU 主機上執行任何評測（需要 .remote.env）
-nlp/eval/bench/run.sh vX.Y.Z                # ZhuyinBench（在 GPU 主機上；CI 會在每次發布後執行）
+tools/zt setup                              # 檢查並準備這台機器（uv、Swift、Xcode 或 ONNX Runtime）
+tools/zt data fetch                         # 下載資料與模型到 data/build（版本由 nlp/data/assets.json 固定）
+tools/zt build cli | app | install | pkg    # zhuyin-cli、dist/ZhuyinType.app、安裝到 ~/Library/Input Methods、pkg
+tools/zt check engine | app | python | lint | types | public | all
+tools/zt --remote eval conversion --set dev           # 在 GPU 主機上評測（--config app 和 App 的設定相同）
+tools/zt eval stats BEFORE.json AFTER.json            # 成對比較
+tools/zt --remote bench run vX.Y.Z          # ZhuyinBench（CI 會在每次發布後執行）
+tools/zt --remote train v3                  # 訓練流程（tools/zt train list）
 clients/macos/scripts/release.sh            # 發布流程執行的內容（pkg、Sparkle zip、差分更新、appcast）
-tools/check-public.sh                       # push 前執行：確認沒有私人主機、金鑰或內部網路位址
 ```
+
+`make cli`、`make checks`、`make app`、`make install` 也可以用，它們會呼叫 `tools/zt`。程式與文件的寫法見 [nlp/CONVENTIONS.md](nlp/CONVENTIONS.md)。
 
 建置需要完整的 Xcode（SwiftUI macro）；`build-app.sh` 會自動把 `DEVELOPER_DIR` 切到 Xcode。
 
@@ -49,9 +53,9 @@ tools/check-public.sh                       # push 前執行：確認沒有私�
 - **評測與訓練在 GPU 主機上執行，不在開發用的 Mac 上執行**。Mac 只做以下幾件事：
   - 建置；
   - 匯出、編譯 Core ML；
-  - 量測延遲與能耗（`nlp/eval/mac_metrics.py`）；
+  - 量測延遲與能耗（`tools/zt eval latency`）；
   - 確認遠端結果和 Mac 一致的一次性檢查。
-- **用開發集做決定，測試集只用來追蹤**。採用任何改變前要有成對比較（`nlp/eval/stats.py`），並寫進 `docs/research/log.md`。試過但沒採用的想法也記在那裡，並寫進 `docs/MODEL.md` §11。
+- **用開發集做決定，測試集只用來追蹤**。採用任何改變前要有成對比較（`tools/zt eval stats`），並寫進 `docs/research/log.md`。試過但沒採用的想法也記在那裡，並寫進 `docs/MODEL.md` §11。
 - **文件與程式保持一致**。行為、預設值、檔案格式或數字改變時，在同一次修改中更新 `docs/`：
   - ARCHITECTURE 寫流程；
   - MODEL 寫方法與數字；
@@ -61,7 +65,7 @@ tools/check-public.sh                       # push 前執行：確認沒有私�
   1. 更新 `clients/macos/Resources/Info.plist` 的 `CFBundleShortVersionString` 與 `CFBundleVersion`。
   2. 撰寫 `docs/releases/vX.Y.Z.md`，依 `docs/WRITING.md` 的「發布說明與對外文字」撰寫。
   3. 提交後推送標籤 `vX.Y.Z`。CI 會建置、簽章、發布、更新 `appcast.xml`，並啟動 ZhuyinBench。
-- **資料與模型不放進 git**。新版本用 `nlp/data/assets.py pack data-N` 與 `publish data-N` 打包、發布，再提交 `nlp/data/assets.json`。
+- **資料與模型不放進 git**。新版本用 `tools/zt data pack data-N` 與 `tools/zt data publish data-N` 打包、發布，再提交 `nlp/data/assets.json`。
 - **隱私**：
   - 追蹤的檔案中不放私人主機或金鑰（`.remote.env` 只在本機）；
   - 記錄中不出現使用者輸入的文字，App 的 bundle ID 只以 `.private` 記錄；
@@ -71,4 +75,5 @@ tools/check-public.sh                       # push 前執行：確認沒有私�
   - 發布說明與對外文字比照正式產品；
   - 提到其他輸入法時視為相關工作：說明對方的貢獻、註明出處、寫出比較的條件與限制，不寫成要打敗的對象。
 - GPU 主機上的長時間工作用 `nohup`，記錄放在 `~/zhuyintype/logs/`。不要用模糊的名稱比對來終止程序。
+- Python 用 uv、ruff 與 mypy，Rust 用 cargo fmt 與 clippy；`tools/zt check all` 必須通過。
 - 提交訊息結尾附上工作階段要求的署名行；不要對 `main` 強制推送。

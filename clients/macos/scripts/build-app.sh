@@ -8,7 +8,7 @@ scratch=${SWIFT_SCRATCH_PATH:-.build}
 if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p)" == /Library/Developer/CommandLineTools* && -d /Applications/Xcode.app ]]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
-nlp/data/build-lexicon.sh
+tools/zt data lexicon
 if [[ ! -f clients/macos/Resources/Assets.car || ! -f clients/macos/Resources/AppIcon.icns || ! -f clients/macos/Resources/InputSourceTemplate.pdf ]]; then
     swift clients/macos/scripts/make_icons.swift
 fi
@@ -45,7 +45,7 @@ fi
 # The lexicon and language models ship compiled (lexicon.bin, lm/lm.bin, lm_chat/lm.bin): the engine maps them
 # instead of parsing text, so it starts in about 0.1 s and keeps them out of its own memory.  If compiling fails the
 # TSV files are copied instead; the engine reads either.
-if [[ -f data/build/lm/bigram.tsv ]] && nlp/data/compile-data.sh "$contents/Resources"; then
+if [[ -f data/build/lm/bigram.tsv ]] && tools/zt data compile "$contents/Resources" >/dev/null; then
     :
 else
     echo '注意：無法編譯詞庫與語言模型，改用 TSV。' >&2

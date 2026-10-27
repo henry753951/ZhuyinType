@@ -81,6 +81,16 @@ public final class NeuralReranker: @unchecked Sendable {
 
     #endif
 
+    /// The reranker as the app loads it: weight and sentence count from the directory's config.json (weight 0.5 and 8
+    /// sentences without one).  Core ML on macOS, ONNX Runtime on Linux.
+    public static func configured(directory: URL) throws -> NeuralReranker {
+        let config = (try? Data(contentsOf: directory.appendingPathComponent("config.json")))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let reranker = try NeuralReranker(directory: directory, weight: config?["weight"] as? Double ?? 0.5)
+        if let count = config?["count"] as? Int, count > 0 { reranker.candidateCount = count }
+        return reranker
+    }
+
     #if os(Linux)
     public convenience init(directory: URL, weight: Double = 0.5) throws {
         try self.init(directory: directory, weight: weight, prediction: ONNXModel.reranker(directory))

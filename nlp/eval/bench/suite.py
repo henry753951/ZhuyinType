@@ -1,156 +1,186 @@
-#!/usr/bin/env python3
 """ZhuyinBench: the fixed evaluation run for every release, so versions can be compared line by line.
 
-    python3 nlp/eval/bench/suite.py --version v0.4.0 --cli .build/release/zhuyin-cli --jobs 60 \
-        --out docs/benchmarks/v0.4.0.json
+    zt bench run v0.4.0                 # on the GPU host: docs/benchmarks/v0.4.0.json, then the pages
+    zt bench run check-2 --quick        # 50 runs per set, to check the harness
 
-Runs every tool through nlp/remote/evaluate.py (parallel CLI processes) with the app configuration and
-the engine alone, and writes a JSON record plus a Markdown page next to it.  docs/benchmarks/README.md is rebuilt
-from all records by history.py.  The sets and their sizes are fixed per suite version; changing them means a new
-SUITE name, so old and new numbers are never mixed.
+Every evaluation runs in this process through the registry (nlp/eval/registry.py), the same code as `zt eval NAME`,
+in the app configuration (`--config app`: the models in the data directory, set up as the app sets them up) and,
+for conversion and the row sets, the engine alone (`--config engine`).  The record keeps the schema of the earlier
+records (docs/benchmarks/v0.4.0.json): sets are keyed by their file names, percentages are rounded as printed.  Every
+report, with its items, is also saved in data/build/bench/VERSION/ for paired comparisons (`zt eval stats`).
+
+The sets and their sizes are fixed per suite version; changing them means a new SUITE name, so old and new numbers
+are never mixed.
 """
-import argparse
+
+from __future__ import annotations
+
 import datetime
-import json
-import os
 import platform
-import re
+import shlex
 import subprocess
-import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+from nlp.common import paths
+from nlp.common.results import Report
+from nlp.common.sets import BY_NAME
+from nlp.eval import registry
 
 SUITE = "zhuyinbench-1"
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-EVALUATE = os.path.join(ROOT, "nlp", "remote", "evaluate.py")
-
-SETS = {
-    "wikipedia": "data/build/lm/test_sentences.txt",
-    "colloquial": "data/build/corpus/test_colloquial.txt",
-    "smoke": "nlp/eval/colloquial_smoke.txt",
-    "chat_tt": "data/build/lm_chat/test_chat_tt.txt",
-}
-APP = ["--reranker", "data/build/reranker", "--rerank-count", "16", "--v3", "data/build/v3", "--v3-weight", "0.5",
-       "--chat-lm", "data/build/lm_chat", "--chat-prior", "0.3"]
-CONFIGS = {"app": APP, "engine": []}
+# The test sets, in the order of the record.
+TEXT_SETS = ["wiki-test", "colloquial-test", "smoke", "chat-test"]
+CONFIGS = ("app", "engine")
 # 善解's reusable rows (CC0; rows overlapping our training text removed).  Holdout shards are not here: they are kept
 # for one-off confirmations, not tracked every release.
-EXTERNAL = "nlp/eval/sets/external/shanjie/eval"
-ROWS = {"dev302": f"{EXTERNAL}/bench/suite-v1/dev302.clean.rows.txt",
-        "typing76": f"{EXTERNAL}/bench/suite-v1/typing76.clean.rows.txt",
-        "reported": f"{EXTERNAL}/bench/suite-v2/user-reported.clean.rows.txt",
-        "fw": f"{EXTERNAL}/bench/suite-v2/fw.clean.rows.txt",
-        "trap": f"{EXTERNAL}/sets/trap.clean.rows.txt",
-        "daily": f"{EXTERNAL}/sets/daily.clean.rows.txt"}
+ROW_SETS = ["shanjie-dev302", "shanjie-typing76", "shanjie-reported", "shanjie-fw", "shanjie-trap", "shanjie-daily"]
 
 
-def run(tool, args, cli_args, jobs, cli):
-    command = [sys.executable, EVALUATE, "--jobs", str(jobs)] + [f"--cli-arg={a}" for a in cli_args] + \
-              [tool, "--cli", cli] + args
-    print("$", " ".join(command[2:]), flush=True)
-    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
-    if result.returncode:
-        print(result.stdout[-2000:], result.stderr[-4000:], file=sys.stderr)
-        raise RuntimeError(f"{tool} failed")
-    return result.stdout
+def key(set_name: str) -> str:
+    """The record's key for a text set: its file name, as in earlier records (test_sentences.txt)."""
+    return Path(BY_NAME[set_name].path).name if set_name in BY_NAME else set_name
 
 
-def conversion(output):
-    """[name] N runs, character accuracy X%, whole-run accuracy Y%, counting variants as equal Z%"""
-    rows = {}
-    for match in re.finditer(r"\[([^\]]+)\] (\d+) runs, character accuracy ([\d.]+)%, whole-run accuracy ([\d.]+)%"
-                             r"(?:, counting variants as equal ([\d.]+)%)?", output):
-        name, runs, char, whole, variant = match.groups()
-        rows[name] = {"runs": int(runs), "character": float(char), "whole": float(whole),
-                      "variant_equal": float(variant) if variant else None}
-    return rows
+def pct(value: float) -> float:
+    """A fraction as the percentage printed with one decimal (81.2), as earlier records hold it."""
+    return float(f"{value:.1%}"[:-1])
 
 
-def habits(output):
-    rows, current = {}, None
-    for line in output.splitlines():
-        header = re.match(r"\[([^\]]+)\] \d+ runs", line)
-        if header:
-            current = header.group(1)
-            continue
-        match = re.match(r"\s+(\w+)\s+(\d+)\s+([\d.]+)%\s+([\d.]+)%", line)
-        if match and current:
-            habit, runs, shown, recall = match.groups()
-            rows.setdefault(current, {})[habit] = {"runs": int(runs), "shown": float(shown), "recall16": float(recall)}
-    return rows
+def two(value: float) -> float:
+    return float(f"{value:.2f}")
 
 
-def candidates(output):
-    rows = {}
-    for match in re.finditer(r"\[([^\]]+)\] (\d+) runs, (\d+) wrong characters: first ([\d.]+)%, first page ([\d.]+)%, "
-                             r"listed ([\d.]+)%, mean rank ([\d.]+)", output):
-        name, runs, wrong, first, page, listed, rank = match.groups()
-        rows[name] = {"runs": int(runs), "wrong": int(wrong), "first": float(first), "first_page": float(page),
-                      "listed": float(listed), "mean_rank": float(rank)}
-    return rows
+def conversion(report: Report) -> dict[str, Any]:
+    return {
+        key(s.name): {
+            "runs": s.metrics["runs"],
+            "character": pct(s.metrics["character"]),
+            "whole": pct(s.metrics["whole"]),
+            "variant_equal": pct(s.metrics["variants"]),
+        }
+        for s in report.sections
+    }
 
 
-def repicks(output):
-    rows = {}
-    for match in re.finditer(r"\[([^\]]+)\] (\d+) runs: right with 0 picks ([\d.]+)%, ≤1 ([\d.]+)%, ≤2 ([\d.]+)%, "
-                             r"≤3 ([\d.]+)%; mean picks ([\d.]+); picks that broke a right character in ([\d.]+)%", output):
-        name, runs, p0, p1, p2, p3, mean, broke = match.groups()
-        rows[name] = {"runs": int(runs), "picks0": float(p0), "picks1": float(p1), "picks2": float(p2),
-                      "picks3": float(p3), "mean_picks": float(mean), "broke": float(broke)}
-    return rows
+def habits(report: Report) -> dict[str, Any]:
+    return {
+        key(s.name): {
+            name: {"runs": row["runs"], "shown": pct(row["shown"]), "recall16": pct(row["recall"])}
+            for name, row in s.metrics["habits"].items()
+        }
+        for s in report.sections
+    }
 
 
-def rows_sets(output):
-    """rows_eval prints one JSON object per rows file: {"source": ..., "n": ..., "shanjie": {"top1": ...}, ...}."""
-    rows = {}
-    for line in output.splitlines():
-        if line.startswith('{"source"'):
-            record = json.loads(line)
-            name = next((k for k, v in ROWS.items() if v == record["source"]), record["source"])
-            rows[name] = {"n": record["n"], "top1": round(record["shanjie"]["top1"] * 100, 2),
-                          "cer": round(record["shanjie"]["cer"] * 100, 2),
-                          "oracle16": round(record["shanjie"]["oracle16"] * 100, 2)}
-    return rows
+def candidates(report: Report) -> dict[str, Any]:
+    result = {}
+    for s in report.sections:
+        m = s.metrics
+        result[key(s.name)] = {
+            "runs": m["runs"],
+            "wrong": m["wrong"],
+            "first": pct(m["first"]),
+            "first_page": pct(m["first_page"]),
+            "listed": pct(m["listed"]),
+            "mean_rank": two(m["mean_rank"]),
+        }
+    return result
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True)
-    parser.add_argument("--cli", default=".build/release/zhuyin-cli")
-    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 8)
-    parser.add_argument("-n", type=int, default=400)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--quick", action="store_true", help="n=50, for checking the harness")
-    args = parser.parse_args()
-    n = "50" if args.quick else str(args.n)
-    tests = list(SETS.values())
-    record = {"suite": SUITE, "version": args.version, "date": datetime.date.today().isoformat(),
-              "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True,
-                                       text=True).stdout.strip(),
-              "host": f"{platform.system()} {platform.machine()}", "n": int(n), "results": {}}
-    results = record["results"]
-    for label, config in CONFIGS.items():
-        results[f"conversion/{label}"] = conversion(run("conversion_eval", ["-n", n, "--test", *tests], config,
-                                                        args.jobs, args.cli))
-    results["context/app"] = conversion(run("conversion_eval", ["-n", n, "--line-context", "--test", SETS["wikipedia"]],
-                                            APP, args.jobs, args.cli))
-    results["split/app"] = conversion(run("conversion_eval", ["-n", n, "--split", "continue", "--test",
-                                                              SETS["colloquial"], SETS["wikipedia"]], APP, args.jobs,
-                                          args.cli))
-    results["habits/app"] = habits(run("error_analysis", ["-n", n, "--test", SETS["colloquial"], SETS["wikipedia"]],
-                                       APP, args.jobs, args.cli))
-    results["candidates/app"] = candidates(run("candidate_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
-    present = [path for path in ROWS.values() if os.path.exists(os.path.join(ROOT, path))]
+def rows(report: Report) -> dict[str, Any]:
+    result = {}
+    for s in report.sections:
+        shanjie = s.metrics["shanjie"]
+        result[s.name.removeprefix("shanjie-")] = {
+            "n": s.metrics["n"],
+            "top1": round(shanjie["top1"] * 100, 2),
+            "cer": round(shanjie["cer"] * 100, 2),
+            "oracle16": round(shanjie["oracle16"] * 100, 2),
+        }
+    return result
+
+
+def repick(report: Report) -> dict[str, Any]:
+    result = {}
+    for s in report.sections:
+        m = s.metrics
+        result[key(s.name)] = {
+            "runs": m["runs"],
+            **{f"picks{k}": pct(m[f"picks{k}"]) for k in range(4)},
+            "mean_picks": two(m["mean_picks"]),
+            "broke": pct(m["broke"]),
+        }
+    return result
+
+
+def commit() -> str:
+    done = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=paths.ROOT, capture_output=True, text=True)
+    return done.stdout.strip()
+
+
+def run_suite(
+    version: str,
+    n: int = 400,
+    jobs: int | None = None,
+    data: Path | None = None,
+    cli_args: list[str] | None = None,
+    reports: Path | None = None,
+) -> dict[str, Any]:
+    """The ZhuyinBench record for `version`.  `cli_args` adds zhuyin-cli options to every configuration (for checks
+    only: a release record uses none)."""
+    data = data or paths.data_dir()
+    reports = reports or paths.data("bench", version)
+    shared = ["--data", str(data)] + [a for text in cli_args or [] for a in ("--cli-args", text)]
+    if jobs:
+        shared += ["--jobs", str(jobs)]
+
+    def measure(label: str, name: str, config: str, sets: list[str], *options: str) -> Report:
+        evaluator = registry.get(name)
+        argv = ["--config", config, *shared, "--set", *sets, *options, "--json", str(reports / f"{label}.json")]
+        print(f"$ zt eval {name} {shlex.join(argv)}", flush=True)
+        return evaluator.run(evaluator.arguments(argv), quiet=True)
+
+    record: dict[str, Any] = {
+        "suite": SUITE,
+        "version": version,
+        "date": datetime.date.today().isoformat(),
+        "commit": commit(),
+        "host": f"{platform.system()} {platform.machine()}",
+        "n": n,
+    }
+    if cli_args:
+        record["cli_args"] = cli_args
+    results: dict[str, Any] = {}
+    record["results"] = results
+    count = ["-n", str(n)]
+    for config in CONFIGS:
+        results[f"conversion/{config}"] = conversion(
+            measure(f"conversion-{config}", "conversion", config, TEXT_SETS, *count)
+        )
+    results["context/app"] = conversion(
+        measure("context-app", "conversion", "app", ["wiki-test"], *count, "--context", "line")
+    )
+    results["split/app"] = conversion(
+        measure("split-app", "conversion", "app", ["colloquial-test", "wiki-test"], *count, "--split", "continue")
+    )
+    results["habits/app"] = habits(measure("habits-app", "errors", "app", ["colloquial-test", "wiki-test"], *count))
+    results["candidates/app"] = candidates(measure("candidates-app", "candidates", "app", TEXT_SETS, *count))
+    present = [name for name in ROW_SETS if BY_NAME[name].present]
     if present:
-        for label, config in CONFIGS.items():
-            results[f"external/{label}"] = rows_sets(run("rows_eval", ["--rows", *present, "--output",
-                                                                       f"data/build/bench/rows-{label}.jsonl"],
-                                                         config, args.jobs, args.cli))
-    results["repick/app"] = repicks(run("repick_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False, indent=1)
-        f.write("\n")
-    print(f"wrote {args.out}")
+        for config in CONFIGS:
+            results[f"external/{config}"] = rows(measure(f"external-{config}", "rows", config, present))
+    results["repick/app"] = repick(measure("repick-app", "repick", "app", TEXT_SETS, *count))
+    return record
 
 
-if __name__ == "__main__":
-    main()
+# Section converters by result group, for tests and for reading saved reports.
+CONVERTERS: dict[str, Callable[[Report], dict[str, Any]]] = {
+    "conversion": conversion,
+    "context": conversion,
+    "split": conversion,
+    "habits": habits,
+    "candidates": candidates,
+    "external": rows,
+    "repick": repick,
+}

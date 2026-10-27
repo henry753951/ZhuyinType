@@ -20,27 +20,28 @@
 
 ## 指令
 
-SSH：`ssh -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST`；遠端根目錄 `~/zhuyintype`。工作使用 `nohup`；紀錄與結束狀態檔在 `logs/reranker_v2*` 下。
+當時以 `experiment_v2.py`（已移除）在 GPU 主機上排程訓練、取回模型、在 Mac 上編譯並執行 dev／保留測試集評估與計時，再把結果寫進本報告的「結果」一節。評估使用凍結在 `data/build/reranker_v2_experiment/` 的 `conversion_eval.py` 與 `zhuyin-cli`；整段準確率由評估器輸出的百分比與樣本數還原。原始輸出、清單與執行紀錄都在該目錄。依現行規則，評估改在 GPU 主機上執行。
+
+目前的對應指令（變體目錄共用 `reranker/` 的 `vocab.json` 與 token 串流，以符號連結指向 `train.bin`、`val_*.bin`）：
 
 ```sh
-# 遠端；每個目錄都有 vocab.json，以及以符號連結指向的 train.bin/val_*.bin。
-.venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2a --steps 90000
-.venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2b --steps 90000 --layers 8 --width 512 --heads 8 --ffn 2048
+# GPU 主機
+python -m nlp.training.reranker.train --data data/build/reranker_v2a --steps 90000
+python -m nlp.training.reranker.train --data data/build/reranker_v2b --steps 90000 --layers 8 --width 512 --heads 8 --ffn 2048
 # 有條件執行的 v2c：
-.venv-gen/bin/python -u nlp/training/reranker/train.py --data reranker_v2c --steps 90000 --layers 10 --width 640 --heads 10 --ffn 2560
+python -m nlp.training.reranker.train --data data/build/reranker_v2c --steps 90000 --layers 10 --width 640 --heads 10 --ffn 2560
 # 每個完成的變體：
-.venv-gen/bin/python -u nlp/training/reranker/export_coreml.py --data reranker_v2a --out reranker_v2a/Reranker.mlpackage
-scp -r -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST:zhuyintype/reranker_v2a/Reranker.mlpackage data/build/reranker_v2a/
-scp -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST:zhuyintype/reranker_v2a/vocab.json data/build/reranker_v2a/
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun coremlcompiler compile data/build/reranker_v2a/Reranker.mlpackage data/build/reranker_v2a/
-# 對每個完成的變體重複，初始設定為 {"weight": 1.0, "count": 16}。
+python -m nlp.training.reranker.export --data data/build/reranker_v2a
+# Mac，取回 Reranker.mlpackage 與 vocab.json 之後；初始設定為 {"weight": 1.0, "count": 16}
+xcrun coremlcompiler compile data/build/reranker_v2a/Reranker.mlpackage data/build/reranker_v2a/
 
-# 本機 dev；DIR 為 v1 或各變體，W 為 0.7 / 1.0 / 1.4。
-env -u ZHUYIN_UNITS uv run --no-project --python 3.12 data/build/reranker_v2_experiment/conversion_eval.py --cli data/build/reranker_v2_experiment/zhuyin-cli --lexicon data/build/reranker_v2_experiment/lexicon.tsv -n 400 --reranker DIR --rerank-weight W --rerank-count 16 --test data/build/reranker_v2_experiment/dev/dev_colloquial.txt data/build/reranker_v2_experiment/dev/dev_wikipedia.txt
+# dev；W 為 0.7 / 1.0 / 1.4（現行工具，結果格式與當時不同）
+zt eval conversion --config engine --cli-args "--reranker data/build/reranker_v2a --rerank-weight W --rerank-count 16" \
+  --set colloquial-dev wiki-dev -n 400
 # CPU 延遲，略過第一次計時的呼叫：
-env -u ZHUYIN_UNITS data/build/reranker_v2_experiment/zhuyin-cli --lexicon data/build/reranker_v2_experiment/lexicon.tsv --reranker DIR --rerank-count 16 --timing "ji3ap6vu35j/ru04xu4vu/5j4u4ek75k4cl3vu04xu4cl3wu4"
+zhuyin-cli --lexicon data/build/lexicon.tsv --reranker DIR --rerank-count 16 --timing "ji3ap6vu35j/ru04xu4vu/5j4u4ek75k4cl3vu04xu4cl3wu4"
 # 保留測試集，每個勝出者與 v1 各一次（相同選項，n=400）：
-# --test data/build/reranker_v2_experiment/test/test_sentences.txt data/build/reranker_v2_experiment/test/test_colloquial.txt data/build/reranker_v2_experiment/test/colloquial_smoke.txt
+#   --set wiki-test colloquial-test smoke
 ```
 
 ## 結果
@@ -110,7 +111,7 @@ env -u ZHUYIN_UNITS data/build/reranker_v2_experiment/zhuyin-cli --lexicon data/
 ## 在 0.2.3 引擎上的驗證
 
 2026-10-27 以目前的引擎（讀音先驗、變調、完全相符邊際 4.0、台灣讀音、<unk> 分攤）與出貨的詞庫重新執行，權重 1.0，16 個候選字，n = 400；「上下文」指
-`conversion_eval.py --line-context`。整段準確率：
+`conversion_eval.py --line-context`（現行的 `zt eval conversion --context line`）。整段準確率：
 
 | 模型 | 維基百科 | 口語 | 日常 | 維基百科 + 上下文 | 口語 + 上下文 |
 |---|---:|---:|---:|---:|---:|

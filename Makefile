@@ -1,22 +1,32 @@
 # ZhuyinType: the shared engine (nlp/engine), its data, training and evaluation (nlp/), and the macOS client
-# (clients/macos).  Every target runs from the repository root.
-.PHONY: lexicon data app debug-app install pkg checks cli clean
+# (clients/macos).  Every target runs from the repository root and calls tools/zt (`tools/zt help` lists more).
+.PHONY: setup fetch lexicon data app debug-app install pkg checks cli test lint types clean
 
+setup:              ## check tools, prepare the uv environment
+	tools/zt setup
+fetch:              ## download the pinned data and models into data/build
+	tools/zt data fetch
 lexicon:            ## build or reuse data/build/lexicon.tsv
-	./nlp/data/build-lexicon.sh
+	tools/zt data lexicon
 data:               ## compile lexicon and language models into mmap binaries (OUT=dir)
-	./nlp/data/compile-data.sh $${OUT:-data/build/compiled}
+	tools/zt data compile $${OUT:-data/build/compiled}
 cli:                ## zhuyin-cli and the engine checks
-	swift build --package-path nlp/engine --scratch-path "$${SWIFT_SCRATCH_PATH:-.build}" -c release
+	tools/zt build cli
 checks:             ## engine behaviour and latency checks
-	swift run --package-path nlp/engine --scratch-path "$${SWIFT_SCRATCH_PATH:-.build}" -c release ZhuyinCoreChecks
+	tools/zt check engine
 app:                ## dist/ZhuyinType.app
-	./clients/macos/scripts/build-app.sh release
+	tools/zt build app
 debug-app:
-	./clients/macos/scripts/build-app.sh debug
+	tools/zt build app --debug
 install:            ## install into ~/Library/Input Methods (the running copy switches over when idle)
-	./clients/macos/scripts/install-dev.sh
+	tools/zt build install
 pkg:                ## dist/ZhuyinType-<version>.pkg
-	./clients/macos/scripts/build-pkg.sh
+	tools/zt build pkg
+test:               ## Python unit tests (nlp/**/test_*.py)
+	tools/zt check python
+lint:               ## ruff
+	tools/zt check lint
+types:              ## mypy
+	tools/zt check types
 clean:
 	rm -rf dist .build .build-pkg

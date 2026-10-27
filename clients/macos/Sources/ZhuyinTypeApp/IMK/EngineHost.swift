@@ -123,10 +123,7 @@ enum EngineHost {
     private static func loadReranker(_ directory: URL) -> NeuralReranker? {
         let start = Date()
         do {
-            let config = (try? Data(contentsOf: directory.appendingPathComponent("config.json")))
-                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            let reranker = try NeuralReranker(directory: directory, weight: config?["weight"] as? Double ?? 0.5)
-            if let count = config?["count"] as? Int, count > 0 { reranker.candidateCount = count }
+            let reranker = try NeuralReranker.configured(directory: directory)
             logger.info("Reranker loaded in \(Date().timeIntervalSince(start), privacy: .public) seconds")
             return reranker
         } catch {

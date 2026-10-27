@@ -1,70 +1,104 @@
-"""Remote nohup stage runner. Stops at the first failure; does not retry guesses."""
-import json
-import argparse
-import os
-from pathlib import Path
-import subprocess
-import sys
-import time
+"""The v3 pipeline: corpus, polyphone labels, encoded shards, the two encoders, dev quality, Core ML export.
 
-from common import OUT, ROOT, save
+    zt --remote train v3                        # GPU host: snapshot … quality, export (stops at compile off macOS)
+    zt train v3 export compile validate         # Mac, with the checkpoints and vocabularies fetched to v3_030/
+    zt train v3 syllable --force                # one step again
+    zt train v3 --option workers=48             # Wikipedia extraction workers (default 24)
 
+This is the 0.3.0 v3 (data directory `v3_030/`).  The 0.4.0 app model continues it: `zt train homophone`.
+Steps run in the order they were run for 0.3.0.  Training steps need CUDA; compile and validate need macOS.
+"""
 
-def stage(name, script, *args):
-    status = {"stage": name, "status": "running", "started": time.time()}
-    save(OUT / "status.json", status)
-    path = ROOT / "logs" / f"v3-{name}.log"
-    with path.open("w") as log:
-        command = [sys.executable, "-u", str(ROOT / "nlp/training/v3" / script), *args]
-        result = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
-                                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "4"})
-    status.update(exit=result.returncode, seconds=time.time() - status["started"], status="complete" if result.returncode == 0 else "failed")
-    save(OUT / f"stage-{name}.json", status)
-    save(OUT / "status.json", status)
-    if result.returncode:
-        raise RuntimeError(f"{name} failed, exit {result.returncode}; see {path}")
+from __future__ import annotations
+
+import shutil
+from collections.abc import Callable
+
+from nlp.common import paths
+from nlp.training.pipeline import Context, Pipeline, Step
+
+from .common import NAME
+
+MODULE = "nlp.training.v3"
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--from-syllable", action="store_true", help="Recover after context training completed")
-    args = parser.parse_args()
-    if args.from_syllable:
-        assert (OUT / "context-done.json").exists() and (OUT / "context.pt").exists()
-    else:
-        prepare_and_context()
-    stage("syllable", "train.py", "syllable", "--steps", "60000", "--batch", "64")
-    done = json.load(open(OUT / "syllable-done.json"))
+def module(name: str, *args: str, group: str = "train", omp: int = 4) -> Callable[[Context], None]:
+    def run(ctx: Context) -> None:
+        ctx.python(f"{MODULE}.{name}", *args, group=group, threads=omp)
+
+    return run
+
+
+def snapshot(ctx: Context) -> None:
+    """Freezes the inputs the later steps read from v3_030/: the lexicon and the two dev sets (kept when there)."""
+    for source, name in [
+        (paths.data("lexicon.tsv"), "lexicon.tsv"),
+        (paths.data("corpus", "dev_wikipedia.txt"), "dev_wikipedia.txt"),
+        (paths.data("corpus", "dev_colloquial.txt"), "dev_colloquial.txt"),
+    ]:
+        if (ctx.out / name).exists():
+            ctx.log(f"kept {paths.relative(ctx.out / name)}")
+            continue
+        shutil.copy2(source, ctx.out / name)
+        ctx.log(f"{paths.relative(source)} → {paths.relative(ctx.out / name)}")
+
+
+def tests(ctx: Context) -> None:
+    ctx.python("unittest", "discover", "-s", str(paths.ROOT / "nlp/training/v3"), "-t", str(paths.ROOT), group="train")
+
+
+def wiki(ctx: Context) -> None:
+    ctx.python(f"{MODULE}.prepare", "wiki", "--workers", str(ctx.options.get("workers", 24)), group="train", threads=1)
+
+
+def syllable(ctx: Context) -> None:
+    """Syllable training up to 60,000 steps, then 10,000-step continuations until the dev NLL plateaus."""
+    import json
+
+    train = (f"{MODULE}.train", "syllable", "--batch", "64")
+    ctx.python(*train, "--steps", "60000", group="train", threads=4)
+    done = json.loads((ctx.out / "syllable-done.json").read_text())
     while not done["plateau"]:
-        previous_step = done["steps"]
-        stage(f"syllable-continue-{previous_step}", "train.py", "syllable", "--resume", "--steps", "10000", "--batch", "64")
-        done = json.load(open(OUT / "syllable-done.json"))
-        assert done["steps"] > previous_step, "continuation did not advance training"
-    stage("quality", "evaluate.py")
-    stage("export", "export.py")
-    save(OUT / "status.json", {"stage": "remote complete", "status": "awaiting Mac compile/parity/vectors/latency"})
+        previous = done["steps"]
+        ctx.log(f"syllable: no plateau after {previous} steps; continuing 10,000 steps")
+        ctx.python(*train, "--resume", "--steps", "10000", group="train", threads=4)
+        done = json.loads((ctx.out / "syllable-done.json").read_text())
+        if done["steps"] <= previous:
+            raise RuntimeError("continuation did not advance training")
 
 
-def prepare_and_context():
-    # These two independent extraction jobs were launched first while code was prepared.
-    for name in ["wiki", "colloquial"]:
-        while not (OUT / f"{name}.json").exists():
-            pattern = f"[p]ython -u nlp/training/v3/prepare.py {name}"
-            if subprocess.run(["pgrep", "-f", pattern], stdout=subprocess.DEVNULL).returncode:
-                raise RuntimeError(f"{name} producer exited without completion marker; see logs/v3-{name}.log")
-            save(OUT / "status.json", {"stage": name, "status": "waiting for preparation"})
-            time.sleep(30)
-    stage("vocab", "prepare.py", "vocab")
-    stage("polyphone", "readings.py")
-    stage("encode", "encode.py")
-    stage("data-audit", "verify_data.py")
-    stage("selftest", "test_v3.py")
-    stage("context", "train.py", "context", "--steps", "30000", "--batch", "64")
+def compile_models(ctx: Context) -> None:
+    from .coreml import compile_package
+
+    for name in ["ContextEncoder", "SyllableEncoder"]:
+        compile_package(ctx.out / f"{name}.mlpackage", ctx.out)
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        save(OUT / "status.json", {"stage": "stopped", "status": "failed", "error": str(exc)})
-        raise
+PIPELINE = Pipeline(
+    name="v3",
+    help="0.3.0 context and syllable encoders (v3_030/); the 0.4.0 model continues it in homophone",
+    output=NAME,
+    steps=(
+        Step("test", "unit tests of readings, typing noise and the model interfaces", tests),
+        Step("snapshot", "copy the lexicon and the dev sets into v3_030/", snapshot),
+        Step("wiki", "ordered Wikipedia paragraphs without held-out text (GPU host)", wiki),
+        Step("colloquial", "deduplicated colloquial lines", module("prepare", "colloquial", omp=1)),
+        Step("vocab", "character and syllable vocabularies, provenance", module("prepare", "vocab")),
+        Step("polyphone", "polyphone classifier for single-character readings (CUDA)", module("polyphone")),
+        Step("encode", "mmap shards of ids, readings and examples", module("encode")),
+        Step("audit", "held-out leakage and shard checks", module("verify_data")),
+        Step("selfcheck", "invariants of labels, noise and model interfaces", module("selfcheck")),
+        Step(
+            "context", "context LM to plateau (CUDA)", module("train", "context", "--steps", "30000", "--batch", "64")
+        ),
+        Step("syllable", "syllable encoder to plateau, with continuations (CUDA)", syllable),
+        Step("quality", "dev top-1 selection with and without context and noise (CUDA)", module("evaluate")),
+        Step("export", "Core ML packages and config.json", module("export", group="export")),
+        Step("compile", "compile the packages with coremlcompiler (macOS only)", compile_models),
+        Step(
+            "validate",
+            "Core ML parity, golden test vectors, CPU latency (macOS only)",
+            module("validate", group="export"),
+        ),
+    ),
+)

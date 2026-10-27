@@ -1,6 +1,7 @@
-# Every push and pull request: privacy check, the engine on Linux (portability, behaviour checks) and the macOS
-# client.  Jobs run in parallel; SwiftPM builds, ONNX Runtime and data assets are cached by content hash, so a warm
-# run takes a few minutes.  Evaluations do not run here: they run on the GPU host (benchmark.yml).
+# Every push and pull request: privacy check, the Python tools (lint, types, tests), the engine on Linux
+# (portability, behaviour checks) and the macOS client.  Jobs run in parallel; SwiftPM builds, ONNX Runtime, uv and
+# data assets are cached by content hash, so a warm run takes a few minutes.  Every step goes through tools/zt.
+# Evaluations do not run here: they run on the GPU host (benchmark.yml).
 name: CI
 
 on:
@@ -24,6 +25,18 @@ jobs:
       - uses: actions/checkout@v7
       - run: tools/check-public.sh
 
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: tools/zt check lint
+      - run: tools/zt check types
+      - run: tools/zt check python
+
   engine-linux:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -34,8 +47,9 @@ jobs:
       ZHUYIN_CHECKS_TIMING: warn
     steps:
       - name: Tools in the Swift image
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends curl python3 ca-certificates >/dev/null
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends curl git ca-certificates >/dev/null
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: ONNX Runtime
         uses: actions/cache@v6
         with:
@@ -51,15 +65,16 @@ jobs:
         with:
           path: .cache/assets
           key: assets-lexicon-lm-${{ hashFiles('nlp/data/assets.json') }}
-      - run: python3 nlp/data/assets.py fetch lexicon lm
+      - run: tools/zt setup
+      - run: tools/zt data fetch engine
       - name: SwiftPM build cache
         uses: actions/cache@v6
         with:
           path: .build
           key: engine-linux-${{ hashFiles('nlp/engine/Package.swift', 'nlp/engine/Sources/**') }}
           restore-keys: engine-linux-
-      - run: swift build -c release --package-path nlp/engine --scratch-path .build
-      - run: swift run -c release --package-path nlp/engine --scratch-path .build ZhuyinCoreChecks
+      - run: tools/zt build cli
+      - run: tools/zt check engine
 
   macos:
     runs-on: xcode-27
@@ -68,21 +83,22 @@ jobs:
       ZHUYIN_CHECKS_TIMING: warn
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Data assets
         uses: actions/cache@v6
         with:
           path: .cache/assets
           key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
-      - run: python3 nlp/data/assets.py fetch
+      - run: tools/zt setup
+      - run: tools/zt data fetch
       - name: SwiftPM build cache
         uses: actions/cache@v6
         with:
           path: .build
           key: macos-${{ hashFiles('nlp/engine/Package.swift', 'clients/macos/Package.resolved', 'nlp/engine/Sources/**', 'clients/macos/Sources/**') }}
           restore-keys: macos-
-      - run: swift build -c release --package-path nlp/engine --scratch-path .build
-      - run: swift run -c release --package-path nlp/engine --scratch-path .build ZhuyinCoreChecks
-      - name: App
-        run: SWIFT_SCRATCH_PATH=.build clients/macos/scripts/build-app.sh release
-      - run: dist/ZhuyinType.app/Contents/MacOS/ZhuyinType --self-test --lexicon data/build/lexicon.tsv
-      - run: swift clients/macos/scripts/check-packaging.swift dist/ZhuyinType.app
+      - run: tools/zt build cli
+      - run: tools/zt check engine
+      - run: tools/zt build app
+      - name: Self-test and packaging checks
+        run: tools/zt check app

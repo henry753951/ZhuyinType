@@ -4,37 +4,32 @@
 
 ## 重現
 
-因為引擎同時在修改，**每次完整執行前**都要重新建置：
+在 GPU 主機上執行（`zt --remote eval typing-errors …`）。因為引擎同時在修改，整次評測用同一份建好的 `zhuyin-cli`（`ZT_CLI`），不要在途中重新建置：
 
 ```sh
-mkdir -p .build-eval
-uv run --no-project python nlp/eval/typing_errors.py --self-test
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release --scratch-path .build-eval --product zhuyin-cli > .build-eval/typing-errors-build.log 2>&1 && \
-env -u ZHUYIN_UNITS uv run --no-project python nlp/eval/typing_errors.py \
-  -n 300 --seed 7 \
-  --config current '' \
-  --config current+reranker '--reranker data/build/reranker --rerank-weight 1 --rerank-count 16' \
-  --examples 2 --json .build-eval/typing-errors.json \
-  > .build-eval/typing-errors-table.md 2> .build-eval/typing-errors.log
+zt eval typing-errors --config engine -n 300 --seed 7 \
+  --variant current '' \
+  --variant current+reranker '--reranker data/build/reranker --rerank-weight 1 --rerank-count 16' \
+  --examples 2 --json data/build/eval/typing-errors.json
 ```
 
-`--test` 接受語料路徑；`--self-test` 執行內建的斷言，不需要資料或 CLI。`-n` 預設為每個資料集 300，**在適用性篩選之前計算**。設定接受以 shell 引號包住的 CLI 參數，例如 `--config timed '--decoder timed'`。目前的建置提供 `slots|boundaries|reorder|timed`；兩組實測的設定都使用它的預設值 `slots`。評測程式中沒有寫死任何解碼器名稱。
+`--set` 預設是兩個開發集（`colloquial-dev`、`wiki-dev`），也接受其他評測集或檔案路徑。`-n` 預設為每個評測集 300，**在適用性篩選之前計算**。`--variant` 接受一個名稱和以 shell 引號包住的 CLI 參數，例如 `--variant timed '--decoder timed'`，加在 `--config` 的設定之上；不給時是 `current ''`。目前的建置提供 `slots|boundaries|reorder|timed`；兩組實測的設定都使用它的預設值 `slots`。評測程式中沒有寫死任何解碼器名稱。`--conditions` 只跑指定的條件。單元測試（`nlp/eval/test_typing.py`）涵蓋原本 `--self-test` 的斷言，不需要資料或 CLI。
 
-上面的完整執行指令對 `--test` 使用兩個預設的 dev 路徑，並把輸出導向暫存目錄。Core ML 使用 CLI 的預設值，只用 CPU。試跑使用 `-n 3` 與 `-n 1`；另一次 30 次執行的計時探測發現，在這台 Mac 上 CPU 比 `ZHUYIN_UNITS=all` 或 `ane` 快。這些試跑不計入下方結果。
+下方結果是以舊版工具在 Mac 上量的（指令列寫法不同，按鍵腳本、輸出與數字相同）。Core ML 使用 CLI 的預設值，只用 CPU。試跑使用 `-n 3` 與 `-n 1`；另一次 30 次執行的計時探測發現，在這台 Mac 上 CPU 比 `ZHUYIN_UNITS=all` 或 `ane` 快。這些試跑不計入下方結果。
 
 ## 模型與計數規則
 
-- 以與 `conversion_eval.py` 相同的 `[\u4e00-\u9fff]{4,20}` 比對、詞庫最長比對讀音，以及一聲以 Space 輸入的慣例，挑出可讀的漢字段；每個參考字必須恰有一個讀音。以 seed 7 打亂順序。每個條件使用同一批選出的段落，並濾除不適用者。讀音是推斷出來的，不是人工標註的發音真值。
+- 以與 `zt eval conversion` 相同的 `[\u4e00-\u9fff]{4,20}` 比對、詞庫最長比對讀音，以及一聲以 Space 輸入的慣例，挑出可讀的漢字段；每個參考字必須恰有一個讀音。以 seed 7 打亂順序。每個條件使用同一批選出的段落，並濾除不適用者。讀音是推斷出來的，不是人工標註的發音真值。
 - 使用美式 Mac 鍵盤的按鍵中心點，各列偏移 0、0.25、0.5、1 個鍵寬，採用標準指法的左右手與手指分配，Space 由右手拇指按。每個按鍵都加上 `<dt:MS>` 前綴。按鍵間隔服從對數常態分布，對數標準差 0.35，基準中位數 120 ms（快速為 60 ms）；左右手交替時乘以 0.75，同一手指時乘以 1.4。exact 與 exact-fast 共用相同的隨機計時抽樣，以 2 倍縮放。
 - 交換（swap）對調兩個相鄰且不同的按鍵，包括聲調鍵與一聲的 Space。`swap-in-syllable` 限於同一音節內；`swap-across` 跨越音節邊界。rollover 從這兩種中抽樣，並把被對調的這對按鍵之間的間隔設為 0–15 ms 均勻分布。一般交換保留一般抽樣的計時。
 - hotspot 以目標按鍵為中心的高斯分布抽樣落點（水平 sigma 0.45，垂直 sigma 0.30），對齊到最近的實體按鍵中心，並捨棄未改變或非相鄰的落點（距離超過 1.6 個鍵寬）。實體標點鍵仍可能被誤觸。寬的 Space 不作為 hotspot／extra-key 的錨點；它仍可能被交換或漏打。extra-key 在錨點之前或之後插入一個抽樣的相鄰鍵，該對按鍵間隔為 0–20 ms 均勻分布。
 - 條件 3–9 在每個適用的段落中恰好注入一個錯誤。`swap-across-2`、`rollover-2` 與 `hotspot-2` 在互不重疊的位置注入兩個錯誤。missing-key 漏掉一個按鍵；tone 只對調 3↔4 或 6↔7。
 - nospace 只省略**後面還有其他音節**的標準一聲 Space；最後的 Space 保留。`nospace-all` 移除所有符合條件的 Space；`nospace-30` 以 30% 機率對每個 Space 獨立抽樣。只有實際發生省略的段落才計入，因此這一列是以觀察到錯誤為條件。
 - mixed 在每個音節最多選一種錯誤：3% hotspot、2% rollover、1% extra、1% missing、1% tone，其餘不加錯誤。不適用的錯誤直接略過，不以其他類型替代。它另外獨立省略 30% 符合條件的一聲 Space，並在 30% 的段落選用快速設定。mixed 包含沒有任何改變的段落；JSON 記錄每個段落實際的錯誤數與設定。
-- 固定的每段落／每條件 RNG 讓各設定使用相同的按鍵腳本。兩個資料集在每個條件／設定下共用一個批次。最多同時有三個 CLI 行程；批次模式在每一行輸入時重設上下文與學習。送出用的腳本以 Enter 結尾；recall 用的腳本不加。recall 會去除 reranker 選項，並在等價的設定之間重用同一份純引擎結果。
-- 整段準確率要求送出的文字完全相同。字元準確率為 `max(0, 1 - total Levenshtein distance / reference characters)`，沿用 `typo_eval.py`。Recall@16 要求完整的參考答案出現在引擎清單中。誤修正指輸出與**該設定在正常、標準輸入下的 exact 輸出**不同，不論基準本身是否正確；因此 exact 依定義為 0%，exact-fast 衡量的是速度造成的改變。這與 typo_eval 中以正確性為條件的 off-mode 指標不同。
+- 固定的每段落／每條件 RNG 讓各設定使用相同的按鍵腳本；RNG 以評測集原本的路徑（例如 `data/build/corpus/dev_colloquial.txt`）為種子的一部分，不受資料目錄位置影響。批次分給 `--jobs` 個 CLI 行程平行執行；批次模式在每一行輸入時重設上下文與學習。送出用的腳本以 Enter 結尾；recall 用的腳本不加。recall 會去除 reranker 選項，並在等價的設定之間重用同一份純引擎結果。
+- 整段準確率要求送出的文字完全相同。字元準確率為 `max(0, 1 - total Levenshtein distance / reference characters)`，沿用 `zt eval typo`。Recall@16 要求完整的參考答案出現在引擎清單中。誤修正指輸出與**該設定在正常、標準輸入下的 exact 輸出**不同，不論基準本身是否正確；因此 exact 依定義為 0%，exact-fast 衡量的是速度造成的改變。這與 `zt eval typo` 中以正確性為條件的 off-mode 指標不同。
 
-JSON 包含每一個輸入腳本、輸出、N-best 清單、指標、產出物雜湊值與實際耗時；每完成一列結果就寫入一次檢查點。沒有樣本的條件回報 N=0 與未定義的指標，不計入分母。
+JSON 報告的 `items` 包含每一個輸入腳本、輸出與 N-best 清單，`metrics` 包含每一列的指標。沒有樣本的條件回報 N=0 與未定義的指標，不計入分母。
 
 ## 結果
 

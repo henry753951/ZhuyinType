@@ -1,45 +1,82 @@
 # 訓練
 
-每個子目錄是一條獨立的流程：程式碼在這裡（AGPL-3.0-only），產物在 `data/build/<名稱>/`（不在 git 裡，正式版本以 `nlp/data/assets.py` 發布）。訓練與評測都在遠端 GPU 主機（H100）執行；Mac 只做 Core ML 匯出與編譯（Xcode 的 `coremlcompiler`）、延遲與能耗量測，以及一次性的 Mac／Linux 一致性檢查。評測工具在 [../eval](../eval)，遠端執行器在 [../remote](../remote)。各流程的細節、指令與實驗紀錄在子目錄的 README 與 REPORT。
+每個子目錄是一個模型或資料的訓練流程，用 `zt train` 執行。
+
+## 用途
+
+- 產生 App 使用的語言模型、神經模型與評測集，以及研究用、沒有採用的模型。
+- 程式碼在這裡（AGPL-3.0-only）。產物在資料目錄 `data/build/<名稱>/`，不放進 git；正式版本以 `zt data pack`、`zt data publish` 發布，版本記在 `nlp/data/assets.json`。
+
+## 指令
+
+```sh
+zt train list                          # 所有流程與步驟
+zt --remote train v3                   # 在 GPU 主機上依序執行所有步驟，已完成的略過
+zt --remote train homophone evaluate   # 只執行一個步驟
+zt train v3 export --force             # 重跑已完成的步驟
+zt --remote --detach train lm          # 在主機背景執行；zt remote logs 看記錄
+```
+
+訓練與評測在 GPU 主機上執行；Mac 只做 Core ML 匯出與編譯、延遲量測，以及一次性的一致性檢查。
+
+## 流程
 
 ```mermaid
 flowchart LR
-    W["維基百科 dump"] --> LM["lm/<br/>百科詞 bigram"]
-    Q["Qwen3-8B 產生口語<br/>Common Voice zh-TW"] --> CO["corpus/<br/>台灣口語語料、評測集"]
-    TT["Taiwan Tongues zh-TW<br/>（只當評測）"] --> CH["lm_chat/<br/>聊天評測集"]
-    LY["立法院逐字稿、維基討論頁<br/>Common Voice"] --> C2["lm_chat2/<br/>聊天詞 bigram（0.4.0 起）"]
-    W --> RR["reranker/<br/>v2b 整句重排"]
+    W["維基百科 dump"] --> LM["lm<br/>百科詞 bigram"]
+    Q["Qwen3-8B 產生口語<br/>Common Voice zh-TW"] --> CO["corpus<br/>口語語料、開發與測試集"]
+    TT["Taiwan Tongues<br/>（只當評測）"] --> CH["lm_chat<br/>聊天評測集"]
+    LY["立法院逐字稿、維基討論頁<br/>Common Voice"] --> C2["lm_chat2<br/>聊天詞 bigram"]
+    W --> RR["reranker<br/>v2b 整句重排"]
     CO --> RR
-    W --> V3["v3/<br/>前文編碼器＋音節對字編碼器"]
+    W --> V3["v3<br/>前文與音節對字編碼器"]
     CO --> V3
-    V3 --> HO["homophone/<br/>在／再等同音字資料與微調"]
+    V3 --> HO["homophone<br/>在／再微調"]
     LY --> HO
-    W --> BA["base/<br/>小麥注音詞庫＋期望次數（研究）"]
-    LM --> APP["app Resources"]
+    W --> BA["base<br/>統計底子（研究）"]
+    LM --> APP["App"]
     C2 --> APP
     HO --> APP
     RR --> APP
 ```
 
-| 目錄 | 產物（`data/build/`） | 進 app 的檔案 | 說明 |
+| 流程 | 產物（資料目錄） | App 用到的 | 說明 |
 |---|---|---|---|
-| `lm/` | `lm/` | `unigram.tsv`、`bigram.tsv`、`backoff.tsv`（建置時編成 mmap 的 `lm.bin`，`lm/compile_data.py`） | 維基百科斷詞、modified Kneser-Ney 詞 bigram；實驗用三元模型 `lm2` 沒有採用。見 `lm/README.md` |
-| `corpus/` | `corpus/` | — | 台灣口語語料（Qwen3-8B 產生 + Common Voice zh-TW）、口語開發與測試集。見 `corpus/README.md` |
-| `lm_chat/` | `lm_chat_v1/`、Taiwan Tongues 評測集 | — | 第一版聊天模型（0.3.0，含產生的句子與 Taiwan Tongues，已停用）；Taiwan Tongues 開發、測試集仍用於評測。見 `lm_chat/REPORT.md` |
-| `lm_chat2/` | `lm_chat/` | 同 `lm/`，加上 `NOTICE.md`、`attribution.jsonl`、`source-manifest.json` | 真實口語的聊天詞 bigram（立法院逐字稿、維基百科討論頁、Common Voice），0.4.0 起出貨。見 `lm_chat2/REPORT.md` |
-| `reranker/` | `reranker/` | `Reranker.mlmodelc`、`RerankerTree.mlmodelc`、`vocab.json`、`config.json` | 字級 Transformer 語言模型（v2b），整句重排（前綴樹計分）與候選字排序。見 `reranker/REPORT_v2.md` |
-| `v3/` | `v3_030/`（0.3.0 的 v3） | — | 前文編碼器與音節對字編碼器、多音字分類器、打字變體。見 `v3/README.md`、`v3/REPORT.md` |
-| `homophone/` | `homophone/`、`v3/`（0.4.0 起） | `ContextEncoder.mlmodelc`、`SyllableEncoder.mlmodelc`、`chars.json`、`syllables.json`、`config.json`、授權與出處 | 同音字（在／再等 26 組）資料集與評測；v3 以可發布的來源微調，0.4.0 起取代原本的 v3。見 `homophone/REPORT.md` |
-| `base/` | `base/` | — | 統計底子 A1：小麥注音詞庫、期望次數語言模型（研究，0.4.0 未採用）。見 `base/REPORT.md` |
-| `memory/` | — | — | 記憶體量測與 mmap 二進位的驗證 |
+| `lm` | `lm/` | `lm/` | 維基百科斷詞、modified Kneser-Ney 詞 bigram。建置 App 時以 `zt data compile` 編成 mmap 的 `lm.bin` |
+| `corpus` | `corpus/` | — | 口語與維基百科的開發、測試集；Qwen3-8B 產生的口語語料 |
+| `lm_chat` | `lm_chat_v1/`、Taiwan Tongues 評測集 | — | 0.3.0 的聊天模型，已停用。Taiwan Tongues 開發、測試集仍用於評測 |
+| `lm_chat2` | `lm_chat/` | `lm_chat/` | 真實對話的聊天詞 bigram，0.4.0 起使用（`zt train lm_chat2 ship`） |
+| `reranker` | `reranker/` | `reranker/` | 字級 Transformer 語言模型 v2b：整句重排與候選字排序 |
+| `v3` | `v3_030/` | — | 0.3.0 的前文編碼器與音節對字編碼器；0.4.0 的模型從這裡繼續訓練 |
+| `homophone` | `homophone2/`、`v3_homophone2/` | `v3/` | 在／再等同音字的資料與評測；從 0.3.0 的 v3 繼續微調，以 `v3/` 發布 |
+| `base` | `base/` | — | 小麥注音詞庫與期望次數語言模型（研究，0.4.0 未採用） |
+| `memory` | `memory/binary/` | — | 記憶體量測與 mmap 二進位的驗證 |
 
 ## 共同規則
 
-- 訓練前先固定評測集；所有訓練語料排除和評測集有連續 8 字相同的句子（`reranker/prepare.py` 的做法）。
-- 每條流程把來源、版本、雜湊與授權記在產物旁（`NOTICE.md`、`provenance.json`、`source_receipts.json` 等），再散布模型時一起附上。
-- 評測在 GPU 主機上用固定的 `zhuyin-cli`（`nlp/remote/run.sh`），先用開發集選參數並做成對比較（`nlp/eval/stats.py`），測試集只追蹤、在決定後跑一次。
-- 模型進 app：放到 `data/build/<名稱>/`，`clients/macos/scripts/build-app.sh` 會複製到 `Contents/Resources/`；預設權重寫在 `EngineHost`、`ControllerCore` 或模型的 `config.json`。
+- 訓練前先固定評測集。訓練語料排除和任何開發集、測試集有連續 8 字相同的句子。
+- 每個流程把來源、版本、雜湊與授權記在產物旁（`NOTICE.md`、`provenance.json`、`source_receipts.json` 等），散布模型時一起附上。
+- 用開發集選參數，以 `zt eval` 存成 JSON，再用 `zt eval stats` 做成對比較；測試集只在決定後跑一次。結果寫進 `docs/research/log.md`。
+- 模型進 App：產物放在 `data/build/<名稱>/`，`zt build app` 會複製到 `Contents/Resources/`。App 的權重來自模型目錄的 `config.json`，以及引擎的 `SyllableScorer.appWeight`、`Engine.chatPrior`；`zhuyin-cli --models` 用同一份程式載入。
 
-## 遠端主機
+## 寫一個新的流程
 
-專案在遠端的 `~/zhuyintype`，目錄結構和這裡相同。PyTorch 與 coremltools 在 `.venv-gen`；長時間的工作用 `nohup`，記錄在 `~/zhuyintype/logs/`。連線方式見各子目錄的 README。
+1. 建立 `nlp/training/<名稱>/`，加上 `__init__.py` 與 `pipeline.py`，定義 `PIPELINE = Pipeline(...)`（見 [pipeline.py](pipeline.py)）。
+2. 每個步驟是一個函式 `def step(ctx: Context) -> None`。需要 PyTorch 等套件的工作寫成模組，用 `ctx.python("nlp.training.<名稱>.<模組>", ..., group="train")` 執行。
+3. 路徑一律用 `nlp.common.paths` 與 `ctx.out`，不寫死主機或家目錄。
+4. README 依 [../CONVENTIONS.md](../CONVENTIONS.md) 的範本；實驗過程與數字寫在 REPORT.md。
+
+## 檔案
+
+| 檔案 | 內容 |
+|---|---|
+| `pipeline.py` | `Pipeline`、`Step`、`Context`：所有流程共用的介面 |
+| `<名稱>/pipeline.py` | 該流程的步驟 |
+| `<名稱>/README.md`、`REPORT.md` | 用法；實驗紀錄 |
+
+## 相關文件
+
+- [../CONVENTIONS.md](../CONVENTIONS.md)：程式與文件慣例
+- [../../docs/MODEL.md](../../docs/MODEL.md)：各模型的方法與數字
+- [../../docs/EVALUATION.md](../../docs/EVALUATION.md)：評測
+- [../remote/README.md](../remote/README.md)：在 GPU 主機上執行

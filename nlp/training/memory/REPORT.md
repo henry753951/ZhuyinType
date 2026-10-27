@@ -1,7 +1,7 @@
 # 記憶體對應的詞庫與語言模型：2026-10-27
 
 實作與檔案配置：[../lm/LEXICON_FORMAT.md](../lm/LEXICON_FORMAT.md)。
-編譯器：`scripts/compile-data.sh OUT_DIR`（使用既有的 `.venv` 與標準函式庫，不安裝套件，
+編譯器：當時是 `scripts/compile-data.sh OUT_DIR`，現在是 `zt data compile OUT_DIR` 或 `zt train memory`（標準函式庫，不安裝套件，
 不連網）。App 與建置腳本的整合由另一位工程師負責；這次變更不修改 `Sources/ZhuyinTypeApp/`、
 `scripts/build-app.sh` 或 `docs/`。這些位置與其他 Core 檔案中同時進行的修改都保留不動。
 
@@ -96,6 +96,9 @@ Linux 的行為檢查與完整的遠端一致性結果記錄在下方。
 SSH 金鑰 `$ZHUYIN_REMOTE_KEY`。以符號連結沿用既有的評估 virtualenv；既有的 ONNX 匯出檔複製到
 這個獨立工作區。不使用 GPU 後端，也不寫入訓練目錄。既有 `nlp/remote/run.sh` 的變更屬於另一個
 工作，保留不動；它的同步清單不需要修改。編譯器與矩陣另外同步，再在遠端編譯二進位檔。
+
+當時的指令如下（現在的對應做法是對兩種設定各跑一次 `zt --remote eval conversion`，以 `--cli-args` 指定
+`--lexicon` 與 `--chat-lm`，再比對兩份 JSON 的逐項輸出）：
 
 ```sh
 REMOTE_DIR=zhuyintype/work/onnx-eval-memory JOBS=60 \
