@@ -58,7 +58,11 @@ enum ControllerCoreSelfTest {
             let client = FakeTextClient()
             var options = ComposerOptions()
             options.learningEnabled = false
-            return (ControllerCore(engine: engine, client: client, options: options, isEnglish: english), client)
+            let core = ControllerCore(engine: engine, client: client, options: options, isEnglish: english)
+            // The system's secure input (a password field or prompt anywhere, e.g. SecurityAgent) would pause reading,
+            // learning and recording in every test; the secure-input test turns it on itself.
+            core.secureInput = { false }
+            return (core, client)
         }
         func type(_ keys: String, into core: ControllerCore) {
             for key in keys { _ = core.handle(key == " " ? .space : .char(key)) }
