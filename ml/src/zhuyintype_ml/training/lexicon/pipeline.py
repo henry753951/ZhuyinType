@@ -8,7 +8,10 @@ Options (--option KEY=VALUE):
     wiki       directory of Wikipedia training sentences (default: lm/work/sentences in the data directory)
     workers    counting processes (default: 16)
     packs      packs merged into lexicon.tsv (default: wiki,chat,registry,places)
-    max_cost   lowest log P(typed | word) of a generated reading variant (default: 8)
+    offset     extra cost of the candidate's reading rows (default: 2)
+    standard   1: strong Taiwan readings become the words' readings (re-label the dev sets to compare)
+    expanded   1: every reading class expanded into rows (the A/B baseline for the engine's reading channel)
+    max_cost   lowest log P(typed | word) of an expanded misreading variant (default: 8)
     exclude    extra directory of evaluation rows kept out of the mining corpora (every *.txt in it)
     wiki_work  a finished `zt train lm` work directory (default: lm/work), for the lm step
     dump       the Wikipedia dump that work directory came from (default: data/raw/lm/...)
@@ -140,9 +143,30 @@ def merge(ctx: Context) -> None:
         *[arg for p in packs for arg in ("--pack", str(ctx.out / "packs" / f"{p}.tsv"))],
         "--max-cost",
         str(ctx.options.get("max_cost", 8)),
+        *variant_options(ctx),
         "--out",
         str(ctx.out / "lexicon.tsv"),
     )
+
+
+# The merge candidate (docs/research/log.md 2026-10-28): readings Taiwan's sources attest, as rows 2 nats below the
+# word's reading; the engine's reading channel takes the rest.  --option expanded=1 builds the A/B baseline with every
+# class expanded into rows; --option standard=1 makes strong Taiwan readings the words' readings.
+CANDIDATE_CLASSES = ("char", "taiwan", "mcbopomofo", "variants")
+CANDIDATE_OFFSET = 2.0
+
+
+def variant_options(ctx: Context) -> list[str]:
+    if str(ctx.options.get("expanded", "0")) == "1":
+        return []
+    classes = ["standard", *CANDIDATE_CLASSES] if str(ctx.options.get("standard", "0")) == "1" else CANDIDATE_CLASSES
+    offset = str(ctx.options.get("offset", CANDIDATE_OFFSET))
+    return [
+        "--data-only",
+        "--mechanisms",
+        ",".join(classes),
+        *[arg for c in CANDIDATE_CLASSES for arg in ("--offset", f"{c}={offset}")],
+    ]
 
 
 def misread(ctx: Context) -> None:
