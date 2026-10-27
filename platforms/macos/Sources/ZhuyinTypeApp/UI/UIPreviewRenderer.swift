@@ -44,6 +44,9 @@ enum UIPreviewRenderer {
             let settings = SettingsWindowController.shared
             CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
+            if only == "live" || only == nil {
+                try renderLive(to: directory.appendingPathComponent("live"))
+            }
             if only == "storyboard" || only == "wizard" || only == nil {
                 try renderWizard(to: directory.appendingPathComponent("wizard"))
             }
@@ -629,6 +632,58 @@ enum UIPreviewRenderer {
         frameView.display()
         try write(view: frameView, rect: frameView.bounds, to: url, grid: grid ? .zero : nil, page: url.lastPathComponent,
                   checks: grid)
+    }
+
+    /// The live views over real time, sampled (0, 100, 200, 400 ms…): the preview playing, the 中英切換 state picked,
+    /// the wizard's parts arriving and a step moving in.  Drawn from the running views, not from still frames.
+    private static func renderLive(to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let saved = (DemoPinning.still, DemoPinning.live, PreviewDirector.step)
+        defer { DemoPinning.still = saved.0; DemoPinning.live = saved.1; PreviewDirector.step = saved.2 }
+        DemoPinning.still = false
+        DemoPinning.live = true
+        PreviewDirector.step = 0.6
+        func sample<V: View>(_ view: V, size: NSSize, name: String, at times: [Int], before: (() -> Void)? = nil) throws {
+            let hosting = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+            hosting.frame = NSRect(origin: .zero, size: size)
+            let window = HeadlessWindow(size: size)
+            window.backgroundColor = .windowBackgroundColor
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            before?()
+            let start = Date()
+            for time in times {
+                RunLoop.main.run(until: start.addingTimeInterval(Double(time) / 1000))
+                hosting.layoutSubtreeIfNeeded()
+                hosting.display()
+                try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent("\(name)-\(time)ms.png"))
+            }
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            Preferences.shared.resetToDefaults()
+            let director = PreviewDirector()
+            try sample(UnifiedPreview(preferences: Preferences.shared, director: director).padding(16), size: NSSize(width: 600, height: 380),
+                       name: "preview-playing-\(suffix)", at: [0, 100, 200, 400, 800, 1600, 2400, 3200])
+            let modeDirector = PreviewDirector()
+            try sample(UnifiedPreview(preferences: Preferences.shared, director: modeDirector).padding(16), size: NSSize(width: 600, height: 380),
+                       name: "preview-mode-\(suffix)", at: [0, 100, 200, 400, 800, 1200, 1600],
+                       before: { modeDirector.show(.mode, last: false) })
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            try sample(WizardView(model: model), size: NSSize(width: 760, height: 600), name: "wizard-welcome-\(suffix)",
+                       at: [0, 50, 100, 200, 300, 400, 600])
+            let next = WizardModel(original: Preferences.shared, mode: .quick)
+            try sample(WizardView(model: next), size: NSSize(width: 760, height: 600), name: "wizard-next-\(suffix)",
+                       at: [0, 50, 100, 200, 300, 400, 600], before: {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+                next.next()
+            })
+        }
+        Preferences.shared.resetToDefaults()
     }
 
     /// The setup wizard: every kind of step at the three window sizes, light and dark; the transition between two
