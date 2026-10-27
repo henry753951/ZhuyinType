@@ -1,4 +1,4 @@
-//! Golden tests of the engine against the Swift code (twin of `parity/Sources/SwiftParity/EngineSweeps.swift`):
+//! Golden tests of the engine against the Swift engine's digests (its tool's `EngineSweeps.swift`, see `golden.rs`):
 //! Swift's number formatting, conversions of dev-set key scripts (best, 16-best with scores, incremental typing with
 //! the cache, fixed words and groups, character scores, the text before the cursor), and a learning session with
 //! its personal data files, export and import.  Needs `ZHUYIN_PARITY_DEV` (colloquial:encyclopedic:chat dev sets)

@@ -32,7 +32,7 @@ pub(crate) fn parity_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity")
 }
 
-/// The digests and input sizes the Swift tool recorded.
+/// The digests and input sizes the Swift engine's tool recorded.
 pub(crate) struct Golden {
     pub(crate) sizes: HashMap<String, u64>,
     pub(crate) digests: HashMap<String, (usize, String)>,

@@ -1,4 +1,4 @@
-//! Swift's `BackendTests` (`engine/swift/Tests/ZhuyinMLTests`): the scorers' inputs, limits, batching and decisions
+//! The Swift engine's `BackendTests` (`ZhuyinMLTests`): the scorers' inputs, limits, batching and decisions
 //! with fake numeric backends.
 #![allow(missing_docs)]
 

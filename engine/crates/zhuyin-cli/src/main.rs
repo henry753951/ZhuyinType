@@ -1,10 +1,10 @@
 //! `zhuyin-cli`: types keys into the composer from a terminal; every evaluation runs through it.  A port of
-//! `engine/swift/Sources/zhuyin-cli/main.swift` with the same flags, messages, key syntax, output and `--batch`
+//! the Swift engine's `zhuyin-cli` (removed in phase 5) with the same flags, messages, key syntax, output and `--batch`
 //! protocol.
 //!
 //! The neural models (`--reranker`, `--v3`, `--check-v3`, and `--models` when its directory has them) run with
-//! ONNX Runtime in a build with the `onnx` feature, or through `--model-server` in any build; the Core ML models the
-//! Swift CLI runs on macOS are not available here (the app supplies them through `zhuyin-ffi`).
+//! ONNX Runtime in a build with the `onnx` feature, or through `--model-server` in any build.  Core ML (the app's
+//! models on macOS) runs in the app's engine path, `EngineBench` in `platforms/macos`.
 
 #[cfg(unix)]
 mod model_server;
@@ -567,7 +567,7 @@ impl Backends {
 
 #[cfg(not(feature = "onnx"))]
 const NO_BACKEND: &str = "zhuyin-cli (Rust): the neural models need --model-server or a build with the onnx feature \
-                          (the Swift CLI's Core ML models are not available here)";
+                          (with Core ML on macOS: EngineBench)";
 
 /// `--check-v3 DIR`: the v3 models against `DIR/test_vectors.json`; exits.
 fn check_v3(directory: &Path, model_server: Option<&str>) -> ! {

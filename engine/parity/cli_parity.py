@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Compare two zhuyin-cli builds (the Swift reference and the Rust port) line by line on the evaluation inputs.
+"""Compare two zhuyin-cli builds line by line on the evaluation inputs: a reference (e.g. main) and a candidate (a
+branch).  A change that should not alter behaviour must give 0 differences; one that should shows its reach here.
 
-    python3 engine/parity/cli_parity.py --swift engine/swift/.build/release/zhuyin-cli \
-        --rust engine/target/release/zhuyin-cli --output cli-parity.json            # the full gate
-    python3 engine/parity/cli_parity.py ... --quick                                    # the quick gate
+    python3 engine/parity/cli_parity.py --reference ../main/engine/target/release/zhuyin-cli \
+        --candidate engine/target/release/zhuyin-cli --output cli-parity.json          # the full comparison
+    python3 engine/parity/cli_parity.py ... --quick                                       # the quick one
 
 Inputs are built exactly as `zt eval conversion` builds them (zhuyintype_ml.core.zhuyin.sample_runs: 400 runs per dev
 set, seed 7; the encyclopedic set also with the text before each run) and as `zt eval rows` builds the shanjie rows.
 Two suites, both by default: every engine-only configuration (no neural models), and the app's setup with the models
-in `--models DIR` (`zhuyin-cli --models DIR`: reranker, v3 character model and chat model, run with ONNX Runtime by
-both builds).  Every configuration runs over every input set with both builds; the outputs must be identical.
+in `--models DIR` (`zhuyin-cli --models DIR`: reranker, v3 character model and chat model, with ONNX Runtime).  Every
+configuration runs over every input set with both builds.
 
 All (configuration, set) pairs share one pool of `--jobs` processes: a pair is split into one process per 50 lines
 (at most `--jobs`), so model loading is paid where it pays off, and small sets do not leave cores idle.  A pair with
 `--keep-memory` runs as one process, its lines in order.  `--quick` takes the first 50 lines of each set.  Runs on
-the GPU host (docs: AGENTS.md); Python standard library only.
+the GPU host (docs: AGENTS.md); Python standard library only.  Until phase 5 the reference was the Swift engine
+(engine/parity/reports/swift-final/: its last comparison).
 """
 from __future__ import annotations
 
@@ -120,8 +122,8 @@ def chunks(lines: list[str], flags: list[str], jobs: int) -> list[list[str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--swift", required=True)
-    parser.add_argument("--rust", required=True)
+    parser.add_argument("--reference", required=True, metavar="CLI", help="the reference zhuyin-cli")
+    parser.add_argument("--candidate", required=True, metavar="CLI", help="the zhuyin-cli under test")
     parser.add_argument("--lexicon", default="data/build/lexicon.tsv")
     parser.add_argument("--jobs", type=int, default=24, help="zhuyin-cli processes at once, both builds together")
     parser.add_argument("--output", required=True)
@@ -153,7 +155,7 @@ def main() -> int:
                 parts = chunks(lines, flags, args.jobs)
                 futures = {
                     build: [pool.submit(batch, command(cli, flags, args.lexicon), part) for part in parts]
-                    for build, cli in (("swift", args.swift), ("rust", args.rust))
+                    for build, cli in (("reference", args.reference), ("candidate", args.candidate))
                 }
                 pairs.append((name, set_name, lines, futures))
         configurations: list[dict[str, object]] = []
@@ -165,9 +167,9 @@ def main() -> int:
         }
         total = differing = 0
         for name, set_name, lines, futures in pairs:
-            swift = [line for future in futures["swift"] for line in future.result()]
-            rust = [line for future in futures["rust"] for line in future.result()]
-            different = [i for i, (a, b) in enumerate(zip(swift, rust)) if a != b]
+            reference = [line for future in futures["reference"] for line in future.result()]
+            candidate = [line for future in futures["candidate"] for line in future.result()]
+            different = [i for i, (a, b) in enumerate(zip(reference, candidate)) if a != b]
             total += len(lines)
             differing += len(different)
             configurations.append(
@@ -175,7 +177,13 @@ def main() -> int:
             )
             for i in different[:5]:
                 differences.append(
-                    {"configuration": name, "set": set_name, "input": lines[i], "swift": swift[i], "rust": rust[i]}
+                    {
+                        "configuration": name,
+                        "set": set_name,
+                        "input": lines[i],
+                        "reference": reference[i],
+                        "candidate": candidate[i],
+                    }
                 )
             print(f"{name:24} {set_name:28} {len(lines):5} lines, {len(different)} different", flush=True)
     report["total"] = {"lines": total, "different": differing}

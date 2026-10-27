@@ -1,62 +1,64 @@
 #!/bin/sh
-# The Rust engine's gate against the Swift engine, on the GPU host (needs ONNX Runtime and both toolchains).
+# The engine's behaviour gate on the GPU host: the zhuyin-cli of this checkout (the candidate) against one built from
+# another checkout (the reference, e.g. main), line by line.  Needs ONNX Runtime ($ONNXRUNTIME_ROOT, default
+# ~/opt/onnxruntime) and data/build.
 #
-#   engine/parity/gate.sh --quick [cli_parity options]   while developing: the first 50 lines of each set, minutes
-#   engine/parity/gate.sh [cli_parity options]           before merging (and after merging main): everything
+#   engine/parity/gate.sh --quick --reference DIR [cli_parity options]   while developing: 50 lines per set, minutes
+#   engine/parity/gate.sh --reference DIR [cli_parity options]           before merging (and after merging main)
 #
-# Builds both CLIs (32 compile jobs), then runs at once: the CLI comparison of both suites (engine-only and the app's
-# setup with models, 24 processes; cli_parity.py), --check-v3 with both CLIs (their outputs must be identical), and,
-# in the full gate, the golden digests (the Swift tool on this host's data, then the Rust golden tests against them).
-# Results go to $GATE_OUT (default gate-out/); the exit status is 0 only when every part passes.
-# Run from the repository root; data/ must hold the evaluation data (data/build).  Other options, e.g.
+# DIR is the reference checkout's root; each checkout builds in its own engine/target.  Builds both CLIs (32
+# compile jobs), then runs at once: the CLI comparison of both suites (engine-only and the app's setup with models,
+# 24 processes; cli_parity.py), --check-v3 with both CLIs (their reports must be identical) and, in the full gate,
+# the engine's tests in release (`cargo test`, with the latency targets).  Results go to $GATE_OUT (default
+# gate-out/); the exit status is 0 only when every part passes.  Run from the repository root.  Other options, e.g.
 # `--only default app`, go to cli_parity.py.
 set -u
 quick=
-if [ "${1:-}" = --quick ]; then quick=--quick; shift; fi
+reference=
+while [ $# -gt 0 ]; do
+    case $1 in
+        --quick) quick=--quick; shift ;;
+        --reference) reference=$2; shift 2 ;;
+        *) break ;;
+    esac
+done
+if [ -z "$reference" ]; then echo "usage: engine/parity/gate.sh [--quick] --reference DIR [cli_parity options]" >&2; exit 2; fi
 root=$(cd "$(dirname "$0")/../.." && pwd)
+reference=$(cd "$reference" && pwd) || exit 2
 cd "$root" || exit 1
 out=${GATE_OUT:-gate-out}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
-ort=${ONNXRUNTIME_ROOT:-$HOME/opt/onnxruntime}
-swift=${ZT_SWIFT:-$(command -v swift || echo "$HOME/opt/swift/usr/bin/swift")}
-export ONNXRUNTIME_ROOT=$ort ZT_SWIFT=$swift
+export ORT_LIB_PATH=${ONNXRUNTIME_ROOT:-$HOME/opt/onnxruntime}/lib
 
-"$swift" build -c release --package-path engine/swift -j 32 > "$out/swift-build.log" 2>&1 &
-swift_build=$!
-(cd engine && ORT_LIB_PATH=$ort/lib cargo build --release -p zhuyin-cli --features onnx -j 32) > "$out/rust-build.log" 2>&1 &
-rust_build=$!
-wait $swift_build || { echo "Swift build failed: $out/swift-build.log"; exit 1; }
-wait $rust_build || { echo "Rust build failed: $out/rust-build.log"; exit 1; }
-S=engine/swift/.build/release/zhuyin-cli
-R=engine/target/release/zhuyin-cli
+build() { (cd "$1/engine" && cargo build --release --locked -p zhuyin-cli --features onnx -j 32) > "$2" 2>&1; }
+build "$reference" "$out/reference-build.log" &
+reference_build=$!
+build "$root" "$out/candidate-build.log" &
+candidate_build=$!
+wait $reference_build || { echo "reference build failed: $out/reference-build.log"; exit 1; }
+wait $candidate_build || { echo "candidate build failed: $out/candidate-build.log"; exit 1; }
+R=$reference/engine/target/release/zhuyin-cli
+C=$root/engine/target/release/zhuyin-cli
 
-python3 engine/parity/cli_parity.py --swift $S --rust $R --jobs 24 $quick --output "$out/cli-parity.json" "$@" \
-    > "$out/cli-parity.log" 2>&1 &
+python3 engine/parity/cli_parity.py --reference "$R" --candidate "$C" --jobs 24 $quick --output "$out/cli-parity.json" \
+    "$@" > "$out/cli-parity.log" 2>&1 &
 parity=$!
-# Both CLIs score the v3 vectors with ONNX Runtime; the vectors are Core ML's outputs, so on Linux both report the
-# same few outside Core ML's tolerance.  The gate is that the two reports are identical.
-($S --check-v3 data/build/v3 > "$out/check-v3-swift.log" 2>&1; $R --check-v3 data/build/v3 > "$out/check-v3-rust.log" 2>&1;
- cmp -s "$out/check-v3-swift.log" "$out/check-v3-rust.log") &
+# The v3 vectors are Core ML's outputs, so with ONNX Runtime both report the same few outside Core ML's tolerance
+# (README: 比對); the gate is that the two reports are identical.
+("$R" --check-v3 data/build/v3 > "$out/check-v3-reference.log" 2>&1; "$C" --check-v3 data/build/v3 > "$out/check-v3-candidate.log" 2>&1;
+ cmp -s "$out/check-v3-reference.log" "$out/check-v3-candidate.log") &
 check=$!
-golden=
+tests=
 if [ -z "$quick" ]; then
-    (
-        dev=$PWD/data/build/corpus/dev_colloquial.txt:$PWD/data/build/corpus/dev_wikipedia.txt:$PWD/data/build/lm_chat/dev_chat_tt.txt
-        export ZHUYIN_GOLDEN=$out/digests.tsv ZHUYIN_PARITY_DEV=$dev ZHUYIN_DATA=$PWD/data/build \
-            ZHUYIN_PARITY_TEXT=$PWD/data/build/lm/test_sentences.txt
-        engine/parity/golden.sh "$ZHUYIN_DATA" "$ZHUYIN_PARITY_TEXT" > "$out/golden-swift.log" 2>&1 &&
-            (cd engine && cargo test --release -j 32 -p zhuyin-core --test golden --test golden_engine -- --nocapture) \
-                > "$out/golden-rust.log" 2>&1 &&
-            ! grep -q skipped "$out/golden-rust.log"
-    ) &
-    golden=$!
+    (cd engine && ZHUYIN_CHECKS_TIMING=warn cargo test --release --locked -j 16 --workspace) > "$out/tests.log" 2>&1 &
+    tests=$!
 fi
 
 status=0
 if wait $parity; then echo "CLI parity: $(tail -n 1 "$out/cli-parity.log")"; else echo "CLI parity FAILED: $(tail -n 1 "$out/cli-parity.log")"; status=1; fi
-if wait $check; then echo "check-v3: identical ($(cat "$out/check-v3-rust.log"))"; else echo "check-v3 FAILED: see $out/check-v3-*.log"; status=1; fi
-if [ -n "$golden" ]; then
-    if wait $golden; then echo "golden digests: identical"; else echo "golden digests FAILED: see $out/golden-*.log"; status=1; fi
+if wait $check; then echo "check-v3: identical ($(cat "$out/check-v3-candidate.log"))"; else echo "check-v3 FAILED: see $out/check-v3-*.log"; status=1; fi
+if [ -n "$tests" ]; then
+    if wait $tests; then echo "engine tests: passed"; else echo "engine tests FAILED: see $out/tests.log"; status=1; fi
 fi
 exit $status

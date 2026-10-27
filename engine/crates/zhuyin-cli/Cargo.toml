@@ -1,6 +1,6 @@
 [package]
 name = "zhuyin-cli"
-description = "Type keys into the ZhuyinType composer from a terminal; every evaluation runs through it (port of engine/swift/Sources/zhuyin-cli)"
+description = "Type keys into the ZhuyinType composer from a terminal; every evaluation runs through it (the Swift CLI's flags and batch protocol)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

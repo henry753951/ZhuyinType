@@ -1,6 +1,6 @@
 # Rust 引擎設計
 
-本文件說明把 `engine/swift`（Swift）的輸入引擎移植到 Rust 的做法：workspace 的結構、每個 Swift 型別對應到哪裡、模型怎麼接上、C ABI 的形狀、App 與 Python 工具怎麼切換，以及每個階段的驗收條件。引擎本身的演算法見 [docs/engine/ARCHITECTURE.md](../docs/engine/ARCHITECTURE.md) 與 [docs/engine/MODEL.md](../docs/engine/MODEL.md)，這裡不重複。
+本文件說明 ZhuyinType 的引擎從 Swift 移植到 Rust 的做法：workspace 的結構、每個 Swift 型別對應到哪裡、模型怎麼接上、C ABI 的形狀、App 與 Python 工具怎麼切換，以及每個階段的驗收條件與結果。移植在 2026 年 10 月完成（第 5 階段），Swift 引擎已移除；Rust 引擎和它逐位元相同。引擎本身的演算法見 [docs/engine/ARCHITECTURE.md](../docs/engine/ARCHITECTURE.md) 與 [docs/engine/MODEL.md](../docs/engine/MODEL.md)，這裡不重複。
 
 ## 1. 目的與要求
 
@@ -12,7 +12,7 @@ Linux（fcitx5、IBus）與 Windows（TSF）的輸入法要用同一個引擎。
 - **效能不能變差**：每鍵延遲與記憶體都不高於 Swift 引擎。
 - macOS 的 Core ML 模型留在 Swift，由 Rust 引擎透過 callback 呼叫；Linux 與 Windows 用 ONNX Runtime。
 
-移植期間 Swift 引擎（`engine/swift`）是參考實作，除了 §4 的決定性修正之外不修改。完成切換（第 5 階段）後才移除。
+移植期間 Swift 引擎（當時的 `engine/swift`）是參考實作，除了 §4 的決定性修正之外不修改；它在第 5 階段移除，最後一次比對見 §8.5。
 
 ## 2. Workspace
 
@@ -26,11 +26,11 @@ engine/
 │   ├── zhuyin-models/    reranker 與 v3 的判斷邏輯、推論的 trait、ONNX Runtime 後端（feature `onnx`）（第 3–4 階段）
 │   ├── zhuyin-ffi/       C ABI：cdylib 與 staticlib，`include/zhuyin.h`、C 範例（第 4 階段）
 │   └── zhuyin-cli/       取代 Swift 的 zhuyin-cli：相同的旗標與 batch 協定（第 3 階段）
-├── swift/                Swift 引擎（參考實作，第 5 階段移除）
-└── parity/               Swift 量測工具：產生 golden 值與 Swift 端的效能數字
+└── parity/               golden 摘要（Swift 引擎的結果）、兩個建置的逐行比對（`gate.sh`、`cli_parity.py`），
+                          以及和 Swift 引擎的最後一次比對（`reports/swift-final/`）
 ```
 
-四個 crate 都已完成（第 1–4 階段）。macOS 的 Swift 包裝在 `platforms/macos/Sources/ZhuyinRust`（§7）。
+四個 crate 都已完成（第 1–4 階段）。macOS 的 Swift 包裝在 `platforms/macos/Sources/ZhuyinEngine`（§7）。移植期間另有 Swift 引擎（`engine/swift`）與 Swift 量測工具（`parity/Sources`），第 5 階段移除，都在 git 歷史中。
 
 - Edition 2024，工具鏈固定在 1.98.0（`rust-toolchain.toml`）。
 - `[workspace.lints]`：`unsafe_code = "deny"`、`missing_docs`、`unreachable_pub`；clippy `all` 為 deny、`pedantic` 為 warn，少數放寬的項目在 `Cargo.toml` 註明理由。`cargo clippy --all-targets -- -D warnings` 必須通過。
@@ -140,18 +140,22 @@ pub trait SyllableModel: Send {
 
 ## 7. 切換
 
-**macOS App**（第 4 階段完成，預設仍是 Swift 引擎）：
+第 4 階段以建置開關讓 App 兩種引擎並存，逐項比對後在第 5 階段切換，現在 Rust 是唯一的引擎。
 
-1. `ZHUYIN_ENGINE=rust make app`：`build-app.sh` 先以 cargo 建置 `engine/target/release/libzhuyin.a`（本機架構），再以 `.build-rust` 建置 App；不設定時建置方式和以前相同。
-2. `platforms/macos/Package.swift` 在 `ZHUYIN_ENGINE=rust` 時加入 `CZhuyin`（module map 引入 `zhuyin.h`）與 `ZhuyinRust`（Swift 包裝）兩個 target，App 以 `ZHUYIN_RUST_ENGINE` 編譯，並靜態連結函式庫。
-3. `ZhuyinRust` 提供 `RustEngine`、`RustComposer`、`RustReranker`、`RustSyllableScorer`，介面和 App 用到的 `Engine`、`Composer`、`NeuralReranker`、`SyllableScorer` 相同；值型別（`KeyInput`、`ComposerOptions`、`Presentation`…）仍用 `ZhuyinCore` 的。`Shared/EngineSelection.swift` 在 Rust 模式下以 typealias 讓這四個名稱指向包裝類別，其餘程式碼不變。
-4. Core ML 留在 Swift（`RustModels.swift`），以 callback 交給 Rust 的判斷邏輯。
-5. `EngineBench`（`platforms/macos/Sources/EngineBench`）是不含 App 的引擎路徑：照 `EngineHost` 載入引擎與模型、照 `ControllerCore` 設定組字器，接受 `zt eval latency` 傳的參數，所以 `ZT_CLI=… tools/zt eval latency` 可以量兩種模式。
-6. 第 5 階段移除 Swift 引擎與 `engine/swift`，Rust 成為唯一的引擎。
+**macOS App**：
 
-**Python 工具**：`zt eval` 的工具都以 `ZT_CLI` 指定執行檔，並透過 `--batch` 的標準輸入、輸出溝通。Rust 的 `zhuyin-cli` 重現所有旗標、usage 文字、按鍵跳脫語法（`<space>`、`<S-x>`、`<dt:MS>`…）、輸出格式、錯誤訊息與結束碼，包括 `--models`、`--reranker`、`--v3`、`--model-server`、`--check-v3`。切換時把 `ZT_CLI` 指到 `engine/target/release/zhuyin-cli`；GPU 主機的建置改成 `ORT_LIB_PATH=$ONNXRUNTIME_ROOT/lib cargo build --release -p zhuyin-cli --features onnx`。
+1. `build-app.sh` 先以 cargo 建置 `engine/target/release/libzhuyin.a`（本機架構），再建置 App。
+2. `platforms/macos/Package.swift`：`CZhuyin`（module map 引入 `zhuyin.h`）、`ZhuyinEngine`（Swift 包裝，靜態連結函式庫）、App 與 `EngineBench`。
+3. `ZhuyinEngine` 提供引擎的值型別（`KeyInput`、`ComposerOptions`、`Presentation` 等，原本在 Swift 引擎的 `API.swift`），以及 `Engine`、`Composer`、`NeuralReranker`、`SyllableScorer`，介面和 App 原本用的相同，所以 App 的其餘程式碼只換了 `import`。組字器的模型 hook 收到的是組字器資料的檢視（`ScoredSentences`、`CandidateTexts`、`CandidateRows`），直接交回 Rust 的模型判斷，不在 Swift 複製。
+4. Core ML 留在 Swift（`Models.swift`），以 callback 交給 Rust 的判斷邏輯。Core ML 的呼叫和原本的 `ZhuyinML` 相同，所以分數相同。
+5. `EngineBench`（`platforms/macos/Sources/EngineBench`）是不含 App 的引擎路徑：照 `EngineHost` 載入引擎與模型、照 `ControllerCore` 設定組字器，接受 `zt eval latency` 傳的參數；Mac 上的 `tools/zt eval latency` 量的就是它，`--check-v3` 經 Rust 與 Core ML 檢查 v3 的向量。
+6. App 的使用統計與改字記錄（`UsageStatsObserver`、`CorrectionRecorder`）在 `ControllerCore`，只用到引擎的值型別，和引擎無關；兩種引擎下 49 項自我測試都通過。
 
-和 Swift CLI 的差異只剩一項：macOS 上的 Rust CLI 沒有 Core ML，`--reranker`、`--v3`、`--check-v3` 與含模型的 `--models` 需要 `--model-server` 或 `onnx` feature，否則印出說明後以結束碼 1 結束；`ZHUYIN_UNITS`（Core ML 的運算單元）不適用。Mac 上 App 的模型路徑由 `EngineBench` 量測與檢查（`--check-v3` 經 Rust 與 Core ML callback）。
+**Python 工具**：`zt` 從目前的原始碼增量建置 Rust 的 `zhuyin-cli`（`cargo build --release`，Linux 上加 `onnx` feature 與 `ORT_LIB_PATH`），評測不會沿用舊的執行檔；`ZT_CLI` 可以指定其他執行檔。`zhuyin-cli` 重現 Swift CLI 的所有旗標、usage 文字、按鍵跳脫語法、輸出格式、錯誤訊息與結束碼。`tools/zt check engine` 執行 `cargo test --release`（原本的 `ZhuyinCoreChecks` 都已移植）。GPU 主機的準備、評測與 ZhuyinBench 都經由同一個 `zhuyin-cli`。
+
+和 Swift CLI 的差異只剩一項：macOS 上的 `zhuyin-cli` 沒有 Core ML，`--reranker`、`--v3`、`--check-v3` 與含模型的 `--models` 需要 `--model-server` 或 `onnx` feature，否則印出說明後以結束碼 1 結束；`ZHUYIN_UNITS`（Core ML 的運算單元）不適用。Mac 上 App 的模型路徑由 `EngineBench` 量測與檢查。
+
+**比對**：移除 Swift 引擎之後，`parity/gate.sh` 改成比對兩個 Rust 建置（這個分支與 main，`--reference DIR`），規則不變：不應改變行為的修改必須 0 差異。golden 摘要仍是 Swift 引擎的結果，只在有意改變行為時重新記錄。
 
 ## 8. 驗收條件
 
@@ -268,6 +272,23 @@ GPU 主機上的 CLI（Linux、ONNX Runtime，`zt eval latency` 的 App 設定 `
 
 Linux 上的 golden 摘要：提交的摘要在 macOS 上產生。Linux 的 glibc 與 Apple 的 libm 在少數數學函式上差最後一位（例如語言模型的句尾分數 4 行），所以 Linux 上以提交的摘要比對會不同；`gate.sh` 在主機上用 Swift 工具重新產生摘要（`ZHUYIN_GOLDEN`），再和 Rust 比對，兩邊用同一個 libm。
 
+### 8.5 第 5 階段：切換
+
+移除 Swift 引擎之前，最後一次完整比對（ba5078b，合併 main 的 e0f1e4b 之後）：CLI 比對 234 組、57,772 行，0 行不同；兩邊的 `--check-v3` 報告相同；golden 摘要在主機的資料上相同。報告在 `parity/reports/swift-final/`。合併 main 之後，Mac 上 App 的引擎路徑（`EngineBench`，Core ML）在 Swift 與 Rust 兩種模式下對 40 段文字送出的結果相同，App 自我測試兩種模式都是 49/49。
+
+切換後，Rust 引擎的 App 與保留下來的 Swift 引擎建置（同一份 App 資料）交錯量測，各 5 次的中位數（Apple M5；Mac 上同時有其他 App 在跑，負載約 5）：
+
+| 每鍵 | Swift 引擎 | Rust 引擎 |
+|---|---:|---:|
+| p50 | 7.35 ms | 3.4 ms |
+| p95 | 19.8 ms | 12.85 ms |
+| 最大值 | 23.1 ms | 16.8 ms |
+| CPU 時間 | 8.2 ms | 4.7 ms |
+| 能耗 | 44.61 mJ | 24.11 mJ |
+| 記憶體（結束時） | 15 MB | 14 MB |
+
+兩者送出的文字逐字相同（40/40）。
+
 ## 9. 階段
 
 | 階段 | 內容 | 完成條件 |
@@ -276,6 +297,6 @@ Linux 上的 golden 摘要：提交的摘要在 macOS 上產生。Linux 的 glib
 | 2 解碼 | `Conversion`（詞圖 Viterbi、N-best、快取）、`Engine` 的比對與計分、`PersonalLanguageModel`、學習、自訂詞、記住的字詞、按錯習慣、個人資料檔與匯出匯入、背景寫入；Swift 引擎的決定性順序（§4） | 完成：§8.3 |
 | 3 組字、API、CLI | `Composer`、`zhuyin-cli`（所有旗標與 batch 協定、`--models`；模型旗標除外，§7）、`zhuyin-models` 的計分 trait、其餘全部 `ZhuyinCoreChecks`（含延遲檢查） | 完成：§8.3 |
 | 4 模型與整合 | `zhuyin-models`（Rust 判斷邏輯、ONNX Runtime）、CLI 的模型旗標、`zhuyin-ffi` 與標頭、macOS App 經 callback 接 Core ML（建置開關）、`EngineBench` | 完成：§8.4 |
-| 5 切換 | App、評測工具、GPU 主機改用 Rust；文件更新；移除 Swift 引擎 | 一個版本以 Rust 引擎發布，ZhuyinBench 成績相同 |
+| 5 切換 | App、評測工具、GPU 主機改用 Rust；文件更新；移除 Swift 引擎 | 完成：§8.5；0.4.2 以 Rust 引擎發布 |
 
-第 5 階段：App 預設改用 Rust 引擎（`ZHUYIN_ENGINE` 的預設值）、`zt` 的建置與 GPU 主機改用 Rust 的 `zhuyin-cli`（`onnx` feature）、移除 `engine/swift` 與 `parity/` 的 Swift 量測工具（或保留到最後一次比對），並更新 `AGENTS.md` 與 `docs/engine/`。
+五個階段都已完成。之後的引擎改變直接在 Rust 上做，以 `parity/gate.sh` 和 main 的建置比對（§7「比對」）。
