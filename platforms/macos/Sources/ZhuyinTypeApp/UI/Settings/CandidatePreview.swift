@@ -164,7 +164,8 @@ struct SceneLayout {
         return Self.inset * 2 + Self.lineHeight + (content > 0 ? InputPanelPlacement.gap + content : 0)
     }
 
-    init(scene: PreviewScene, width: CGFloat, preferences: Preferences) {
+    /// `maxHeight`: the tallest the scene may be; a taller window is drawn smaller, as a whole.
+    init(scene: PreviewScene, width: CGFloat, preferences: Preferences, maxHeight: CGFloat = .infinity) {
         self.scene = scene
         self.width = width
         above = preferences.candidatePlacement == .above
@@ -179,7 +180,8 @@ struct SceneLayout {
                                                 style: preferences.candidateStyle, notice: scene.notice,
                                                 zhuyinHint: scene.zhuyinHint)
             panelSize = measured.size
-            scale = min(1, max(0.3, (width - 12) / max(1, measured.size.width)))
+            let room = maxHeight - Self.inset * 2 - Self.lineHeight - InputPanelPlacement.gap
+            scale = min(1, max(0.3, min((width - 12) / max(1, measured.size.width), room / max(1, measured.size.height))))
             let size = CGSize(width: measured.size.width * scale, height: measured.size.height * scale)
             let x = min(max(start - measured.textInset * scale, 6), max(6, width - size.width - 6))
             panel = CGRect(origin: CGPoint(x: x, y: 0), size: size)
@@ -226,15 +228,18 @@ enum PanelMeasure {
 
 // MARK: - One block
 
-private struct PreviewBlock: View {
+struct PreviewBlock: View {
     let layout: SceneLayout
     @ObservedObject var preferences: Preferences
     let animated: Bool
+    /// The scene's title above its card (the unified preview has tabs instead).
+    var showsTitle = true
 
     var body: some View {
         let scene = layout.scene
         VStack(alignment: .leading, spacing: 6) {
             // The title, and on the right how much a window too large for the block is shrunk (never over the scene).
+            if showsTitle {
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(scene.title)
                     .font(.caption.weight(.medium))
@@ -249,6 +254,7 @@ private struct PreviewBlock: View {
                 }
             }
             .frame(width: layout.width, height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
+            }
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
@@ -323,9 +329,11 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
 /// One scene of the preview (the candidate list) on its own, for the floating preview after a change.
 struct CandidateScenePreview: View {
     @ObservedObject var preferences: Preferences
+    /// The scene; the candidate list when nil.
+    var scene: PreviewScene?
     var width: CGFloat = 300
     var body: some View {
-        let layout = SceneLayout(scene: PreviewScenes(preferences: preferences).list, width: width, preferences: preferences)
+        let layout = SceneLayout(scene: scene ?? PreviewScenes(preferences: preferences).list, width: width, preferences: preferences)
         PreviewBlock(layout: layout.fitted(height: layout.naturalHeight), preferences: preferences, animated: false)
             .frame(width: width, height: CandidatePreview.titleHeight + layout.naturalHeight)
     }

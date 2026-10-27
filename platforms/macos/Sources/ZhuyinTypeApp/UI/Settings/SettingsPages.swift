@@ -574,6 +574,8 @@ struct CandidatesPane: View {
     @State private var previewInView = true
     @State private var flash: UUID?
     @State private var flashAt: CGPoint?
+    @StateObject private var director = PreviewDirector()
+    @State private var shownSettings: PreviewSettings?
 
     var body: some View {
         let keys = CurrentKeys(preferences)
@@ -583,10 +585,10 @@ struct CandidatesPane: View {
         let switches = [single.map { "\($0) 單字" }, corrections.map { "\($0) 修正" }].compactMap { $0 }
         let vertical = preferences.candidateLayout == .vertical
         SettingsForm {
-            // The whole window once, at the top; it scrolls away like the rest.  Each section below shows only the
-            // part its settings change.
+            // One preview at the top, with the real window; it plays its states, and a change below switches it to the
+            // state that shows it.  It scrolls away like the rest.
             SettingsSection {
-                CandidatePreview(preferences: preferences, animated: !DemoPinning.still)
+                UnifiedPreview(preferences: preferences, director: director)
                     .background(GeometryReader { proxy in
                         Color.clear.preference(key: PreviewInView.self, value: proxy.frame(in: .named("settingsPage")).maxY > 60)
                     })
@@ -612,7 +614,6 @@ struct CandidatesPane: View {
                     .frame(minWidth: 120, maxWidth: 200)
                     .accessibilityValue("\(Int(preferences.candidateFontSize)) pt")
                 }
-                DensityVignette(preferences: preferences)
                 SettingRow(title: "間距") {
                     RowPicker(title: "間距", selection: binding(preferences, \.candidateDensity),
                               options: [("標準", CandidateDensity.standard), ("緊湊", .compact)], segmented: true)
@@ -633,7 +634,6 @@ struct CandidatesPane: View {
                 }
             }
             SettingsSection("清單的內容") {
-                CorrectionsVignette(preferences: preferences)
                 SettingRow(title: "顯示注音", subtitle: "要改的字的注音，列在清單上方", anchor: SettingsRow.showsZhuyin) {
                     RowSwitch(title: "顯示注音", isOn: binding(preferences, \.showsZhuyinHint))
                 }
@@ -652,7 +652,6 @@ struct CandidatesPane: View {
                 }
             }
             SettingsSection("位置") {
-                PlacementVignette(preferences: preferences)
                 SettingRow(title: "位置", subtitle: "空間不足時換到另一邊，一律留在螢幕內", anchor: SettingsRow.placement) {
                     RowPicker(title: "位置", selection: binding(preferences, \.candidatePlacement),
                               options: [("游標下方", CandidatePlacement.below), ("游標上方", .above)])
@@ -665,14 +664,12 @@ struct CandidatesPane: View {
                 }
             }
             SettingsSection("動畫") {
-                MotionVignette(preferences: preferences)
                 SettingRow(title: "動畫", subtitle: reduceMotion ? "淡入淡出；已開啟「減少動態效果」，不滑動"
                            : "候選字視窗出現、翻頁與「中」「英」提示的動態", anchor: SettingsRow.motion) {
                     RowSwitch(title: "動畫", isOn: binding(preferences, \.panelAnimation))
                 }
             }
             SettingsSection("提示") {
-                ModeBadgeVignette(preferences: preferences)
                 SettingRow(title: "中英提示", subtitle: keys.modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" }
                            ?? "切換時在游標旁顯示「中」或「英」", anchor: SettingsRow.modeToast) {
                     RowSwitch(title: "中英提示", isOn: binding(preferences, \.showModeToast))
@@ -682,9 +679,17 @@ struct CandidatesPane: View {
             }
         }
         .onPreferenceChange(PreviewInView.self) { previewInView = $0 }
+        .onAppear { shownSettings = PreviewSettings(preferences) }
         .onReceive(preferences.objectWillChange) { _ in
-            // After the change lands: if the preview is out of view, show the result beside the pointer for a moment.
-            DispatchQueue.main.async { showFlash() }
+            // After the change lands: switch the preview to the state that shows it, and if the preview is out of view,
+            // show that state beside the pointer for a moment.
+            DispatchQueue.main.async {
+                let now = PreviewSettings(preferences)
+                guard let before = shownSettings, before != now else { return }
+                shownSettings = now
+                if let state = PreviewFlows.state(showing: before, now) { director.show(state) }
+                showFlash()
+            }
         }
         .overlay { flashOverlay }
     }
@@ -713,7 +718,7 @@ struct CandidatesPane: View {
                 let x = min(max(at.x - frame.minX, size.width / 2 + 12), proxy.size.width - size.width / 2 - 12)
                 let above = at.y - frame.minY - size.height - 24
                 let y = above > 8 ? above + size.height / 2 : at.y - frame.minY + 24 + size.height / 2
-                CandidateScenePreview(preferences: preferences)
+                CandidateScenePreview(preferences: preferences, scene: flashScene)
                     .padding(10)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.regularMaterial))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.quaternary, lineWidth: 0.5))
@@ -725,6 +730,15 @@ struct CandidatesPane: View {
                     .accessibilityHidden(true)
             }
         }
+    }
+}
+
+extension CandidatesPane {
+    /// The floating preview shows the state the change switched to, at its last moment.
+    fileprivate var flashScene: PreviewScene? {
+        let flows = PreviewFlows(preferences: preferences)
+        let state = DemoPinning.previewState?.state ?? director.state
+        return flows.frames(state).last
     }
 }
 
