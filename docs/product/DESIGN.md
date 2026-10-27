@@ -37,7 +37,7 @@ ZhuyinType 是開源、在本機運作的 macOS 注音輸入法。
 
 | 按鍵 | 行為 |
 |---|---|
-| 注音鍵 | 拼注音。整句連續輸入，畫面即時顯示最佳整句。 |
+| 注音鍵 | 拼注音。整句連續輸入，畫面即時顯示最佳整句。組字超過 60 個音節時，前面一段自動送出（§2.2）。 |
 | 聲調鍵 6 3 4 7 | 二聲、三聲、四聲、輕聲。 |
 | 空白 | 有未完成的注音時是一聲。沒有時依「空白鍵」設定：「送出並輸入空白」（預設）送出整段，再把空白交給 App；「輸入空白，不送出」在組字中加一個空白，繼續組字（和 ⇧空白 相同）；「開啟候選字視窗」開啟候選字清單。沒有組字時交給 App。空白從不確認選字：清單開著時翻頁。 |
 | Return | 送出整段。 |
@@ -201,7 +201,13 @@ ZhuyinType 是開源、在本機運作的 macOS 注音輸入法。
 
 「快捷鍵」頁的預設值見 §2.1 的「自訂按鍵」。
 
-固定的上限：一段組字最多 60 個音節，達到上限後再打的注音鍵不加入；一個詞最多 6 個字；候選字清單最多 60 項。
+固定的上限：一段組字最多 60 個音節；一個詞最多 6 個字；候選字清單最多 60 項。
+
+組字已有 60 個音節時再打一個字，前面一段先自動送出，其餘留在組字中，這個字照常打出：
+
+- 最後一個標點（。！？，、；： 等）之後剩下 40 個音節以內時，送到那個標點為止；否則送出前面約 20 個音節，在詞與詞之間斷開，不拆開一個詞。
+- 送出的就是畫面上的字，包括選過的字；和按 Return 送出一樣記住選過的字詞，也是後面組字的前文。畫面上留下的字維持原樣。
+- 游標在組字中間時，只送出游標前的部分；游標在開頭時先不送出，這段組字暫時多於 60 個音節。
 
 ### 2.3 容錯輸入
 
@@ -273,10 +279,10 @@ ZhuyinType 是開源、在本機運作的 macOS 注音輸入法。
 | `keys` | 每個按鍵與點按，以 `zhuyin-cli` 批次語法寫成，第二個鍵起前面加 `<dt:毫秒>`。點選候選字寫成那一頁同位置的選字鍵，⇧↑ 修正按鈕寫成 `<sup>`，其他方式送出（點進文字、切換中英、⌘ 組合鍵）寫成 `<enter>` |
 | `typing`、`replayable` | 打出最後那段組字的按鍵：不含清單的按鍵與選字，刪掉重打的部分只留重打的鍵；重播時在後面加 `<enter>`。在句中修改過、或有 `zhuyin-cli` 寫不出的鍵（⌥ 或 ⌃ 加 `>`）時，`replayable` 為 false |
 | `original_typing`、`original_replayable` | 第一次打的按鍵：把每次 ⌫、Esc 的改字換回刪掉的鍵 |
-| `shown` | 第一次改字之前畫面上的字 |
-| `committed` | 送出的字 |
+| `shown` | 第一次改字之前畫面上的字；組字超過 60 個音節、前面一段已自動送出時，前面加上已送出的字 |
+| `committed` | 送出的字。組字超過 60 個音節時前面一段會自動送出，同一段組字仍是一筆記錄，這裡是全部送出的字；重播 `typing` 時也一樣分段送出 |
 | `corrections` | 這一段有哪幾種改字，依第一次出現的順序 |
-| `events` | 依序的事件，每個有 `type`、`t`（從第一個鍵起的毫秒數）與 `shown`（事件之後畫面上的字），其他欄位依種類而定：`type`（連續打的鍵）、`open_list`、`switch_list`、`close_list`、`pick`（`before`、`after`、`start`、`removed`、`inserted`、`rank`、`list`、`via`）、`backspace`／`escape`（`shown_before`、`removed`、`deleted_keys`、`retyped_keys`、`replaced_by`、`cleared`）、`literal_zhuyin`、`undo_literal`、`cursor`（`position`）、`select`、`cancel_select`、`add_phrase`（`phrase`、`added`）、`delete_after_commit`（`deleted`、`previous_committed`、`previous_typing`、`previous_replayable`）、`commit`（`text`） |
+| `events` | 依序的事件，每個有 `type`、`t`（從第一個鍵起的毫秒數）與 `shown`（事件之後畫面上的字），其他欄位依種類而定：`type`（連續打的鍵）、`open_list`、`switch_list`、`close_list`、`pick`（`before`、`after`、`start`、`removed`、`inserted`、`rank`、`list`、`via`）、`backspace`／`escape`（`shown_before`、`removed`、`deleted_keys`、`retyped_keys`、`replaced_by`、`cleared`）、`literal_zhuyin`、`undo_literal`、`cursor`（`position`）、`select`、`cancel_select`、`add_phrase`（`phrase`、`added`）、`delete_after_commit`（`deleted`、`previous_committed`、`previous_typing`、`previous_replayable`）、`commit`（`text`；自動送出前面一段時 `shown` 是留下的組字） |
 
 `deleted_keys` 是刪掉的字當初打的鍵，`retyped_keys` 是之後補打、直到組字回到原本長度的鍵，例如打 `1j6`（ㄅㄨˊ）刪掉後改打 `1j4`（ㄅㄨˋ）。刪掉的鍵依畫面回推：回到上一次畫面有同樣多的字與注音的時候；在句中刪除時無法回推，記為空。
 
