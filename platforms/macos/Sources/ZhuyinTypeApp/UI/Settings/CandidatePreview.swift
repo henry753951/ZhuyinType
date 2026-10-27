@@ -319,3 +319,14 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
         (surface.content as? ModeBadgeView)?.label.stringValue = text
     }
 }
+
+/// One scene of the preview (the candidate list) on its own, for the floating preview after a change.
+struct CandidateScenePreview: View {
+    @ObservedObject var preferences: Preferences
+    var width: CGFloat = 300
+    var body: some View {
+        let layout = SceneLayout(scene: PreviewScenes(preferences: preferences).list, width: width, preferences: preferences)
+        PreviewBlock(layout: layout.fitted(height: layout.naturalHeight), preferences: preferences, animated: false)
+            .frame(width: width, height: CandidatePreview.titleHeight + layout.naturalHeight)
+    }
+}

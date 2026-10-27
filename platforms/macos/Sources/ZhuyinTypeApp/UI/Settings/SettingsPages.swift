@@ -8,14 +8,13 @@ import ZhuyinEngine
 
 /// Pages one level down from a sidebar page.
 enum SettingsSubpage: String, CaseIterable, Identifiable {
-    case punctuation, typingKeys, fuzzy, context, placement, learnedWords, phrases, performance, apps
+    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps
     var id: String { rawValue }
 
     var pane: SettingsPane {
         switch self {
         case .punctuation, .typingKeys: return .typing
         case .fuzzy, .context: return .choosing
-        case .placement: return .candidates
         case .learnedWords, .phrases: return .words
         case .performance: return .analytics
         case .apps: return .advanced
@@ -28,7 +27,6 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .typingKeys: return "所有打字的按鍵"
         case .fuzzy: return "模糊音"
         case .context: return "前文"
-        case .placement: return "位置與外觀"
         case .learnedWords: return "記住的字詞"
         case .phrases: return "自訂詞"
         case .performance: return "效能"
@@ -57,6 +55,7 @@ enum SettingsRow {
     static let pageKeys = "pageKeys", single = "single", zhuyinRow = "zhuyinRow", selection = "selection"
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
     static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin"
+    static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
 }
 
 /// Where each feature with keys is set.
@@ -188,7 +187,6 @@ struct SettingsPaneView: View {
         case .typingKeys: TypingKeysPage(preferences: preferences)
         case .fuzzy: FuzzyPage(preferences: preferences)
         case .context: ContextPane(preferences: preferences, pinnedScene: DemoPinning.context)
-        case .placement: PlacementPage(preferences: preferences)
         case .learnedWords: WordListPage(model: model, list: .learned, preferences: preferences)
         case .phrases: WordListPage(model: model, list: .phrases, preferences: preferences)
         case .performance: PerformancePage()
@@ -306,14 +304,12 @@ struct CommandKeyRows: View {
     let commands: [ShortcutCommand]
     var body: some View {
         ForEach(commands, id: \.self) { command in
-            SettingRow(title: commands.count > 1 ? command.label : "快捷鍵", indent: true, anchor: command.keysRow) {
-                if preferences.isCustomized(command) {
-                    Button("還原預設") { _ = preferences.resetBindings(command) }
-                        .buttonStyle(.link)
-                        .help("還原成 " + command.defaultBindings.map(\.spoken).joined(separator: " 或 "))
-                }
-                ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
+            let row = AnyHashable("keysrow-" + command.rawValue)
+            SettingRow(title: commands.count > 1 ? command.label : "快捷鍵", indent: true,
+                       marked: preferences.isCustomized(command), anchor: command.keysRow) {
+                ShortcutField(preferences: preferences, command: command, row: row, preview: DemoPinning.fieldStates[command])
             }
+            .hoverTracked(row)
         }
     }
 }
@@ -396,9 +392,9 @@ private struct TypingPane: View {
                 }
                 FeatureRow(preferences: preferences, title: "Caps Lock 打英文", subtitle: "開著時打英文，正在組的字先送出",
                            feature: .capsLockEnglish, anchor: SettingsRow.capsLock)
-                SettingRow(title: "中英提示", subtitle: keys.modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" }
-                           ?? "切換時在游標旁顯示「中」或「英」") {
-                    RowSwitch(title: "中英提示", isOn: binding(preferences, \.showModeToast))
+                SettingLinkRow(title: "中英提示", subtitle: "切換時在游標旁顯示「中」或「英」",
+                               value: preferences.showModeToast ? "顯示" : "不顯示") {
+                    SettingsWindowController.shared.open(SettingsPlace(.candidates, row: SettingsRow.modeToast))
                 }
                 SettingRow(title: "開始輸入時使用英文") {
                     RowSwitch(title: "開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
@@ -573,6 +569,11 @@ private struct FuzzyPage: View {
 struct CandidatesPane: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var model: SettingsModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Whether the preview at the top is in view; when it is not, a change shows a floating preview for a moment.
+    @State private var previewInView = true
+    @State private var flash: UUID?
+    @State private var flashAt: CGPoint?
 
     var body: some View {
         let keys = CurrentKeys(preferences)
@@ -582,10 +583,15 @@ struct CandidatesPane: View {
         let switches = [single.map { "\($0) 單字" }, corrections.map { "\($0) 修正" }].compactMap { $0 }
         let vertical = preferences.candidateLayout == .vertical
         SettingsForm {
+            // The whole window once, at the top; it scrolls away like the rest.  Each section below shows only the
+            // part its settings change.
             SettingsSection {
                 CandidatePreview(preferences: preferences, animated: !DemoPinning.still)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: PreviewInView.self, value: proxy.frame(in: .named("settingsPage")).maxY > 60)
+                    })
             }
-            SettingsSection("候選字視窗") {
+            SettingsSection("候選字清單") {
                 SettingRow(title: "排列", subtitle: vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
                            : "← → 移動反白，↑ ↓ 翻頁" + (keys.text(.previousCharacter).map { "，\($0) 改前一個字" } ?? ""),
                            anchor: SettingsRow.layout) {
@@ -606,6 +612,7 @@ struct CandidatesPane: View {
                     .frame(minWidth: 120, maxWidth: 200)
                     .accessibilityValue("\(Int(preferences.candidateFontSize)) pt")
                 }
+                DensityVignette(preferences: preferences)
                 SettingRow(title: "間距") {
                     RowPicker(title: "間距", selection: binding(preferences, \.candidateDensity),
                               options: [("標準", CandidateDensity.standard), ("緊湊", .compact)], segmented: true)
@@ -620,8 +627,13 @@ struct CandidatesPane: View {
                 }
                 FeatureRow(preferences: preferences, title: "翻頁", subtitle: "空白也翻到下一頁",
                            feature: .pageKeys, commands: [.nextPage, .previousPage], anchor: SettingsRow.pageKeys)
+                SettingRow(title: "到頁底時 ↓ 翻到下一頁", subtitle: preferences.pageAtListEdge
+                           ? "在一頁的最後一個字按 ↓ 到下一頁，到清單結尾停住" : "↓ 停在一頁的最後一個字；用翻頁鍵翻頁") {
+                    RowSwitch(title: "到頁底時 ↓ 翻到下一頁", isOn: binding(preferences, \.pageAtListEdge))
+                }
             }
             SettingsSection("清單的內容") {
+                CorrectionsVignette(preferences: preferences)
                 SettingRow(title: "顯示注音", subtitle: "要改的字的注音，列在清單上方", anchor: SettingsRow.showsZhuyin) {
                     RowSwitch(title: "顯示注音", isOn: binding(preferences, \.showsZhuyinHint))
                 }
@@ -639,46 +651,88 @@ struct CandidatesPane: View {
                     RowSwitch(title: "單字與修正按鈕", isOn: binding(preferences, \.showsListSwitches)).disabled(switches.isEmpty)
                 }
             }
-            SettingsSection {
-                DrillRow(model: model, title: "位置與外觀", subtitle: "套用到候選字視窗、加入自訂詞的提示與中英提示",
-                         value: [preferences.candidatePlacement == .below ? "游標下方" : "游標上方",
-                                 preferences.panelAppearance == .system ? "跟隨系統" : preferences.panelAppearance == .light ? "淺色" : "深色"]
-                            .joined(separator: "、"),
-                         subpage: .placement)
+            SettingsSection("位置") {
+                PlacementVignette(preferences: preferences)
+                SettingRow(title: "位置", subtitle: "空間不足時換到另一邊，一律留在螢幕內", anchor: SettingsRow.placement) {
+                    RowPicker(title: "位置", selection: binding(preferences, \.candidatePlacement),
+                              options: [("游標下方", CandidatePlacement.below), ("游標上方", .above)])
+                }
+            }
+            SettingsSection("外觀") {
+                SettingRow(title: "外觀", subtitle: "也套用到加入自訂詞的提示與「中」「英」提示", anchor: SettingsRow.appearance) {
+                    RowPicker(title: "外觀", selection: binding(preferences, \.panelAppearance),
+                              options: [("跟隨系統", PanelAppearance.system), ("淺色", .light), ("深色", .dark)])
+                }
+            }
+            SettingsSection("動畫") {
+                MotionVignette(preferences: preferences)
+                SettingRow(title: "動畫", subtitle: reduceMotion ? "淡入淡出；已開啟「減少動態效果」，不滑動"
+                           : "候選字視窗出現、翻頁與「中」「英」提示的動態", anchor: SettingsRow.motion) {
+                    RowSwitch(title: "動畫", isOn: binding(preferences, \.panelAnimation))
+                }
+            }
+            SettingsSection("提示") {
+                ModeBadgeVignette(preferences: preferences)
+                SettingRow(title: "中英提示", subtitle: keys.modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" }
+                           ?? "切換時在游標旁顯示「中」或「英」", anchor: SettingsRow.modeToast) {
+                    RowSwitch(title: "中英提示", isOn: binding(preferences, \.showModeToast))
+                }
             } footer: {
                 KeysOverviewLink()
+            }
+        }
+        .onPreferenceChange(PreviewInView.self) { previewInView = $0 }
+        .onReceive(preferences.objectWillChange) { _ in
+            // After the change lands: if the preview is out of view, show the result beside the pointer for a moment.
+            DispatchQueue.main.async { showFlash() }
+        }
+        .overlay { flashOverlay }
+    }
+
+    private func showFlash() {
+        guard !previewInView, !SettingsWindowController.isPreview, let window = SettingsWindowController.shared.sheetWindow,
+              let content = window.contentView else { return }
+        let point = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let id = UUID()
+        flashAt = CGPoint(x: point.x, y: content.bounds.height - point.y)
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.25, dampingFraction: 0.9)) { flash = id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard flash == id else { return }
+            withAnimation(.easeOut(duration: 0.3)) { flash = nil }
+        }
+    }
+
+    /// The floating preview after a change: beside the pointer, above it when there is room, taking no layout space.
+    @ViewBuilder private var flashOverlay: some View {
+        let pinned = DemoPinning.flashAt
+        if flash != nil || pinned != nil {
+            GeometryReader { proxy in
+                let frame = proxy.frame(in: .global)
+                let at = pinned ?? flashAt ?? CGPoint(x: frame.midX, y: frame.midY)
+                let size = CGSize(width: 300, height: 190)
+                let x = min(max(at.x - frame.minX, size.width / 2 + 12), proxy.size.width - size.width / 2 - 12)
+                let above = at.y - frame.minY - size.height - 24
+                let y = above > 8 ? above + size.height / 2 : at.y - frame.minY + 24 + size.height / 2
+                CandidateScenePreview(preferences: preferences)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.regularMaterial))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.quaternary, lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                    .fixedSize()
+                    .position(x: x, y: min(y, proxy.size.height - size.height / 2 - 8))
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
     }
 }
 
-private struct PlacementPage: View {
-    @ObservedObject var preferences: Preferences
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var body: some View {
-        SettingsForm {
-            SettingsSection {
-                SettingRow(title: "位置", subtitle: "空間不足時換到另一邊，一律留在螢幕內") {
-                    RowPicker(title: "位置", selection: binding(preferences, \.candidatePlacement),
-                              options: [("游標下方", CandidatePlacement.below), ("游標上方", .above)])
-                }
-                SettingRow(title: "外觀", subtitle: "也套用到「中」「英」提示") {
-                    RowPicker(title: "外觀", selection: binding(preferences, \.panelAppearance),
-                              options: [("跟隨系統", PanelAppearance.system), ("淺色", .light), ("深色", .dark)])
-                }
-                SettingRow(title: "動畫", subtitle: reduceMotion ? "候選字視窗淡入；已開啟「減少動態效果」，不滑動"
-                           : "候選字視窗淡入，「中」「英」提示淡出") {
-                    RowSwitch(title: "動畫", isOn: binding(preferences, \.panelAnimation))
-                }
-            } footer: {
-                FooterText("套用到候選字視窗、加入自訂詞的提示與「中」「英」提示。")
-            }
-            SettingsSection {
-                CandidatePreview(preferences: preferences, animated: !DemoPinning.still)
-            }
-        }
-    }
+private struct PreviewInView: PreferenceKey {
+    static let defaultValue = true
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = nextValue() }
 }
+
 
 // MARK: - 字詞
 

@@ -139,9 +139,11 @@ final class LearnedListController: NSObject {
 
     func reload() {
         guard let engine = model?.engine else { list.set([]); return }
-        let learned = engine.learnedEntries().map { entry in
-            ListItem(id: "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
-                     meta: "\(number.string(from: NSNumber(value: entry.count)) ?? "") 次", count: entry.count)
+        let entries = engine.learnedEntries()
+        let top = log1p(entries.map(\.count).max() ?? 1)
+        let learned = entries.map { entry in
+            ListItem(id: "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading, count: entry.count,
+                     level: max(1, Int((log1p(entry.count) / max(top, 0.0001) * 5).rounded(.up))))
         }
         let excluded = engine.excludedEntries().map { entry in
             ListItem(id: Self.excludedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,

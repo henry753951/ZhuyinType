@@ -115,7 +115,7 @@ struct KeysPane: View {
                         } label: {
                             SettingRow(title: "「\(conflict.0.label)」與「\(conflict.1.label)」",
                                        subtitle: "用同一個按鍵；同一個按鍵只會執行其中一個功能", accessory: .chevron) {
-                                KeyCombo(keys: conflict.2.keycaps, tint: Color(nsColor: .systemRed))
+                                KeyChip(text: conflict.2.compact, tint: Color(nsColor: .systemRed))
                             }
                             .contentShape(Rectangle())
                         }
@@ -298,25 +298,17 @@ private struct KeyItemRow: View {
     private func editableRow(_ command: ShortcutCommand, _ availability: KeyAvailability?) -> some View {
         let hovered = hover.hovered == AnyHashable("row-" + item.id) || DemoPinning.hoveredRow == "row-" + item.id
         let customized = preferences.isCustomized(command)
-        let accessory: RowAccessory = item.home.map { home in
-            .link(help: "前往「\(home.subpage?.title ?? home.pane.title)」") { SettingsWindowController.shared.open(home) }
-        } ?? .none
-        return SettingRow(title: item.title, subtitle: availability?.note ?? item.subtitle, accessory: accessory,
-                          anchor: "row-" + item.id) {
-            if customized {
-                // 已自訂 at rest, 還原預設 on hover, in the same place: nothing moves.
-                ZStack(alignment: .trailing) {
-                    CustomizedBadge().opacity(hovered ? 0 : 1)
-                    Button("還原預設") { _ = preferences.resetBindings(command) }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .opacity(hovered ? 1 : 0)
-                        .allowsHitTesting(hovered)
-                }
-                .animation(.easeOut(duration: 0.12), value: hovered)
-            }
+        var accessory = RowAccessory.none
+        if let home = item.home {
+            let name: String = home.subpage?.title ?? home.pane.title
+            accessory = .link(help: "前往「\(name)」", action: { SettingsWindowController.shared.open(home) })
+        }
+        let rowID = AnyHashable("row-" + item.id)
+        _ = hovered
+        return SettingRow(title: item.title, subtitle: availability?.note ?? item.subtitle, marked: customized,
+                          accessory: accessory, anchor: "row-" + item.id) {
             ShortcutField(preferences: preferences, command: command, disabled: availability != nil,
-                          preview: DemoPinning.fieldStates[command])
+                          row: rowID, maxVisible: 2, preview: DemoPinning.fieldStates[command])
         }
         .hoverTracked("row-" + item.id)
         .contextMenu {
@@ -340,34 +332,19 @@ private struct KeyItemRow: View {
         switch item.keys {
         case .fixed(let caps, let alternative):
             HStack(spacing: 6) {
-                KeyCombo(keys: caps)
-                if !alternative.isEmpty {
-                    Text("或").foregroundStyle(.tertiary)
-                    KeyCombo(keys: alternative)
-                }
+                KeyChip(text: caps.joined())
+                if !alternative.isEmpty { KeyChip(text: alternative.joined()) }
             }
+            .accessibilityLabel(alternative.isEmpty ? caps.joined() : caps.joined() + " 或 " + alternative.joined())
         case .command(let command):
             let conflicts = preferences.conflicts(of: command)
             HStack(spacing: 6) {
                 ForEach(Array((preferences.bindings[command] ?? []).enumerated()), id: \.offset) { index, shortcut in
-                    if index > 0 { Text("或").foregroundStyle(.tertiary) }
-                    KeyCombo(keys: shortcut.keycaps, tint: conflicts[index] == nil ? nil : Color(nsColor: .systemRed))
+                    KeyChip(text: shortcut.compact, tint: conflicts[index] == nil ? nil : Color(nsColor: .systemRed))
                 }
             }
         case .shiftTap:
-            KeyCombo(keys: [keys.shiftTap ?? "Shift"])
+            KeyChip(text: keys.shiftTap ?? "Shift")
         }
-    }
-}
-
-/// The quiet mark on a row whose keys differ from the default.
-private struct CustomizedBadge: View {
-    var body: some View {
-        Text("已自訂")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(.quaternary.opacity(0.6)))
     }
 }

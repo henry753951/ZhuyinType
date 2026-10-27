@@ -267,6 +267,8 @@ struct SettingRow<Control: View>: View {
     var indent = false
     var dimmed = false
     var link: (title: String, place: SettingsPlace)?
+    /// A small accent dot before the title: the setting differs from its default (「已自訂」 as its tooltip).
+    var marked = false
     var accessory: RowAccessory = .none
     /// The row's id for links: links scroll to it and it shows the arrival tint.
     var anchor: String?
@@ -282,6 +284,15 @@ struct SettingRow<Control: View>: View {
                 Text(title)
                     .foregroundStyle(indent || dimmed ? .secondary : .primary)
                     .help(title)
+                    .overlay(alignment: .leading) {
+                        if marked {
+                            // In the margin, so the title keeps its place.
+                            Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                                .offset(x: -11)
+                                .help("已自訂")
+                                .accessibilityLabel("已自訂")
+                        }
+                    }
                 if let subtitle {
                     Text(subtitle)
                         .font(.callout)
@@ -543,6 +554,8 @@ private struct RowBlocks: PreferenceKey {
 final class HoverState: ObservableObject {
     static let shared = HoverState()
     @Published private(set) var hovered: AnyHashable?
+    /// A part of the hovered thing under the pointer (a key chip in a row), tracked on its own.
+    @Published private(set) var detail: AnyHashable?
     private var monitor: Any?
 
     func enter(_ id: AnyHashable) {
@@ -555,8 +568,13 @@ final class HoverState: ObservableObject {
         }
     }
     func leave(_ id: AnyHashable) { if hovered == id { hovered = nil } }
+    func enterDetail(_ id: AnyHashable) { if detail != id { detail = id } }
+    func leaveDetail(_ id: AnyHashable) { if detail == id { detail = nil } }
     func scrolled() { clear() }
-    func clear() { if hovered != nil { hovered = nil } }
+    func clear() {
+        if hovered != nil { hovered = nil }
+        if detail != nil { detail = nil }
+    }
 }
 
 private struct HoverTracked: ViewModifier {
@@ -576,7 +594,26 @@ private struct HoverTracked: ViewModifier {
     }
 }
 
+private struct HoverTrackedDetail: ViewModifier {
+    let id: AnyHashable
+    @ObservedObject var state = HoverState.shared
+    func body(content: Content) -> some View {
+        if SettingsWindowController.isPreview {
+            content
+        } else {
+            content.onContinuousHover { phase in
+                switch phase {
+                case .active: state.enterDetail(id)
+                case .ended: state.leaveDetail(id)
+                }
+            }
+        }
+    }
+}
+
 extension View {
     /// Reports the pointer over this view to `HoverState` under `id`.
     func hoverTracked(_ id: AnyHashable) -> some View { modifier(HoverTracked(id: id)) }
+    /// Reports the pointer over a part (a chip) of the hovered thing.
+    func hoverTrackedDetail(_ id: AnyHashable) -> some View { modifier(HoverTrackedDetail(id: id)) }
 }

@@ -12,7 +12,7 @@ enum ListSort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .count: return "次數"
+        case .count: return "常用程度"
         case .reading: return "注音"
         case .word: return "字詞"
         case .name: return "名稱"
@@ -31,6 +31,9 @@ struct ListItem: Identifiable, Equatable {
     var appIcon: String?
     /// Sorting by count: larger first.
     var count: Double = 0
+    /// How much a learned word is used, 1–5, drawn as a quiet meter; the engine keeps a weight that fades with time,
+    /// not a count of times, so no number is shown.
+    var level: Int?
     var marked = false
 
     func key(_ sort: ListSort) -> String {
@@ -243,11 +246,17 @@ private struct ListItemRow: View {
                 Spacer(minLength: 8)
                 // The details and the hover actions share one place, so hovering never moves anything.
                 ZStack(alignment: .trailing) {
-                    Text(item.meta ?? "")
-                        .font(.callout)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .opacity(hovered ? 0 : 1)
+                    Group {
+                        if let level = item.level {
+                            UsageMeter(level: level)
+                        } else {
+                            Text(item.meta ?? "")
+                                .font(.callout)
+                                .monospacedDigit()
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .opacity(hovered ? 0 : 1)
                     HStack(spacing: 4) {
                         if list.canEdit {
                             Button("編輯") { list.onEdit?(item) }
@@ -346,5 +355,22 @@ struct HeightFraction: Layout {
     }
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: nil))
+    }
+}
+
+/// 常用程度: five small bars, the used ones in the secondary colour.
+struct UsageMeter: View {
+    let level: Int
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(1...5, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(index <= level ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+                    .frame(width: 3, height: 4 + CGFloat(index) * 1.6)
+            }
+        }
+        .frame(height: 12, alignment: .bottom)
+        .help("常用程度：" + ["很少", "偶爾", "有時", "常用", "很常用"][max(0, min(4, level - 1))])
+        .accessibilityLabel("常用程度 \(level) / 5")
     }
 }

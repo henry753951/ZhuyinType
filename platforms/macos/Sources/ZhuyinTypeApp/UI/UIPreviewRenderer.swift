@@ -37,6 +37,7 @@ enum UIPreviewRenderer {
         DemoPinning.context = 0
         DemoPinning.intro = 12
         DemoPinning.mini = 99
+        DemoPinning.vignettePhase = 1
         do {
             for sub in ["panels", "settings", "popovers", "frames"] {
                 try FileManager.default.createDirectory(at: directory.appendingPathComponent(sub), withIntermediateDirectories: true)
@@ -242,6 +243,32 @@ enum UIPreviewRenderer {
             let view = ContextIllustration(pinned: scene).padding(16).background(Color(nsColor: .windowBackgroundColor))
             try capture(swiftUI: view, width: 552, to: directory.appendingPathComponent("context-scene\(scene)-\(suffix).png"))
         }
+        // The 視窗與提示 vignettes, each in both phases and for the settings they follow.
+        let vignettes: [(String, () -> Void, AnyView)] = [
+            ("corrections", {}, AnyView(CorrectionsVignette(preferences: preferences))),
+            ("corrections-plain", { preferences.showsAnnotations = false }, AnyView(CorrectionsVignette(preferences: preferences))),
+            ("placement-below", {}, AnyView(PlacementVignette(preferences: preferences))),
+            ("placement-above", { preferences.candidatePlacement = .above }, AnyView(PlacementVignette(preferences: preferences))),
+            ("density-standard", {}, AnyView(DensityVignette(preferences: preferences))),
+            ("density-compact-5", { preferences.candidateDensity = .compact; preferences.candidatesPerPage = 5 },
+             AnyView(DensityVignette(preferences: preferences))),
+            ("density-horizontal", { preferences.candidateLayout = .horizontal }, AnyView(DensityVignette(preferences: preferences))),
+            ("motion-on", {}, AnyView(MotionVignette(preferences: preferences))),
+            ("motion-off", { preferences.panelAnimation = false }, AnyView(MotionVignette(preferences: preferences))),
+            ("badge", {}, AnyView(ModeBadgeVignette(preferences: preferences))),
+            ("badge-off", { preferences.showModeToast = false }, AnyView(ModeBadgeVignette(preferences: preferences))),
+        ]
+        for (name, apply, view) in vignettes {
+            for phase in [0, 1] {
+                preferences.resetToDefaults()
+                apply()
+                DemoPinning.vignettePhase = phase
+                try capture(swiftUI: view.padding(12).background(Color(nsColor: .windowBackgroundColor)), width: 460,
+                            to: directory.appendingPathComponent("vignette-\(name)-\(phase)-\(suffix).png"))
+            }
+        }
+        DemoPinning.vignettePhase = 1
+        preferences.resetToDefaults()
         let demos: [(String, [DemoFrame])] = [
             ("space-open", OptionDemos.space(.openCandidates)),
             ("space-commit-space", OptionDemos.space(.commitAndSpace)), ("space-insert", OptionDemos.space(.insertSpace)),
@@ -344,7 +371,7 @@ enum UIPreviewRenderer {
         (.intro, nil, 1320), (.typing, nil, 1260), (.choosing, nil, 1180), (.candidates, nil, 1720), (.words, nil, 440),
         (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
         (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
-        (.candidates, .placement, 1300), (.words, .learnedWords, 620), (.words, .phrases, 620),
+        (.words, .learnedWords, 620), (.words, .phrases, 620),
         (.analytics, .performance, 760), (.advanced, .apps, 460),
     ]
 
@@ -395,6 +422,28 @@ enum UIPreviewRenderer {
                 }
                 retire(window)
             }
+        }
+        // 視窗與提示 scrolled down, with the floating preview a change shows while the top preview is out of view.
+        for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (640, 440, "-min"), (1280, 900, "-large")] {
+            RowGeometry.reset()
+            let window = settings.makeWindow(pane: .candidates)
+            window.setContentSize(NSSize(width: width, height: height))
+            window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+            window.alphaValue = 0
+            window.orderFrontRegardless()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+            if let scroll = firstScrollView(in: window.contentView) {
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: 900))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+            try capture(window: window, to: directory.appendingPathComponent("candidates-scrolled\(label)-\(suffix).png"))
+            DemoPinning.flashAt = CGPoint(x: width * 0.72, y: height * 0.62)
+            settings.model.objectWillChange.send()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.4))
+            try capture(window: window, to: directory.appendingPathComponent("candidates-flash\(label)-\(suffix).png"))
+            DemoPinning.flashAt = nil
+            retire(window)
         }
         // A push into 記住的字詞 and the pop back, frame by frame; a row of it being removed.
         for (push, kind) in [(true, "push"), (false, "pop")] {
@@ -461,17 +510,22 @@ enum UIPreviewRenderer {
         try renderPages(settings, [(.choosing, nil, 1180), (.candidates, nil, 1720), (.typing, nil, 1260)], to: directory,
                         label: "-field-states", suffix: suffix)
         DemoPinning.fieldStates = [:]
-        // The overview while editing: changed keys (已自訂, and 還原預設 on the hovered row), a command with no key,
-        // a field hovered (＋ and the ✕ on each key) and one recording.
+        // Key chips in every state, on the overview and on the feature pages: at rest (with +N), the row hovered
+        // (ghost ＋, 還原預設), a chip hovered (its ✕), +N opened, no key (— and, hovered, ＋ 新增按鍵), recording,
+        // accepted and refused.
         Preferences.shared.resetToDefaults()
         customKeys(Preferences.shared)
         var edited = Preferences.shared.bindings
+        edited[.nextPage] = [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true), Shortcut("]", control: true)]
+        edited[.previousPage] = [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
         edited[.singleCharacterList] = []
+        edited[.typeZhuyin] = []
         Preferences.shared.bindings = edited
-        DemoPinning.fieldStates = [.nextPage: .hover, .correctionsList: .recording(index: 1, held: ["⌥"])]
-        DemoPinning.hoveredRow = "row-nextPage"
-        try renderPages(settings, [(.keys, nil, 2600)], to: directory, label: "-edit", suffix: suffix)
-        DemoPinning.hoveredRow = nil
+        DemoPinning.fieldStates = [.previousPage: .expanded, .selectLeft: .chipHover(0), .selectRight: .hover,
+                                   .typeZhuyin: .hover, .correctionsList: .recording(index: 1, held: ["⌥"]),
+                                   .deleteWord: .accepted(index: 0), .commitWithNewline: .refused("已用於「下一頁」")]
+        try renderPages(settings, [(.keys, nil, 2600), (.choosing, nil, 1300), (.typing, nil, 1300)], to: directory,
+                        label: "-chips", suffix: suffix)
         DemoPinning.fieldStates = [:]
         Preferences.shared.resetToDefaults()
         // The arrival cue, frame by frame: on a row (its section's header in the accent colour), then on a section.
