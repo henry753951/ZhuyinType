@@ -44,6 +44,12 @@ class EngineConfig:
     def lexicon(self) -> Path:
         return self.data / "lexicon.tsv"
 
+    @property
+    def reading_lexicon(self) -> Path:
+        """The lexicon TSV the evaluations derive typed readings from: this data directory's, or the default data
+        directory's when this one has only the compiled lexicon.bin (an app bundle's Resources)."""
+        return self.lexicon if self.lexicon.exists() else paths.data("lexicon.tsv")
+
     def arguments(self) -> list[str]:
         """zhuyin-cli options for this configuration."""
         base = ["--models", str(self.data)] if self.name == "app" else ["--lexicon", str(self.lexicon)]

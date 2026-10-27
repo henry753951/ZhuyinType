@@ -57,7 +57,7 @@ class Latency(Evaluator):
     n_help = "sentences per set (default: 10, the whole latency set)"
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
-        lexicon = Lexicon(pool.config.lexicon)
+        lexicon = Lexicon(pool.config.reading_lexicon)
         rows: list[dict[str, Any]] = []
         for sentence in eval_set.file.read_text(encoding="utf-8").split():
             if len(rows) >= args.n:

@@ -46,7 +46,7 @@ class Conversion(Evaluator):
         )
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
-        lexicon = Lexicon(args.typing_lexicon or pool.config.lexicon)
+        lexicon = Lexicon(args.typing_lexicon or pool.config.reading_lexicon)
         runs = sample_runs(eval_set.file, lexicon, args.n if args.split == "none" else 10**9, args.seed)
         selected: list[Run] = []
         scripts: list[str] = []

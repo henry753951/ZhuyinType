@@ -292,7 +292,7 @@ class TypingErrors(Evaluator):
             raise SystemExit("zt eval typing-errors: -n must be positive and --examples nonnegative")
         base = pool.config.options
         variants = self.variants(args, base)
-        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed, whole_readings=True)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.reading_lexicon), args.n, args.seed, whole_readings=True)
         if len(runs) < args.n:
             raise SystemExit(
                 f"zt eval typing-errors: {eval_set.name} has only {len(runs)} readable runs, need {args.n}"

@@ -105,7 +105,7 @@ class Typo(Evaluator):
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
         if args.n < 1 or any(not 0 <= rate <= 1 for rate in args.rates):
             raise SystemExit("zt eval typo: -n must be positive and rates between 0 and 1")
-        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.reading_lexicon), args.n, args.seed)
         if len(runs) < args.n:
             raise SystemExit(f"zt eval typo: {eval_set.name} has only {len(runs)} readable runs, need {args.n}")
         wanted = [run.text for run in runs]

@@ -100,7 +100,7 @@ class Errors(Evaluator):
         parser.add_argument("--examples", type=int, default=0, help="print this many failures per habit")
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
-        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed, whole_readings=True)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.reading_lexicon), args.n, args.seed, whole_readings=True)
         habits = habit_scripts([(run.text, run.readings) for run in runs], args.seed)
         rows: dict[str, dict[str, Any]] = {}
         items: list[dict[str, Any]] = []

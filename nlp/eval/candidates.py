@@ -53,7 +53,7 @@ class Candidates(Evaluator):
     help = "rank of the right entry in the candidate list at each wrong character"
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
-        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed, whole_readings=True)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.reading_lexicon), args.n, args.seed, whole_readings=True)
         converted = pool.run([run.keys + "<enter>" for run in runs])
         probes: list[tuple[int, str, str, str]] = []  # run index, target, shown, keys
         for index, (run, got) in enumerate(zip(runs, converted)):

@@ -65,7 +65,7 @@ class Repick(Evaluator):
         parser.add_argument("--relearn", action="store_true", help="retype runs fixed by picks after committing them")
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
-        runs = sample_runs(eval_set.file, Lexicon(pool.config.lexicon), args.n, args.seed, whole_readings=True)
+        runs = sample_runs(eval_set.file, Lexicon(pool.config.reading_lexicon), args.n, args.seed, whole_readings=True)
         typings = [Typing(run.text, run.keys, run.keys) for run in runs]
         first = pool.run([t.keys + "<enter>" for t in typings])
         shown = list(first)
