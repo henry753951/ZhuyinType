@@ -204,17 +204,19 @@ final class ZhuyinInputController: IMKInputController {
 
     override func menu() -> NSMenu! {
         let menu = NSMenu()
-        for title in ["設定…", "自訂詞與學到的詞…"] {
-            let item = menu.addItem(withTitle: title, action: #selector(openSettings(_:)), keyEquivalent: "")
+        for (title, action) in [("設定…", #selector(openSettings(_:))), ("自訂詞與學到的詞…", #selector(openWords(_:)))] {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
         }
         menu.addItem(.separator())
-        let about = menu.addItem(withTitle: "關於 ZhuyinType", action: #selector(openSettings(_:)), keyEquivalent: "")
+        let about = menu.addItem(withTitle: "關於 ZhuyinType", action: #selector(openAbout(_:)), keyEquivalent: "")
         about.target = self
         return menu
     }
 
     @objc private func openSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+    @objc private func openWords(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.words)) }
+    @objc private func openAbout(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.about)) }
 
     private func bind(_ sender: Any?) -> Bool {
         guard let input = (sender as? IMKTextInput) ?? client() else { return false }
@@ -290,7 +292,14 @@ final class ZhuyinInputController: IMKInputController {
         let p = Preferences.shared
         showModeToast = p.showModeToast
         core?.usesPrecedingText = p.usesPrecedingText
-        core?.shortcuts = Dictionary(p.shortcuts.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        core?.shortcuts = Dictionary(p.activeBindings.flatMap { command, list in list.map { ($0, command) } },
+                                     uniquingKeysWith: { first, _ in first })
+        core?.disabledFeatures = p.disabledKeyFeatures
+        if let core, p.recordsUsageStats {
+            core.stats = core.stats ?? UsageStatsObserver(store: UsageStatsStore.shared)
+        } else {
+            core?.stats = nil
+        }
         EngineHost.engine?.fuzzySounds = p.fuzzySounds
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
         if let core, p.recordsCorrections {
@@ -305,7 +314,7 @@ final class ZhuyinInputController: IMKInputController {
 
     private func setPanelCallbacks() {
         CandidatePanelController.shared.onZhuyin = { [weak self] in
-            guard let self, self.active, Self.activeController === self else { return }
+            guard let self, self.active, Self.activeController === self, Preferences.shared.isEnabled(.zhuyinRowClick) else { return }
             self.core?.selectZhuyin()
         }
         CandidatePanelController.shared.onSingleCharacter = { [weak self] in

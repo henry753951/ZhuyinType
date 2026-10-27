@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import ZhuyinCore
 
@@ -16,11 +17,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
     let model = SettingsModel()
     private var window: NSWindow?
     private var split: SettingsSplitViewController?
-    private var pane: SettingsPane = .general
+    private var pane: SettingsPane = .intro
     private static let searchItem = NSToolbarItem.Identifier("search")
+    private var subpageObserver: AnyCancellable?
+    private weak var toolbar: NSToolbar?
 
-    func show() {
+    /// Shows the window, at `place` when given (otherwise where it was).
+    func show(_ place: SettingsPlace? = nil) {
         let window = self.window ?? makeWindow()
+        if let place { open(place) }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
@@ -47,9 +52,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         window.delegate = self
         window.center()
         if !Self.isPreview { window.setFrameAutosaveName("ZhuyinTypeSettings") }
+        self.toolbar = toolbar
         split.onSelect = { [weak self, weak window] pane in
             window?.title = pane.title
-            self?.paneChanged(pane, toolbar: toolbar)
+            self?.model.subpage = nil
+            self?.paneChanged(pane)
+        }
+        // A sub-page with a list (自訂詞, 記住的字詞) gets the toolbar search.
+        subpageObserver = model.$subpage.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self else { return }
+            self.paneChanged(self.pane)
         }
         split.select(pane ?? SettingsPane.lastSelected)
         self.window = window
@@ -62,27 +74,50 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         split?.select(pane)
     }
 
+    /// Whether `pane` is the page on screen.
+    func isShowing(_ pane: SettingsPane) -> Bool { self.pane == pane }
+
+    /// Shows a place: a page, a sub-page of it, scrolled to a row.
+    func open(_ place: SettingsPlace) {
+        if split == nil { _ = makeWindow() }
+        select(place.pane)
+        model.subpage = place.subpage
+        model.scrollTarget = place.row
+    }
+
+    /// Shows the 快捷鍵 page scrolled to `section`.
+    func showKeys(_ section: KeySection, command: ShortcutCommand? = nil) {
+        open(SettingsPlace(.keys, row: (command?.section ?? section).id))
+    }
+
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
 
     // MARK: Toolbar search, for the word lists
 
+    /// The toolbar search filters the word lists, and the actions of the 快捷鍵 page.
+    private var searches: Bool { searchedList != nil || pane == .keys }
+
     private var searchedList: ListEditorView? {
-        switch pane {
+        guard pane == .words else { return nil }
+        switch model.subpage {
         case .phrases: return model.phrases.view
-        case .learned: return model.learned.view
+        case .learnedWords: return model.learned.view
         default: return nil
         }
     }
 
-    private func paneChanged(_ pane: SettingsPane, toolbar: NSToolbar) {
-        searchedList?.setQuery("")
+    private func paneChanged(_ pane: SettingsPane) {
+        model.phrases.view.setQuery("")
+        model.learned.view.setQuery("")
+        model.keysQuery = ""
         self.pane = pane
+        guard let toolbar else { return }
         let index = toolbar.items.firstIndex { $0.itemIdentifier == Self.searchItem }
-        if searchedList != nil, index == nil {
+        if searches, index == nil {
             toolbar.insertItem(withItemIdentifier: Self.searchItem, at: toolbar.items.count)
-        } else if searchedList == nil, let index {
+        } else if !searches, let index {
             toolbar.removeItem(at: index)
         }
         (toolbar.items.first { $0.itemIdentifier == Self.searchItem } as? NSSearchToolbarItem)?.searchField.stringValue = ""
@@ -108,6 +143,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
 
     func controlTextDidChange(_ notification: Notification) {
         guard let field = notification.object as? NSSearchField else { return }
+        if pane == .keys { model.keysQuery = field.stringValue }
         searchedList?.setQuery(field.stringValue)
     }
 }
@@ -122,6 +158,12 @@ final class SettingsModel: ObservableObject {
     lazy var apps = AppListController()
     /// Records in the correction log, for the 進階 page.
     @Published var correctionCount = 0
+    /// The toolbar search on the 快捷鍵 page.
+    @Published var keysQuery = ""
+    /// The sub-page shown in the current page (one level down), or nil for the page itself.
+    @Published var subpage: SettingsSubpage?
+    /// A row to scroll to, set by the links between pages; cleared once shown.
+    @Published var scrollTarget: String?
     private var correctionObserver: NSObjectProtocol?
 
     init() {
@@ -145,20 +187,23 @@ final class SettingsModel: ObservableObject {
     }
 }
 
+/// The sidebar's pages (docs/product/SETTINGS_IA.md).
 enum SettingsPane: String, CaseIterable {
-    case general, keys, candidates, context, phrases, learned, advanced, about
+    case intro, typing, choosing, candidates, words, analytics, keys, advanced, about
 
     /// The sidebar's groups, separated by a little space as in System Settings.
-    static let groups: [[SettingsPane]] = [[.general, .keys, .candidates, .context], [.phrases, .learned], [.advanced, .about]]
+    static let groups: [[SettingsPane]] = [[.intro], [.typing, .choosing, .candidates], [.words, .analytics],
+                                           [.keys, .advanced, .about]]
 
     var title: String {
         switch self {
-        case .general: return "一般"
+        case .intro: return "介紹"
+        case .typing: return "打字"
+        case .choosing: return "選字"
+        case .candidates: return "視窗與提示"
+        case .words: return "字詞"
+        case .analytics: return "分析"
         case .keys: return "快捷鍵"
-        case .candidates: return "候選字視窗"
-        case .context: return "前文"
-        case .phrases: return "自訂詞"
-        case .learned: return "記住的字詞"
         case .advanced: return "進階"
         case .about: return "關於"
         }
@@ -166,12 +211,13 @@ enum SettingsPane: String, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .general: return "gearshape.fill"
-        case .keys: return "keyboard.fill"
+        case .intro: return "sparkles"
+        case .typing: return "keyboard.fill"
+        case .choosing: return "wand.and.stars"
         case .candidates: return "list.bullet.rectangle"
-        case .context: return "text.alignleft"
-        case .phrases: return "character.book.closed.fill"
-        case .learned: return "clock.arrow.circlepath"
+        case .words: return "character.book.closed.fill"
+        case .analytics: return "chart.bar.fill"
+        case .keys: return "command"
         case .advanced: return "slider.horizontal.3"
         case .about: return "info"
         }
@@ -179,20 +225,26 @@ enum SettingsPane: String, CaseIterable {
 
     var tint: NSColor {
         switch self {
-        case .general: return .systemGray
-        case .keys: return .systemIndigo
+        case .intro: return .systemPink
+        case .typing: return .systemIndigo
+        case .choosing: return .systemTeal
         case .candidates: return .systemBlue
-        case .context: return .systemTeal
-        case .phrases: return .systemOrange
-        case .learned: return .systemPurple
-        case .advanced: return .systemGray
-        case .about: return .systemGray
+        case .words: return .systemOrange
+        case .analytics: return .systemGreen
+        case .keys, .advanced, .about: return .systemGray
         }
     }
 
+    /// Pages of earlier versions, for the remembered last page.
+    private static let earlier: [String: SettingsPane] = ["general": .typing, "context": .choosing, "phrases": .words,
+                                                           "learned": .words]
+
     private static let defaultsKey = "settingsLastPane"
     static var lastSelected: SettingsPane {
-        get { UserDefaults.standard.string(forKey: defaultsKey).flatMap(SettingsPane.init(rawValue:)) ?? .general }
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: defaultsKey) else { return .intro }
+            return SettingsPane(rawValue: raw) ?? earlier[raw] ?? .intro
+        }
         set { if !SettingsWindowController.isPreview { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) } }
     }
 

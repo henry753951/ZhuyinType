@@ -41,6 +41,10 @@ enum EngineHost {
 
     static var isLoading: Bool { loading }
 
+    /// How long the last load took, in seconds, for the 分析 page: the lexicon and language models, the reranker and
+    /// the character model.  Nil until loaded (or when a model is not shipped).
+    static private(set) var loadDurations: (engine: TimeInterval?, reranker: TimeInterval?, characters: TimeInterval?) = (nil, nil, nil)
+
     static func load() {
         // Static lets initialise on first use: record what was launched now, before any update can replace it.
         _ = (launchedVersion, launchedExecutable)
@@ -100,12 +104,18 @@ enum EngineHost {
                 try FileManager.default.createDirectory(at: userDirectory, withIntermediateDirectories: true)
                 Engine.chatModelDirectory = sources.chat
                 let loaded = try Engine(lexiconURL: sources.lexicon, userDataDirectory: userDirectory)
-                logger.info("Engine loaded in \(Date().timeIntervalSince(start), privacy: .public) seconds")
+                let engineSeconds = Date().timeIntervalSince(start)
+                logger.info("Engine loaded in \(engineSeconds, privacy: .public) seconds")
+                let rerankerStart = Date()
                 let neural = sources.reranker.flatMap(loadReranker)
+                let rerankerSeconds = neural == nil ? nil : Date().timeIntervalSince(rerankerStart)
+                let charactersStart = Date()
                 let characters = sources.characters.flatMap(loadCharacterModel)
+                let charactersSeconds = characters == nil ? nil : Date().timeIntervalSince(charactersStart)
                 DispatchQueue.main.async {
                     engine?.flushPersonalData()
                     engine = loaded
+                    loadDurations = (engineSeconds, rerankerSeconds, charactersSeconds)
                     reranker = neural
                     characterModel = characters
                     generation += 1
@@ -222,6 +232,7 @@ enum EngineHost {
     static func prepareForExit() {
         engine?.flushPersonalData()
         CorrectionLog.shared.flush()
+        UsageStatsStore.shared.flush()
         if let lastEnglishMode {
             UserDefaults.standard.set(["english": lastEnglishMode, "time": Date().timeIntervalSince1970], forKey: modeKey)
         }
