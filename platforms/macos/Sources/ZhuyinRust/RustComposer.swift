@@ -5,12 +5,23 @@ import CZhuyin
 import Foundation
 import ZhuyinCore
 
+/// One of the engine's best sentences (as ZhuyinCore's `ScoredSentence` shows it to the app).
+public struct RustSentence {
+    public let text: String
+    public let score: Double
+    /// Some word differs from the keys as typed.
+    public let corrected: Bool
+}
+
 /// The engine's best sentences, as the reranker hook receives them; valid only during the hook.
-public struct RustSentences {
+public struct RustSentences: RandomAccessCollection {
     let pointer: OpaquePointer
-    public var count: Int { zt_sentences_count(pointer) }
-    public func text(at index: Int) -> String? { take(zt_sentences_text(pointer, index)) }
-    public func score(at index: Int) -> Double { zt_sentences_score(pointer, index) }
+    public var startIndex: Int { 0 }
+    public var endIndex: Int { zt_sentences_count(pointer) }
+    public subscript(index: Int) -> RustSentence {
+        RustSentence(text: take(zt_sentences_text(pointer, index)) ?? "", score: zt_sentences_score(pointer, index),
+                     corrected: zt_sentences_corrected(pointer, index))
+    }
 }
 
 /// The candidates of a span and room for their scores, as the candidate scorer hook receives them; valid only during
