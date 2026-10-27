@@ -1,0 +1,58 @@
+# The engine on Linux (portability, behaviour checks), on every change to engine/ or resources/.
+name: Engine
+
+on:
+  push:
+    branches: [main]
+    paths: ["engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/engine.yml"]
+  pull_request:
+    paths: ["engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/engine.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  engine-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container: swift:6.4-noble
+    env:
+      ONNXRUNTIME_ROOT: /opt/onnxruntime
+      ORT_VERSION: 1.24.4
+      ZHUYIN_CHECKS_TIMING: warn
+    steps:
+      - name: Tools in the Swift image
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends curl git ca-certificates >/dev/null
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: ONNX Runtime
+        uses: actions/cache@v6
+        with:
+          path: /opt/onnxruntime
+          key: ort-linux-x64-${{ env.ORT_VERSION }}
+      - run: |
+          if [ ! -d /opt/onnxruntime/lib ]; then
+            curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-linux-x64-$ORT_VERSION.tgz" | tar -xz -C /opt
+            mv "/opt/onnxruntime-linux-x64-$ORT_VERSION" /opt/onnxruntime
+          fi
+      - name: Data assets
+        uses: actions/cache@v6
+        with:
+          path: .cache/assets
+          key: assets-lexicon-lm-${{ hashFiles('resources/assets.json') }}
+      - run: tools/zt setup
+      - run: tools/zt data fetch engine
+      - name: SwiftPM build cache
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: engine-linux-${{ hashFiles('engine/swift/Package.swift', 'engine/swift/Sources/**') }}
+          restore-keys: engine-linux-
+      - run: tools/zt build cli
+      - run: tools/zt check engine
+

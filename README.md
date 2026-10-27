@@ -59,7 +59,7 @@
 
 ## 運作方式
 
-每按一個鍵，ZhuyinType 依序經過以下幾層，通常在 20 毫秒左右更新畫面。完整流程見 [架構與流程](docs/ARCHITECTURE.md)，各層的方法與評測數字見 [模型與演算法](docs/MODEL.md)。
+每按一個鍵，ZhuyinType 依序經過以下幾層，通常在 20 毫秒左右更新畫面。完整流程見 [架構與流程](docs/engine/ARCHITECTURE.md)，各層的方法與評測數字見 [模型與演算法](docs/engine/MODEL.md)。
 
 ```text
 按鍵 → ① 切音節 → ② 讀音與容錯 → ③ 整句解碼 → ④ 整句重排 → 畫面
@@ -94,7 +94,7 @@
 
 ## 基本按鍵
 
-以下為預設設定；完整的按鍵表見 [產品設計 §2.1](docs/DESIGN.md#21-組字與按鍵)，「設定 → 快捷鍵」可重新指定。
+以下為預設設定；完整的按鍵表見 [產品設計 §2.1](docs/product/DESIGN.md#21-組字與按鍵)，「設定 → 快捷鍵」可重新指定。
 
 | 按鍵 | 操作 |
 |---|---|
@@ -116,7 +116,7 @@
 
 ```sh
 tools/zt setup           # 檢查並準備開發環境
-tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 nlp/data/assets.json 驗證雜湊）
+tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 resources/assets.json 驗證雜湊）
 tools/zt build app       # dist/ZhuyinType.app
 tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
 tools/zt check engine    # 引擎檢查
@@ -125,40 +125,38 @@ tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 
 | 目錄 | 內容 |
 |---|---|
-| `tools/` | `zt` 指令列，說明見 [tools/README.md](tools/README.md) |
-| `nlp/engine/` | 跨平台的引擎（Swift package）：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
-| `nlp/common/`、`nlp/cli/` | 工具共用的核心模組與指令 |
-| `nlp/eval/` | 評測，見 [docs/EVALUATION.md](docs/EVALUATION.md) |
-| `nlp/training/` | 每個模型與資料的訓練流程（`tools/zt train list`） |
-| `nlp/data/`、`nlp/remote/` | 資料與模型的版本、詞庫建置；在 GPU 主機上執行 |
-| `clients/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
-| `docs/` | 設計、架構、模型、評測、規劃、研究、每版成績、發布說明 |
+| `engine/` | 所有平台共用的輸入法引擎：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
+| `platforms/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
+| `ml/` | 研發：資料、訓練、評測與 `zt` 指令（Python，見 [ml/README.md](ml/README.md)） |
+| `resources/` | 資料與模型的固定版本、來源與授權、二進位格式 |
+| `tools/` | `zt` 啟動器，說明見 [tools/README.md](tools/README.md) |
+| `docs/` | 產品設計、引擎架構與模型、評測、規劃、研究、每版成績、發布說明（[文件地圖](docs/README.md)） |
 
 給 AI 代理與貢獻者的說明在 [AGENTS.md](AGENTS.md)。
 
 ## 移除
 
 先切換至英文輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除安裝的 app。
-原始碼提供 `clients/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定。
-執行 `clients/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
+原始碼提供 `platforms/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定。
+執行 `platforms/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
 
 ## 文件
 
 | 文件 | 內容 |
 |---|---|
-| [產品設計](docs/DESIGN.md) | 按鍵、狀態、預設值、介面 |
-| [架構與流程](docs/ARCHITECTURE.md) | 從按鍵到畫面的完整流程與分數公式 |
-| [模型與演算法](docs/MODEL.md) | 詞庫、按鍵解碼、容錯、語言模型、神經模型、個人模型與評測數字 |
-| [v3 模型設計](docs/MODEL_V3.md) | 按鍵層級解碼器與音節對字模型的設計與實驗紀錄 |
-| [評測](docs/EVALUATION.md) | 資料集、評測工具與指令 |
+| [產品設計](docs/product/DESIGN.md) | 按鍵、狀態、預設值、介面 |
+| [架構與流程](docs/engine/ARCHITECTURE.md) | 從按鍵到畫面的完整流程與分數公式 |
+| [模型與演算法](docs/engine/MODEL.md) | 詞庫、按鍵解碼、容錯、語言模型、神經模型、個人模型與評測數字 |
+| [v3 模型設計](docs/engine/MODEL_V3.md) | 按鍵層級解碼器與音節對字模型的設計與實驗紀錄 |
+| [評測](docs/ml/EVALUATION.md) | 資料集、評測工具與指令 |
 | [規劃](docs/ROADMAP.md) | 開發階段、下一步與待決事項 |
 | [研究](docs/research/) | 研究紀錄、相關工作與比較、研究計畫 |
 | [每版成績](docs/benchmarks/) | 每個版本在同一套評測（ZhuyinBench）上的結果 |
-| [訓練](nlp/training/README.md) | 各模型的訓練流程與產物 |
-| [文案準則](docs/WRITING.md) | 介面與文件用語 |
+| [訓練](ml/src/zhuyintype_ml/training/README.md) | 各模型的訓練流程與產物 |
+| [文案準則](docs/product/WRITING.md) | 介面與文件用語 |
 
 ## 資料與授權
 
 程式碼採 [GNU AGPL 3.0 授權](LICENSE)（`AGPL-3.0-only`）；產生的詞庫採 CC BY-SA 4.0。
-詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、立法院公報、維基百科討論頁、Common Voice 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](nlp/data/SOURCES.md) 及 [授權文字](clients/macos/Resources/Licenses)。
+詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、立法院公報、維基百科討論頁、Common Voice 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](resources/SOURCES.md) 及 [授權文字](platforms/macos/Resources/Licenses)。
 發布修改過的詞庫或模型時，請保留來源、修改說明與各自的授權。

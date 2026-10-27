@@ -1,0 +1,45 @@
+# The macOS input method: engine checks on macOS, the app build, its self-test and packaging check.
+name: macOS
+
+on:
+  push:
+    branches: [main]
+    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/macos.yml"]
+  pull_request:
+    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/macos.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      ZHUYIN_CHECKS_TIMING: warn
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Data assets
+        uses: actions/cache@v6
+        with:
+          path: .cache/assets
+          key: assets-app-${{ hashFiles('resources/assets.json') }}
+      - run: tools/zt setup
+      - run: tools/zt data fetch
+      - name: SwiftPM build cache
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: macos-${{ hashFiles('engine/swift/Package.swift', 'platforms/macos/Package.resolved', 'engine/swift/Sources/**', 'platforms/macos/Sources/**') }}
+          restore-keys: macos-
+      - run: tools/zt build cli
+      - run: tools/zt check engine
+      - run: tools/zt build app
+      - name: Self-test and packaging checks
+        run: tools/zt check app

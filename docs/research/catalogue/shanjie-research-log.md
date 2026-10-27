@@ -20,9 +20,9 @@
 - 每鍵 p95 2.05 ms。
 
 **狀態欄**（ZhuyinType）：**有**、**有（做法不同）**、**沒有**、**不適用**，或 **待確認**（無法從我們的文件或程式碼確認）。以下幾項說法已對照程式碼確認：
-- `nlp/engine/Sources/ZhuyinCore/Conversion.swift` 以語言模型歷史狀態解碼，排序時納入結尾分數。
-- `zt eval stats`（`nlp/eval/stats.py`）已經有精確 McNemar、配對 bootstrap、Poisson 改壞上界、MDE 與叢集。
-- `zt eval rows`（`nlp/eval/rows.py`）報告 oracle@16 與 CER，並套用善解式的異體合併。
+- `engine/swift/Sources/ZhuyinCore/Conversion.swift` 以語言模型歷史狀態解碼，排序時納入結尾分數。
+- `zt eval stats`（`ml/src/zhuyintype_ml/eval/stats.py`）已經有精確 McNemar、配對 bootstrap、Poisson 改壞上界、MDE 與叢集。
+- `zt eval rows`（`ml/src/zhuyintype_ml/eval/rows.py`）報告 oracle@16 與 CER，並套用善解式的異體合併。
 - pkg 安裝到 `/Library/Input Methods`。
 - `RecallKind` 有四種：whole、span、typo 與 phrase。
 
@@ -88,7 +88,7 @@
 | B8 | 10-13 | 依（字串，最後一個詞）合併 | 解碼器原本每個字面字串只保留一條路徑（夏來分析）。 | lytune 與 discordtune 在 4/4 個格子中變好（p ≤ 0.017）；n-best 中不同字串的數量變少。 | `docs/contracts/dec-recombine.md` | 有（Conversion 狀態 = 語言模型歷史；排序納入 `endScore`） | 已涵蓋 |
 | B9 | S2c | 固定詞之間的空隙 | 每個固定詞之間的空隙，以左側固定詞為歷史、進入右側固定詞的轉移為結尾項來解碼。 | 隨一個必須失敗的測試一起出貨。 | `core/src/engine.rs` | 待確認（FixedWord 路徑） | 採用為測試 |
 | B10 | 10-11 | P1a：在/再 混淆分類器 | 以 s+μf 加入稀疏線性分類器。 | 再>在 的錯誤 11→10（目標是減半）；+0.05 pp。錯誤：ln 與 log10 混用（μ 大了 2.30 倍），以及受類別上限影響的先驗。 | `docs/contracts/p1a-confusion.md` | 不適用 | 不採用；採用其檢查清單：對數底數一致，移除訓練先驗 |
-| B11 | 10-13 | 功能字同音集（fw） | 在 6 個測試集上的 在/再、作/做、以/已、是/試。作說明 是可接受的正式用法。 | 重排模型 vs n-gram 30/1，但 fw 仍有 23/94 錯（差距小於 δ）。 | fw 測試集 | 部分（`nlp/training/homophone/`） | 採用：把合理的替代寫法算對 |
+| B11 | 10-13 | 功能字同音集（fw） | 在 6 個測試集上的 在/再、作/做、以/已、是/試。作說明 是可接受的正式用法。 | 重排模型 vs n-gram 30/1，但 fw 仍有 23/94 錯（差距小於 δ）。 | fw 測試集 | 部分（`ml/src/zhuyintype_ml/training/homophone/`） | 採用：把合理的替代寫法算對 |
 | B12 | 10-14 | 三道門檻的模糊輸入 | G0 只在完全無法解析時；G1 在精確結果的前 5 名之後；G2 在詞圖內並加 δ。δ 以乾淨輸入改壞 ≤0.5% 選定。 | 模糊音 top-1 91–95%。聲調 62–67%。相鄰鍵改壞了 4/76 句乾淨輸入（5.3%）。 | `docs/contracts/fuzzy-research.md` | 有（做法不同：KeyDecoder、KeyChannel、精確優先門檻） | 已涵蓋；採用「合法讀音錯誤」與「不合法讀音錯誤」的區分 |
 | B13 | 10-15 / 10-10 | 只打聲母的縮寫 | E3 整句只打聲母；V3 韻母可省略。 | top-1 比例 0.789/0.808（<0.9）；oracle@64 289/300；每列 148 ms。實機測試：按鍵卡住，因此隱藏。 | `docs/contracts/v3-engine.md` §12 | 沒有 | 不採用 |
 | B14 | 10-18 | E-C：聯合重新調整解碼器權重與融合 | λ、KN β、trigram 下限、α/τ/δ 一起調整。 | 最佳格子只有 +5；其他格子只是交換列（UB 0.67–2.67%）。 | `experiments/e-c/` | 有（已調整） | 備註：重新調參很少划算 |
@@ -179,7 +179,7 @@
 
 | # | 日期 | 名稱 | 做法 | 結果 | 檔案 | ZT 狀態 | 判斷 |
 |---|---|---|---|---|---|---|---|
-| H1 | 10-03/08 | 配對的逐列統計 | `--rowstats`；精確 McNemar；CER；配對 bootstrap CI。解析度表（dev302 需要 2.3 pp）。 | 10-08 起成為標準。 | `tools/evalstats.py` | 有（`nlp/eval/stats.py`、`rows_eval.py`） | 已涵蓋 |
+| H1 | 10-03/08 | 配對的逐列統計 | `--rowstats`；精確 McNemar；CER；配對 bootstrap CI。解析度表（dev302 需要 2.3 pp）。 | 10-08 起成為標準。 | `tools/evalstats.py` | 有（`ml/src/zhuyintype_ml/eval/stats.py`、`rows_eval.py`） | 已涵蓋 |
 | H2 | 10-03 | 寬鬆異體（教育部 也作/亦作） | 2,072 個同讀音異體加上 8 個合併規則（她→他 等），依辭典固定，不從評測錯誤中挑選。 | 善解 83.4 / macOS 88.2 / McBopomofo 76.6 / 自然 72.2（Discord 845）。 | `eval/variants.tsv` | 有（`--shanjie-variants`） | 有；注意它掩蓋了一個 它/他 錯誤 |
 | H3 | 10-03 | 與其他輸入法的共同測試比較 | 把相同按鍵輸入 Apple、McBopomofo 與 自然。Apple 學到的 2,647 個片語中，有 847 個是從測試本身學來的。 | macOS 內建表現最好。 | `tools/imetype.swift`、`docs/typing-test.md` | 沒有 | 採用：每個次要版本都在乾淨的 VM 帳號中測試 |
 | H4 | 10-05 | 挑戰集會誤導 | dev302（由 LLM 與專案撰寫）vs 真實聊天。 | Apple 評審 dev302 +27 vs discordtune −81；Qwen3 +35 vs −17。 | `docs/methodology.md` §2 | 有（dev/test） | 採用此規則：以真實語域的測試集做決定 |

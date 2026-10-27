@@ -1,5 +1,5 @@
-# ZhuyinType: the shared engine (nlp/engine), its data, training and evaluation (nlp/), and the macOS client
-# (clients/macos).  Every target runs from the repository root and calls tools/zt (`tools/zt help` lists more).
+# ZhuyinType: the shared engine (engine/swift), its data, training and evaluation (ml/), and the macOS client
+# (platforms/macos).  Every target runs from the repository root and calls tools/zt (`tools/zt help` lists more).
 .PHONY: setup fetch lexicon data app debug-app install pkg checks cli test lint types clean
 
 setup:              ## check tools, prepare the uv environment
@@ -22,7 +22,7 @@ install:            ## install into ~/Library/Input Methods (the running copy sw
 	tools/zt build install
 pkg:                ## dist/ZhuyinType-<version>.pkg
 	tools/zt build pkg
-test:               ## Python unit tests (nlp/**/test_*.py)
+test:               ## Python unit tests (ml/src/**/test_*.py)
 	tools/zt check python
 lint:               ## ruff
 	tools/zt check lint

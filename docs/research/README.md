@@ -11,11 +11,11 @@ ZhuyinType 以「選對字」為主要目標。我們用可重現的評測檢驗
 
 ## 規則
 
-- 評測在 GPU 主機上跑，用和 app 相同的引擎（Linux 版）與模型（ONNX），結果和 Mac 的差異 ≤ 0.2%（[EVALUATION.md](../EVALUATION.md)）。
-- 開發集調參數，測試集只追蹤。每個版本的 [ZhuyinBench](../benchmarks/) 用固定的測試集，但任何決定只看開發集。採用一項改變前，用成對檢定（`nlp/eval/stats.py`：McNemar、bootstrap 信賴區間、改壞率上界、最小可偵測效果）確認不是雜訊。
+- 評測在 GPU 主機上跑，用和 app 相同的引擎（Linux 版）與模型（ONNX），結果和 Mac 的差異 ≤ 0.2%（[EVALUATION.md](../ml/EVALUATION.md)）。
+- 開發集調參數，測試集只追蹤。每個版本的 [ZhuyinBench](../benchmarks/) 用固定的測試集，但任何決定只看開發集。採用一項改變前，用成對檢定（`ml/src/zhuyintype_ml/eval/stats.py`：McNemar、bootstrap 信賴區間、改壞率上界、最小可偵測效果）確認不是雜訊。
 - 尊重其他專案的授權與成果：
   - 靈犀注音是 AGPL-3.0，只建置、執行來量測，不複製任何程式碼。
-  - 善解是 Apache-2.0，評測集依各檔授權引入並保留出處（`nlp/eval/sets/external/`），模型檔不使用。
+  - 善解是 Apache-2.0，評測集依各檔授權引入並保留出處（`ml/eval-sets/external/`），模型檔不使用。
   - 公開的方法與結論可以學習，學到的做法都以自己的實作重寫，並在研究紀錄註明出處。
 - 比較是為了理解，不是排名。和其他輸入法的比較一律寫明條件（測試集由誰建立、版本、設定、正規化、逾時）與限制，對方的數字引用其公開文件。
-- 每個想法都記錄：做了什麼、數字、採用與否、原因。沒採用的也寫進 [log.md](log.md) 與 [MODEL.md §11](../MODEL.md#11-試過但沒採用)，避免重複嘗試。
+- 每個想法都記錄：做了什麼、數字、採用與否、原因。沒採用的也寫進 [log.md](log.md) 與 [MODEL.md §11](../engine/MODEL.md#11-試過但沒採用)，避免重複嘗試。

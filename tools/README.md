@@ -4,7 +4,7 @@
 
 ## 用途
 
-同一個指令在 Mac、Linux 主機與 CI 上的寫法完全相同。`zt` 用 uv 在版本庫根目錄的 `.venv` 執行 `python -m nlp.cli`，可以從任何目錄呼叫，參數原樣傳下去。任何指令前加 `--remote` 就改在 GPU 主機上執行，主機設定只放在不進 git 的 `.remote.env`。
+同一個指令在 Mac、Linux 主機與 CI 上的寫法完全相同。`zt` 用 uv 在版本庫根目錄的 `.venv` 執行 `python -m zhuyintype_ml.cli`，可以從任何目錄呼叫，參數原樣傳下去。任何指令前加 `--remote` 就改在 GPU 主機上執行，主機設定只放在不進 git 的 `.remote.env`。
 
 第一次使用：
 
@@ -38,11 +38,11 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt setup --install-onnxruntime` | Linux：把 ONNX Runtime 1.24.4 C SDK 下載到 `~/opt`（或 `ONNXRUNTIME_ROOT` 所在的目錄） |
 | `zt setup --quiet` | 只印出缺少的項目（`zt --remote` 在主機上每次都先執行） |
 
-### 資料（`nlp/data/`）
+### 資料（`ml/src/zhuyintype_ml/data/`）
 
 | 指令 | 說明 |
 |---|---|
-| `zt data fetch` | 下載 App 需要的元件（lexicon、lm、lm_chat、reranker、v3），依 `nlp/data/assets.json` 驗證雜湊 |
+| `zt data fetch` | 下載 App 需要的元件（lexicon、lm、lm_chat、reranker、v3），依 `resources/assets.json` 驗證雜湊 |
 | `zt data fetch eval` | 評測需要的全部元件，含評測集與檢查點；`engine` 只含詞庫與語言模型，`all` 是全部 |
 | `zt data status` | 每個元件是否存在、是否為固定的版本 |
 | `zt data pack data-4 v3` | 把變更過的元件打包到 `dist/assets/`，並更新 `assets.json` |
@@ -54,7 +54,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 指令 | 說明 |
 |---|---|
-| `zt build cli` | `nlp/engine` 的 zhuyin-cli 與檢查程式（release，`.build/release/`）；`--debug`、`--product zhuyin-cli` |
+| `zt build cli` | `engine/swift` 的 zhuyin-cli 與檢查程式（release，`.build/release/`）；`--debug`、`--product zhuyin-cli` |
 | `zt build app` | `dist/ZhuyinType.app`（macOS，需要 Xcode）；`--debug` |
 | `zt build install` | 建置並安裝到 `~/Library/Input Methods` |
 | `zt build pkg` | `dist/ZhuyinType-<版本>.pkg` |
@@ -65,7 +65,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 |---|---|
 | `zt check engine` | 引擎行為與延遲檢查（ZhuyinCoreChecks）；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
 | `zt check app` | 已建置 App 的自我測試與封裝檢查 |
-| `zt check python` | `nlp/**/test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start nlp/remote` 只跑一個目錄 |
+| `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄 |
 | `zt check lint` | ruff；`--fix` 自動修正，`--format` 一併檢查排版 |
 | `zt check types` | mypy，範圍在 `pyproject.toml` 的 `[tool.mypy] files` |
 | `zt check public` | 確認要發布的檔案裡沒有私人主機、金鑰或內部網路位址（`tools/check-public.sh`） |
@@ -76,11 +76,11 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | 指令 | 說明 |
 |---|---|
 | `zt eval sets` | 評測集與是否存在 |
-| `zt eval conversion --set colloquial-dev wiki-dev` | 整句轉換；其他評測見 `zt eval --help` 與 `docs/EVALUATION.md` |
+| `zt eval conversion --set colloquial-dev wiki-dev` | 整句轉換；其他評測見 `zt eval --help` 與 `docs/ml/EVALUATION.md` |
 | `zt bench run v0.5.0` | ZhuyinBench（在 GPU 主機上；發布後由 CI 執行） |
 | `zt train list` | 訓練流程與步驟；`zt train v3` 執行未完成的步驟 |
 
-### 模型（`nlp/remote/`）
+### 模型（`ml/src/zhuyintype_ml/remote/`）
 
 | 指令 | 說明 |
 |---|---|
@@ -96,7 +96,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 |---|---|
 | `zt --remote eval conversion --config engine -n 3 --set smoke` | 在主機上執行任何 zt 指令 |
 | `zt --remote --export eval conversion --json out.json` | 先匯出 ONNX（`--config app` 需要），`out.json` 自動取回 |
-| `zt --remote --backend cuda eval sweep nlp/eval/matrices/validation.json` | 模型呼叫改由 GPU 上的 PyTorch 伺服器計算 |
+| `zt --remote --backend cuda eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json` | 模型呼叫改由 GPU 上的 PyTorch 伺服器計算 |
 | `zt --remote --push data/build/v3_new --detach train v3` | 先傳送本機檔案，並在背景執行 |
 | `zt --remote --workdir onnx-eval-x --env ZT_BUILD_JOBS=16 ...` | 指定主機上的工作目錄；限制建置使用的核心數 |
 | `zt remote status` | 主機負載、執行中的工作與記錄的最後幾行 |
@@ -107,7 +107,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt remote sync` | 只同步原始碼 |
 | `zt remote list` | 主機上的工作目錄與最後的結束狀態 |
 
-`zt --remote` 的流程、選項與主機上的目錄見 [nlp/remote/README.md](../nlp/remote/README.md)。
+`zt --remote` 的流程、選項與主機上的目錄見 [ml/src/zhuyintype_ml/remote/README.md](../ml/src/zhuyintype_ml/remote/README.md)。
 
 ## 環境變數
 
@@ -129,14 +129,14 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 檔案 | 說明 |
 |---|---|
-| `zt` | 啟動程式（POSIX sh）：找到版本庫與 uv，執行 `uv run python -m nlp.cli` |
+| `zt` | 啟動程式（POSIX sh）：找到版本庫與 uv，執行 `uv run --project ml python -m zhuyintype_ml.cli` |
 | `check-public.sh` | 發布前的隱私檢查 |
-| `../pyproject.toml`、`../uv.lock`、`../.python-version` | uv 專案、相依群組、ruff 與 mypy 設定、固定的版本 |
-| `../nlp/cli/` | 指令列：`main.py` 載入 `commands/` 底下每個模組 |
+| `../ml/pyproject.toml`、`../ml/uv.lock`、`../ml/.python-version` | uv 專案、相依群組、ruff 與 mypy 設定、固定的版本 |
+| `../ml/src/zhuyintype_ml/cli/` | 指令列：`main.py` 載入 `commands/` 底下每個模組 |
 
 ## 相關文件
 
-- [nlp/CONVENTIONS.md](../nlp/CONVENTIONS.md)：Python 工具的結構與寫法
-- [nlp/remote/README.md](../nlp/remote/README.md)：GPU 主機與 Linux 的模型執行環境
-- [nlp/data/README.md](../nlp/data/README.md)：資料與模型的版本、詞庫
-- [docs/EVALUATION.md](../docs/EVALUATION.md)：評測
+- [ml/CONVENTIONS.md](../ml/CONVENTIONS.md)：Python 工具的結構與寫法
+- [ml/src/zhuyintype_ml/remote/README.md](../ml/src/zhuyintype_ml/remote/README.md)：GPU 主機與 Linux 的模型執行環境
+- [ml/src/zhuyintype_ml/data/README.md](../ml/src/zhuyintype_ml/data/README.md)：資料與模型的版本、詞庫
+- [docs/ml/EVALUATION.md](../docs/ml/EVALUATION.md)：評測

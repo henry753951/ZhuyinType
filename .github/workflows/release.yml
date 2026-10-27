@@ -30,7 +30,7 @@ jobs:
       - name: Gate
         id: version
         run: |
-          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" clients/macos/Resources/Info.plist)
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" platforms/macos/Resources/Info.plist)
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match Info.plist $version"; exit 1; }
           [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "docs/releases/$GITHUB_REF_NAME.md is missing"; exit 1; }
           tools/check-public.sh
@@ -40,20 +40,20 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/assets
-          key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
+          key: assets-app-${{ hashFiles('resources/assets.json') }}
       - run: tools/zt setup
       - run: tools/zt data fetch
       - name: SwiftPM build cache
         uses: actions/cache@v6
         with:
           path: .build
-          key: macos-${{ hashFiles('nlp/engine/Package.swift', 'clients/macos/Package.resolved', 'nlp/engine/Sources/**', 'clients/macos/Sources/**') }}
+          key: macos-${{ hashFiles('engine/swift/Package.swift', 'platforms/macos/Package.resolved', 'engine/swift/Sources/**', 'platforms/macos/Sources/**') }}
           restore-keys: macos-
       - name: Sparkle tools
         uses: actions/cache@v6
         with:
           path: .tools
-          key: sparkle-tools-${{ hashFiles('clients/macos/scripts/sparkle-tools.sh') }}
+          key: sparkle-tools-${{ hashFiles('platforms/macos/scripts/sparkle-tools.sh') }}
       - name: Engine checks
         run: tools/zt check engine
       - name: Build, package, sign the appcast
@@ -62,7 +62,7 @@ jobs:
         run: |
           key=$(mktemp)
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
-          SWIFT_SCRATCH_PATH=.build SPARKLE_ED_KEY_FILE="$key" clients/macos/scripts/release.sh
+          SWIFT_SCRATCH_PATH=.build SPARKLE_ED_KEY_FILE="$key" platforms/macos/scripts/release.sh
           rm -f "$key"
       - name: Self-test and packaging checks
         run: tools/zt check app

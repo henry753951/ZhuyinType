@@ -1,5 +1,5 @@
 #!/bin/sh
-# zt: ZhuyinType's tools (`tools/zt help`).  Runs `python -m nlp.cli` in the uv project at the repository root, from
+# zt: ZhuyinType's tools (`tools/zt help`).  Runs `python -m zhuyintype_ml.cli` in the uv project ml/, from
 # any working directory, passing every argument through.  Needs uv (https://docs.astral.sh/uv/); uv provides Python.
 #
 #   tools/zt help
@@ -26,7 +26,7 @@ if [ -z "$uv" ]; then
     exit 127
 fi
 
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}"
+PYTHONPATH="$root/ml/src${PYTHONPATH:+:$PYTHONPATH}"
 ZT_UV=$uv
 export PYTHONPATH ZT_UV
-exec "$uv" run --quiet --project "$root" python -m nlp.cli "$@"
+exec "$uv" run --quiet --project "$root/ml" python -m zhuyintype_ml.cli "$@"

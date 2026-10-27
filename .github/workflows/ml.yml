@@ -1,0 +1,31 @@
+# The Python side (ml/): lint, types and unit tests, on every change to ml/, tools/ or resources/.
+name: ML
+
+on:
+  push:
+    branches: [main]
+    paths: ["ml/**", "tools/**", "resources/**", ".github/workflows/ml.yml"]
+  pull_request:
+    paths: ["ml/**", "tools/**", "resources/**", ".github/workflows/ml.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ml-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ml:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: tools/zt check lint
+      - run: tools/zt check types
+      - run: tools/zt check python
+

@@ -22,15 +22,15 @@ __pycache__/
 
 # Data: downloads and everything generated from them (lexicon, corpora, language models, Core ML and ONNX models,
 # checkpoints, evaluation outputs), in data/raw/ and data/build/; data/ may also be a symlink to a shared copy.
-# Each nlp/training/ directory documents how to rebuild its outputs.
+# Each ml/src/zhuyintype_ml/training/ directory documents how to rebuild its outputs.
 /data
 
 # Training, inference and evaluation outputs written next to the code
-nlp/**/results/
-nlp/**/work/
-nlp/**/logs/
-nlp/**/outputs/
-nlp/**/checkpoints/
+ml/**/results/
+ml/**/work/
+ml/**/logs/
+ml/**/outputs/
+ml/**/checkpoints/
 *.log
 
 # Model files, wherever they end up
