@@ -1,0 +1,56 @@
+# ZhuyinBench for a version, on the self-hosted GPU host: release.yml starts it after publishing; it can also be run
+# by hand for any ref.  Results go to docs/benchmarks/ on main (one JSON and one page per version, plus the history
+# table) and onto the release.  Only workflow_dispatch triggers it, so code from pull requests never reaches the host.
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version label, e.g. v0.4.0
+        required: true
+      ref:
+        description: Git ref to evaluate (default the version tag)
+        required: false
+      quick:
+        description: 50 runs per set (harness check)
+        type: boolean
+        default: false
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bench:
+    runs-on: [self-hosted, linux, zhuyintype-gpu]
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || inputs.version }}
+          clean: false
+      - name: ZhuyinBench
+        run: training/eval/bench/run.sh "$VERSION" ${{ inputs.quick && '--quick' || '' }}
+      - name: Mac metrics from the release
+        run: |
+          gh release download "$VERSION" --pattern metrics-mac.json --output "docs/benchmarks/$VERSION-mac.json" --clobber \
+            || echo "No metrics-mac.json on the release"
+          python3 training/eval/bench/history.py
+      - name: Publish results
+        run: |
+          cp -r docs/benchmarks /tmp/benchmarks-$GITHUB_RUN_ID
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main && git checkout -B main origin/main
+          rm -rf docs/benchmarks && cp -r /tmp/benchmarks-$GITHUB_RUN_ID docs/benchmarks
+          git add docs/benchmarks
+          git diff --cached --quiet || git commit -m "ZhuyinBench $VERSION"
+          git push origin main
+          gh release upload "$VERSION" "docs/benchmarks/$VERSION.json" --clobber || true

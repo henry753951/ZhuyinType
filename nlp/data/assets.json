@@ -1,0 +1,47 @@
+{
+  "components": {
+    "checkpoints": {
+      "file": "zhuyintype-checkpoints-0a2e000f0796.tar.gz",
+      "release": "data-1",
+      "sha256": "0a2e000f0796454243bfdebcabbb3adf099a7607a1ce0637c9483d4546225e84",
+      "size": 509144323
+    },
+    "eval-sets": {
+      "file": "zhuyintype-eval-sets-659ac3fce677.tar.gz",
+      "release": "data-1",
+      "sha256": "659ac3fce677be19d6401dc7405899ab066969f3911534f246a260f7274047a3",
+      "size": 493761
+    },
+    "lexicon": {
+      "file": "zhuyintype-lexicon-cf7a43f94758.tar.gz",
+      "release": "data-1",
+      "sha256": "cf7a43f94758aeb1100d353ed2ebf0560b407574c83002c38b853211038d9fb4",
+      "size": 1440171
+    },
+    "lm": {
+      "file": "zhuyintype-lm-db7f06036a76.tar.gz",
+      "release": "data-1",
+      "sha256": "db7f06036a76836bac9d137afa2973dedb8dcbd31fd73d956541fb7afb6a8989",
+      "size": 36499353
+    },
+    "lm_chat": {
+      "file": "zhuyintype-lm_chat-8877f36505b0.tar.gz",
+      "release": "data-1",
+      "sha256": "8877f36505b0da1ab1b9a0fc42d96b162ab281ad48883860d0988476a8071441",
+      "size": 11192147
+    },
+    "reranker": {
+      "file": "zhuyintype-reranker-81400bfe8638.tar.gz",
+      "release": "data-1",
+      "sha256": "81400bfe8638338615ccdbcee52293e2a21a6d976543d94941be2238a8120d19",
+      "size": 115712744
+    },
+    "v3": {
+      "file": "zhuyintype-v3-a5139173441e.tar.gz",
+      "release": "data-1",
+      "sha256": "a5139173441e3e2101c2c36b2d0af8b57cbaddad9d53f910501292a09c50dc49",
+      "size": 125111511
+    }
+  },
+  "repository": "henry753951/ZhuyinType"
+}

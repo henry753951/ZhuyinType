@@ -53,3 +53,6 @@ training/remote_eval/run.*-snapshot.sh
 
 # Local remote-host settings (see .remote.env.example)
 .remote.env
+
+# Downloaded asset archives
+.cache/

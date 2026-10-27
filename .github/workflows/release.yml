@@ -1,0 +1,96 @@
+# A v* tag builds, signs and publishes a release, then updates the Sparkle appcast on main so installed copies update
+# themselves.  Gate: the tag matches Info.plist and docs/releases/<tag>.md exists (notes and benchmark summary).
+# Typical wall time with warm caches: about 6 minutes.
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ZHUYIN_CHECKS_TIMING: warn
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Gate
+        id: version
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" clients/macos/Resources/Info.plist)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match Info.plist $version"; exit 1; }
+          [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "docs/releases/$GITHUB_REF_NAME.md is missing"; exit 1; }
+          tools/check-public.sh
+          echo "latest=$(gh release view --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
+      - name: Data assets
+        uses: actions/cache@v4
+        with:
+          path: .cache/assets
+          key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
+      - run: python3 nlp/data/assets.py fetch
+      - name: SwiftPM build cache
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: macos-${{ hashFiles('nlp/engine/Package.swift', 'clients/macos/Package.resolved', 'nlp/engine/Sources/**', 'clients/macos/Sources/**') }}
+          restore-keys: macos-
+      - name: Sparkle tools
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: sparkle-tools-${{ hashFiles('clients/macos/scripts/sparkle-tools.sh') }}
+      - name: Engine checks
+        run: swift run -c release --package-path nlp/engine --scratch-path .build ZhuyinCoreChecks
+      - name: Build, package, sign the appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          key=$(mktemp)
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
+          SWIFT_SCRATCH_PATH=.build SPARKLE_ED_KEY_FILE="$key" clients/macos/scripts/release.sh
+          rm -f "$key"
+      - name: Self-test and packaging checks
+        run: |
+          dist/ZhuyinType.app/Contents/MacOS/ZhuyinType --self-test --lexicon data/build/lexicon.tsv
+          swift clients/macos/scripts/check-packaging.swift dist/ZhuyinType.app
+      - name: Speed, energy and memory on this Mac
+        run: |
+          swift build -c release --package-path nlp/engine --scratch-path .build --product zhuyin-cli
+          python3 training/eval/mac_metrics.py --cli .build/release/zhuyin-cli \
+            --engine-data dist/ZhuyinType.app/Contents/Resources --out dist/release/metrics-mac.json
+      - name: Publish
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/release/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "ZhuyinType ${GITHUB_REF_NAME#v}" \
+              --notes-file "docs/releases/$GITHUB_REF_NAME.md" dist/release/*
+          fi
+      - name: Update the appcast on main
+        if: github.event_name != 'workflow_dispatch' || steps.version.outputs.latest == github.ref_name
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp appcast.xml /tmp/appcast.xml
+          git fetch origin main && git checkout main && git reset --hard origin/main
+          cp /tmp/appcast.xml appcast.xml
+          git add appcast.xml
+          git diff --cached --quiet || git commit -m "Appcast for $GITHUB_REF_NAME"
+          git push origin main
+      - name: Start ZhuyinBench on the GPU host
+        if: github.event_name != 'workflow_dispatch'
+        run: gh workflow run benchmark.yml -f version="$GITHUB_REF_NAME" || echo "Benchmark not started"

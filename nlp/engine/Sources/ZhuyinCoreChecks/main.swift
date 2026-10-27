@@ -3,9 +3,20 @@ import ZhuyinCore
 
 var failures = 0
 var checks = 0
+/// ZHUYIN_CHECKS_TIMING=warn turns latency targets (messages with a time in ms) into warnings: shared CI machines
+/// are slower and noisier than the Macs the targets are for.
+let timingWarnOnly = ProcessInfo.processInfo.environment["ZHUYIN_CHECKS_TIMING"] == "warn"
+var warnings = 0
 func check(_ condition: @autoclosure () -> Bool, _ message: String, file: StaticString = #filePath, line: UInt = #line) {
     checks += 1
-    if !condition() { failures += 1; print("FAIL \(file):\(line): \(message)") }
+    guard !condition() else { return }
+    if timingWarnOnly && message.contains(" ms") {
+        warnings += 1
+        print("WARN \(file):\(line): \(message)")
+    } else {
+        failures += 1
+        print("FAIL \(file):\(line): \(message)")
+    }
 }
 func timed<T>(_ body: () throws -> T) rethrows -> (T, Double) {
     let start = DispatchTime.now().uptimeNanoseconds
@@ -1439,5 +1450,5 @@ do {
     check(composer(fresh, "hl4su3a8 ", options: plain).presentation.text == "肏你嗎", "empty memory leaves conversions unchanged")
 } catch { check(false, "personal model fixture: \(error)") }
 
-print("\(checks - failures)/\(checks) checks passed; \(failures) failures")
+print("\(checks - failures)/\(checks) checks passed; \(failures) failures" + (warnings > 0 ? "; \(warnings) latency warnings" : ""))
 exit(failures == 0 ? 0 : 1)
