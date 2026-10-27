@@ -145,7 +145,8 @@ struct NavigationMotion: ViewModifier, Animatable {
     func body(content: Content) -> some View {
         content
             .offset(x: offset * CGFloat(1 - visible))
-            .opacity(visible)
+            // The page being left fades faster than the new one comes in, so the two are never both legible.
+            .opacity(offset < 0 ? visible * visible * visible : visible)
     }
 }
 
