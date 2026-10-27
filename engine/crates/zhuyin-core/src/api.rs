@@ -419,7 +419,7 @@ pub struct CharacterModelSyllable {
 
 /// One word of a scored sentence.  Ranges are composition token offsets, not UTF-16 offsets.  Literals have an
 /// empty reading.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SentenceWord {
     /// Composition tokens the word covers.
     pub range: Range<usize>,
@@ -429,6 +429,10 @@ pub struct SentenceWord {
     pub reading: String,
     /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
     pub corrected: bool,
+    /// Shown as a correction only because of a reading-channel correction (no key correction or fuzzy sound).
+    pub reading_corrected: bool,
+    /// The reading-channel variant one of its syllables took.
+    pub channel: Option<crate::reading_channel::ChannelUse>,
 }
 
 /// One of the engine's N best sentences.
@@ -451,6 +455,12 @@ impl ScoredSentence {
     #[must_use]
     pub fn corrected(&self) -> bool {
         self.words.iter().any(|word| word.corrected)
+    }
+
+    /// Some word differs from the keys as typed, and only through reading-channel corrections.
+    #[must_use]
+    pub fn reading_corrected_only(&self) -> bool {
+        self.corrected() && self.words.iter().all(|word| !word.corrected || word.reading_corrected)
     }
 }
 

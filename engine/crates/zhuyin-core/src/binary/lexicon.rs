@@ -175,6 +175,12 @@ impl MappedLexicon {
         self.syllable_strs().map(str::to_owned).collect()
     }
 
+    /// Every reading, in table order.
+    #[must_use]
+    pub fn reading_strs(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
+        (0..self.reading_count).map(|i| self.spelling(self.sections[READINGS] + i * 16))
+    }
+
     /// The readings whose toneless form is `base`, borrowed.
     pub fn reading_strs_for_base(&self, base: &str) -> impl Iterator<Item = &str> + '_ {
         let range = match self.find(base.as_bytes(), BASES, self.base_count, 16) {

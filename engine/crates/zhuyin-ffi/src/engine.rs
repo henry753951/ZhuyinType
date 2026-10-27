@@ -71,6 +71,7 @@ unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
         domain_evidence_scale: config.domain_evidence_scale,
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
+        ..EngineConfig::default()
     }
 }
 

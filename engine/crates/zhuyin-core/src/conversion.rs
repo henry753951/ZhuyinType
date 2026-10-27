@@ -13,6 +13,7 @@ use crate::api::{ScoredSentence, SentenceWord, TypoTolerance};
 use crate::engine::{DECODING_BEAM_WIDTH, Engine, EngineModel};
 use crate::language_model::{LanguageModel, LanguageModelHistory};
 use crate::lexicon::WordEntry;
+use crate::reading_channel::ChannelUse;
 use crate::swift_format::graphemes;
 
 /// One token of a composition.
@@ -63,6 +64,10 @@ pub struct ConvertedWord {
     pub history: Option<LanguageModelHistory>,
     /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
     pub corrected: bool,
+    /// The reading-channel variant one of its syllables took.
+    pub channel: Option<ChannelUse>,
+    /// Shown as a correction only because of a reading-channel correction.
+    pub reading_corrected: bool,
 }
 
 /// A word the user picked or that stays as shown.
@@ -330,6 +335,8 @@ impl Engine {
                             text: w.text.to_string(),
                             reading: w.reading.to_string(),
                             corrected: w.corrected,
+                            reading_corrected: w.reading_corrected,
+                            channel: w.channel,
                         })
                         .collect(),
                     score: cache.nodes[end as usize].beam_score,
@@ -538,6 +545,8 @@ impl Engine {
                     word_id: None,
                     history: None,
                     corrected: false,
+                    channel: None,
+                    reading_corrected: false,
                 },
                 None,
                 vec![],
@@ -563,6 +572,8 @@ impl Engine {
                             word_id: None,
                             history: None,
                             corrected: false,
+                            channel: None,
+                            reading_corrected: false,
                         },
                         Some(entry),
                         components,
@@ -578,6 +589,8 @@ impl Engine {
                                 word_id: None,
                                 history: None,
                                 corrected,
+                                channel: m.channel,
+                                reading_corrected: m.reading_corrected(),
                             },
                             Some(m.entry),
                             vec![],
@@ -594,6 +607,8 @@ impl Engine {
                             word_id: None,
                             history: None,
                             corrected: false,
+                            channel: None,
+                            reading_corrected: false,
                         },
                         Some(WordEntry::new(reading.clone(), -100.0)),
                         vec![],
