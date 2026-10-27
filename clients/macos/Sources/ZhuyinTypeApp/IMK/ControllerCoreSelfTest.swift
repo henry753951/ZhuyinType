@@ -252,6 +252,14 @@ enum ControllerCoreSelfTest {
             core.commit()
             try expect(client.inserts == ["你.>"], "inserted \(client.inserts)")
         }
+        test("the 中/英 badge keeps its size on the input surface") {
+            let badge = ModeBadgeView(frame: .zero)
+            let surface = InputSurface(content: badge)
+            badge.setFrameSize(ModeBadgeView.size)
+            surface.fitContent()
+            try expect(surface.frame.size == ModeBadgeView.size && badge.frame.size == ModeBadgeView.size,
+                       "badge \(badge.frame.size), surface \(surface.frame.size)")
+        }
         test("Windows keys: Control types Chinese punctuation, Shift the symbol on the key") {
             let (core, client) = session()
             type("su3", into: core)

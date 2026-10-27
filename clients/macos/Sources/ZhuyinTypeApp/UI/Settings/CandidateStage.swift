@@ -348,7 +348,7 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
     let text: String
     let appearance: PanelAppearance
 
-    func makeNSView(context: Context) -> InputSurface { InputSurface(content: ModeBadgeView(frame: .zero)) }
+    func makeNSView(context: Context) -> InputSurface { InputSurface.modeBadge() }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance

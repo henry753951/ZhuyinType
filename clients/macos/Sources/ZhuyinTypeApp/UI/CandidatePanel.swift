@@ -590,6 +590,7 @@ final class CandidatePanelController {
 }
 
 final class ModeBadgeView: InputMaterialView {
+    static let size = NSSize(width: 52, height: 48)
     let label = NSTextField(labelWithString: "中")
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -597,17 +598,29 @@ final class ModeBadgeView: InputMaterialView {
         label.alignment = .center
         label.textColor = .labelColor
         addSubview(label)
-        setFrameSize(NSSize(width: 52, height: 48))
+        setFrameSize(Self.size)
         label.frame = NSRect(x: 5, y: 9, width: 42, height: 30)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
+extension InputSurface {
+    /// A surface holding a 中/英 badge at its size.
+    static func modeBadge() -> InputSurface {
+        let badge = ModeBadgeView(frame: .zero)
+        let surface = InputSurface(content: badge)
+        badge.setFrameSize(ModeBadgeView.size)
+        surface.fitContent()
+        return surface
+    }
+}
+
 final class ModeToast {
     static let shared = ModeToast()
     private let badge = ModeBadgeView(frame: .zero)
+    private lazy var surface = InputSurface(content: badge)
     private lazy var panel: InputPanel = {
-        let panel = InputPanel(content: InputSurface(content: badge))
+        let panel = InputPanel(content: surface)
         panel.ignoresMouseEvents = true
         return panel
     }()
@@ -627,10 +640,15 @@ final class ModeToast {
         generation += 1
         let current = generation
         badge.label.stringValue = text
+        // The glass backdrop (macOS 26 and later) sizes its content to itself when it adopts it, which leaves the badge
+        // at zero size: set the size every time, as the candidate window does.
+        _ = panel
+        badge.setFrameSize(ModeBadgeView.size)
+        surface.fitContent()
         let visible = InputPanelPlacement.screen(at: caret)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         panel.level = windowLevel
         panel.appearance = Preferences.shared.panelAppearance.appearance
-        panel.setFrame(InputPanelPlacement.frame(size: badge.frame.size, caret: caret, visible: visible, textInset: 0,
+        panel.setFrame(InputPanelPlacement.frame(size: ModeBadgeView.size, caret: caret, visible: visible, textInset: 0,
                                                  above: Preferences.shared.candidatePlacement == .above), display: true)
         panel.alphaValue = 1
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }

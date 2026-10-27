@@ -76,7 +76,7 @@ enum UIPreviewRenderer {
             try capturePanel(list: nil, keys: [], style: CandidateStyle(layout: .horizontal), notice: notice,
                              to: directory.appendingPathComponent("notice-\(file)-\(suffix).png"))
         }
-        let badge = InputSurface(content: ModeBadgeView(frame: .zero))
+        let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))
     }
 
