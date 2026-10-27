@@ -101,7 +101,7 @@ impl Golden {
         }
         let (count, digest) = self.digests.get(name).unwrap_or_else(|| panic!("no digest for {name}"));
         if lines.len() == *count && actual == *digest {
-            eprintln!("{name}: {count} lines identical to Swift");
+            eprintln!("{name}: {count} lines identical to the digest");
             return;
         }
         let dump = parity_directory().join("out").join(format!("{name}.txt"));
