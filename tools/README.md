@@ -80,6 +80,8 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt eval sets` | 評測集與是否存在 |
 | `zt eval conversion --set colloquial-dev wiki-dev` | 整句轉換；其他評測見 `zt eval --help` 與 `docs/ml/EVALUATION.md` |
 | `zt bench run v0.5.0` | ZhuyinBench（在 GPU 主機上；發布後由 CI 執行） |
+| `zt systems setup` | 依固定的 commit 取得並建置靈犀注音與善解（GPU 主機；放在 `data/build/systems`） |
+| `zt bench compare` | 和其他輸入法在每個集合、每個情境上的比較（GPU 主機）；`--render` 由紀錄產生 `docs/benchmarks/competition.md` |
 | `zt train list` | 訓練流程與步驟；`zt train v3` 執行未完成的步驟 |
 
 ### 模型（`ml/src/zhuyintype_ml/remote/`）
