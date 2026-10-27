@@ -330,3 +330,18 @@ struct CandidateScenePreview: View {
             .frame(width: width, height: CandidatePreview.titleHeight + layout.naturalHeight)
     }
 }
+
+/// The real candidate window for `list`, drawn still at its own size (the wizard storyboard).
+struct PanelSnapshot: View {
+    let list: CandidateList
+    var zhuyinHint: String?
+    @ObservedObject var preferences: Preferences
+    var body: some View {
+        let style = preferences.candidateStyle
+        let keys = preferences.pageSelectionKeys
+        let size = PanelMeasure.measure(list: list, keys: keys, style: style, notice: nil, zhuyinHint: zhuyinHint).size
+        CandidateWindowView(scene: PreviewScene(title: "", committed: "", keys: [], list: list, zhuyinHint: zhuyinHint),
+                            style: style, keys: keys, appearance: preferences.panelAppearance)
+            .frame(width: size.width, height: size.height)
+    }
+}

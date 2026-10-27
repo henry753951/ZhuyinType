@@ -45,6 +45,22 @@ enum UIPreviewRenderer {
             let settings = SettingsWindowController.shared
             CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
+            if only == "storyboard" {
+                // The planned 設定嚮導, frame by frame, for docs/product/SETUP_WIZARD.md.
+                try FileManager.default.createDirectory(at: directory.appendingPathComponent("storyboard"), withIntermediateDirectories: true)
+                for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearanceName)
+                    Preferences.shared.resetToDefaults()
+                    Preferences.shared.punctuationKeys = .windows
+                    for frame in StoryboardFrame.allCases {
+                        // The practice field's window, small enough to sit in the wizard.
+                        Preferences.shared.candidateFontSize = [.paging, .success].contains(frame) ? 14 : 18
+                        Preferences.shared.candidateDensity = [.paging, .success].contains(frame) ? .compact : .standard
+                        try capture(swiftUI: WizardStoryboard(frame: frame, preferences: Preferences.shared), width: 720,
+                                    to: directory.appendingPathComponent("storyboard/\(frame.rawValue)-\(name).png"), settle: 0.3)
+                    }
+                }
+            }
             if let only, let pane = SettingsPane(rawValue: only) {
                 NSApp.appearance = NSAppearance(named: .aqua)
                 try renderPanels(to: directory.appendingPathComponent("panels"), suffix: "light")
