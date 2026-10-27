@@ -12,10 +12,13 @@ enum UIPreviewRenderer {
 
     /// Returns false when a page has a misaligned row.
     @discardableResult
-    static func render(to directory: URL) -> Bool {
+    /// `pages`: only the settings window's page with this raw value (and the panels), light only, for a short check.
+    static func render(to directory: URL, pages only: String? = nil) -> Bool {
         precondition(Thread.isMainThread)
-        NSApp.setActivationPolicy(.accessory)
+        // Never active, never key: the user keeps typing in their own app while this runs (Headless).
+        NSApp.setActivationPolicy(.prohibited)
         NSApp.finishLaunching()
+        let focus = Headless.FocusGuard()
         // One fixed throwaway suite, emptied before and removed after.
         let suite = "org.zhuyintype.preview"
         guard let defaults = UserDefaults(suiteName: suite) else { return false }
@@ -41,7 +44,24 @@ enum UIPreviewRenderer {
             let settings = SettingsWindowController.shared
             CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
-            for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            if let only, let pane = SettingsPane(rawValue: only) {
+                NSApp.appearance = NSAppearance(named: .aqua)
+                try renderPanels(to: directory.appendingPathComponent("panels"), suffix: "light")
+                Preferences.shared.resetToDefaults()
+                RowGeometry.recording = true
+                RowGeometry.reset()
+                let window = settings.makeWindow(pane: pane)
+                window.setContentSize(NSSize(width: 760, height: 600))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+                try capture(window: window, to: directory.appendingPathComponent("settings/grid-\(pane.rawValue)-light.png"), grid: true)
+                RowGeometry.recording = false
+                window.orderOut(nil)
+            }
+            for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] where only == nil {
                 NSApp.appearance = NSAppearance(named: appearanceName)
                 try renderPanels(to: directory.appendingPathComponent("panels"), suffix: name)
                 try renderPopovers(to: directory.appendingPathComponent("popovers"), suffix: name)
@@ -53,6 +73,13 @@ enum UIPreviewRenderer {
             fputs("UI preview failed: \(error.localizedDescription)\n", stderr)
             return false
         }
+        let focusProblems = focus.check()
+        if !focusProblems.isEmpty {
+            print("FAIL focus: the render took focus from the user:")
+            focusProblems.forEach { print("  \($0)") }
+            return false
+        }
+        print("Focus: ZhuyinType never became active and no window became key")
         if misaligned.isEmpty {
             print("Row geometry: every trailing block centred on its leading block; every card balanced")
             return true
@@ -380,9 +407,7 @@ enum UIPreviewRenderer {
                 RowGeometry.reset()
                 let hosting = NSHostingView(rootView: SettingsPaneView(pane: pane, model: settings.model))
                 hosting.frame = NSRect(x: 0, y: 0, width: width, height: tall)
-                let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: width, height: tall),
-                                      styleMask: [.borderless], backing: .buffered, defer: false)
-                window.isReleasedWhenClosed = false
+                let window = HeadlessWindow(size: NSSize(width: width, height: tall))
                 window.backgroundColor = .windowBackgroundColor
                 window.contentView = hosting
                 window.alphaValue = 0
@@ -442,12 +467,9 @@ enum UIPreviewRenderer {
     }
 
     private static func capture(view: NSView, to url: URL, settle: TimeInterval = 0) throws {
-        let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: view.frame.size),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
+        let window = HeadlessWindow(size: view.frame.size)
         window.backgroundColor = .clear
         window.isOpaque = false
-        window.alphaValue = 0
         window.contentView = view
         window.orderFrontRegardless()
         view.layoutSubtreeIfNeeded()

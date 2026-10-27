@@ -36,6 +36,7 @@ enum ControllerCoreSelfTest {
     private struct Failure: Error, CustomStringConvertible { var description: String }
 
     static func run(lexiconURL: URL) -> Int32 {
+        let focus = Headless.FocusGuard()
         let engine: Engine
         do {
             engine = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
@@ -972,6 +973,12 @@ enum ControllerCoreSelfTest {
                        "⌥← with no list did not move the cursor")
             press("<esc><esc><esc>", into: core)
             try expect(!core.keyDown(keyCode: 123, modifiers: .option), "idle ⌥← was taken")
+        }
+
+        test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
+            try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
+            let problems = focus.check()
+            try expect(problems.isEmpty, problems.joined(separator: "; "))
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
