@@ -10,8 +10,7 @@ if let index = arguments.firstIndex(where: { $0 == "--render-ui" || $0 == "--ren
         exit(2)
     }
     _ = NSApplication.shared
-    UIPreviewRenderer.render(to: URL(fileURLWithPath: arguments[index + 1]))
-    exit(0)
+    exit(UIPreviewRenderer.render(to: URL(fileURLWithPath: arguments[index + 1])) ? 0 : 1)
 }
 
 // Development: open the settings window with sample words, print its window number, and keep running.

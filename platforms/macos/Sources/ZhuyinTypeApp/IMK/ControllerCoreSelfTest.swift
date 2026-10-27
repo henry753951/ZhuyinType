@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import ZhuyinEngine
 
 private final class FakeTextClient: TextClient {
@@ -836,6 +837,73 @@ enum ControllerCoreSelfTest {
             }
             let defaults = scratchDefaults()
             try expect(Preferences(defaults: defaults).spaceAction == .commitAndSpace, "default")
+        }
+
+        // MARK: Settings
+
+        test("key field: hover and recording never change its height; a conflict adds its line") {
+            _ = NSApplication.shared
+            let preferences = Preferences(defaults: scratchDefaults())
+            func height(_ command: ShortcutCommand, _ state: ShortcutFieldPreview?, width: CGFloat = 300) -> CGFloat {
+                let view = NSHostingView(rootView: ShortcutField(preferences: preferences, command: command, preview: state)
+                    .frame(width: width))
+                view.layoutSubtreeIfNeeded()
+                return view.fittingSize.height
+            }
+            for command in [ShortcutCommand.deleteWord, .correctionsList, .singleCharacterList] {
+                let count = preferences.bindings[command]?.count ?? 0
+                let rest = height(command, nil)
+                try expect(rest >= Keycap.height(12), "\(command) measured \(rest) pt")
+                for state: ShortcutFieldPreview in [.hover, .recording(index: 0, held: []), .recording(index: 0, held: ["⌃", "⇧"]),
+                                                     .recording(index: count, held: []), .accepted(index: 0)] {
+                    let other = height(command, state)
+                    try expect(abs(other - rest) < 0.5, "\(command) \(state): \(other) pt, at rest \(rest) pt")
+                }
+            }
+            var bindings = preferences.bindings
+            bindings[.nextPage] = [Shortcut("Tab"), Shortcut("←", control: true, shift: true)]
+            bindings[.selectLeft] = [Shortcut("←", shift: true), Shortcut("←", control: true, shift: true)]
+            preferences.bindings = bindings
+            let conflicted = height(.nextPage, nil)
+            try expect(abs(height(.nextPage, .hover) - conflicted) < 0.5, "hover changed a conflicted field")
+            bindings[.selectLeft] = [Shortcut("←", shift: true)]
+            preferences.bindings = bindings
+            try expect(height(.nextPage, nil) < conflicted, "the conflict line was not added")
+        }
+
+        test("key recorder: fn with an arrow or ⌫ is picked up and reads as on a Mac keyboard") {
+            let preferences = Preferences(defaults: scratchDefaults())
+            func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = []) -> NSEvent {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags.union([.function, .numericPad]),
+                                 timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                                 isARepeat: false, keyCode: code)!
+            }
+            func record(_ event: NSEvent, _ command: ShortcutCommand, at index: Int = 1) -> ShortcutField.Recorded {
+                ShortcutField.record(event, command: command, at: index, in: preferences)
+            }
+            // fn ↓ / fn ↑ (Page Down / Page Up) become keys of 下一頁 / 上一頁.
+            try expect(record(key(121), .nextPage) == .accept, "fn ↓ for 下一頁: \(record(key(121), .nextPage))")
+            try expect(record(key(116), .previousPage) == .accept, "fn ↑ for 上一頁")
+            try expect(preferences.bindings[.nextPage]?.last == Shortcut("PageDown"), "fn ↓ not stored")
+            try expect(Shortcut("PageDown").keycaps == ["fn", "↓"] && Shortcut("PageDown").spoken == "fn ↓（Page Down）",
+                       "fn ↓ reads \(Shortcut("PageDown").keycaps)")
+            try expect(Shortcut("PageUp", option: true).keycaps == ["⌥", "fn", "↑"], "⌥ fn ↑")
+            // With a modifier any of them can be a key; alone, fn ← → ⌫ and the other page key say what they already do.
+            try expect(record(key(115, .option), .selectLeft) == .accept, "⌥ fn ← refused")
+            for (code, command, needle) in [(UInt16(119), ShortcutCommand.deleteWord, "fn →（End）"), (115, .deleteWord, "fn ←（Home）"),
+                                            (117, .deleteWord, "fn ⌫（向後刪除）"), (121, .previousPage, "fn ↓（Page Down）")] {
+                guard case .refuse(let message) = record(key(code), command) else {
+                    throw Failure(description: "key \(code) for \(command) was not refused")
+                }
+                try expect(message.contains(needle), "key \(code): \(message)")
+            }
+            // fn shows while held.
+            let fn = NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: [.function, .shift], timestamp: 0,
+                                      windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                                      isARepeat: false, keyCode: 63)!
+            try expect(record(fn, .nextPage) == .held(["⇧", "fn"]), "held \(record(fn, .nextPage))")
+            // The controller turns the key into the command.
+            try expect(Shortcut(keyCode: 121, modifiers: [.function, .numericPad]) == Shortcut("PageDown"), "fn ↓ event")
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")

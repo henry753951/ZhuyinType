@@ -41,13 +41,39 @@ struct Shortcut: Codable, Hashable {
         if option { caps.append("⌥") }
         if shift { caps.append("⇧") }
         if command { caps.append("⌘") }
-        let names = ["Space": "空白", "PageUp": "Page Up", "PageDown": "Page Down"]
-        caps.append(names[key] ?? (key.count == 1 ? key.uppercased() : key))
+        // The keys a Mac laptop types with fn read as fn plus the key they are printed on.
+        if let laptop = Self.fnKeys[key] { return caps + ["fn", laptop] }
+        caps.append(key == "Space" ? "空白" : key.count == 1 ? key.uppercased() : key)
         return caps
+    }
+
+    /// Keys typed with fn on a Mac laptop keyboard: the key they are printed on, and their full-keyboard name.
+    static let fnKeys = ["PageUp": "↑", "PageDown": "↓", "Home": "←", "End": "→", "⌦": "⌫"]
+    static let fnNames = ["PageUp": "Page Up", "PageDown": "Page Down", "Home": "Home", "End": "End", "⌦": "向後刪除"]
+
+    /// How the key is read aloud and in help tags: 「fn ↓（Page Down）」.
+    var spoken: String {
+        keycaps.joined(separator: " ") + (Self.fnNames[key].map { "（\($0)）" } ?? "")
     }
 
     /// The compact form for the candidate window's keycaps: "⇧↓", "⌃S".
     var compact: String { keycaps.count == 1 ? keycaps[0] : keycaps.dropLast().joined() + keycaps.last! }
+
+    /// Why this key cannot be a shortcut of `target`, or nil when it can.  Page Up and Page Down (fn ↑ and fn ↓) page
+    /// the list anyway, so they can be keys of 上一頁 and 下一頁.
+    func reservedReason(for target: ShortcutCommand?) -> String? {
+        if !hasModifiers {
+            if key == "PageDown" && target == .nextPage || key == "PageUp" && target == .previousPage { return nil }
+            switch key {
+            case "PageUp", "PageDown": return "\(spoken) 用來翻頁"
+            case "Home": return "\(spoken) 移到組字的開頭"
+            case "End": return "\(spoken) 移到組字的結尾"
+            case "⌦": return "\(spoken) 刪除游標後的字"
+            default: break
+            }
+        }
+        return reservedReason
+    }
 
     /// Why this key cannot be a shortcut, or nil when it can.
     var reservedReason: String? {
@@ -169,7 +195,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// Why `shortcut` cannot be binding `index` of `command`, naming the action that has it; nil when it can.
     static func problem(assigning shortcut: Shortcut, to command: ShortcutCommand, at index: Int,
                         in bindings: [ShortcutCommand: [Shortcut]]) -> String? {
-        if let reason = shortcut.reservedReason { return reason }
+        if let reason = shortcut.reservedReason(for: command) { return reason }
         for (other, list) in bindings {
             for (position, bound) in list.enumerated() where bound == shortcut && !(other == command && position == index) {
                 return other == command ? "已是這個功能的另一個按鍵" : "已用於「\(other.label)」"

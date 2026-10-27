@@ -49,7 +49,7 @@ struct AnalyticsPane: View {
     private func content(_ summary: UsageSummary, _ metrics: ProcessMetrics) -> some View {
         let counting = preferences.recordsUsageStats
         Form {
-            Section {
+            SettingsSection {
                 Picker("期間", selection: $period) {
                     Text("過去 30 天").tag(Period.month)
                     Text("全部").tag(Period.all)
@@ -59,14 +59,14 @@ struct AnalyticsPane: View {
                 RecapHero(summary: summary, counting: counting)
             }
             if summary.counters.characters > 0 {
-                Section("每天送出的字") {
+                SettingsSection("每天送出的字") {
                     DailyChart(days: summary.days)
                         .frame(height: 150)
                         .padding(.vertical, 6)
                 }
             }
             RhythmSection(summary: summary, rhythm: store.rhythm)
-            Section("打字") {
+            SettingsSection("打字") {
                 StatGrid(stats: [
                     ("送出的字", summary.counters.characters, "character"),
                     ("組字", summary.counters.compositions, "text.cursor"),
@@ -77,53 +77,40 @@ struct AnalyticsPane: View {
                 ])
                 .padding(.vertical, 4)
             }
-            Section("從清單選字") {
+            SettingsSection("從清單選字") {
                 Breakdown(rows: [
                     ("一般清單", summary.counters.picksNormal), ("修正清單", summary.counters.picksCorrections),
                     ("單字清單", summary.counters.picksSingle), ("標點", summary.counters.picksPunctuation),
                 ])
             }
-            Section {
+            SettingsSection("改字") {
                 Breakdown(rows: [
                     ("⌫ 刪掉重打", summary.counters.backspaces), ("Esc 清除", summary.counters.escapes),
                     ("送出後刪掉重打", summary.counters.deleteAfterCommit), ("打出注音本身", summary.counters.literalZhuyin),
                     ("恢復成原本的字", summary.counters.undoLiteral),
                 ])
-                LabeledContent {
-                    Text("\(summary.counters.correctedCommitted.formatted()) / \(summary.counters.correctedShown.formatted())")
-                        .monospacedDigit()
-                } label: {
-                    RowLabel("自動修正", "整句中有按錯修正的字：送出的組字 / 出現過的組字")
-                }
-            } header: {
-                Text("改字")
+                SettingRow(title: "自動修正", subtitle: "整句中有按錯修正的字：送出的組字 / 出現過的組字",
+                           value: "\(summary.counters.correctedCommitted.formatted()) / \(summary.counters.correctedShown.formatted())")
             }
-            Section("你的字詞") {
-                LabeledContent("自訂詞", value: words.map { "\($0.phrases.formatted()) 個" } ?? "—")
-                LabeledContent("記住的字詞", value: words.map { "\($0.learned.formatted()) 個" } ?? "—")
+            SettingsSection("你的字詞") {
+                SettingRow(title: "自訂詞", value: words.map { "\($0.phrases.formatted()) 個" } ?? "—")
+                SettingRow(title: "記住的字詞", value: words.map { "\($0.learned.formatted()) 個" } ?? "—")
             }
-            Section("效能") {
+            SettingsSection("效能") {
                 DrillRow(model: model, title: "效能", subtitle: "按鍵反應、CPU、記憶體、耗電與載入時間",
                          value: store.data.latency.total > 0
                             ? "p95 " + PerformanceFormat.ms(store.data.latency.percentile(0.95)) : "還沒有資料",
                          subpage: .performance)
             }
-            Section {
-                OptionRowLite(title: "記錄使用統計",
-                              subtitle: counting ? "從 \(store.data.since.formatted(date: .long, time: .omitted)) 開始記錄" : "關閉時不計數") {
-                    InfoButton(title: "使用統計") { UsageInfo() }
-                } control: {
-                    Toggle("記錄使用統計", isOn: binding(preferences, \.recordsUsageStats))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+            SettingsSection("統計") {
+                SettingRow(title: "記錄使用統計",
+                           subtitle: counting ? "從 \(store.data.since.formatted(date: .long, time: .omitted)) 開始記錄" : "關閉時不計數",
+                           accessory: .info(title: "使用統計", content: AnyView(UsageInfo()))) {
+                    RowSwitch(title: "記錄使用統計", isOn: binding(preferences, \.recordsUsageStats))
                 }
-                LabeledContent {
+                SettingRow(title: "清除統計", subtitle: "刪除所有計數與每天的紀錄") {
                     Button("清除…") { confirmingClear = true }
-                } label: {
-                    RowLabel("清除統計", "刪除所有計數與每天的紀錄")
                 }
-            } header: {
-                Text("統計")
             } footer: {
                 FooterText("只記錄次數與時間，不記錄打的字、讀音與 App；只存在這台 Mac。統計只在記憶體中累加，每 10 分鐘最多寫入一次，不影響打字。")
             }
@@ -299,18 +286,13 @@ private struct Breakdown: View {
     var body: some View {
         let top = max(1, rows.map(\.value).max() ?? 1)
         ForEach(rows, id: \.title) { row in
-            LabeledContent {
-                HStack(spacing: 8) {
-                    GeometryReader { proxy in
-                        Capsule().fill(Color.accentColor.opacity(0.75))
-                            .frame(width: max(row.value > 0 ? 3 : 0, proxy.size.width * CGFloat(row.value) / CGFloat(top)), height: 6)
-                            .frame(maxHeight: .infinity)
-                    }
-                    .frame(width: 140, height: 14)
-                    Text(row.value.formatted()).monospacedDigit().frame(minWidth: 44, alignment: .trailing)
+            SettingRow(title: row.title, value: row.value.formatted()) {
+                GeometryReader { proxy in
+                    Capsule().fill(Color.accentColor.opacity(0.75))
+                        .frame(width: max(row.value > 0 ? 3 : 0, proxy.size.width * CGFloat(row.value) / CGFloat(top)), height: 6)
+                        .frame(maxHeight: .infinity)
                 }
-            } label: {
-                Text(row.title)
+                .frame(width: 140, height: 14)
             }
         }
     }
@@ -345,38 +327,22 @@ private struct PerformanceSection: View {
     let metrics: ProcessMetrics
 
     var body: some View {
-        Section {
+        SettingsSection {
             if latency.total > 0 {
-                LabeledContent {
-                    Text(["p50 \(ms(latency.percentile(0.5)))", "p95 \(ms(latency.percentile(0.95)))",
-                          "最慢 \(ms(latency.maximum))"].joined(separator: "・"))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                } label: {
-                    RowLabel("按鍵反應", "從按鍵到畫面更新；\(latency.total.formatted()) 個按鍵")
-                }
+                SettingRow(title: "按鍵反應", subtitle: "從按鍵到畫面更新；\(latency.total.formatted()) 個按鍵",
+                           value: ["p50 \(ms(latency.percentile(0.5)))", "p95 \(ms(latency.percentile(0.95)))",
+                                   "最慢 \(ms(latency.maximum))"].joined(separator: "・"))
                 LatencyChart(latency: latency).frame(height: 110).padding(.vertical, 4)
             } else {
-                LabeledContent("按鍵反應", value: "還沒有資料")
+                SettingRow(title: "按鍵反應", value: "還沒有資料")
             }
-            LabeledContent {
-                Text(String(format: "%.1f 秒", metrics.cpuSeconds)).monospacedDigit().foregroundStyle(.secondary)
-            } label: {
-                RowLabel("CPU 時間", "自 \(ProcessMetrics.launched.formatted(date: .omitted, time: .shortened)) 啟動以來")
-            }
-            LabeledContent("記憶體", value: [metrics.footprintBytes.map { "目前 \(bytes($0))" },
-                                            metrics.peakFootprintBytes.map { "最高 \(bytes($0))" }]
+            SettingRow(title: "CPU 時間", subtitle: "自 \(ProcessMetrics.launched.formatted(date: .omitted, time: .shortened)) 啟動以來",
+                       value: String(format: "%.1f 秒", metrics.cpuSeconds))
+            SettingRow(title: "記憶體", value: [metrics.footprintBytes.map { "目前 \(bytes($0))" },
+                                               metrics.peakFootprintBytes.map { "最高 \(bytes($0))" }]
                 .compactMap { $0 }.joined(separator: "・").nonEmpty ?? "無法取得")
-            LabeledContent {
-                Text(energy).monospacedDigit().foregroundStyle(.secondary)
-            } label: {
-                RowLabel("耗電", "macOS 的估計，自啟動以來")
-            }
-            LabeledContent {
-                Text(loadTimes).monospacedDigit().foregroundStyle(.secondary).multilineTextAlignment(.trailing)
-            } label: {
-                RowLabel("載入時間", "詞庫與語言模型、整句重排、逐字模型")
-            }
+            SettingRow(title: "耗電", subtitle: "macOS 的估計，自啟動以來", value: energy)
+            SettingRow(title: "載入時間", subtitle: "詞庫與語言模型、整句重排、逐字模型", value: loadTimes)
         }
     }
 
@@ -437,24 +403,6 @@ struct UsageInfo: View {
     }
 }
 
-/// A row with the title and a line on the leading side, an ⓘ and the control on the trailing side.
-private struct OptionRowLite<Info: View, Control: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let info: () -> Info
-    @ViewBuilder let control: () -> Control
-    var body: some View {
-        LabeledContent {
-            HStack(spacing: 6) {
-                control()
-                info().frame(width: 20)
-            }
-        } label: {
-            RowLabel(title, subtitle)
-        }
-    }
-}
-
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
 }
@@ -467,33 +415,27 @@ private struct RhythmSection: View {
 
     var body: some View {
         let c = summary.counters
-        Section {
+        SettingsSection("打字節奏") {
             StatGrid(stats: [
                 ("打字速度（字/分鐘）", Int((c.activeSpeed ?? 0).rounded()), "speedometer"),
                 ("一次就對（%）", Int(((c.firstTimeRight ?? 0) * 100).rounded()), "checkmark.seal"),
                 ("最長連續（字）", rhythm.longestRun, "arrow.right.to.line"),
             ])
             .padding(.vertical, 4)
-            LabeledContent {
-                Text("\(duration(c.typingMilliseconds))・\(duration(c.thinkingMilliseconds))")
-                    .monospacedDigit().foregroundStyle(.secondary)
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    RowLabel("打字時間・思考停頓", "停頓超過 \(String(format: "%.0f", rhythm.pauseThreshold)) 秒算思考，超過 1 分鐘不計")
-                    SplitBar(first: c.typingMilliseconds, second: c.thinkingMilliseconds)
-                }
+            SettingRow(title: "打字時間・思考停頓",
+                       subtitle: "停頓超過 \(String(format: "%.0f", rhythm.pauseThreshold)) 秒算思考，超過 1 分鐘不計",
+                       value: "\(duration(c.typingMilliseconds))・\(duration(c.thinkingMilliseconds))") {
+                SplitBar(first: c.typingMilliseconds, second: c.thinkingMilliseconds)
             }
-            LabeledContent("一次不改字最長", value: "\(rhythm.longestCleanRun.formatted()) 字")
-            LabeledContent("每個字按幾個鍵", value: c.characters > 0
+            SettingRow(title: "一次不改字最長", value: "\(rhythm.longestCleanRun.formatted()) 字")
+            SettingRow(title: "每個字按幾個鍵", value: c.characters > 0
                 ? String(format: "%.1f", Double(c.keys) / Double(c.characters)) : "—")
-            LabeledContent("思考停頓的中位數", value: rhythm.pauses.percentile(0.5).map { String(format: "%.1f 秒", $0) } ?? "—")
+            SettingRow(title: "思考停頓的中位數", value: rhythm.pauses.percentile(0.5).map { String(format: "%.1f 秒", $0) } ?? "—")
             VStack(alignment: .leading, spacing: 8) {
                 Text("什麼時候打字")
                 WeekHeatMap(hours: rhythm.hours)
             }
             .padding(.vertical, 4)
-        } header: {
-            Text("打字節奏")
         } footer: {
             FooterText("打字速度只算連續打字的時間；一次就對是沒有選字、⌫ 或 Esc 就送出的組字。")
         }

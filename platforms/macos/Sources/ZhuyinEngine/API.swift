@@ -135,6 +135,8 @@ public enum SpaceAction: String, Sendable, CaseIterable {
     case commit
     /// Commits the composition, then the app receives the Space, so a space follows the text.
     case commitAndSpace
+    /// Puts a space into the composition and keeps composing (what ⇧Space always does); nothing is sent yet.
+    case insertSpace
 }
 
 public enum TypoTolerance: String, Sendable, CaseIterable {

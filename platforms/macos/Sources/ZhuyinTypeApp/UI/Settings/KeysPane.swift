@@ -103,81 +103,72 @@ struct KeysPane: View {
         // Keys that can change come first, by feature; the fixed ones wait under a disclosure at the bottom.
         let sections = all.map { ($0.0, $0.1.filter { !$0.isFixed }) }.filter { !$0.1.isEmpty }
         let fixed = all.flatMap { $0.1.filter(\.isFixed) }
+        let conflicts = preferences.allConflicts
+        let changed = preferences.bindings != ShortcutCommand.defaultBindings || !preferences.disabledKeyFeatures.isEmpty
+            || preferences.shiftToggle != .both
         Form {
-                Section {
-                    LabeledContent {
-                        Button("全部還原…") { confirmingReset = true }
-                            .disabled(preferences.bindings == ShortcutCommand.defaultBindings && preferences.disabledKeyFeatures.isEmpty
-                                      && preferences.shiftToggle == .both)
-                    } label: {
-                        RowLabel("所有按鍵", "點按鍵後按下新的組合，Esc 取消；功能的開關在各自的頁面")
-                    }
-                }
-                let conflicts = preferences.allConflicts
-                if !conflicts.isEmpty {
-                    Section {
-                        ForEach(Array(conflicts.enumerated()), id: \.offset) { _, conflict in
-                            LabeledContent {
-                                KeyCombo(keys: conflict.2.keycaps, tint: Color(nsColor: .systemRed))
-                            } label: {
-                                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color(nsColor: .systemRed))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("「\(conflict.0.label)」與「\(conflict.1.label)」用同一個按鍵")
-                                        PlaceLink(title: "前往「\(conflict.0.label)」", place: conflict.0.place)
-                                    }
-                                }
-                            }
-                        }
-                    } header: {
-                        Text("按鍵衝突")
-                    } footer: {
-                        FooterText("同一個按鍵只會執行其中一個功能；請改掉其中一個。")
-                    }
-                }
-                if sections.isEmpty && fixed.isEmpty {
-                    Section {
-                        Text("沒有符合「\(model.keysQuery)」的項目")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 60)
-                    }
-                }
-                ForEach(sections, id: \.0) { section, rows in
-                    Section {
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                            KeyItemRow(item: item, preferences: preferences, keys: keys)
-                                .id(index == 0 ? section.id : "row-" + item.id)
-                        }
-                    } header: {
-                        Text(section.title)
-                    }
-                }
-                if !fixed.isEmpty {
-                    let open = showsFixed || !model.keysQuery.isEmpty
-                    Section {
+            if !conflicts.isEmpty {
+                SettingsSection("按鍵衝突") {
+                    ForEach(Array(conflicts.enumerated()), id: \.offset) { _, conflict in
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { showsFixed.toggle() }
+                            SettingsWindowController.shared.open(conflict.0.place)
                         } label: {
-                            LabeledContent {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .rotationEffect(.degrees(open ? 90 : 0))
-                            } label: {
-                                RowLabel("固定的按鍵", "打注音、聲調、送出與移動游標的按鍵，無法更改")
+                            SettingRow(title: "「\(conflict.0.label)」與「\(conflict.1.label)」",
+                                       subtitle: "用同一個按鍵；同一個按鍵只會執行其中一個功能", accessory: .chevron) {
+                                KeyCombo(keys: conflict.2.keycaps, tint: Color(nsColor: .systemRed))
                             }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(open ? "收起固定的按鍵" : "顯示固定的按鍵")
-                        if open {
-                            ForEach(fixed) { item in
-                                KeyItemRow(item: item, preferences: preferences, keys: keys)
-                            }
-                        }
                     }
                 }
             }
+            if sections.isEmpty && fixed.isEmpty {
+                SettingsSection {
+                    Text("沒有符合「\(model.keysQuery)」的項目")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                }
+            }
+            ForEach(sections, id: \.0) { section, rows in
+                SettingsSection(section.title) {
+                    ForEach(rows) { item in
+                        KeyItemRow(item: item, preferences: preferences, keys: keys)
+                    }
+                }
+            }
+            if !fixed.isEmpty {
+                let open = showsFixed || !model.keysQuery.isEmpty
+                SettingsSection {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showsFixed.toggle() }
+                    } label: {
+                        SettingRow(title: "固定的按鍵", subtitle: "打注音、聲調、送出與移動游標的按鍵，無法更改") {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(open ? 90 : 0))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(open ? "收起固定的按鍵" : "顯示固定的按鍵")
+                    if open {
+                        ForEach(fixed) { item in
+                            KeyItemRow(item: item, preferences: preferences, keys: keys)
+                        }
+                    }
+                } footer: {
+                    HStack {
+                        FooterText("點一下任何一列，到功能的頁面設定按鍵。")
+                        Button("全部還原…") { confirmingReset = true }
+                            .buttonStyle(.link)
+                            .disabled(!changed)
+                    }
+                    .padding(.top, 6)
+                }
+            }
+        }
         .alert("要還原所有按鍵與功能嗎？", isPresented: $confirmingReset) {
             Button("全部還原", role: .destructive) {
                 preferences.resetShortcuts()
@@ -200,7 +191,7 @@ struct KeysPane: View {
             return [
                 KeyItem(id: "zhuyin", title: "拼注音", subtitle: "固定：注音鍵的位置依標準注音鍵盤", keys: .fixed(["注音鍵"])),
                 KeyItem(id: "tones", title: "聲調：二聲、三聲、四聲、輕聲", subtitle: "固定", keys: .fixed(["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"])),
-                KeyItem(id: "space", title: "空白", subtitle: (space == .openCandidates ? "打完注音後開啟候選字視窗" : "打完注音後送出並輸入空白")
+                KeyItem(id: "space", title: "空白", subtitle: OptionDemos.spaceSubtitle(space).replacingOccurrences(of: "，再按空白", with: "")
                         + "；打注音時是一聲", keys: .fixed(["空白"]), link: ("在「打字」設定", SettingsPlace(.typing, row: SettingsRow.space))),
                 KeyItem(id: "commit", title: "送出", subtitle: "固定", keys: .fixed(["Return"])),
                 KeyItem(id: "newline", title: "送出並換行", keys: .command(.commitWithNewline)),
@@ -269,9 +260,9 @@ struct KeysPane: View {
     }
 }
 
-/// A row: title, one line and a link on the leading side; the keys (a key field for a rebindable command) and › to the
-/// feature's page on the trailing side.  A feature that is off is dimmed with a quiet 「已關閉」 leading to its page;
-/// its switch lives there, not here.
+/// An index row: the action, its keys (and 「已自訂」 when they are not the defaults) and ›; the whole row opens the
+/// feature's page at its 快捷鍵 row, where the keys are edited.  A feature that is off is dimmed with 「已關閉」.
+/// Fixed keys without a page are plain rows.
 private struct KeyItemRow: View {
     let item: KeyItem
     @ObservedObject var preferences: Preferences
@@ -284,51 +275,35 @@ private struct KeyItemRow: View {
 
     var body: some View {
         let availability = item.feature.flatMap(preferences.availability)
-        LabeledContent {
-            HStack(spacing: 8) {
-                if on {
-                    trailing.opacity(availability == nil ? 1 : 0.45)
-                    if let home = item.home, item.link == nil {
-                        Button {
-                            SettingsWindowController.shared.open(home)
-                        } label: {
-                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
-                                .frame(width: 16, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("在「\(home.pane.title)」設定")
-                        .accessibilityLabel("在「\(home.pane.title)」設定")
-                    }
-                } else if let home = item.home {
-                    Button {
-                        SettingsWindowController.shared.open(home)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text("已關閉")
-                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
-                        }
+        if let home = item.home {
+            Button {
+                SettingsWindowController.shared.open(home)
+            } label: {
+                row(availability).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("在「\(home.subpage?.title ?? home.pane.title)」設定")
+        } else {
+            row(availability)
+        }
+    }
+
+    private func row(_ availability: KeyAvailability?) -> some View {
+        SettingRow(title: item.title, subtitle: availability?.note ?? item.subtitle, dimmed: !on,
+                   accessory: item.home == nil ? .none : .chevron, anchor: "row-" + item.id) {
+            if !on {
+                Text("已關閉").foregroundStyle(.secondary)
+            } else {
+                if case .command(let command) = item.keys, preferences.bindings[command] != command.defaultBindings {
+                    Text("已自訂")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("在「\(home.pane.title)」開啟")
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(.quaternary.opacity(0.6)))
                 }
+                trailing.opacity(availability == nil ? 1 : 0.45)
             }
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.title).foregroundStyle(on ? .primary : .secondary)
-                if let line = availability?.note ?? item.subtitle {
-                    Text(line).font(.callout).foregroundStyle(on ? .secondary : .tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if on, let availability {
-                    PlaceLink(title: "在「\(availability.linkTitle)」設定", place: availability.place)
-                } else if on, let link = item.link {
-                    PlaceLink(title: link.title, place: link.place)
-                }
-            }
-            .padding(.vertical, 2)
         }
     }
 
@@ -343,7 +318,13 @@ private struct KeyItemRow: View {
                 }
             }
         case .command(let command):
-            ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
+            let conflicts = preferences.conflicts(of: command)
+            HStack(spacing: 6) {
+                ForEach(Array((preferences.bindings[command] ?? []).enumerated()), id: \.offset) { index, shortcut in
+                    if index > 0 { Text("或").foregroundStyle(.tertiary) }
+                    KeyCombo(keys: shortcut.keycaps, tint: conflicts[index] == nil ? nil : Color(nsColor: .systemRed))
+                }
+            }
         case .shiftTap:
             KeyCombo(keys: [keys.shiftTap ?? "Shift"])
         }
