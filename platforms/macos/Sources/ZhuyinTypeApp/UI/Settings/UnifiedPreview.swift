@@ -36,7 +36,7 @@ final class PreviewDirector: ObservableObject {
     @Published var fullPageUntil = Date.distantPast
     var showsFullPage: Bool { Date() < fullPageUntil }
 
-    static let step: TimeInterval = 1.6
+    static var step: TimeInterval = 1.4
     static let hold: TimeInterval = 8
 
     /// Shows `state` (from its first moment, or its last, which shows the setting), and holds it a while.
@@ -49,21 +49,28 @@ final class PreviewDirector: ObservableObject {
         if animated { withAnimation(.easeInOut(duration: 0.3)) { apply() } } else { apply() }
     }
 
-    /// The next moment of the flow, or the next state.
+    /// The next moment of the flow; after its last, the next state, unless the user is looking at this one (a tab
+    /// picked or a setting changed a moment ago), which then plays its flow again.
     func advance(states: [PreviewState], frames: (PreviewState) -> Int) {
-        guard !hovered, Date() >= heldUntil, !states.isEmpty else { return }
+        guard !hovered, !states.isEmpty else { return }
         let count = frames(state)
         let current = min(frame, max(0, count - 1))
         if current + 1 < count {
-            frame = current + 1
+            withAnimation(.easeOut(duration: 0.25)) { frame = current + 1 }
+        } else if Date() < heldUntil {
+            withAnimation(.easeOut(duration: 0.25)) { frame = 0 }
         } else {
             let index = states.firstIndex(of: state).map { ($0 + 1) % states.count } ?? 0
-            withAnimation(.easeInOut(duration: 0.35)) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                 state = states[index]
                 frame = 0
             }
         }
+        ticks += 1
     }
+
+    /// How many moments have played (the self-tests check that the preview moves).
+    private(set) var ticks = 0
 }
 
 struct UnifiedPreview: View {
@@ -92,8 +99,8 @@ struct UnifiedPreview: View {
                 let sceneWidth = sceneWidth(flows, states, in: proxy.size.width)
                 let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences, maxHeight: maxHeight)
                 HStack(alignment: .top, spacing: 18) {
-                    PreviewBlock(layout: layout.fitted(height: stageHeight(flows, states, width: sceneWidth)),
-                                 preferences: preferences, animated: false, showsTitle: false)
+                    PreviewBlock(layout: layout.fitted(height: stageHeight(flows, [state], width: sceneWidth)),
+                                 preferences: preferences, animated: !DemoPinning.still && !reduceMotion, showsTitle: false)
                         .frame(width: sceneWidth)
                         .id(state)
                         .transition(.opacity)
@@ -106,12 +113,14 @@ struct UnifiedPreview: View {
                 .onAppear { width = proxy.size.width }
                 .onChange(of: proxy.size.width) { _, now in width = now }
             }
-            .frame(height: stageHeight(flows, states, width: sceneWidth(flows, states, in: width)))
+            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it.
+            .frame(height: stageHeight(flows, [state], width: sceneWidth(flows, states, in: width)))
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
         .onHover { director.hovered = $0 }
         .task(id: reduceMotion) {
             // Autoplay; none under Reduce Motion (the tabs and the switch on a change still work, as a crossfade).
-            guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview else { return }
+            guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview || DemoPinning.live else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(PreviewDirector.step))
                 let current = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
@@ -250,7 +259,9 @@ struct PreviewFlows {
             before.badge = nil
             before.badgeOff = false
             before.keys = []
-            return [before, mode]
+            var back = mode
+            if mode.badge != nil { back.badge = "中" }
+            return [before, mode, back]
         }
     }
 
