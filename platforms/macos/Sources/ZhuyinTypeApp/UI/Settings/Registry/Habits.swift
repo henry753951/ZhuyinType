@@ -151,17 +151,19 @@ struct SettingsPreset: Identifiable {
         return now.changes(to: SettingsSnapshot(values: now.values.merging(values) { _, preset in preset }))
     }
 
-    /// Only what each input method's own documentation states is in its preset; the rest keeps the current value.
+    /// Only behaviour with a source is in a preset (docs/product/PRESETS.md); the rest keeps the current value.
     static let windows = SettingsPreset(
         id: "windows", title: "Windows 注音的習慣",
-        lines: [(["⌃", "，"], "打中文標點"), (["Shift"], "單按切換中英")],
-        values: ["punctuationKeys": .text(PunctuationKeys.windows.rawValue), "shiftSwitch": .bool(true),
-                 "shiftToggle": .text(ShiftToggle.both.rawValue)],
+        lines: [(["Shift"], "單按切換中英"), (["⌃", "，"], "打中文標點"), (["1–9"], "選字"), ([], "和目前的預設相同")],
+        values: ["shiftSwitch": .bool(true), "shiftToggle": .text(ShiftToggle.both.rawValue), "startInEnglish": .bool(false),
+                 "feature.controlPunctuation": .bool(true), "selectionKeys": .text(SelectionKeySet.digits.rawValue)],
         sources: ["https://support.microsoft.com/en-us/Windows/Hardware/Input-Devices/microsoft-traditional-chinese-ime"])
     static let mac = SettingsPreset(
         id: "mac", title: "macOS 注音的習慣",
-        lines: [(["空白"], "打完注音後開啟候選字視窗"), (["Return"], "選取反白的字")],
-        values: ["spaceAction": .text(SpaceAction.openCandidates.rawValue)],
+        lines: [(["空白"], "開啟候選字視窗"), (["Caps Lock"], "切換中英"), (["Shift"], "不切換中英"), (["1–9"], "選字")],
+        values: ["spaceAction": .text(SpaceAction.openCandidates.rawValue), "shiftSwitch": .bool(false),
+                 "feature.capsLockEnglish": .bool(true), "feature.optionSymbols": .bool(true),
+                 "selectionKeys": .text(SelectionKeySet.digits.rawValue)],
         sources: ["https://support.apple.com/guide/chinese-input-method/cim12992/mac"])
     static let zhuyinType = SettingsPreset(
         id: "default", title: "ZhuyinType 預設",

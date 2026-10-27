@@ -1204,9 +1204,13 @@ enum ControllerCoreSelfTest {
             quick.choosePreset(.mac)
             quick.sandbox.typoTolerance = .aggressive
             try expect(original.spaceAction == .commitAndSpace && original.typoTolerance == .standard, "the sandbox wrote through")
-            try expect(Set(quick.changes.map(\.id)) == ["spaceAction", "typoTolerance"], "changes \(quick.changes.map(\.id))")
+            // Applied, not merely listed: turning single Shift off also clears which Shift switches.
+            let applied = Preferences(defaults: MemorySettingsStorage())
+            SettingsPreset.mac.changes(from: applied).apply(to: applied)
+            let presetIDs = Set(SettingsRegistry.defaults.changes(to: SettingsSnapshot(applied)).map(\.id))
+            try expect(Set(quick.changes.map(\.id)) == presetIDs.union(["typoTolerance"]), "changes \(quick.changes.map(\.id))")
             if let typo = quick.changes.first(where: { $0.id == "typoTolerance" }) { quick.revert(typo) }
-            try expect(quick.changes.map(\.id) == ["spaceAction"], "改回 did not revert")
+            try expect(Set(quick.changes.map(\.id)) == presetIDs, "改回 did not revert")
             let discarded = WizardModel(original: original, mode: .quick)
             discarded.choosePreset(.mac)
             discarded.discard()
