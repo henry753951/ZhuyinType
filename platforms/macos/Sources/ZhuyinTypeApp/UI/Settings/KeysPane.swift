@@ -72,6 +72,12 @@ private struct KeyItem: Identifiable {
         return feature?.place
     }
 
+    /// A key that cannot change and has no switch.
+    var isFixed: Bool {
+        if case .fixed = keys, feature == nil { return true }
+        return false
+    }
+
     func matches(_ query: String, _ keys: CurrentKeys) -> Bool {
         let query = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !query.isEmpty else { return true }
@@ -89,11 +95,14 @@ struct KeysPane: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var model: SettingsModel
     @State private var confirmingReset = false
+    @State private var showsFixed = DemoPinning.showsFixedKeys
 
     var body: some View {
         let keys = CurrentKeys(preferences)
-        let sections = KeySection.allCases.map { ($0, items($0, keys).filter { $0.matches(model.keysQuery, keys) }) }
-            .filter { !$0.1.isEmpty }
+        let all = KeySection.allCases.map { ($0, items($0, keys).filter { $0.matches(model.keysQuery, keys) }) }
+        // Keys that can change come first, by feature; the fixed ones wait under a disclosure at the bottom.
+        let sections = all.map { ($0.0, $0.1.filter { !$0.isFixed }) }.filter { !$0.1.isEmpty }
+        let fixed = all.flatMap { $0.1.filter(\.isFixed) }
         Form {
                 Section {
                     LabeledContent {
@@ -101,7 +110,7 @@ struct KeysPane: View {
                             .disabled(preferences.bindings == ShortcutCommand.defaultBindings && preferences.disabledKeyFeatures.isEmpty
                                       && preferences.shiftToggle == .both)
                     } label: {
-                        RowLabel("按鍵與功能", "點按鍵後按下新的組合，Esc 取消；取消勾選的功能，按鍵交給 App")
+                        RowLabel("所有按鍵", "點按鍵後按下新的組合，Esc 取消；功能的開關在各自的頁面")
                     }
                 }
                 let conflicts = preferences.allConflicts
@@ -126,7 +135,7 @@ struct KeysPane: View {
                         FooterText("同一個按鍵只會執行其中一個功能；請改掉其中一個。")
                     }
                 }
-                if sections.isEmpty {
+                if sections.isEmpty && fixed.isEmpty {
                     Section {
                         Text("沒有符合「\(model.keysQuery)」的項目")
                             .foregroundStyle(.secondary)
@@ -141,6 +150,31 @@ struct KeysPane: View {
                         }
                     } header: {
                         Text(section.title)
+                    }
+                }
+                if !fixed.isEmpty {
+                    let open = showsFixed || !model.keysQuery.isEmpty
+                    Section {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showsFixed.toggle() }
+                        } label: {
+                            LabeledContent {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(open ? 90 : 0))
+                            } label: {
+                                RowLabel("固定的按鍵", "打注音、聲調、送出與移動游標的按鍵，無法更改")
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(open ? "收起固定的按鍵" : "顯示固定的按鍵")
+                        if open {
+                            ForEach(fixed) { item in
+                                KeyItemRow(item: item, preferences: preferences, keys: keys)
+                            }
+                        }
                     }
                 }
             }
@@ -235,19 +269,13 @@ struct KeysPane: View {
     }
 }
 
-/// A row: checkbox (optional features), title, one line, link; keys or recorder, and restore, on the trailing side.
+/// A row: title, one line and a link on the leading side; the keys (a key field for a rebindable command) and › to the
+/// feature's page on the trailing side.  A feature that is off is dimmed with a quiet 「已關閉」 leading to its page;
+/// its switch lives there, not here.
 private struct KeyItemRow: View {
     let item: KeyItem
     @ObservedObject var preferences: Preferences
     let keys: CurrentKeys
-    @State private var problem: String?
-
-    init(item: KeyItem, preferences: Preferences, keys: CurrentKeys) {
-        self.item = item
-        self.preferences = preferences
-        self.keys = keys
-        _problem = State(initialValue: DemoPinning.keyProblems[item.id])
-    }
 
     private var on: Bool {
         if case .shiftTap = item.keys { return preferences.shiftSwitchEnabled }
@@ -258,67 +286,49 @@ private struct KeyItemRow: View {
         let availability = item.feature.flatMap(preferences.availability)
         LabeledContent {
             HStack(spacing: 8) {
-                if let problem {
-                    Text(problem).font(.callout).foregroundStyle(.red).lineLimit(2).multilineTextAlignment(.trailing)
-                }
-                trailing
-                    .opacity(on && availability == nil ? 1 : 0.45)
-                if let home = item.home, item.link == nil {
+                if on {
+                    trailing.opacity(availability == nil ? 1 : 0.45)
+                    if let home = item.home, item.link == nil {
+                        Button {
+                            SettingsWindowController.shared.open(home)
+                        } label: {
+                            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
+                                .frame(width: 16, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help("在「\(home.pane.title)」設定")
+                        .accessibilityLabel("在「\(home.pane.title)」設定")
+                    }
+                } else if let home = item.home {
                     Button {
                         SettingsWindowController.shared.open(home)
                     } label: {
-                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
-                            .frame(width: 16, height: 20)
-                            .contentShape(Rectangle())
+                        HStack(spacing: 3) {
+                            Text("已關閉")
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("在「\(home.pane.title)」設定")
-                    .accessibilityLabel("在「\(home.pane.title)」設定")
-                } else {
-                    Color.clear.frame(width: 16, height: 1)
+                    .help("在「\(home.pane.title)」開啟")
                 }
             }
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                checkbox.frame(width: 16)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title).foregroundStyle(on ? .primary : .secondary)
-                    if let line = subtitle(availability) {
-                        Text(line).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let availability {
-                        PlaceLink(title: "在「\(availability.linkTitle)」設定", place: availability.place)
-                    } else if let link = item.link {
-                        PlaceLink(title: link.title, place: link.place)
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title).foregroundStyle(on ? .primary : .secondary)
+                if let line = availability?.note ?? item.subtitle {
+                    Text(line).font(.callout).foregroundStyle(on ? .secondary : .tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if on, let availability {
+                    PlaceLink(title: "在「\(availability.linkTitle)」設定", place: availability.place)
+                } else if on, let link = item.link {
+                    PlaceLink(title: link.title, place: link.place)
                 }
             }
-        }
-    }
-
-    private func subtitle(_ availability: KeyAvailability?) -> String? {
-        if let availability { return availability.note }
-        if !on {
-            switch item.keys {
-            case .command(let command): return "已關閉：\(keys.assigned(command).joined()) 交給 App"
-            case .shiftTap: return "已關閉：Shift 只當作 Shift"
-            case .fixed(let caps, _):
-                return item.feature == .zhuyinRowClick ? "已關閉：點注音列不做事" : "已關閉：\(caps.joined(separator: " ")) 交給 App"
-            }
-        }
-        return item.subtitle
-    }
-
-    @ViewBuilder private var checkbox: some View {
-        if case .shiftTap = item.keys {
-            Toggle(item.title, isOn: binding(preferences, \.shiftSwitchEnabled)).labelsHidden().toggleStyle(.checkbox)
-        } else if let feature = item.feature {
-            Toggle(item.title, isOn: Binding(get: { preferences.isEnabled(feature) },
-                                             set: { preferences.setEnabled(feature, $0) }))
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-        } else {
-            Color.clear.frame(height: 1)
+            .padding(.vertical, 2)
         }
     }
 
@@ -333,36 +343,9 @@ private struct KeyItemRow: View {
                 }
             }
         case .command(let command):
-            ShortcutField(preferences: preferences, command: command, disabled: !on,
-                          preview: DemoPinning.fieldStates[command])
+            ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
         case .shiftTap:
-            Picker(item.title, selection: Binding(
-                get: { preferences.shiftToggle == .none ? .both : preferences.shiftToggle },
-                set: { preferences.shiftToggle = $0 })) {
-                Text("左右 Shift").tag(ShiftToggle.both)
-                Text("左 Shift").tag(ShiftToggle.left)
-                Text("右 Shift").tag(ShiftToggle.right)
-            }
-            .labelsHidden()
-            .fixedSize()
-            .disabled(!on)
+            KeyCombo(keys: [keys.shiftTap ?? "Shift"])
         }
-    }
-}
-
-/// The small keyboard button beside a setting with keys: opens its section of the 快捷鍵 page.
-struct KeysLink: View {
-    let section: KeySection
-    var body: some View {
-        Button {
-            SettingsWindowController.shared.showKeys(section)
-        } label: {
-            Image(systemName: "keyboard")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.borderless)
-        .help("在「快捷鍵」顯示「\(section.title)」的按鍵")
-        .accessibilityLabel("「\(section.title)」的按鍵")
     }
 }

@@ -9,7 +9,8 @@ enum DemoPinning {
     static var context: Int?
     static var intro: Int?
     /// A conflict message to show on a row of the 快捷鍵 page, by row.
-    static var keyProblems: [String: String] = [:]
+    /// The 快捷鍵 page's fixed keys shown, not folded.
+    static var showsFixedKeys = false
     /// States of shortcut fields to draw, by command.
     static var fieldStates: [ShortcutCommand: ShortcutFieldPreview] = [:]
     static var mini: Int?

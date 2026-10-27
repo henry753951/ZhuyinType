@@ -24,6 +24,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
 
     /// Shows the window, at `place` when given (otherwise where it was).
     func show(_ place: SettingsPlace? = nil) {
+        UsageStatsStore.shared.saveIfNeeded()
         let window = self.window ?? makeWindow()
         if let place { open(place) }
         NSApp.setActivationPolicy(.regular)
@@ -191,9 +192,11 @@ final class SettingsModel: ObservableObject {
 enum SettingsPane: String, CaseIterable {
     case intro, typing, choosing, candidates, words, analytics, keys, advanced, about
 
-    /// The sidebar's groups, separated by a little space as in System Settings.
-    static let groups: [[SettingsPane]] = [[.intro], [.typing, .choosing, .candidates], [.words, .analytics],
-                                           [.keys, .advanced, .about]]
+    /// The sidebar's sections, each under a small grey header.
+    static let groups: [(title: String, panes: [SettingsPane])] = [
+        ("概覽", [.intro, .analytics]), ("輸入", [.typing, .choosing, .words]), ("外觀", [.candidates]),
+        ("一般", [.keys, .advanced, .about]),
+    ]
 
     var title: String {
         switch self {
@@ -313,10 +316,13 @@ final class SettingsSplitViewController: NSSplitViewController {
 final class SettingsSidebarViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     var onSelect: ((SettingsPane) -> Void)?
     private let table = NSTableView()
-    /// Panes, with nil for the small gap between groups.
-    private let rows: [SettingsPane?] = SettingsPane.groups.enumerated().flatMap { index, group in
-        (index == 0 ? [] : [nil]) + group.map { Optional($0) }
+    private enum Row: Equatable {
+        case header(String)
+        case pane(SettingsPane)
+        var pane: SettingsPane? { if case .pane(let pane) = self { return pane } else { return nil } }
     }
+    /// Section headers and panes.
+    private let rows: [Row] = SettingsPane.groups.flatMap { [Row.header($0.title)] + $0.panes.map(Row.pane) }
     private var icons: [SettingsPane: NSImage] = [:]
 
     override func loadView() {
@@ -341,18 +347,36 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
 
     func select(_ pane: SettingsPane) {
         _ = view
-        guard let row = rows.firstIndex(of: pane), table.selectedRow != row else { return }
+        guard let row = rows.firstIndex(of: .pane(pane)), table.selectedRow != row else { return }
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { rows[row] == nil ? 10 : 32 }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rows[row].pane == nil ? (row == 0 ? 22 : 30) : 30
+    }
 
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { rows[row] != nil }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { rows[row].pane != nil }
+
+    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool { false }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let pane = rows[row] else { return NSView() }
+        guard let pane = rows[row].pane else {
+            // A section header: small grey text, as the sidebars of macOS apps.
+            let header = NSTableCellView()
+            let text = NSTextField(labelWithString: { if case .header(let title) = rows[row] { return title } else { return "" } }())
+            text.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            text.textColor = .tertiaryLabelColor
+            text.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(text)
+            NSLayoutConstraint.activate([
+                text.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 4),
+                text.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -4),
+            ])
+            header.setAccessibilityRole(.staticText)
+            return header
+        }
         let identifier = NSUserInterfaceItemIdentifier("SidebarCell")
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? {
             let cell = NSTableCellView()
@@ -384,7 +408,7 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        guard rows.indices.contains(table.selectedRow), let pane = rows[table.selectedRow] else { return }
+        guard rows.indices.contains(table.selectedRow), let pane = rows[table.selectedRow].pane else { return }
         onSelect?(pane)
     }
 }

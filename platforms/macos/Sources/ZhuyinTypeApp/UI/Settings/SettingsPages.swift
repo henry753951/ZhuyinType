@@ -203,12 +203,11 @@ struct DrillRow: View {
     }
 }
 
-/// A setting with its title and a one-line description on the leading side; the control and an ⓘ button on the
-/// trailing side.  Rows without an ⓘ keep its place, so the controls of a section line up.
+/// A setting with its title and a description on the leading side; the control and an ⓘ button on the trailing side.
+/// Rows without an ⓘ keep its place, so the controls of a section line up.
 struct OptionRow<Info: View, Control: View>: View {
     let title: String
     let subtitle: String?
-    var keys: KeySection?
     @ViewBuilder let info: () -> Info
     @ViewBuilder let control: () -> Control
 
@@ -219,86 +218,78 @@ struct OptionRow<Info: View, Control: View>: View {
                 info().frame(width: 20)
             }
         } label: {
-            FeatureLabel(title: title, subtitle: subtitle, keys: keys)
+            FeatureLabel(title: title, subtitle: subtitle)
         }
     }
 }
 
-/// A row's title (with the 快捷鍵 link when it has keys) and its line.
+/// A row's title and its description, which wraps rather than squeezes; an optional link below.
 struct FeatureLabel: View {
     let title: String
     let subtitle: String?
-    var keys: KeySection?
     var dimmed = false
     var link: (title: String, place: SettingsPlace)?
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Text(title).lineLimit(2).truncationMode(.tail).help(title)
-                    .foregroundStyle(dimmed ? .secondary : .primary)
-                if let keys { KeysLink(section: keys) }
-            }
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).foregroundStyle(dimmed ? .secondary : .primary)
             if let subtitle {
                 Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let link { PlaceLink(title: link.title, place: link.place) }
         }
+        .padding(.vertical, 2)
     }
 }
 
-/// A feature with keys: its switch (when it can be turned off) and its key fields, together.  Off, the keys are
-/// dimmed and the line says where they go; turned off by another setting, the line says which and links to it.
+/// A feature: its row (title, description, switch), then one row per command, 「快捷鍵」, with the key field.  The key
+/// rows show only while the feature is on.  Turned off by another setting, the description says which and links to it.
 struct FeatureRow: View {
     @ObservedObject var preferences: Preferences
     let title: String
     let subtitle: String
     var feature: KeyFeature?
     var commands: [ShortcutCommand] = []
-    /// Read-only keys, for a feature without a rebindable command.
-    var fixedKeys: [String]?
-    let section: KeySection
 
     var body: some View {
         let on = feature.map(preferences.isEnabled) ?? true
         let availability = feature.flatMap(preferences.availability)
-        let keys = CurrentKeys(preferences)
         let line: String = {
             if let availability { return availability.note }
             if !on {
-                if feature == .zhuyinRowClick { return "已關閉：點注音列不做事" }
-                let caps = commands.first.map { keys.assigned($0).joined() } ?? fixedKeys?.joined(separator: " ") ?? ""
-                return "已關閉：\(caps) 交給 App"
+                if feature == .zhuyinRowClick { return "關閉時，點注音列不做事" }
+                return commands.isEmpty ? subtitle : "關閉時，\(CurrentKeys(preferences).assigned(commands[0]).joined()) 交給 App"
             }
             return subtitle
         }()
-        LabeledContent {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .trailing, spacing: 6) {
-                    ForEach(commands, id: \.self) { command in
-                        HStack(alignment: .top, spacing: 6) {
-                            if commands.count > 1 {
-                                Text(command.label).font(.callout).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
-                            }
-                            ShortcutField(preferences: preferences, command: command, disabled: !on,
-                                          preview: DemoPinning.fieldStates[command])
-                        }
-                    }
-                    if let fixedKeys {
-                        KeyCombo(keys: fixedKeys).opacity(on && availability == nil ? 1 : 0.45)
-                    }
+        Group {
+            if let feature {
+                Toggle(isOn: Binding(get: { preferences.isEnabled(feature) }, set: { preferences.setEnabled(feature, $0) })) {
+                    FeatureLabel(title: title, subtitle: line, dimmed: availability != nil,
+                                 link: availability.map { ("在「\($0.linkTitle)」設定", $0.place) })
                 }
-                if let feature {
-                    Toggle(title, isOn: Binding(get: { preferences.isEnabled(feature) }, set: { preferences.setEnabled(feature, $0) }))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .padding(.top, 1)
+            } else {
+                FeatureLabel(title: title, subtitle: line)
+            }
+            if on {
+                ForEach(commands, id: \.self) { command in
+                    LabeledContent {
+                        ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
+                    } label: {
+                        Text(commands.count > 1 ? command.label : "快捷鍵")
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 16)
+                    }
                 }
             }
-        } label: {
-            FeatureLabel(title: title, subtitle: line, keys: section, dimmed: !on || availability != nil,
-                         link: availability.map { ("在「\($0.linkTitle)」設定", $0.place) })
         }
+    }
+}
+
+/// The page's one link to the overview of all keys, at its foot.
+struct KeysOverviewLink: View {
+    var body: some View {
+        PlaceLink(title: "在快捷鍵總覽中查看全部按鍵", place: SettingsPlace(.keys))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -331,7 +322,7 @@ private struct TypingPane: View {
         let punctuationOff = [KeyFeature.controlPunctuation, .optionSymbols].filter { !preferences.isEnabled($0) }.count
         Form {
             Section("空白與 Esc") {
-                OptionRow(title: "空白鍵", subtitle: OptionDemos.spaceSubtitle(preferences.spaceAction), keys: .composing) {
+                OptionRow(title: "空白鍵", subtitle: OptionDemos.spaceSubtitle(preferences.spaceAction)) {
                     InfoButton(title: "空白鍵") { SpaceInfo(current: preferences.spaceAction) }
                 } control: {
                     Picker("空白鍵", selection: binding(preferences, \.spaceAction)) {
@@ -343,7 +334,7 @@ private struct TypingPane: View {
                 }
                 .id(SettingsRow.space)
                 OptionRow(title: "Esc", subtitle: preferences.escapeClearsComposition
-                          ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音", keys: .composing) {
+                          ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音") {
                     InfoButton(title: "Esc") {
                         VStack(alignment: .leading, spacing: 14) {
                             ChoiceDemo(title: "清除整段組字", selected: preferences.escapeClearsComposition,
@@ -364,7 +355,7 @@ private struct TypingPane: View {
             }
             Section("標點") {
                 OptionRow(title: "標點按法", subtitle: preferences.punctuationKeys == .windows
-                          ? "⇧ 加符號鍵打出鍵上的符號，例如 <" : "⇧ 加符號鍵打出中文標點，例如 ，", keys: .punctuation) {
+                          ? "⇧ 加符號鍵打出鍵上的符號，例如 <" : "⇧ 加符號鍵打出中文標點，例如 ，") {
                     InfoButton(title: "標點按法") { PunctuationTable(current: preferences.punctuationKeys) }
                 } control: {
                     Picker("標點按法", selection: binding(preferences, \.punctuationKeys)) {
@@ -379,29 +370,23 @@ private struct TypingPane: View {
                          value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
             }
             Section("中英切換") {
-                LabeledContent {
-                    HStack(spacing: 10) {
-                        Picker("單按 Shift 切換中英", selection: Binding(
-                            get: { preferences.shiftToggle == .none ? .both : preferences.shiftToggle },
-                            set: { preferences.shiftToggle = $0 })) {
-                            Text("左右 Shift").tag(ShiftToggle.both)
-                            Text("左 Shift").tag(ShiftToggle.left)
-                            Text("右 Shift").tag(ShiftToggle.right)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                        .disabled(!preferences.shiftSwitchEnabled)
-                        Toggle("單按 Shift 切換中英", isOn: binding(preferences, \.shiftSwitchEnabled))
-                            .labelsHidden().toggleStyle(.switch).controlSize(.small)
-                    }
-                } label: {
+                Toggle(isOn: binding(preferences, \.shiftSwitchEnabled)) {
                     FeatureLabel(title: "單按 Shift 切換中英",
-                                 subtitle: preferences.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "已關閉：Shift 只當作 Shift",
-                                 keys: .mode, dimmed: !preferences.shiftSwitchEnabled)
+                                 subtitle: preferences.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "關閉時，Shift 只當作 Shift")
                 }
                 .id(SettingsRow.shiftTap)
+                if preferences.shiftSwitchEnabled {
+                    Picker(selection: Binding(get: { preferences.shiftToggle == .none ? .both : preferences.shiftToggle },
+                                              set: { preferences.shiftToggle = $0 })) {
+                        Text("左右 Shift").tag(ShiftToggle.both)
+                        Text("左 Shift").tag(ShiftToggle.left)
+                        Text("右 Shift").tag(ShiftToggle.right)
+                    } label: {
+                        Text("使用的 Shift").foregroundStyle(.secondary).padding(.leading, 16)
+                    }
+                }
                 FeatureRow(preferences: preferences, title: "Caps Lock 打英文", subtitle: "開著時打英文，正在組的字先送出",
-                           feature: .capsLockEnglish, fixedKeys: ["Caps Lock"], section: .mode)
+                           feature: .capsLockEnglish)
                     .id(SettingsRow.capsLock)
                 Toggle(isOn: binding(preferences, \.showModeToast)) {
                     RowLabel("中英提示", keys.modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" }
@@ -409,15 +394,19 @@ private struct TypingPane: View {
                 }
                 Toggle("開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
             }
-            Section("編輯組字") {
+            Section {
                 FeatureRow(preferences: preferences, title: "送出並換行", subtitle: "送出組字，App 再換行",
-                           commands: [.commitWithNewline], section: .composing)
+                           commands: [.commitWithNewline])
                     .id(SettingsRow.newline)
                 FeatureRow(preferences: preferences, title: "刪掉一個詞", subtitle: "有未完成的注音時清除注音",
-                           feature: .deleteWord, commands: [.deleteWord], section: .composing)
+                           feature: .deleteWord, commands: [.deleteWord])
                     .id(SettingsRow.deleteWord)
                 DrillRow(model: model, title: "所有打字的按鍵", subtitle: "注音鍵、聲調、⌫、方向鍵等固定的按鍵",
                          value: "", subpage: .typingKeys)
+            } header: {
+                Text("編輯組字")
+            } footer: {
+                KeysOverviewLink().padding(.top, 6)
             }
         }
     }
@@ -436,10 +425,10 @@ private struct PunctuationPage: View {
             }
             Section("可以關閉的按鍵") {
                 FeatureRow(preferences: preferences, title: "⌃ 加符號鍵打中文標點", subtitle: "，。、？！：；『』，兩種標點按法都能用",
-                           feature: .controlPunctuation, fixedKeys: ["⌃", "符號鍵"], section: .punctuation)
+                           feature: .controlPunctuation)
                     .id(SettingsRow.controlPunctuation)
                 FeatureRow(preferences: preferences, title: "⌥ 加數字或符號鍵打鍵上的符號", subtitle: ". / ; < >，兩種標點按法都能用",
-                           feature: .optionSymbols, fixedKeys: ["⌥", "數字或符號鍵"], section: .punctuation)
+                           feature: .optionSymbols)
                     .id(SettingsRow.optionSymbols)
             }
             Section("固定的按鍵") {
@@ -529,7 +518,7 @@ private struct ChoosingPane: View {
                 }
                 .id(SettingsRow.typo)
                 FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
-                           feature: .correctionsList, commands: [.correctionsList], section: .list)
+                           feature: .correctionsList, commands: [.correctionsList])
                     .id(SettingsRow.corrections)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
                          value: fuzzy == 0 ? "關閉" : "已開啟 \(fuzzy) 項", subpage: .fuzzy)
@@ -539,16 +528,20 @@ private struct ChoosingPane: View {
                 DrillRow(model: model, title: "參考游標前的文字", subtitle: "依前文選字；只在記憶體中",
                          value: preferences.usesPrecedingText ? "開啟" : "關閉", subpage: .context)
             }
-            Section("改字") {
+            Section {
                 FeatureRow(preferences: preferences, title: "打出注音本身", subtitle: "緊接著再按一次或按 Esc 恢復",
-                           feature: .typeZhuyin, commands: [.typeZhuyin], section: .editing)
+                           feature: .typeZhuyin, commands: [.typeZhuyin])
                     .id(SettingsRow.typeZhuyin)
                 FeatureRow(preferences: preferences, title: "選取加入自訂詞", subtitle: "選取 1 到 6 個字，再按 Return",
-                           feature: .selectPhrase, commands: [.selectLeft, .selectRight], section: .editing)
+                           feature: .selectPhrase, commands: [.selectLeft, .selectRight])
                     .id(SettingsRow.selectPhrase)
                 FeatureRow(preferences: preferences, title: "送出後刪掉重打", subtitle: "送出後 30 秒內用 ⌫ 刪掉再打，算作改字並接著前文選字",
-                           feature: .deleteAfterCommit, section: .editing)
+                           feature: .deleteAfterCommit)
                     .id(SettingsRow.deleteAfterCommit)
+            } header: {
+                Text("改字")
+            } footer: {
+                KeysOverviewLink().padding(.top, 6)
             }
         }
     }
@@ -632,7 +625,7 @@ struct CandidatesPane: View {
                         Text("\(preferences.candidatesPerPage) 個").monospacedDigit()
                     }
                 } label: {
-                    FeatureLabel(title: "每頁的候選字", subtitle: "用 \(keys.selection) 選字；Return 選取反白的字", keys: .list)
+                    FeatureLabel(title: "每頁的候選字", subtitle: "用 \(keys.selection) 選字；Return 選取反白的字")
                 }
                 .id(SettingsRow.selection)
                 Picker("選字鍵", selection: binding(preferences, \.selectionKeys)) {
@@ -640,7 +633,7 @@ struct CandidatesPane: View {
                     Text("A S D F G H J K L").tag(SelectionKeySet.homeRow)
                 }
                 FeatureRow(preferences: preferences, title: "翻頁", subtitle: "空白也翻到下一頁",
-                           feature: .pageKeys, commands: [.nextPage, .previousPage], section: .list)
+                           feature: .pageKeys, commands: [.nextPage, .previousPage])
                     .id(SettingsRow.pageKeys)
             }
             Section("清單的內容") {
@@ -650,14 +643,14 @@ struct CandidatesPane: View {
                 .id(SettingsRow.showsZhuyin)
                 FeatureRow(preferences: preferences, title: "點注音列打出注音",
                            subtitle: zhuyin.map { "和按 \($0) 相同；緊接著再按一次或按 Esc 恢復" } ?? "打出注音本身",
-                           feature: .zhuyinRowClick, section: .list)
+                           feature: .zhuyinRowClick)
                     .id(SettingsRow.zhuyinRow)
                 Toggle(isOn: binding(preferences, \.showsAnnotations)) {
                     RowLabel("標出修正的讀音", corrections.map { "修正過的字旁邊以灰字標出注音，例如 \($0) 列出的字" }
                              ?? "修正過的字旁邊以灰字標出注音")
                 }
                 FeatureRow(preferences: preferences, title: "只列一個字", subtitle: "清單只列游標處的一個字；再按一次還原",
-                           feature: .singleCharacterList, commands: [.singleCharacterList], section: .list)
+                           feature: .singleCharacterList, commands: [.singleCharacterList])
                     .id(SettingsRow.single)
                 Toggle(isOn: binding(preferences, \.showsListSwitches)) {
                     RowLabel("單字與修正按鈕", switches.isEmpty ? "兩種清單都已關閉"
@@ -671,6 +664,8 @@ struct CandidatesPane: View {
                                  preferences.panelAppearance == .system ? "跟隨系統" : preferences.panelAppearance == .light ? "淺色" : "深色"]
                             .joined(separator: "、"),
                          subpage: .placement)
+            } footer: {
+                KeysOverviewLink().padding(.top, 6)
             }
         }
     }
@@ -772,7 +767,6 @@ private struct WordListPage: View {
                         } else {
                             FooterText("自訂詞在選字時優先列出。")
                         }
-                        KeysLink(section: .editing)
                     }
                 } else {
                     FooterText("依次數由多到少排列；設為「不記住」的字詞之後不再學。")

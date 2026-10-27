@@ -239,7 +239,7 @@ private struct ConflictLine: View {
             Text("也用於「\(other.label)」").lineLimit(1).truncationMode(.tail)
             HStack(spacing: 10) {
                 Button("改按鍵", action: replace).buttonStyle(.link)
-                Button("前往") { SettingsWindowController.shared.showKeys(other.section, command: other) }.buttonStyle(.link)
+                Button("前往") { SettingsWindowController.shared.open(other.place) }.buttonStyle(.link)
             }
             .padding(.leading, 4)
         }
@@ -254,6 +254,8 @@ private struct ConflictLine: View {
 struct TrailingFlow: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 6
+    /// Lines start at the leading edge instead.
+    var leading = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let lines = arrange(width: proposal.width ?? .infinity, subviews: subviews)
@@ -265,7 +267,7 @@ struct TrailingFlow: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var y = bounds.minY
         for line in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.maxX - line.width
+            var x = leading ? bounds.minX : bounds.maxX - line.width
             for index in line.items {
                 let size = subviews[index].sizeThatFits(.unspecified)
                 subviews[index].place(at: CGPoint(x: x, y: y + (line.height - size.height) / 2), proposal: ProposedViewSize(size))

@@ -147,6 +147,8 @@ final class ZhuyinInputController: IMKInputController {
 
     override func deactivateServer(_ sender: Any!) {
         core?.endSession()
+        // Switching away is a natural moment to keep the statistics (written only if they changed).
+        UsageStatsStore.shared.saveIfNeeded()
         active = false
         if Self.activeController === self {
             CandidatePanelController.shared.hide()

@@ -687,6 +687,64 @@ enum ControllerCoreSelfTest {
                 .appendingPathComponent("Library/Preferences/org.zhuyintype.selftest.plist"))
         }
 
+        test("usage stats: typing time, thinking pauses, runs and first-time-right compositions") {
+            let (core, _, store) = statsSession()
+            let observer = core.stats!
+            let threshold = observer.pauseThreshold
+            var t = 1000.0
+            func key(_ k: KeyInput, after gap: Double) { t += gap; _ = core.handle(k, time: t) }
+            for k in "su3cl3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            key(.char("s"), after: threshold + 3)         // thinking
+            for k in "u3" { key(.char(k), after: 0.2) }
+            key(.backspace, after: 0.2)                    // a correction
+            for k in "su3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            key(.char("s"), after: 120)                    // away: neither
+            for k in "u3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            let c = store.data.totals
+            try expect(c.compositions == 3 && c.cleanCompositions == 2, "first time right \(c.cleanCompositions)/\(c.compositions)")
+            let expectedTyping = 0.2 * Double(6 + 7 + 3)
+            try expect(abs(Double(c.typingMilliseconds) / 1000 - expectedTyping) < 0.05, "typing \(c.typingMilliseconds) ms")
+            try expect(abs(Double(c.thinkingMilliseconds) / 1000 - (threshold + 3)) < 0.05, "thinking \(c.thinkingMilliseconds) ms")
+            try expect(store.rhythm.longestRun >= 2 && store.rhythm.longestCleanRun >= 2, "runs \(store.rhythm.longestRun)")
+            try expect(store.rhythm.hours.reduce(0, +) == c.characters, "hours")
+        }
+        test("usage stats: per-key cost stays under 2 µs, with no file write while typing") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = UsageStatsStore(directory: directory)
+            var uptime = 0.0
+            store.uptime = { uptime }
+            let observer = UsageStatsObserver(store: store)
+            let before = Presentation(text: "你好", cursor: 2, clauses: [0..<2])
+            let after = Presentation(text: "你好ㄇ", cursor: 3, clauses: [0..<2, 2..<3])
+            let options = ComposerOptions()
+            let count = 200_000
+            var time = 0.0
+            let start = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<count {
+                time += 0.15
+                observer.observe(.key(.char("a"), time: time), before: before, after: after, commit: nil, handled: true,
+                                 options: options, secure: false, corrected: false, latency: 1_500_000)
+            }
+            let perKey = Double(DispatchTime.now().uptimeNanoseconds - start) / Double(count)
+            print("TIMING usage stats observer: \(String(format: "%.0f", perKey)) ns per key")
+            try expect(perKey < 2000 || ProcessInfo.processInfo.environment["ZHUYIN_CHECKS_TIMING"] == "warn",
+                       "\(perKey) ns per key")
+            try expect(store.writes == 0, "wrote \(store.writes) times while typing")
+            uptime += UsageStatsStore.saveInterval + 1
+            observer.observe(.key(.char("a"), time: time + 0.1), before: before, after: after, commit: nil, handled: true,
+                             options: options, secure: false, corrected: false, latency: nil)
+            try expect(store.writes == 1, "no write after 10 minutes: \(store.writes)")
+            store.saveIfNeeded()
+            try expect(store.writes == 1, "wrote without a change")
+            store.flush()
+            try expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(UsageStatsStore.fileName).path),
+                       "no file")
+        }
+
         // MARK: Optional key features
 
         test("a feature turned off: its key goes to the app; on again restores it") {

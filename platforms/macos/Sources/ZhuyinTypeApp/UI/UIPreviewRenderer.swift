@@ -231,6 +231,9 @@ enum UIPreviewRenderer {
             day.correctedShown = day.compositions / 25
             day.correctedCommitted = day.compositions / 30
             day.phrasesAdded = back % 9 == 0 ? 1 : 0
+            day.cleanCompositions = day.compositions * 82 / 100
+            day.typingMilliseconds = day.characters * 60_000 / Int.random(in: 38...52, using: &generator)
+            day.thinkingMilliseconds = day.typingMilliseconds * Int.random(in: 35...70, using: &generator) / 100
             data.days[store.dayKey(date)] = day
             data.totals = data.totals + day
         }
@@ -239,6 +242,19 @@ enum UIPreviewRenderer {
             data.latency.add(milliseconds: ms)
         }
         data.latency.add(milliseconds: 87)
+        for _ in 0..<6000 { data.rhythm.intervals.add(0.08 + Double.random(in: 0...0.35, using: &generator)) }
+        for _ in 0..<900 { data.rhythm.pauses.add(2 + (-log(Double.random(in: 0.001...1, using: &generator))) * 5) }
+        data.rhythm.longestRun = 186
+        data.rhythm.longestCleanRun = 74
+        for day in 0..<7 {
+            for hour in 0..<24 {
+                let work = (9...12).contains(hour) || (14...18).contains(hour)
+                let evening = (20...23).contains(hour)
+                let weekend = day == 0 || day == 6
+                let base = work ? (weekend ? 40 : 420) : evening ? 260 : hour < 7 ? 0 : 60
+                data.rhythm.hours[day * 24 + hour] = base == 0 ? 0 : base + Int.random(in: 0...base / 2, using: &generator)
+            }
+        }
         return UsageStatsStore(directory: nil, data: data)
     }
 
@@ -263,7 +279,7 @@ enum UIPreviewRenderer {
     /// Every page and sub-page, and how tall it is drawn (wide); narrow pages get more room for wrapping.
     private static let pages: [(SettingsPane, SettingsSubpage?, CGFloat)] = [
         (.intro, nil, 1320), (.typing, nil, 1260), (.choosing, nil, 1180), (.candidates, nil, 1720), (.words, nil, 440),
-        (.analytics, nil, 1720), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
+        (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
         (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
         (.candidates, .placement, 1300), (.words, .learnedWords, 620), (.words, .phrases, 620),
         (.analytics, .performance, 760), (.advanced, .apps, 460),
@@ -288,6 +304,10 @@ enum UIPreviewRenderer {
         }
         // Every page and sub-page whole, at the narrowest window (the page 440 pt wide) and a wide one (860 pt).
         try renderPages(settings, pages, to: directory, label: "", suffix: suffix)
+        // 快捷鍵 with the fixed keys unfolded.
+        DemoPinning.showsFixedKeys = true
+        try renderPages(settings, [(.keys, nil, 2500)], to: directory, label: "-fixed-open", suffix: suffix)
+        DemoPinning.showsFixedKeys = false
         // 進階 with the correction log on.
         Preferences.shared.recordsCorrections = true
         try renderPages(settings, [(.advanced, nil, 660)], to: directory, label: "-recording", suffix: suffix)

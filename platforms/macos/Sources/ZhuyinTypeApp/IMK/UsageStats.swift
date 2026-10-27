@@ -3,8 +3,9 @@
 //
 // `UsageStatsObserver` watches a `ControllerCore` the way the correction recorder does and turns each key, click and
 // commit into a few counter increments; `UsageStatsStore` keeps the totals and the last 60 days in memory and writes
-// them to stats.json off the main thread, a few seconds after they change.  Per-key latency goes into a fixed
-// histogram, so measuring costs two clock reads and an array increment.
+// them to stats.json off the main thread at most every 10 minutes (and when the input method is switched away, the
+// settings window opens or the process exits).  Per-key latency goes into a fixed histogram, so measuring costs two
+// clock reads and an array increment.
 import Darwin
 import Foundation
 import ZhuyinCore
@@ -15,6 +16,8 @@ struct UsageCounters: Codable, Equatable {
     var characters = 0
     /// Compositions sent.
     var compositions = 0
+    /// Compositions sent without a pick, ⌫, Esc or ` in them: the first choice was right.
+    var cleanCompositions = 0
     /// Keys the input method handled while composing.
     var keys = 0
     /// Picks from the candidate list, by list.
@@ -36,6 +39,9 @@ struct UsageCounters: Codable, Equatable {
     var correctedCommitted = 0
     /// Custom phrases added while typing (⇧← ⇧→ and Return).
     var phrasesAdded = 0
+    /// Time between keys within a burst of typing, and pauses between bursts (thinking), in milliseconds.
+    var typingMilliseconds = 0
+    var thinkingMilliseconds = 0
 
     init() {}
 
@@ -43,28 +49,79 @@ struct UsageCounters: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         func value(_ key: CodingKeys) -> Int { (try? c.decodeIfPresent(Int.self, forKey: key)) ?? 0 }
-        characters = value(.characters); compositions = value(.compositions); keys = value(.keys)
-        picksNormal = value(.picksNormal); picksCorrections = value(.picksCorrections); picksSingle = value(.picksSingle)
-        picksPunctuation = value(.picksPunctuation); backspaces = value(.backspaces); escapes = value(.escapes)
-        deleteAfterCommit = value(.deleteAfterCommit); literalZhuyin = value(.literalZhuyin)
+        characters = value(.characters); compositions = value(.compositions); cleanCompositions = value(.cleanCompositions)
+        keys = value(.keys); picksNormal = value(.picksNormal); picksCorrections = value(.picksCorrections)
+        picksSingle = value(.picksSingle); picksPunctuation = value(.picksPunctuation); backspaces = value(.backspaces)
+        escapes = value(.escapes); deleteAfterCommit = value(.deleteAfterCommit); literalZhuyin = value(.literalZhuyin)
         undoLiteral = value(.undoLiteral); correctedShown = value(.correctedShown)
         correctedCommitted = value(.correctedCommitted); phrasesAdded = value(.phrasesAdded)
+        typingMilliseconds = value(.typingMilliseconds); thinkingMilliseconds = value(.thinkingMilliseconds)
     }
 
     var picks: Int { picksNormal + picksCorrections + picksSingle + picksPunctuation }
     /// Every correction the user made: picks, deletions, Esc and `.
     var corrections: Int { picks + backspaces + escapes + deleteAfterCommit + literalZhuyin }
     var isZero: Bool { self == UsageCounters() }
+    /// Characters a minute while typing, pauses left out; nil without typing time.
+    var activeSpeed: Double? {
+        typingMilliseconds >= 1000 ? Double(characters) * 60_000 / Double(typingMilliseconds) : nil
+    }
+    /// The share of compositions sent as first shown, 0–1.
+    var firstTimeRight: Double? { compositions > 0 ? Double(cleanCompositions) / Double(compositions) : nil }
+
+    static func += (a: inout UsageCounters, b: UsageCounters) {
+        a.characters &+= b.characters; a.compositions &+= b.compositions; a.cleanCompositions &+= b.cleanCompositions
+        a.keys &+= b.keys; a.picksNormal &+= b.picksNormal; a.picksCorrections &+= b.picksCorrections
+        a.picksSingle &+= b.picksSingle; a.picksPunctuation &+= b.picksPunctuation; a.backspaces &+= b.backspaces
+        a.escapes &+= b.escapes; a.deleteAfterCommit &+= b.deleteAfterCommit; a.literalZhuyin &+= b.literalZhuyin
+        a.undoLiteral &+= b.undoLiteral; a.correctedShown &+= b.correctedShown
+        a.correctedCommitted &+= b.correctedCommitted; a.phrasesAdded &+= b.phrasesAdded
+        a.typingMilliseconds &+= b.typingMilliseconds; a.thinkingMilliseconds &+= b.thinkingMilliseconds
+    }
 
     static func + (a: UsageCounters, b: UsageCounters) -> UsageCounters {
         var r = a
-        r.characters += b.characters; r.compositions += b.compositions; r.keys += b.keys
-        r.picksNormal += b.picksNormal; r.picksCorrections += b.picksCorrections; r.picksSingle += b.picksSingle
-        r.picksPunctuation += b.picksPunctuation; r.backspaces += b.backspaces; r.escapes += b.escapes
-        r.deleteAfterCommit += b.deleteAfterCommit; r.literalZhuyin += b.literalZhuyin; r.undoLiteral += b.undoLiteral
-        r.correctedShown += b.correctedShown; r.correctedCommitted += b.correctedCommitted
-        r.phrasesAdded += b.phrasesAdded
+        r += b
         return r
+    }
+}
+
+/// A fixed set of buckets with upper bounds, for latencies, key intervals and pauses.  Adding is O(1) in a fixed
+/// array.
+struct Buckets: Codable, Equatable {
+    var bounds: [Double]
+    var counts: [Int]
+    var maximum: Double = 0
+
+    init(bounds: [Double]) {
+        self.bounds = bounds
+        counts = [Int](repeating: 0, count: bounds.count + 1)
+    }
+
+    var total: Int { counts.reduce(0, +) }
+
+    mutating func add(_ value: Double) {
+        var index = 0
+        while index < bounds.count, value > bounds[index] { index += 1 }
+        counts[index] &+= 1
+        if value > maximum { maximum = value }
+    }
+
+    /// The `fraction` percentile, interpolated inside its bucket; nil when empty.
+    func percentile(_ fraction: Double) -> Double? {
+        let total = self.total
+        guard total > 0 else { return nil }
+        let target = fraction * Double(total)
+        var seen = 0.0
+        for (index, count) in counts.enumerated() where count > 0 {
+            if seen + Double(count) >= target {
+                let low = index == 0 ? 0 : bounds[index - 1]
+                let high = index < bounds.count ? bounds[index] : max(maximum, low)
+                return min(maximum, low + (high - low) * (target - seen) / Double(count))
+            }
+            seen += Double(count)
+        }
+        return maximum
     }
 }
 
@@ -77,33 +134,56 @@ struct LatencyHistogram: Codable, Equatable {
     var total: Int { counts.reduce(0, +) }
 
     mutating func add(milliseconds: Double) {
-        let index = Self.bounds.firstIndex { milliseconds <= $0 } ?? Self.bounds.count
+        var index = 0
+        while index < Self.bounds.count, milliseconds > Self.bounds[index] { index += 1 }
         if counts.count != Self.bounds.count + 1 { counts = [Int](repeating: 0, count: Self.bounds.count + 1) }
-        counts[index] += 1
-        maximum = max(maximum, milliseconds)
+        counts[index] &+= 1
+        if milliseconds > maximum { maximum = milliseconds }
     }
 
     /// The `fraction` percentile, interpolated inside its bucket; nil with no keys.
     func percentile(_ fraction: Double) -> Double? {
-        let total = self.total
-        guard total > 0 else { return nil }
-        let target = fraction * Double(total)
-        var seen = 0.0
-        for (index, count) in counts.enumerated() where count > 0 {
-            if seen + Double(count) >= target {
-                let low = index == 0 ? 0 : Self.bounds[index - 1]
-                let high = index < Self.bounds.count ? Self.bounds[index] : max(maximum, low)
-                return min(maximum, low + (high - low) * (target - seen) / Double(count))
-            }
-            seen += Double(count)
-        }
-        return maximum
+        var buckets = Buckets(bounds: Self.bounds)
+        buckets.counts = counts
+        buckets.maximum = maximum
+        return buckets.percentile(fraction)
     }
+}
+
+/// How the user types, beyond the counts: key intervals (for the pause threshold), think pauses, the longest runs,
+/// and when in the week the typing happens.
+struct TypingRhythm: Codable, Equatable {
+    /// Seconds between keys within bursts.
+    var intervals = Buckets(bounds: [0.04, 0.06, 0.08, 0.1, 0.12, 0.15, 0.18, 0.22, 0.26, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8, 1.0, 1.3,
+                                     1.6, 2.0, 3.0, 4.0, 6.0])
+    /// Seconds of pauses between bursts (up to `UsageStatsObserver.awayAfter`).
+    var pauses = Buckets(bounds: [2, 3, 4, 5, 6, 8, 10, 13, 16, 20, 25, 30, 40, 50, 60])
+    /// The most characters sent in one burst, and without a correction.
+    var longestRun = 0
+    var longestCleanRun = 0
+    /// Characters by weekday (1 Sunday … 7 Saturday, as `Calendar`) and hour: index (weekday − 1) × 24 + hour.
+    var hours = [Int](repeating: 0, count: 7 * 24)
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let empty = TypingRhythm()
+        intervals = (try? c.decodeIfPresent(Buckets.self, forKey: .intervals)) ?? empty.intervals
+        pauses = (try? c.decodeIfPresent(Buckets.self, forKey: .pauses)) ?? empty.pauses
+        longestRun = (try? c.decodeIfPresent(Int.self, forKey: .longestRun)) ?? 0
+        longestCleanRun = (try? c.decodeIfPresent(Int.self, forKey: .longestCleanRun)) ?? 0
+        let stored = (try? c.decodeIfPresent([Int].self, forKey: .hours)) ?? []
+        hours = stored.count == 7 * 24 ? stored : empty.hours
+    }
+
+    /// The gap that ends a burst: four times the usual key interval, at least 2 seconds.
+    var pauseThreshold: Double { max(2, 4 * (intervals.percentile(0.5) ?? 0.25)) }
 }
 
 /// The contents of stats.json.
 struct UsageData: Codable, Equatable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
     var schema = UsageData.schemaVersion
     /// When counting started (or was last cleared).
     var since: Date
@@ -111,23 +191,54 @@ struct UsageData: Codable, Equatable {
     /// By local day, yyyy-MM-dd; at most `UsageStatsStore.keptDays`.
     var days: [String: UsageCounters] = [:]
     var latency = LatencyHistogram()
+    var rhythm = TypingRhythm()
+
+    init(since: Date) {
+        self.since = since
+    }
+
+    // Reads version 1 too: the fields it lacks start empty.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        since = try c.decode(Date.self, forKey: .since)
+        totals = (try? c.decodeIfPresent(UsageCounters.self, forKey: .totals)) ?? UsageCounters()
+        days = (try? c.decodeIfPresent([String: UsageCounters].self, forKey: .days)) ?? [:]
+        latency = (try? c.decodeIfPresent(LatencyHistogram.self, forKey: .latency)) ?? LatencyHistogram()
+        rhythm = (try? c.decodeIfPresent(TypingRhythm.self, forKey: .rhythm)) ?? TypingRhythm()
+    }
 }
 
-/// The counters in memory and in stats.json.  Used on the main thread; files are written on its own queue.
+/// The counters, kept in memory and written to stats.json at most every `saveInterval`, when the input method is
+/// switched away, when the settings window opens and before the process exits, and only after a change.  Used on
+/// the main thread; the file is written on its own queue.  Adding is O(1): today's counters and the totals are plain
+/// structs, the rhythm uses fixed arrays, and the day only changes at midnight.
 final class UsageStatsStore {
     static var shared = UsageStatsStore(directory: EngineHost.userDirectory)
     static let fileName = "stats.json"
     /// Days kept for the history.
     static let keptDays = 60
-    /// Seconds between a change and writing the file.
-    static let saveDelay: TimeInterval = 5
+    /// The longest time between writes while typing.
+    static let saveInterval: TimeInterval = 600
 
     /// Nil: in memory only (self-tests, previews).
     let url: URL?
-    private(set) var data: UsageData
+    /// Everything but today, which is `today` until the day changes.
+    private var stored: UsageData
+    private var today = UsageCounters()
+    private var todayKey = ""
+    private var todayStart = 0.0
+    private var todayEnd = -1.0
+    private var todayWeekday = 1
+    private(set) var rhythm: TypingRhythm
     var now: () -> Date = Date.init
+    /// Seconds since boot, for the write interval.
+    var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    private var dirty = false
+    /// When the file was last written (or counting began in this process), in `uptime` seconds.
+    private var lastSave: TimeInterval?
+    /// Writes so far, for the self-test.
+    private(set) var writes = 0
     private let queue = DispatchQueue(label: "ZhuyinType.stats", qos: .utility)
-    private var saveScheduled = false
     private let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -135,18 +246,18 @@ final class UsageStatsStore {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
-    private var cachedDay: (start: Date, end: Date, key: String)?
 
     init(directory: URL?, data: UsageData? = nil) {
         url = directory?.appendingPathComponent(Self.fileName)
+        var loaded = UsageData(since: Date())
         if let data {
-            self.data = data
-        } else if let url, let stored = try? Data(contentsOf: url),
-                  let decoded = try? Self.decoder.decode(UsageData.self, from: stored), decoded.schema == UsageData.schemaVersion {
-            self.data = decoded
-        } else {
-            self.data = UsageData(since: Date())
+            loaded = data
+        } else if let url, let bytes = try? Data(contentsOf: url),
+                  let decoded = try? Self.decoder.decode(UsageData.self, from: bytes) {
+            loaded = decoded
         }
+        rhythm = loaded.rhythm
+        stored = loaded
     }
 
     private static let decoder: JSONDecoder = {
@@ -162,57 +273,101 @@ final class UsageStatsStore {
         return try? encoder.encode(data)
     }
 
+    /// Everything, today included: for the 分析 page and for writing.
+    var data: UsageData {
+        var data = stored
+        data.rhythm = rhythm
+        if !todayKey.isEmpty, !today.isZero { data.days[todayKey] = (data.days[todayKey] ?? UsageCounters()) + today }
+        return data
+    }
+
     /// The local day `date` falls in.
     func dayKey(_ date: Date) -> String {
-        if let cached = cachedDay, date >= cached.start, date < cached.end { return cached.key }
-        let calendar = Calendar.current
-        let start = calendar.startOfDay(for: date)
-        let end = calendar.date(byAdding: .day, value: 1, to: start) ?? date.addingTimeInterval(86_400)
-        let key = dayFormatter.string(from: date)
-        cachedDay = (start, end, key)
-        return key
+        let t = date.timeIntervalSinceReferenceDate
+        if t >= todayStart, t < todayEnd { return todayKey }
+        return dayFormatter.string(from: date)
     }
 
     func date(ofDay key: String) -> Date? { dayFormatter.date(from: key) }
 
+    /// Moves to the day `t` falls in: today's counters join the history.  Once a day.
+    private func roll(to date: Date) {
+        if !todayKey.isEmpty, !today.isZero {
+            stored.days[todayKey] = (stored.days[todayKey] ?? UsageCounters()) + today
+        }
+        today = UsageCounters()
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: date)
+        todayStart = start.timeIntervalSinceReferenceDate
+        todayEnd = (calendar.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)).timeIntervalSinceReferenceDate
+        todayKey = dayFormatter.string(from: date)
+        todayWeekday = calendar.component(.weekday, from: date)
+        if stored.days.count > Self.keptDays {
+            for old in stored.days.keys.sorted().prefix(stored.days.count - Self.keptDays) { stored.days[old] = nil }
+        }
+    }
+
+    /// Adds to today and the totals; O(1) except once a day.
     func add(_ delta: UsageCounters) {
         guard !delta.isZero else { return }
-        data.totals = data.totals + delta
-        let key = dayKey(now())
-        data.days[key] = (data.days[key] ?? UsageCounters()) + delta
-        if data.days.count > Self.keptDays {
-            for old in data.days.keys.sorted().prefix(data.days.count - Self.keptDays) { data.days[old] = nil }
+        let date = now()
+        let t = date.timeIntervalSinceReferenceDate
+        if t < todayStart || t >= todayEnd { roll(to: date) }
+        today += delta
+        stored.totals += delta
+        if delta.characters > 0 {
+            let hour = min(23, max(0, Int((t - todayStart) / 3600)))
+            rhythm.hours[(todayWeekday - 1) * 24 + hour] &+= delta.characters
         }
-        scheduleSave()
+        changed()
     }
 
     func addLatency(milliseconds: Double) {
-        data.latency.add(milliseconds: milliseconds)
-        scheduleSave()
+        stored.latency.add(milliseconds: milliseconds)
+        changed()
     }
 
-    /// Starts over: the counters, the history and the file.
+    func addInterval(seconds: Double) { rhythm.intervals.add(seconds) }
+    func addPause(seconds: Double) { rhythm.pauses.add(seconds) }
+    func noteRuns(burst: Int, clean: Int) {
+        if burst > rhythm.longestRun { rhythm.longestRun = burst }
+        if clean > rhythm.longestCleanRun { rhythm.longestCleanRun = clean }
+    }
+
+    /// Marks a change; writes only when the last write is `saveInterval` old.
+    private func changed() {
+        dirty = true
+        let now = uptime()
+        guard let last = lastSave else { lastSave = now; return }
+        if now - last >= Self.saveInterval { saveIfNeeded() }
+    }
+
+    /// Writes in the background if anything changed since the last write.
+    func saveIfNeeded() {
+        guard dirty, url != nil else { return }
+        dirty = false
+        lastSave = uptime()
+        writes += 1
+        let snapshot = data
+        queue.async { self.write(snapshot) }
+    }
+
+    /// Starts over: the counters, the rhythm, the history and the file.
     func clear() {
-        data = UsageData(since: now())
+        stored = UsageData(since: now())
+        rhythm = TypingRhythm()
+        today = UsageCounters()
+        todayKey = ""
+        todayEnd = -1
+        dirty = false
         guard let url else { return }
         queue.async { try? FileManager.default.removeItem(at: url) }
     }
 
-    /// Writes now and waits: before the process exits, and in self-tests.
+    /// Writes now if anything changed, and waits: before the process exits, and in self-tests.
     func flush() {
-        let snapshot = data
-        queue.sync { write(snapshot) }
-    }
-
-    private func scheduleSave() {
-        guard url != nil, !saveScheduled else { return }
-        saveScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDelay) { [weak self] in
-            guard let self else { return }
-            self.saveScheduled = false
-            let snapshot = self.data
-            self.queue.async { self.write(snapshot) }
-        }
+        saveIfNeeded()
+        queue.sync {}
     }
 
     private func write(_ snapshot: UsageData) {
@@ -227,13 +382,16 @@ final class UsageStatsStore {
     }
 }
 
-/// Watches one `ControllerCore` and counts.  It never changes what the core does.
+/// Watches one `ControllerCore` and counts.  It never changes what the core does.  Each key costs a few comparisons,
+/// one clock read and integer additions; bursts are told apart by the time since the last key only.
 final class UsageStatsObserver {
     let store: UsageStatsStore
     /// Seconds since the system started, as key-down times.
     var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     /// Seconds after sending in which ⌫ on the sent text counts (as the engine's own rule).
     static let deleteWindow: TimeInterval = 30
+    /// A gap longer than this is time away, not thinking: it counts as neither.
+    static let awayAfter: TimeInterval = 60
 
     private var lastCommit: TimeInterval = -.infinity
     private var deletedSinceCommit = false
@@ -241,25 +399,58 @@ final class UsageStatsObserver {
     private var literalBefore: String?
     /// The shown sentence had a typing correction at some point of this composition.
     private var sawCorrected = false
+    /// The composition had a pick, ⌫, Esc or `.
+    private var corrected = false
+    private var lastKey: TimeInterval?
+    /// The gap that ends a burst, fixed for this observer (one session) so its numbers are stable.
+    let pauseThreshold: TimeInterval
+    private var burst = 0
+    private var cleanRun = 0
 
     init(store: UsageStatsStore) {
         self.store = store
+        pauseThreshold = store.rhythm.pauseThreshold
     }
 
-    /// `corrected`: the sentence now shown has a typing correction.  `latency`: nanoseconds the key took.
+    /// `corrected`: the sentence now shown has a typing correction.  `latency`: nanoseconds the key took.  `time`: when
+    /// the key went down, if known.
     func observe(_ input: CorrectionRecorder.Input, before: Presentation, after: Presentation, commit: String?,
-                 handled: Bool, options: ComposerOptions, secure: Bool, corrected: Bool, latency: UInt64?) {
+                 handled: Bool, options: ComposerOptions, secure: Bool, corrected shownCorrected: Bool, latency: UInt64?) {
         guard !secure else {
             literalBefore = nil
             sawCorrected = false
+            corrected = false
             lastCommit = -.infinity
+            lastKey = nil
+            burst = 0
+            cleanRun = 0
             return
         }
         var count = UsageCounters()
         let composing = !before.isEmpty || !after.isEmpty
-        if case .key = input, handled, composing {
-            count.keys = 1
-            if let latency { store.addLatency(milliseconds: Double(latency) / 1_000_000) }
+        if case .key(_, let time) = input {
+            // Rhythm: the gap since the last key decides typing, thinking or away.
+            let now = time ?? clock()
+            if let last = lastKey {
+                let gap = now - last
+                if gap >= 0, gap <= pauseThreshold {
+                    count.typingMilliseconds = Int(gap * 1000)
+                    store.addInterval(seconds: gap)
+                } else if gap > pauseThreshold, gap <= Self.awayAfter {
+                    count.thinkingMilliseconds = Int(gap * 1000)
+                    store.addPause(seconds: gap)
+                    burst = 0
+                    cleanRun = 0
+                } else {
+                    burst = 0
+                    cleanRun = 0
+                }
+            }
+            lastKey = now
+            if handled, composing {
+                count.keys = 1
+                if let latency { store.addLatency(milliseconds: Double(latency) / 1_000_000) }
+            }
         }
         if let list = before.candidates, after.candidates == nil, picked(input, options: options) {
             if list.tolerant == true { count.picksCorrections = 1 }
@@ -293,19 +484,30 @@ final class UsageStatsObserver {
         } else if case .click = input {
             literalBefore = nil
         }
+        if count.picks > 0 || count.backspaces > 0 || count.escapes > 0 || count.literalZhuyin > 0 || count.deleteAfterCommit > 0 {
+            corrected = true
+            cleanRun = 0
+        }
         if let notice = after.notice, notice.hasPrefix("已加入自訂詞"), notice != before.notice { count.phrasesAdded = 1 }
-        if corrected, !after.isEmpty { sawCorrected = true }
+        if shownCorrected, !after.isEmpty { sawCorrected = true }
         if let commit, !commit.isEmpty {
-            count.characters = commit.count
+            let characters = commit.count
+            count.characters = characters
+            burst += characters
+            cleanRun += characters
+            store.noteRuns(burst: burst, clean: cleanRun)
             if after.isEmpty {
                 count.compositions = 1
+                if !corrected { count.cleanCompositions = 1 }
                 if sawCorrected { count.correctedShown = 1 }
-                if corrected { count.correctedCommitted = 1 }
+                if shownCorrected { count.correctedCommitted = 1 }
                 sawCorrected = false
+                corrected = false
                 lastCommit = clock()
                 deletedSinceCommit = false
             }
         } else if after.isEmpty {
+            // Cleared without sending (⌫ or Esc): what is typed next is the same attempt, still corrected.
             sawCorrected = false
         }
         store.add(count)

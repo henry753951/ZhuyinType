@@ -4,7 +4,7 @@ import SwiftUI
 import ZhuyinCore
 
 /// 分析: a recap of this Mac's typing (counts only, from `UsageStatsStore`), how the input method itself performs,
-/// and the switch for counting.  Refreshes every two seconds while shown.
+/// and the switch for counting.  Refreshes every two seconds only while the page is on screen; nothing runs otherwise.
 struct AnalyticsPane: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var model: SettingsModel
@@ -14,13 +14,22 @@ struct AnalyticsPane: View {
     @State private var period: Period = .month
     @State private var confirmingClear = false
     @State private var words: (phrases: Int, learned: Int)?
+    /// Advanced every two seconds while the page is shown.
+    @State private var tick = 0
 
     enum Period: String, CaseIterable { case month, all }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { _ in
-            content(UsageSummary(store: store, period: period), metrics ?? ProcessMetrics.sample())
-        }
+        // Reading `tick` redraws the page (keeping its scroll position) every time it advances.
+        let _ = tick
+        content(UsageSummary(store: store, period: period), metrics ?? ProcessMetrics.sample())
+            .task {
+                // Cancelled when the page leaves the screen: no timer while it is hidden.
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    if !Task.isCancelled { tick &+= 1 }
+                }
+            }
         .onAppear(perform: countWords)
         .onChange(of: model.engine != nil) { _, _ in countWords() }
         .alert("要清除使用統計嗎？", isPresented: $confirmingClear) {
@@ -56,6 +65,7 @@ struct AnalyticsPane: View {
                         .padding(.vertical, 6)
                 }
             }
+            RhythmSection(summary: summary, rhythm: store.rhythm)
             Section("打字") {
                 StatGrid(stats: [
                     ("送出的字", summary.counters.characters, "character"),
@@ -115,7 +125,7 @@ struct AnalyticsPane: View {
             } header: {
                 Text("統計")
             } footer: {
-                FooterText("只記錄次數與時間，不記錄打的字、讀音與 App；只存在這台 Mac。")
+                FooterText("只記錄次數與時間，不記錄打的字、讀音與 App；只存在這台 Mac。統計只在記憶體中累加，每 10 分鐘最多寫入一次，不影響打字。")
             }
         }
     }
@@ -171,10 +181,13 @@ private struct RecapHero: View {
                     .contentTransition(reduceMotion ? .identity : .numericText())
                 Text("個字").font(.title3).foregroundStyle(.secondary)
             }
-            HStack(spacing: 8) {
+            TrailingFlow(spacing: 8, lineSpacing: 6, leading: true) {
                 if summary.streak > 1 { Chip(symbol: "flame", text: "連續 \(summary.streak) 天") }
                 if let best = summary.bestDay {
                     Chip(symbol: "star", text: "最多的一天 \(best.date.formatted(.dateTime.month().day()))・\(best.characters.formatted()) 字")
+                }
+                if let right = summary.counters.firstTimeRight {
+                    Chip(symbol: "checkmark.seal", text: "一次就對 \(Int((right * 100).rounded()))%")
                 }
                 if summary.counters.characters > 0 {
                     let rate = Double(summary.counters.corrections) * 100 / Double(summary.counters.characters)
@@ -201,6 +214,8 @@ private struct Chip: View {
     var body: some View {
         Label(text, systemImage: symbol)
             .font(.caption)
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Capsule().fill(.background.opacity(0.7)))
@@ -304,10 +319,16 @@ private struct Breakdown: View {
 /// 分析 › 效能: per-key latency from the counters, the rest from the system for this process.
 struct PerformancePage: View {
     var store: UsageStatsStore = .shared
+    @State private var tick = 0
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { _ in
-            Form { PerformanceSection(latency: store.data.latency, metrics: ProcessMetrics.sample()) }
-        }
+        let _ = tick
+        Form { PerformanceSection(latency: store.data.latency, metrics: ProcessMetrics.sample()) }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    if !Task.isCancelled { tick &+= 1 }
+                }
+            }
     }
 }
 
@@ -436,4 +457,99 @@ private struct OptionRowLite<Info: View, Control: View>: View {
 
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }
+}
+
+/// 打字節奏: how fast while typing (pauses left out), how much was thinking, the longest runs, how often the first
+/// choice was right, keys per character, and when in the week the typing happens.
+private struct RhythmSection: View {
+    let summary: UsageSummary
+    let rhythm: TypingRhythm
+
+    var body: some View {
+        let c = summary.counters
+        Section {
+            StatGrid(stats: [
+                ("打字速度（字/分鐘）", Int((c.activeSpeed ?? 0).rounded()), "speedometer"),
+                ("一次就對（%）", Int(((c.firstTimeRight ?? 0) * 100).rounded()), "checkmark.seal"),
+                ("最長連續（字）", rhythm.longestRun, "arrow.right.to.line"),
+            ])
+            .padding(.vertical, 4)
+            LabeledContent {
+                Text("\(duration(c.typingMilliseconds))・\(duration(c.thinkingMilliseconds))")
+                    .monospacedDigit().foregroundStyle(.secondary)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    RowLabel("打字時間・思考停頓", "停頓超過 \(String(format: "%.0f", rhythm.pauseThreshold)) 秒算思考，超過 1 分鐘不計")
+                    SplitBar(first: c.typingMilliseconds, second: c.thinkingMilliseconds)
+                }
+            }
+            LabeledContent("一次不改字最長", value: "\(rhythm.longestCleanRun.formatted()) 字")
+            LabeledContent("每個字按幾個鍵", value: c.characters > 0
+                ? String(format: "%.1f", Double(c.keys) / Double(c.characters)) : "—")
+            LabeledContent("思考停頓的中位數", value: rhythm.pauses.percentile(0.5).map { String(format: "%.1f 秒", $0) } ?? "—")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("什麼時候打字")
+                WeekHeatMap(hours: rhythm.hours)
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("打字節奏")
+        } footer: {
+            FooterText("打字速度只算連續打字的時間；一次就對是沒有選字、⌫ 或 Esc 就送出的組字。")
+        }
+    }
+
+    private func duration(_ milliseconds: Int) -> String {
+        let minutes = milliseconds / 60_000
+        return minutes >= 60 ? "\(minutes / 60) 小時 \(minutes % 60) 分" : "\(minutes) 分"
+    }
+}
+
+/// Two parts of a whole as one bar: typing (accent) and thinking (grey).
+private struct SplitBar: View {
+    let first: Int
+    let second: Int
+    var body: some View {
+        GeometryReader { proxy in
+            let total = max(1, first + second)
+            HStack(spacing: 2) {
+                Capsule().fill(Color.accentColor.opacity(0.8))
+                    .frame(width: max(first > 0 ? 3 : 0, (proxy.size.width - 2) * CGFloat(first) / CGFloat(total)))
+                Capsule().fill(.quaternary)
+            }
+        }
+        .frame(width: 160, height: 6)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Characters by weekday and hour: one colour, darker for more.  Counts only.
+private struct WeekHeatMap: View {
+    let hours: [Int]
+    private static let weekdays = ["日", "一", "二", "三", "四", "五", "六"]
+    var body: some View {
+        let top = max(1, hours.max() ?? 1)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(0..<7, id: \.self) { day in
+                HStack(spacing: 2) {
+                    Text(Self.weekdays[day]).font(.caption2).foregroundStyle(.secondary).frame(width: 14)
+                    ForEach(0..<24, id: \.self) { hour in
+                        let value = hours.indices.contains(day * 24 + hour) ? hours[day * 24 + hour] : 0
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(value == 0 ? AnyShapeStyle(.quaternary.opacity(0.5))
+                                  : AnyShapeStyle(Color.accentColor.opacity(0.15 + 0.85 * Double(value) / Double(top))))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 11)
+                    }
+                }
+            }
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 16)
+                ForEach([0, 6, 12, 18], id: \.self) { hour in
+                    Text("\(hour)").font(.caption2).foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .accessibilityLabel("一週中每小時打的字數")
+    }
 }
