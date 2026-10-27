@@ -14,6 +14,7 @@ final class InputPanel: NSPanel {
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isReleasedWhenClosed = false
+        acceptsMouseMovedEvents = true
         contentView = content
     }
 }
@@ -71,7 +72,6 @@ private final class CandidateRow: NSView {
     private var compact = false
     private var selected = false
     private var hovered = false
-    private var tracking: NSTrackingArea?
     private var keyAttributes: [NSAttributedString.Key: Any] = [:]
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
     private var annotationAttributes: [NSAttributedString.Key: Any] = [:]
@@ -146,19 +146,15 @@ private final class CandidateRow: NSView {
                        max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
         return (available, main)
     }
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self)
-        addTrackingArea(area)
-        tracking = area
+    /// Set by the window, which keeps one hovered row at most (`CandidateContentView.hover(at:)`).
+    var isHovered: Bool {
+        get { hovered }
+        set { if hovered != newValue { hovered = newValue; needsDisplay = true } }
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true; needsDisplay = true }
-    override func mouseExited(with event: NSEvent) { hovered = false; needsDisplay = true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { action?() }
     override func accessibilityPerformPress() -> Bool { action?(); return true }
-    func resetHover() { hovered = false; needsDisplay = true }
+    func resetHover() { isHovered = false }
 }
 
 private final class ZhuyinHintButton: NSButton {
@@ -606,9 +602,61 @@ final class CandidateContentView: InputMaterialView {
         if listOpen { steadySize = size }
         if frame.size != size { setFrameSize(size) }
         placePages(direction: direction)
+        refreshHover()
         return size
     }
-    func resetHover() { pageViews.forEach { $0.rows.forEach { $0.resetHover() } } }
+    func resetHover() {
+        hoveredRow = nil
+        pageViews.forEach { $0.rows.forEach { $0.resetHover() } }
+    }
+
+    // MARK: Hover
+
+    /// False for illustrations (the settings previews): rows never show the pointer.
+    var hoverEnabled = true
+    /// The one row under the pointer, if any.  The window tracks the pointer itself (one tracking area), so a row
+    /// can never stay hovered after the pointer left it, the page changed or the window moved under the pointer.
+    private var hoveredRow: CandidateRow?
+    /// How many rows show the pointer (zero or one), for the self-tests.
+    var hoveredRowCount: Int { pageViews.reduce(0) { $0 + $1.rows.filter(\.isHovered).count } }
+    private var hoverTracking: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        guard hoverEnabled else { hoverTracking = nil; return }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        hoverTracking = area
+    }
+    override func mouseMoved(with event: NSEvent) { hover(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseEntered(with event: NSEvent) { hover(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) { hover(at: nil) }
+
+    /// Marks the row at `point` (in this view) as hovered and every other row as not; nil clears.
+    func hover(at point: NSPoint?) {
+        var row: CandidateRow?
+        if hoverEnabled, let point, !rowClip.isHidden {
+            let inClip = rowClip.convert(point, from: self)
+            let page = pageViews[front]
+            if rowClip.bounds.contains(inClip) {
+                let inPage = page.convert(inClip, from: rowClip)
+                row = page.rows.first { !$0.isHidden && $0.frame.contains(inPage) }
+            }
+        }
+        guard row !== hoveredRow || row?.isHovered == false else { return }
+        for page in pageViews { for other in page.rows where other !== row && other.isHovered { other.isHovered = false } }
+        row?.isHovered = true
+        hoveredRow = row
+    }
+
+    /// After the rows changed: the pointer may now be over another row (or none).
+    private func refreshHover() {
+        guard hoverEnabled, let window, window.isVisible else { hover(at: nil); return }
+        let location = window.mouseLocationOutsideOfEventStream
+        hover(at: convert(location, from: nil))
+    }
 
     /// Forgets the list shown, when the window closes: the next list starts at its own size.
     func reset() {

@@ -26,7 +26,8 @@ struct ShortcutField: View {
     @State private var recording: Int?
     @State private var held: [String] = []
     @State private var problem: String?
-    @State private var hovered = false
+    @ObservedObject private var hover = HoverState.shared
+    private var hovered: Bool { hover.hovered == AnyHashable("keys-" + command.rawValue) }
     @State private var settled: Int?
     @State private var shake: CGFloat = 0
     @State private var pulse = false
@@ -79,7 +80,7 @@ struct ShortcutField: View {
         }
         .opacity(disabled ? 0.45 : 1)
         .allowsHitTesting(!disabled)
-        .onHover { hovered = $0 }
+        .hoverTracked("keys-" + command.rawValue)
         .onDisappear(perform: stop)
         .animation(.easeInOut(duration: 0.15), value: hovered)
         .accessibilityElement(children: .contain)

@@ -1048,6 +1048,43 @@ enum ControllerCoreSelfTest {
             try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
         }
 
+        test("hover: one row at most; scrolling, paging and leaving clear it") {
+            _ = NSApplication.shared
+            let state = HoverState()
+            state.enter("a")
+            state.enter("b")
+            state.leave("a")
+            try expect(state.hovered == AnyHashable("b"), "two hovered or the wrong one: \(String(describing: state.hovered))")
+            state.scrolled()
+            try expect(state.hovered == nil, "scrolling left a row hovered")
+            let content = CandidateContentView(frame: .zero)
+            let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 300, height: 600), styleMask: [.borderless],
+                                  backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = content
+            defer { window.contentView = nil; window.close() }
+            let items = (0..<14).map { Candidate(text: "字\($0)") }
+            let style = CandidateStyle(layout: .vertical)
+            content.update(list: CandidateList(items: items, selection: 0, pageSize: 9, tolerant: false), preview: nil,
+                           keys: Array("123456789"), style: style)
+            var seen = 0
+            for y in stride(from: 20.0, to: content.frame.height - 20, by: 15) {
+                content.hover(at: NSPoint(x: 40, y: y))
+                try expect(content.hoveredRowCount <= 1, "\(content.hoveredRowCount) rows hovered at y \(y)")
+                seen += content.hoveredRowCount
+            }
+            try expect(seen > 5, "the pointer over the rows hovered none")
+            content.update(list: CandidateList(items: items, selection: 9, pageSize: 9, tolerant: false), preview: nil,
+                           keys: Array("123456789"), style: style)
+            try expect(content.hoveredRowCount == 0, "a row stayed hovered after the page changed (the window is not shown)")
+            content.hover(at: NSPoint(x: 40, y: 60))
+            content.hover(at: nil)
+            try expect(content.hoveredRowCount == 0, "a row stayed hovered after the pointer left")
+            content.hoverEnabled = false
+            content.hover(at: NSPoint(x: 40, y: 60))
+            try expect(content.hoveredRowCount == 0, "an illustration showed hover")
+        }
+
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
     }

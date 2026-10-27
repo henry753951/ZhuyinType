@@ -292,7 +292,12 @@ private struct CandidateWindowView: NSViewRepresentable {
     let keys: [Character]
     let appearance: PanelAppearance
 
-    func makeNSView(context: Context) -> InputSurface { InputSurface(content: CandidateContentView(frame: .zero)) }
+    /// An illustration: its rows never show the pointer.
+    func makeNSView(context: Context) -> InputSurface {
+        let content = CandidateContentView(frame: .zero)
+        content.hoverEnabled = false
+        return InputSurface(content: content)
+    }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance

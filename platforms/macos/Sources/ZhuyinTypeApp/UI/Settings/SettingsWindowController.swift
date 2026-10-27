@@ -109,7 +109,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         }
     }
 
+    func windowDidResignKey(_ notification: Notification) { HoverState.shared.clear() }
+
     private func paneChanged(_ pane: SettingsPane) {
+        HoverState.shared.clear()
         model.phrases.view.setQuery("")
         model.learned.view.setQuery("")
         model.keysQuery = ""
@@ -162,7 +165,7 @@ final class SettingsModel: ObservableObject {
     /// The toolbar search on the 快捷鍵 page.
     @Published var keysQuery = ""
     /// The sub-page shown in the current page (one level down), or nil for the page itself.
-    @Published var subpage: SettingsSubpage?
+    @Published var subpage: SettingsSubpage? { didSet { HoverState.shared.clear() } }
     /// A row to scroll to, set by the links between pages; cleared once shown.
     @Published var scrollTarget: String?
     /// The row a link just led to, and its section, highlighted for a moment.  A section alone: all its rows.

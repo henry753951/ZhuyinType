@@ -447,3 +447,45 @@ private struct RowBlocks: PreferenceKey {
         value.trailing = next.trailing ?? value.trailing
     }
 }
+
+// MARK: - Hover
+
+/// What the pointer is over in the settings window: one thing at most.  Each hover-revealed control registers
+/// through `hoverTracked(_:)`.  Content scrolling under a still pointer sends no exit, so any scroll clears it, as do
+/// the window losing key and a page change; the next pointer move sets it again.
+final class HoverState: ObservableObject {
+    static let shared = HoverState()
+    @Published private(set) var hovered: AnyHashable?
+    private var monitor: Any?
+
+    func enter(_ id: AnyHashable) {
+        if hovered != id { hovered = id }
+        if monitor == nil, NSApp != nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+                self?.scrolled()
+                return event
+            }
+        }
+    }
+    func leave(_ id: AnyHashable) { if hovered == id { hovered = nil } }
+    func scrolled() { clear() }
+    func clear() { if hovered != nil { hovered = nil } }
+}
+
+private struct HoverTracked: ViewModifier {
+    let id: AnyHashable
+    @ObservedObject var state = HoverState.shared
+    func body(content: Content) -> some View {
+        content.onContinuousHover { phase in
+            switch phase {
+            case .active: state.enter(id)
+            case .ended: state.leave(id)
+            }
+        }
+    }
+}
+
+extension View {
+    /// Reports the pointer over this view to `HoverState` under `id`.
+    func hoverTracked(_ id: AnyHashable) -> some View { modifier(HoverTracked(id: id)) }
+}
