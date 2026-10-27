@@ -92,11 +92,11 @@ changes.revert(in: other) // 改回原本的值
 
 ## 7. 習慣組合的出處
 
-| 組合 | 包含的設定 | 依據 |
-|---|---|---|
-| Windows 注音的習慣 | 標點按法 Windows（⌃ 加符號鍵打全形標點）、單按 Shift 切換中英 | Microsoft 的〈Microsoft Traditional Chinese IME〉說明：Shift 切換中英模式、Ctrl 加符號插入全形符號 <https://support.microsoft.com/en-us/Windows/Hardware/Input-Devices/microsoft-traditional-chinese-ime> |
-| macOS 注音的習慣 | 空白鍵：開啟候選字視窗 | Apple 的〈Chinese Input Method User Guide〉：打完輸入碼後按空白開啟候選字視窗，注音以 Return 選取 <https://support.apple.com/guide/chinese-input-method/cim12992/mac> |
-| ZhuyinType 預設 | 所有設定的預設值（按鍵與功能的開關除外） | — |
-| 自訂 | 不改變設定 | — |
+兩個組合的內容與每一項的出處整理在 [PRESETS.md](PRESETS.md)。組合只放有出處的行為；標為「未確認」的項目（例如翻頁的按鍵、微軟注音沒有未完成的注音時的空白）不放進組合。macOS 組合的「標點按法」只有 2017 年的第二手資料，暫時不放。
 
-Microsoft 的說明沒有寫打完注音後空白鍵的行為，也沒有寫 Caps Lock；Apple 的說明沒有寫注音的標點按法與中英切換的按鍵。這些設定不放進組合，套用組合時保留目前的值。
+| 組合 | 包含的設定 |
+|---|---|
+| Windows 注音的習慣 | 單按 Shift 切換中英（左右 Shift）、開始輸入時使用英文：關、⌃ 加符號鍵打中文標點：開、選字鍵 1–9（都和預設相同） |
+| macOS 注音的習慣 | 空白鍵：開啟候選字視窗、單按 Shift：關、Caps Lock 打英文：開、⌥ 加數字或符號鍵打鍵上的符號：開、選字鍵 1–9 |
+| ZhuyinType 預設 | 所有設定的預設值（按鍵與功能的開關除外） |
+| 自訂 | 不改變設定 |

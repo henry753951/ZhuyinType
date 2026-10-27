@@ -117,12 +117,12 @@ struct WizardStoryboard: View {
         VStack(alignment: .leading, spacing: 14) {
             Title(text: "你原本習慣哪一種注音輸入？", detail: "選一個最接近的習慣組合，之後每一步都可以再改。")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                PresetCard(title: "Windows 注音的習慣", lines: ["⌃ 加符號鍵打中文標點", "空白鍵開啟候選字視窗", "Shift 切換中英"], selected: true)
-                PresetCard(title: "macOS 注音的習慣", lines: ["⇧ 加符號鍵打中文標點", "Caps Lock 切換中英", "空白鍵送出並輸入空白"], selected: false)
+                PresetCard(title: "Windows 注音的習慣", lines: ["單按 Shift 切換中英", "⌃ 加符號鍵打中文標點", "和目前的預設相同"], selected: true)
+                PresetCard(title: "macOS 注音的習慣", lines: ["空白鍵開啟候選字視窗", "Caps Lock 切換中英", "單按 Shift 不切換"], selected: false)
                 PresetCard(title: "ZhuyinType 預設", lines: ["⌃ 加符號鍵打中文標點", "空白鍵送出並輸入空白", "Shift 切換中英"], selected: false)
                 PresetCard(title: "自訂", lines: ["從目前的設定開始", "每一步自己選"], selected: false)
             }
-            Text("會改變 4 項設定").font(.callout).foregroundStyle(.secondary)
+            Text("不改變設定").font(.callout).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 40)
         .padding(.top, 24)
@@ -137,7 +137,7 @@ struct WizardStoryboard: View {
             }
             .pickerStyle(.segmented).labelsHidden()
             Task(text: "打出「好，謝謝。」", progress: "1 / 2")
-            PracticeField(segments: [DemoSegment("好", .document), DemoSegment("，", .marked)], hint: ["⌃", ","])
+            StoryboardPracticeField(segments: [DemoSegment("好", .document), DemoSegment("，", .marked)], hint: ["⌃", ","])
             Text("⌃ 加 , 打出「，」；⇧ 加 , 打出鍵上的「<」。").font(.callout).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 40)
@@ -162,12 +162,12 @@ struct WizardStoryboard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Task(text: "打 ㄇㄧㄥˊ，翻到下一頁，選第 12 個字「暝」", progress: done ? "完成" : "第 2 頁")
                     if done {
-                        PracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .document)], done: true)
+                        StoryboardPracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .document)], done: true)
                         Label("完成", systemImage: "checkmark.circle.fill")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(Color(nsColor: .systemGreen))
                     } else {
-                        PracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .focus)], hint: ["fn", "↓"])
+                        StoryboardPracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .focus)], hint: ["fn", "↓"])
                         PanelSnapshot(list: list, zhuyinHint: "ㄇㄧㄥˊ", preferences: preferences).padding(.leading, 64)
                     }
                 }
@@ -202,8 +202,7 @@ struct WizardStoryboard: View {
     }
 
     private var changes: [(String, String, String)] {
-        [("標點按法", "macOS", "Windows"), ("空白鍵", "送出並輸入空白", "開啟候選字視窗"),
-         ("翻頁", "Tab、fn↓、⌥↓", "Tab、fn↓"), ("按錯鍵修正", "標準", "積極"), ("記錄改字", "關閉", "開啟")]
+        [("按錯鍵修正", "標準", "積極"), ("翻頁", "Tab、fn↓、⌥↓", "Tab、fn↓"), ("記錄改字", "關閉", "開啟")]
     }
 
     private var keys: some View {
@@ -225,7 +224,7 @@ struct WizardStoryboard: View {
     }
 
     private var summary: [([String], String)] {
-        [(["空白"], "開啟候選字視窗"), (["1–9"], "選字"), (["Tab", "fn↓"], "下一頁"), (["⇧Tab", "fn↑"], "上一頁"),
+        [(["空白"], "送出並輸入空白"), (["1–9"], "選字"), (["Tab", "fn↓"], "下一頁"), (["⇧Tab", "fn↑"], "上一頁"),
          (["⌃,"], "中文標點「，」"), (["Shift"], "切換中英"), (["⇧↑"], "列出修正的字"), (["⇧↓"], "只列一個字"),
          (["`"], "打出注音本身"), (["⇧←", "⇧→"], "選取，再按 Return 加入自訂詞"), (["⌥⌫"], "刪掉一個詞"), (["Esc"], "清除注音")]
     }
@@ -297,7 +296,7 @@ private struct Task: View {
     }
 }
 
-private struct PracticeField: View {
+private struct StoryboardPracticeField: View {
     let segments: [DemoSegment]
     var hint: [String] = []
     var done = false

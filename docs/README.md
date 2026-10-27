@@ -6,6 +6,7 @@
 |---|---|---|
 | 產品 | [product/DESIGN.md](product/DESIGN.md) | 按鍵、狀態、預設值、介面、專案結構 |
 | | [product/WRITING.md](product/WRITING.md) | 介面文字、文件與發布說明的寫法 |
+| | [product/SETUP_WIZARD.md](product/SETUP_WIZARD.md)、[product/PRESETS.md](product/PRESETS.md) | 設定嚮導的流程與分鏡；習慣組合的依據與出處 |
 | 引擎 | [engine/ARCHITECTURE.md](engine/ARCHITECTURE.md) | 從按鍵到畫面的流程、分數公式、模組 |
 | | [engine/MODEL.md](engine/MODEL.md) | 詞庫、按鍵解碼、容錯、語言模型、神經模型、個人模型與評測數字 |
 | | [engine/MODEL_V3.md](engine/MODEL_V3.md) | 按鍵層級解碼器與音節對字模型的設計與實驗 |
