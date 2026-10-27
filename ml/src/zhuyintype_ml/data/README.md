@@ -47,7 +47,7 @@ zt data publish data-4            # 上傳成 GitHub release（需要 gh）
 - `fetch`：讀 `assets.json`，壓縮檔下載到 `$ZHUYIN_ASSET_CACHE`（預設 `.cache/assets`），驗證雜湊後解壓縮到資料目錄，並在 `.assets/<元件>` 記錄來源的雜湊值。
 - `pack`：讀資料目錄裡各元件的檔案，寫出 `dist/assets/zhuyintype-<元件>-<雜湊>.tar.gz`，更新 `assets.json`。
 - `lexicon`：來源下載到 `data/raw/`（CC-CEDICT、Unihan），詞頻用 wordfreq（`data` 相依群組），寫出 `lexicon.tsv`。
-- `compile`：讀 `lexicon.tsv`、`lm/`、`lm_chat/` 的 TSV，寫出 `lexicon.bin`、`lm/lm.bin`、`lm_chat/lm.bin` 與各自的 `.json` 說明（格式、筆數、來源 TSV 的雜湊值）。沒有 `bigram.tsv` 的語言模型會略過。
+- `compile`：讀 `lexicon.tsv`、`lm/`、`lm_chat/` 的 TSV，寫出 `lexicon.bin`、`lm/lm.bin`、`lm_chat/lm.bin` 與各自的 `.json` 說明（格式、筆數、來源 TSV 的雜湊值）。沒有 `bigram.tsv` 的語言模型會略過；`.json` 記錄的雜湊值和目前的 TSV 相同、而且比編譯程式新的檔案不重編。`zt --remote` 在每次 `eval` 與 `bench` 前執行 `zt data compile --quiet`：引擎行程載入 mmap 檔約 0.1 秒，只有 TSV 時每個行程要解析約 4 秒（含聊天模型），結果相同。
 
 ## 檔案
 

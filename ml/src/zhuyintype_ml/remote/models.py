@@ -13,6 +13,7 @@ and the options hash to the same value as the last export (recorded in <reranker
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -21,6 +22,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from zhuyintype_ml.core import paths
 
@@ -92,11 +94,16 @@ def prepare(components: tuple[str, ...] = ("eval",), tree: bool = True, quiet: b
 
 @contextmanager
 def model_server(
-    device: str = "cuda", memory_gb: float = 2, reranker: Path | None = None, v3: Path | None = None
+    device: str = "cuda",
+    memory_gb: float = 12,
+    workers: int = 1,
+    reranker: Path | None = None,
+    v3: Path | None = None,
 ) -> Iterator[Path]:
     """Starts zhuyintype_ml.remote.model_server (PyTorch, fp32) on a private Unix socket and yields a zhuyin-cli
-    wrapper that passes `--model-server SOCKET`; stops the server (by its PID) afterwards.  Set ZT_CLI to the wrapper so
-    every engine process uses the server."""
+    wrapper that passes `--model-server SOCKET`; stops the server (by its PID) afterwards and prints its counters.  Set
+    ZT_CLI to the wrapper so every engine process uses the server.  The socket exists as soon as the server listens;
+    the models load meanwhile (engine processes that connect early wait for their first answer)."""
     reranker = reranker or paths.data("reranker")
     v3 = v3 or paths.data("v3")
     cli = paths.cli()
@@ -117,15 +124,17 @@ def model_server(
             device,
             "--memory-gb",
             str(memory_gb),
+            "--workers",
+            str(workers),
             groups=("export",),
         )
         with open(log, "w") as out:
             server = subprocess.Popen(command, env=paths.python_env(), stdout=out, stderr=subprocess.STDOUT)
         try:
-            for _ in range(240):
+            for _ in range(480):
                 if socket.exists() or server.poll() is not None:
                     break
-                time.sleep(0.5)
+                time.sleep(0.25)
             if not socket.exists():
                 raise SystemExit(f"zt: the model server did not start:\n{log.read_text()[-2000:]}")
             wrapper = directory / "zhuyin-cli"
@@ -140,10 +149,25 @@ def model_server(
             except subprocess.TimeoutExpired:
                 server.kill()
                 server.wait()
+            for line in log.read_text().splitlines():
+                if line.startswith('{"stats"'):
+                    print(f"model server: {summary(json.loads(line)['stats'])}", flush=True)
 
 
-def run_with_server(argv: list[str], device: str = "cuda", memory_gb: float = 2) -> int:
+def summary(stats: dict[str, Any]) -> str:
+    """One line of a worker's counters for people."""
+    requests = stats["requests"]
+    batches = stats.get("mean_batch", {})
+    return (
+        f"worker {stats.get('worker', 0)}: {requests['rerank']:,} reranker and {requests['syllable']:,} "
+        f"character-model requests in {stats['rounds']:,} rounds (mean batch {batches.get('rerank', 0)} and "
+        f"{batches.get('syllable', 0)}), busy {stats['busy_share']:.0%} of {stats['wall_s']} s, "
+        f"GPU memory {stats.get('gpu_memory_gb', 0)} GiB"
+    )
+
+
+def run_with_server(argv: list[str], device: str = "cuda", memory_gb: float = 12, workers: int = 1) -> int:
     """Runs a zt command with every zhuyin-cli process using the model server."""
-    with model_server(device, memory_gb) as wrapper:
+    with model_server(device, memory_gb, workers) as wrapper:
         env = dict(os.environ, ZT_CLI=str(wrapper))
         return subprocess.run([str(paths.ROOT / "tools" / "zt"), *argv], env=env).returncode

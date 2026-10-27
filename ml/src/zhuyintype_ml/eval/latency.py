@@ -5,9 +5,11 @@
     zt eval latency -n 3                                           # a quick check of the harness
 
 Types each sentence of the latency set (ml/eval-sets/latency_sentences.txt, one per line) from start to end in one
-composition with `zhuyin-cli --timing`, one sentence at a time so they do not compete for the CPU, and reports the
-median over sentences of each summary figure.  This is the one evaluation that runs on the development Mac: the
-others run on the GPU host.  On Linux, energy is not reported.  Each item is one sentence with its own figures.
+composition with `--timing`, one sentence at a time so they do not compete for the CPU, and reports the median over
+sentences of each summary figure.  On macOS it measures the app's engine path, EngineBench (platforms/macos: the
+engine and Core ML models set up as the app sets them up); elsewhere zhuyin-cli.  This is the one evaluation that runs
+on the development Mac: the others run on the GPU host.  On Linux, energy is not reported.  Each item is one sentence
+with its own figures.
 """
 
 from __future__ import annotations
@@ -16,15 +18,18 @@ import argparse
 import platform
 import re
 import statistics
+import sys
+from pathlib import Path
 from typing import Any
 
+from zhuyintype_ml.core import paths
 from zhuyintype_ml.core.engine import EnginePool
 from zhuyintype_ml.core.results import Section
 from zhuyintype_ml.core.sets import EvalSet
 from zhuyintype_ml.core.zhuyin import Lexicon, keys
 from zhuyintype_ml.eval.base import Evaluator
 
-# Summary lines of zhuyin-cli --timing (engine/swift/Sources/zhuyin-cli/Usage.swift).
+# Summary lines of --timing (engine/crates/zhuyin-cli/src/usage.rs; EngineBench prints the same).
 FIGURES = {
     "p50_ms": r"keys \d+: p50 ([\d.]+) ms",
     "p95_ms": r"p95 ([\d.]+) ms",
@@ -55,6 +60,9 @@ class Latency(Evaluator):
     default_sets = ["latency"]
     default_n = 10
     n_help = "sentences per set (default: 10, the whole latency set)"
+
+    def cli(self) -> Path:
+        return paths.bench() if sys.platform == "darwin" else paths.cli()
 
     def evaluate(self, eval_set: EvalSet, pool: EnginePool, args: argparse.Namespace) -> Section:
         lexicon = Lexicon(pool.config.reading_lexicon)

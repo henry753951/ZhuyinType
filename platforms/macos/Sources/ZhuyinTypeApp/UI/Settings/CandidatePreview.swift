@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The 候選字視窗 page's preview: still scenes side by side, each a line of a document with the key just pressed
 /// beside it and the real candidate window (or 中/英 badge) under it.  Every setting on the page redraws every scene at
@@ -234,11 +234,21 @@ private struct PreviewBlock: View {
     var body: some View {
         let scene = layout.scene
         VStack(alignment: .leading, spacing: 6) {
-            Text(scene.title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
+            // The title, and on the right how much a window too large for the block is shrunk (never over the scene).
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text(scene.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if layout.scale < 0.99 {
+                    Text("縮小為 \(Int((layout.scale * 100).rounded()))%")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: layout.width, height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
@@ -271,14 +281,6 @@ private struct PreviewBlock: View {
             }
             .frame(width: layout.width, height: layout.height, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(alignment: .bottomTrailing) {
-                if layout.scale < 0.99 {
-                    Text("縮小為 \(Int((layout.scale * 100).rounded()))%")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .padding(6)
-                }
-            }
         }
     }
 }
@@ -290,7 +292,12 @@ private struct CandidateWindowView: NSViewRepresentable {
     let keys: [Character]
     let appearance: PanelAppearance
 
-    func makeNSView(context: Context) -> InputSurface { InputSurface(content: CandidateContentView(frame: .zero)) }
+    /// An illustration: its rows never show the pointer.
+    func makeNSView(context: Context) -> InputSurface {
+        let content = CandidateContentView(frame: .zero)
+        content.hoverEnabled = false
+        return InputSurface(content: content)
+    }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance
@@ -310,5 +317,16 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance
         (surface.content as? ModeBadgeView)?.label.stringValue = text
+    }
+}
+
+/// One scene of the preview (the candidate list) on its own, for the floating preview after a change.
+struct CandidateScenePreview: View {
+    @ObservedObject var preferences: Preferences
+    var width: CGFloat = 300
+    var body: some View {
+        let layout = SceneLayout(scene: PreviewScenes(preferences: preferences).list, width: width, preferences: preferences)
+        PreviewBlock(layout: layout.fitted(height: layout.naturalHeight), preferences: preferences, animated: false)
+            .frame(width: width, height: CandidatePreview.titleHeight + layout.naturalHeight)
     }
 }

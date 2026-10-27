@@ -1,6 +1,9 @@
 import AppKit
 import InputMethodKit
 
+// Headless modes never take the keyboard from the app the user is in.
+if !Headless.flags.isDisjoint(with: CommandLine.arguments) { Headless.begin() }
+
 if InstallCommand.handle(arguments: CommandLine.arguments) { exit(0) }
 
 let arguments = CommandLine.arguments
@@ -10,8 +13,9 @@ if let index = arguments.firstIndex(where: { $0 == "--render-ui" || $0 == "--ren
         exit(2)
     }
     _ = NSApplication.shared
-    UIPreviewRenderer.render(to: URL(fileURLWithPath: arguments[index + 1]))
-    exit(0)
+    exit(UIPreviewRenderer.render(to: URL(fileURLWithPath: arguments[index + 1]),
+                                  pages: arguments.firstIndex(of: "--only").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil })
+         ? 0 : 1)
 }
 
 // Development: open the settings window with sample words, print its window number, and keep running.

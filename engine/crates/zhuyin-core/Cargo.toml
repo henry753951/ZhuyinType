@@ -1,6 +1,6 @@
 [package]
 name = "zhuyin-core"
-description = "ZhuyinType input engine: data layer, decoding and composer (port of engine/swift/Sources/ZhuyinCore)"
+description = "ZhuyinType input engine: data layer, decoding and composer (ported from the Swift engine, bit for bit)"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

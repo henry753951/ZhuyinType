@@ -1,39 +1,46 @@
 import AppKit
 import UniformTypeIdentifiers
-import ZhuyinCore
+import ZhuyinEngine
 
 /// 自訂詞: user phrases, edited through the engine.
 final class PhraseListController: NSObject, NSTextFieldDelegate {
     private weak var model: SettingsModel?
-    let view = ListEditorView(columns: 2, emptyText: "沒有自訂詞")
+    let list = ListModel(noun: "自訂詞", sorts: [.reading, .word], emptyTitle: "還沒有自訂詞",
+                         emptyText: "按 ＋ 加入，或打字時選取字詞再按 Return。自訂詞在選字時優先列出。")
     private let wordField = NSTextField()
     private let readingField = NSComboBox()
 
     init(model: SettingsModel) {
         self.model = model
         super.init()
-        view.onAdd = { [weak self] _ in self?.presentAddSheet() }
-        view.onRemove = { [weak self] rows in self?.remove(rows) }
+        list.canAdd = true
+        list.canEdit = true
+        list.onAdd = { [weak self] in self?.presentAddSheet() }
+        list.onEdit = { [weak self] item in self?.presentAddSheet(word: item.title, reading: item.detail ?? "", replacing: item) }
+        list.onRemove = { [weak self] rows in self?.remove(rows) }
     }
 
     func reload(select ids: Set<String>? = nil) {
-        guard let engine = model?.engine else { view.setRows([]); return }
-        let rows = engine.userPhrases().map { ListRow(id: "\($0.reading)\t\($0.word)", cells: [$0.word, $0.reading]) }
-        view.setRows(rows, select: ids)
+        guard let engine = model?.engine else { list.set([]); return }
+        let rows = engine.userPhrases().map { ListItem(id: "\($0.reading)\t\($0.word)", title: $0.word, detail: $0.reading) }
+        list.set(rows, select: ids)
     }
 
-    private func remove(_ rows: [ListRow]) {
+    private func remove(_ rows: [ListItem]) {
         guard let engine = model?.engine else { return }
-        for row in rows { engine.removeUserPhrase(word: row.cells[0], reading: row.cells[1]) }
+        for row in rows { engine.removeUserPhrase(word: row.title, reading: row.detail ?? "") }
         reload()
     }
 
-    private func presentAddSheet(word: String = "", reading: String = "") {
-        guard let window = view.window, model?.engine != nil else { return }
+    private var editing: ListItem?
+
+    private func presentAddSheet(word: String = "", reading: String = "", replacing: ListItem? = nil) {
+        guard let window = SettingsWindowController.shared.sheetWindow, model?.engine != nil else { return }
+        editing = replacing
         let alert = NSAlert()
-        alert.messageText = "加入自訂詞"
+        alert.messageText = replacing == nil ? "加入自訂詞" : "編輯自訂詞"
         alert.informativeText = "自訂詞在選字時優先列出。"
-        alert.addButton(withTitle: "加入")
+        alert.addButton(withTitle: replacing == nil ? "加入" : "儲存")
         alert.addButton(withTitle: "取消")
 
         wordField.stringValue = word
@@ -68,6 +75,10 @@ final class PhraseListController: NSObject, NSTextFieldDelegate {
         let reading = reading.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         do {
             try engine.addUserPhrase(word: word, reading: reading)
+            if let old = editing, old.title != word || old.detail != reading {
+                engine.removeUserPhrase(word: old.title, reading: old.detail ?? "")
+            }
+            editing = nil
             reload(select: ["\(reading)\t\(word)"])
         } catch {
             let alert = NSAlert()
@@ -99,7 +110,8 @@ final class PhraseListController: NSObject, NSTextFieldDelegate {
 /// 記住的字詞: what the engine learned from picks, and the words it is told never to remember.
 final class LearnedListController: NSObject {
     private weak var model: SettingsModel?
-    let view = ListEditorView(columns: 3, emptyText: "還沒有記住的字詞", hasActions: true, sortColumn: 2, ascending: false)
+    let list = ListModel(noun: "字詞", sorts: [.count, .reading, .word], emptyTitle: "還沒有記住的字詞",
+                         emptyText: "從候選字清單選字後，ZhuyinType 會記住你的選擇，下次排在前面。")
     private let number: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.maximumFractionDigits = 1
@@ -110,60 +122,54 @@ final class LearnedListController: NSObject {
     init(model: SettingsModel) {
         self.model = model
         super.init()
-        view.showsAddButton = false
-        view.onRemove = { [weak self] rows in self?.remove(rows) }
-        view.makeMenu = { [weak self] in self?.menu() ?? NSMenu() }
+        list.onRemove = { [weak self] rows in self?.remove(rows) }
+        list.moreItems = { [weak self] in
+            guard let self else { return [] }
+            let chosen = self.list.items.filter { self.list.selection.contains($0.id) && !$0.marked }
+            return [("不再記住所選字詞", false, !chosen.isEmpty, { self.exclude(chosen) }),
+                    ("匯出…", false, true, { self.exportData() }), ("匯入…", false, true, { self.importData() }),
+                    ("全部清除…", true, true, { self.confirmClearAll() })]
+        }
+        list.rowItems = { [weak self] rows in
+            let learned = rows.filter { !$0.marked }
+            guard let self, !learned.isEmpty else { return [] }
+            return [("不再記住", { self.exclude(learned) })]
+        }
     }
 
     func reload() {
-        guard let engine = model?.engine else { view.setRows([]); return }
-        let learned = engine.learnedEntries().map { entry in
-            ListRow(id: "\(entry.reading)\t\(entry.word)",
-                    cells: [entry.word, entry.reading, "\(number.string(from: NSNumber(value: entry.count)) ?? "") 次"],
-                    sortKeys: [.text(entry.word), .text(entry.reading), .number(entry.count)])
+        guard let engine = model?.engine else { list.set([]); return }
+        let entries = engine.learnedEntries()
+        let top = log1p(entries.map(\.count).max() ?? 1)
+        let learned = entries.map { entry in
+            ListItem(id: "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading, count: entry.count,
+                     level: max(1, Int((log1p(entry.count) / max(top, 0.0001) * 5).rounded(.up))))
         }
         let excluded = engine.excludedEntries().map { entry in
-            ListRow(id: Self.excludedPrefix + "\(entry.reading)\t\(entry.word)", cells: [entry.word, entry.reading, "不記住"],
-                    sortKeys: [.text(entry.word), .text(entry.reading), .number(-1)])
+            ListItem(id: Self.excludedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
+                     meta: "不記住", count: -1, marked: true)
         }
-        view.setRows(learned + excluded)
+        list.set(learned + excluded)
     }
 
     /// Removing a learned word forgets it; removing an excluded one lets it be learned again.
-    private func remove(_ rows: [ListRow]) {
+    private func remove(_ rows: [ListItem]) {
         guard let engine = model?.engine else { return }
         for row in rows {
-            if row.id.hasPrefix(Self.excludedPrefix) { engine.includeInLearning(word: row.cells[0], reading: row.cells[1]) }
-            else { engine.forgetLearned(word: row.cells[0], reading: row.cells[1]) }
+            if row.marked { engine.includeInLearning(word: row.title, reading: row.detail ?? "") }
+            else { engine.forgetLearned(word: row.title, reading: row.detail ?? "") }
         }
         reload()
     }
 
-    private func menu() -> NSMenu {
-        let menu = NSMenu()
-        let learnedSelection = view.selectedRows.filter { !$0.id.hasPrefix(Self.excludedPrefix) }
-        let exclude = menu.addItem(withTitle: "不再記住所選字詞", action: #selector(excludeSelected), keyEquivalent: "")
-        exclude.isEnabled = !learnedSelection.isEmpty
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "匯出…", action: #selector(exportData), keyEquivalent: "")
-        menu.addItem(withTitle: "匯入…", action: #selector(importData), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "全部清除…", action: #selector(confirmClearAll), keyEquivalent: "")
-        menu.autoenablesItems = false
-        for item in menu.items { item.target = self }
-        return menu
-    }
-
-    @objc private func excludeSelected() {
+    private func exclude(_ rows: [ListItem]) {
         guard let engine = model?.engine else { return }
-        for row in view.selectedRows where !row.id.hasPrefix(Self.excludedPrefix) {
-            engine.excludeFromLearning(word: row.cells[0], reading: row.cells[1])
-        }
+        for row in rows where !row.marked { engine.excludeFromLearning(word: row.title, reading: row.detail ?? "") }
         reload()
     }
 
-    @objc private func exportData() {
-        guard let window = view.window, let engine = model?.engine else { return }
+    private func exportData() {
+        guard let window = SettingsWindowController.shared.sheetWindow, let engine = model?.engine else { return }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "ZhuyinType 個人資料.txt"
         panel.allowedContentTypes = [.plainText]
@@ -175,8 +181,8 @@ final class LearnedListController: NSObject {
         }
     }
 
-    @objc private func importData() {
-        guard let window = view.window, let engine = model?.engine else { return }
+    private func importData() {
+        guard let window = SettingsWindowController.shared.sheetWindow, let engine = model?.engine else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.plainText]
         panel.message = "匯入的資料會加到這台 Mac 現有的資料中。"
@@ -200,8 +206,8 @@ final class LearnedListController: NSObject {
         alert.beginSheetModal(for: window)
     }
 
-    @objc private func confirmClearAll() {
-        guard let window = view.window else { return }
+    private func confirmClearAll() {
+        guard let window = SettingsWindowController.shared.sheetWindow else { return }
         let alert = NSAlert()
         alert.messageText = "要清除所有記住的字詞嗎？"
         alert.informativeText = "清除後無法復原。不記住的字詞會保留。"
@@ -217,14 +223,16 @@ final class LearnedListController: NSObject {
 
 /// 進階: apps whose composition is shown in the candidate window.
 final class AppListController: NSObject {
-    let view = ListEditorView(columns: 2, emptyText: "沒有 App")
+    let list = ListModel(noun: "App", sorts: [.name], emptyTitle: "沒有 App",
+                         emptyText: "每個 App 都直接在文字中顯示組字。少數 App 需要把組字改放在候選字視窗上方；按 ＋ 加入。")
     private let preferences: Preferences
 
     init(preferences: Preferences = .shared) {
         self.preferences = preferences
         super.init()
-        view.onAdd = { [weak self] sender in self?.showAddMenu(from: sender) }
-        view.onRemove = { [weak self] rows in
+        list.canAdd = true
+        list.onAdd = { [weak self] in self?.showAddMenu() }
+        list.onRemove = { [weak self] rows in
             guard let self else { return }
             let removed = Set(rows.map(\.id))
             self.preferences.popupCompositionApps.removeAll { removed.contains($0) }
@@ -233,11 +241,10 @@ final class AppListController: NSObject {
     }
 
     func reload(select ids: Set<String>? = nil) {
-        let rows = preferences.popupCompositionApps.map { id -> ListRow in
-            let info = Self.appInfo(bundleID: id)
-            return ListRow(id: id, cells: [info.name, id], icon: info.icon)
+        let rows = preferences.popupCompositionApps.map { id -> ListItem in
+            ListItem(id: id, title: Self.appInfo(bundleID: id).name, detail: id, appIcon: id)
         }
-        view.setRows(rows, select: ids)
+        list.set(rows, select: ids)
     }
 
     private static func appInfo(bundleID: String) -> (name: String, icon: NSImage) {
@@ -248,7 +255,7 @@ final class AppListController: NSObject {
         return (bundleID, NSWorkspace.shared.icon(for: .application))
     }
 
-    private func showAddMenu(from sender: NSView) {
+    private func showAddMenu() {
         let menu = NSMenu()
         let existing = Set(preferences.popupCompositionApps)
         let apps = NSWorkspace.shared.runningApplications
@@ -269,7 +276,7 @@ final class AppListController: NSObject {
         let other = NSMenuItem(title: "選擇其他 App…", action: #selector(chooseApp), keyEquivalent: "")
         other.target = self
         menu.addItem(other)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.maxY + 4), in: sender)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     @objc private func addRunning(_ item: NSMenuItem) {
@@ -278,7 +285,7 @@ final class AppListController: NSObject {
     }
 
     @objc private func chooseApp() {
-        guard let window = view.window else { return }
+        guard let window = SettingsWindowController.shared.sheetWindow else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.application]
         panel.directoryURL = URL(fileURLWithPath: "/Applications")

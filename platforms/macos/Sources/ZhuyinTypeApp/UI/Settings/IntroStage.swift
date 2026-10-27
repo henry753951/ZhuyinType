@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The 介紹 page's story: a document where typing plays in a loop (Zhuyin typed, the sentence converts, ↓ opens the
 /// list, the corrections list, a pick, a phrase added, the text sent, the 中/英 badge), drawn with the real candidate

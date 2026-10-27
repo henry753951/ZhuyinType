@@ -1,5 +1,5 @@
 import AppKit
-import ZhuyinCore
+import ZhuyinEngine
 
 enum KeyMapping {
     // US ANSI hardware positions; event.characters depends on the client's layout.

@@ -1,0 +1,19 @@
+[package]
+name = "zhuyin-ffi"
+description = "C ABI of the ZhuyinType engine: engine, composer, personal data and host-supplied model scorers (include/zhuyin.h)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "zhuyin"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+zhuyin-core = { path = "../zhuyin-core" }
+zhuyin-models = { path = "../zhuyin-models" }
+
+[lints]
+workspace = true
