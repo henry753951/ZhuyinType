@@ -67,6 +67,26 @@ GROUPS = ("cedict-unihan", "wiktionary", "cns", "ids", "rule")
 # The table formats (resources/formats/reading-channel.md); the engine reads the same files.
 CHANNEL_HEADER = "# ZTRC/1 char\treading\tclass\tlog P(reading | char)\tsource groups\n"
 TAIWAN_HEADER = "# ZTRT/1 char\tword reading\tTaiwan reading\tlog strength\tstandard\n"
+NOISE_HEADER = "# char\treading in the text\treading typed\tclass\tprobability\tstate\tcost bucket\n"
+# The engine's reading states (resources/formats/reading-channel.md, 三種狀態): a correction is shown with the reading
+# it replaces and must beat exact typing by a margin; every other reading is accepted, typed as freely as the standard.
+CORRECTIONS = ("series", "loan")
+# composer.rs buckets a key-channel correction by its cost; a reading correction uses the same bounds.
+BUCKETS = (6.0, 11.0)
+
+
+def state(mechanism: str) -> str:
+    return "correction" if mechanism in CORRECTIONS else "accepted"
+
+
+def cost_bucket(mechanism: str, probability: float) -> int:
+    """v3's cost bucket for a typed reading: 0 for an accepted reading, 1–3 by −log probability for a correction."""
+    if state(mechanism) == "accepted":
+        return 0
+    cost = -math.log(probability)
+    return 1 + sum(cost > bound for bound in BUCKETS)
+
+
 COVERAGE = 0.99  # familiar characters: the most frequent ones covering this share of character occurrences
 SERIES_AGREEMENT = 0.2  # a component is phonetic when at least this share of its series reads like it
 # An interjection touches an utterance boundary in at least this share of its spoken occurrences.
@@ -276,12 +296,18 @@ class Channel:
 
     def write_noise(self, path: Path) -> None:
         """The variants as reading noise for training the per-character model (v3): `char<TAB>reading in the
-        text (* for any)<TAB>reading typed<TAB>class<TAB>probability`.  A training example replaces a character's
-        reading by a row's typed reading with that probability, so the model learns from context which character
-        a variant reading stands for.  Rule-level variants (third-tone sandhi, the neutral tone typed with its own
-        syllable) are in channel.json (misread, neutral_full_tone)."""
+        text (* for any)<TAB>reading typed<TAB>class<TAB>probability<TAB>state<TAB>cost bucket`.  A training example
+        replaces a character's reading by a row's typed reading with that probability and gives v3 the row's cost
+        bucket, so the model learns from context which character a variant reading stands for.  `misread` rows are
+        an unfamiliar character typed with another of its readings; their state is that reading's class's.  Rule-level
+        variants (third-tone sandhi, the neutral tone typed with its own syllable) are accepted readings, with their
+        rates in channel.json (misread, neutral_full_tone)."""
+
+        def row(char: str, text: str, typed: str, kind: str, p: float, mechanism: str) -> str:
+            return f"{char}\t{text}\t{typed}\t{kind}\t{p:.6g}\t{state(mechanism)}\t{cost_bucket(mechanism, p)}\n"
+
         with open(path, "w", encoding="utf-8") as handle:
-            handle.write("# char\treading in the text\treading typed\tclass\tprobability\n")
+            handle.write(NOISE_HEADER)
             for char in sorted(self.share):
                 shares = self.share[char]
                 for reading, p in sorted(shares.items()):
@@ -289,15 +315,16 @@ class Channel:
                     if mechanism != "lexicon":
                         rate = p if char not in self.familiar or mechanism != "series" else 0.0
                         if rate > 0:
-                            handle.write(f"{char}\t*\t{reading}\t{mechanism}\t{rate:.6g}\n")
+                            handle.write(row(char, "*", reading, mechanism, rate, mechanism))
             for (char, mainland), (taiwan, strength) in sorted(self.taiwan.items()):
-                handle.write(f"{char}\t{mainland}\t{taiwan}\ttaiwan\t{strength:.6g}\n")
+                handle.write(row(char, mainland, taiwan, "taiwan", strength, "taiwan"))
             for char in sorted(self.share):
                 if char in self.familiar:
                     continue
                 for reading in sorted(self.share[char]):
                     for typed, cost in self.alternatives(char, reading):
-                        handle.write(f"{char}\t{reading}\t{typed}\tmisread\t{math.exp(cost):.6g}\n")
+                        mechanism = self.mechanism[(char, typed)]
+                        handle.write(row(char, reading, typed, "misread", math.exp(cost), mechanism))
 
     def write(self, out: Path) -> None:
         out.mkdir(parents=True, exist_ok=True)
@@ -693,6 +720,16 @@ def validate(directory: Path) -> list[str]:
             problems.append(f"taiwan.tsv:{number}: bad row")
         elif float(parts[3]) > 1e-9 or parts[4] not in ("0", "1"):
             problems.append(f"taiwan.tsv:{number}: bad strength or standard flag")
+    noise = directory / "v3_noise.tsv"
+    lines = noise.read_text(encoding="utf-8").splitlines() if noise.exists() else [NOISE_HEADER.rstrip("\n")]
+    if lines[0] != NOISE_HEADER.rstrip("\n"):
+        problems.append("v3_noise.tsv: missing header")
+    for number, line in enumerate(lines[1:], 2):
+        parts = line.split("\t")
+        if len(parts) != 7 or parts[5] not in ("accepted", "correction"):
+            problems.append(f"v3_noise.tsv:{number}: bad row")
+        elif (parts[5] == "accepted") != (parts[6] == "0") or parts[6] not in ("0", "1", "2", "3"):
+            problems.append(f"v3_noise.tsv:{number}: an accepted reading has cost bucket 0, a correction 1–3")
     return problems
 
 

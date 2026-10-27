@@ -175,6 +175,23 @@ class Format(unittest.TestCase):
         self.assertEqual(again.evidence[("蚵", "ㄎㄜ")], "wiktionary,cns")
         self.assertIn(("期", "ㄑㄧ"), again.standard)
 
+    def test_noise_states_and_cost_buckets(self):
+        c = toy_channel()
+        c.mechanism[("蚵", "ㄎㄜ")] = "series"
+        c.mechanism[("麼", "ㄇㄛˊ")] = "attested"
+        c.taiwan[("期", "ㄑㄧ")] = ("ㄑㄧˊ", 0.99)
+        with tempfile.TemporaryDirectory() as tmp:
+            c.write(Path(tmp))
+            self.assertEqual(channel.validate(Path(tmp)), [])
+            rows = [line.split("\t") for line in Path(tmp, "v3_noise.tsv").read_text(encoding="utf-8").splitlines()]
+        by = {(r[0], r[1], r[2]): (r[5], r[6]) for r in rows[1:]}
+        self.assertEqual(by[("麼", "*", "ㄇㄛˊ")], ("accepted", "0"))
+        self.assertEqual(by[("期", "ㄑㄧ", "ㄑㄧˊ")], ("accepted", "0"))
+        self.assertEqual(by[("蚵", "*", "ㄎㄜ")], ("correction", "1"))  # −log 0.1 ≤ 6
+        self.assertEqual(by[("蚵", "ㄜˊ", "ㄎㄜ")], ("correction", "1"))  # −log 0.01 ≤ 6
+        self.assertEqual(channel.cost_bucket("series", math.exp(-7)), 2)
+        self.assertEqual(channel.cost_bucket("loan", math.exp(-12)), 3)
+
     def test_validate_reports_problems(self):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "channel.tsv").write_text(

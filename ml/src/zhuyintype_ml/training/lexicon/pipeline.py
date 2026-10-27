@@ -9,7 +9,8 @@ Options (--option KEY=VALUE):
     workers    counting processes (default: 16)
     packs      packs merged into lexicon.tsv (default: wiki,chat,registry,places)
     offset     extra cost of the candidate's reading rows (default: 2)
-    standard   1: strong Taiwan readings become the words' readings (re-label the dev sets to compare)
+    standard   0: keep CC-CEDICT's readings as the words' readings (default 1: strong Taiwan readings are the
+               standard, and misread-dev and every text dev set are typed with them)
     expanded   1: every reading class expanded into rows (the A/B baseline for the engine's reading channel)
     max_cost   lowest log P(typed | word) of an expanded misreading variant (default: 8)
     exclude    extra directory of evaluation rows kept out of the mining corpora (every *.txt in it)
@@ -149,17 +150,22 @@ def merge(ctx: Context) -> None:
     )
 
 
-# The merge candidate (docs/research/log.md 2026-10-28): readings Taiwan's sources attest, as rows 2 nats below the
-# word's reading; the engine's reading channel takes the rest.  --option expanded=1 builds the A/B baseline with every
-# class expanded into rows; --option standard=1 makes strong Taiwan readings the words' readings.
+# The merge candidate (docs/research/log.md 2026-10-28): strong Taiwan readings as the words' readings, readings
+# Taiwan's sources attest as rows 2 nats below the word's reading; the engine's reading channel takes the rest.
+# --option expanded=1 builds the A/B baseline with every class expanded into rows; --option standard=0 keeps
+# CC-CEDICT's readings as the words' readings.
 CANDIDATE_CLASSES = ("char", "taiwan", "mcbopomofo", "variants")
 CANDIDATE_OFFSET = 2.0
+
+
+def standard(ctx: Context) -> bool:
+    return str(ctx.options.get("standard", "1")) == "1"
 
 
 def variant_options(ctx: Context) -> list[str]:
     if str(ctx.options.get("expanded", "0")) == "1":
         return []
-    classes = ["standard", *CANDIDATE_CLASSES] if str(ctx.options.get("standard", "0")) == "1" else CANDIDATE_CLASSES
+    classes = ["standard", *CANDIDATE_CLASSES] if standard(ctx) else CANDIDATE_CLASSES
     offset = str(ctx.options.get("offset", CANDIDATE_OFFSET))
     return [
         "--data-only",
@@ -185,6 +191,7 @@ def misread(ctx: Context) -> None:
         str(ctx.out / "channel"),
         "--wiktionary",
         str(ctx.out / "wiktionary.tsv"),
+        *(["--standard"] if standard(ctx) else []),
         "--out",
         str(ctx.out / "misread"),
     )

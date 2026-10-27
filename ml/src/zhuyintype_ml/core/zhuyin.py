@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import random
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -67,16 +68,15 @@ HAN_RUN = re.compile(r"[一-鿿]{4,20}")
 class Lexicon:
     """Each word's most likely reading, from a lexicon TSV (reading, word, log probability)."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str | None = None, rows: Iterable[tuple[str, str, float]] = ()) -> None:
+        """From a lexicon TSV, or from (reading, word, log probability) rows."""
         best: dict[str, tuple[str, float]] = {}
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("#"):
-                    continue
-                reading, word, logp = line.rstrip("\n").split("\t")
-                value = float(logp)
-                if word not in best or best[word][1] < value:
-                    best[word] = (reading, value)
+        if path is not None:
+            with open(path, encoding="utf-8") as f:
+                rows = [(r, w, float(p)) for r, w, p in (x.rstrip("\n").split("\t") for x in f if x[0] != "#")]
+        for reading, word, value in rows:
+            if word not in best or best[word][1] < value:
+                best[word] = (reading, value)
         self.reading = {word: reading for word, (reading, _) in best.items()}
 
     def readings(self, text: str, cuts: list[int] | None = None) -> list[str] | None:
