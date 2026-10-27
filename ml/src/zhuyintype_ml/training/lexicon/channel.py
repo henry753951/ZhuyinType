@@ -61,7 +61,12 @@ from .phonology import bopomofo, split
 from .wiktionary import INTERJECTION
 
 UNIHAN_FIELDS = ("kHanyuPinyin", "kXHC1983", "kTGHZ2013", "kMandarin")
-MECHANISMS = ("lexicon", "taiwan", "word", "attested", "unihan", "series", "interjection")
+MECHANISMS = ("lexicon", "taiwan", "word", "attested", "cns", "unihan", "series", "interjection")
+# Source groups: sources that copy each other count once (resources/formats/reading-channel.md).
+GROUPS = ("cedict-unihan", "wiktionary", "cns", "ids", "rule")
+# The table formats (resources/formats/reading-channel.md); the engine reads the same files.
+CHANNEL_HEADER = "# ZTRC/1 char\treading\tclass\tlog P(reading | char)\tsource groups\n"
+TAIWAN_HEADER = "# ZTRT/1 char\tword reading\tTaiwan reading\tlog strength\tstandard\n"
 COVERAGE = 0.99  # familiar characters: the most frequent ones covering this share of character occurrences
 SERIES_AGREEMENT = 0.2  # a component is phonetic when at least this share of its series reads like it
 # An interjection touches an utterance boundary in at least this share of its spoken occurrences.
@@ -251,6 +256,8 @@ class Channel:
     mechanism: dict[tuple[str, str], str] = field(default_factory=dict)
     familiar: set[str] = field(default_factory=set)
     taiwan: dict[tuple[str, str], tuple[str, float]] = field(default_factory=dict)
+    evidence: dict[tuple[str, str], str] = field(default_factory=dict)  # (char, reading) -> source groups
+    standard: set[tuple[str, str]] = field(default_factory=set)  # Taiwan pairs strong enough to be the standard
     misread: float = 0.0  # m: the share of character positions typed with another reading of the character
     neutral: float = 0.0
     rates: dict[str, object] = field(default_factory=dict)
@@ -295,14 +302,18 @@ class Channel:
     def write(self, out: Path) -> None:
         out.mkdir(parents=True, exist_ok=True)
         with open(out / "channel.tsv", "w", encoding="utf-8") as handle:
-            handle.write("# char\treading\tmechanism\tlog P(reading | char)\n")
+            handle.write(CHANNEL_HEADER)
             for char in sorted(self.share):
-                for reading, p in sorted(self.share[char].items(), key=lambda x: -x[1]):
-                    handle.write(f"{char}\t{reading}\t{self.mechanism[(char, reading)]}\t{math.log(p):.4f}\n")
+                for reading, p in sorted(self.share[char].items(), key=lambda x: (-x[1], x[0])):
+                    sources = self.evidence.get((char, reading), "")
+                    handle.write(
+                        f"{char}\t{reading}\t{self.mechanism[(char, reading)]}\t{math.log(p):.4f}\t{sources}\n"
+                    )
         with open(out / "taiwan.tsv", "w", encoding="utf-8") as handle:
-            handle.write("# char\tword reading\tTaiwan reading\tlog strength\n")
+            handle.write(TAIWAN_HEADER)
             for (char, mainland), (taiwan, strength) in sorted(self.taiwan.items()):
-                handle.write(f"{char}\t{mainland}\t{taiwan}\t{math.log(strength):.4f}\n")
+                standard = int((char, mainland) in self.standard)
+                handle.write(f"{char}\t{mainland}\t{taiwan}\t{math.log(strength):.4f}\t{standard}\n")
         (out / "familiar.txt").write_text("".join(sorted(self.familiar)) + "\n", encoding="utf-8")
         self.write_noise(out / "v3_noise.tsv")
         counts = collections.Counter(m for m in self.mechanism.values())
@@ -325,6 +336,7 @@ def estimate(
     facts: list[tuple[str, str, str, list[str]]],
     unihan: dict[str, set[str]],
     ids: dict[str, list[str]],
+    cns: dict[str, set[str]] | None = None,
     cedict: list[base_lexicon.CedictEntry] | None = None,
     tagged: set[str] | None = None,
     spoken_lines: list[str] | None = None,
@@ -363,7 +375,16 @@ def estimate(
         familiar.add(c)
         running += char_freq[c]
 
+    base_readings: dict[str, set[str]] = collections.defaultdict(set)
+    for ch, syls in evidence.items():
+        base_readings[ch] |= set(syls)
     mandarin = mandarin_readings(facts)
+    wikt_readings: dict[str, set[str]] = collections.defaultdict(set)
+    for word, readings in mandarin.items():
+        if len(word) > 1:
+            for text in readings:
+                for ch, syl in zip(word, text.split()):
+                    wikt_readings[ch].add(syl)
     taiwan_single: dict[str, set[str]] = collections.defaultdict(set)
     attested_single: dict[str, set[str]] = collections.defaultdict(set)
     new_word_readings: list[tuple[str, str]] = []
@@ -521,9 +542,23 @@ def estimate(
         neutral_counts[1] += sum(x.endswith("˙") for x in standard_reading.split())
     misread = (misreads + 0.5) / (positions + 1.0)
 
+    # A Taiwan reading is the standard (merge.py makes it the word's reading, the other one a variant) when CNS11643
+    # lists it and two independent groups agree: Wiktionary's words (strength >= 0.9), CC-CEDICT's single character,
+    # CNS11643 not listing the other reading.  Sources that copy each other count once (see GROUPS).
+    cns = cns or {}
+    wikt_pairs = {(ch, a) for (ch, a), (b, strength) in taiwan_pairs.items() if strength >= 0.9}
+    cedict_keys = {(c, a) for c, a, _ in cedict_pairs}
+    standard_pairs = set()
+    for (ch, a), (b, _) in taiwan_pairs.items():
+        listed = cns.get(ch, set())
+        votes = ((ch, a) in wikt_pairs) + ((ch, a) in cedict_keys) + (bool(listed) and a not in listed)
+        if b in listed and votes >= 2:
+            standard_pairs.add((ch, a))
+
     channel = Channel(
         familiar=familiar,
         taiwan=taiwan_pairs,
+        standard=standard_pairs,
         misread=misread,
         neutral=(neutral_counts[0] + 0.5) / (neutral_counts[1] + 1.0),
     )
@@ -540,6 +575,8 @@ def estimate(
         "series_characters": sum(1 for c in phonetic if c not in familiar),
         "interjections": "".join(sorted(interjections)),
         "cedict_taiwan_pairs": len(cedict_pairs),
+        "standard_taiwan_pairs": len(standard_pairs),
+        "cns_characters": len(cns),
         "cedict_taiwan_strength": cedict_strength,
         "interjection_tone_rate": interjection_rate,
         "spoken_boundary_rate": average,
@@ -578,6 +615,8 @@ def estimate(
                 add(r, word_mass, "word")
         for r in sorted(attested_single.get(c, set())):
             add(r, rate(r, alpha["attested"]) * char_total, "attested")
+        for r in sorted(cns.get(c, set())):
+            add(r, rate(r, alpha["attested"]) * char_total, "cns")
         for r in sorted(unihan.get(c, set())):
             add(r, rate(r, alpha["unihan"]) * char_total, "unihan")
         for r, member_share in series(c).items():
@@ -589,9 +628,72 @@ def estimate(
                     add(bare + tone, interjection_rate * reading_mass, "interjection")
         norm = sum(mass.values())
         channel.share[c] = {r: v / norm for r, v in mass.items()}
+        series_readings = series(c)
         for r in mass:
             channel.mechanism[(c, r)] = label[r]
+            groups = []
+            if r in singles.get(c, {}) or r in base_readings.get(c, set()) or r in unihan.get(c, set()):
+                groups.append("cedict-unihan")
+            if (
+                r in attested_single.get(c, set())
+                or r in taiwan_single.get(c, set())
+                or r in wikt_readings.get(c, set())
+            ):
+                groups.append("wiktionary")
+            if r in cns.get(c, set()):
+                groups.append("cns")
+            if r in series_readings:
+                groups.append("ids")
+            if label[r] == "interjection":
+                groups.append("rule")
+            channel.evidence[(c, r)] = ",".join(groups)
     return channel
+
+
+SYLLABLE = re.compile(r"[ㄅ-ㄩ]{1,3}[ˊˇˋ˙]?")
+
+
+def validate(directory: Path) -> list[str]:
+    """Problems with channel.tsv and taiwan.tsv against resources/formats/reading-channel.md (empty when valid).
+    The engine's reader checks the same rules."""
+    problems: list[str] = []
+    lines = (directory / "channel.tsv").read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != CHANNEL_HEADER.rstrip("\n"):
+        problems.append("channel.tsv: missing ZTRC/1 header")
+    seen: set[tuple[str, str]] = set()
+    totals: dict[str, float] = collections.defaultdict(float)
+    previous: tuple[str, float, bytes] | None = None
+    for number, line in enumerate(lines[1:], 2):
+        parts = line.split("\t")
+        if len(parts) != 5:
+            problems.append(f"channel.tsv:{number}: {len(parts)} fields")
+            continue
+        char, reading, kind, logp, groups = parts
+        if len(char) != 1 or not SYLLABLE.fullmatch(reading) or kind not in MECHANISMS:
+            problems.append(f"channel.tsv:{number}: bad character, reading or class")
+        value = float(logp)
+        if not math.isfinite(value) or value > 1e-9:
+            problems.append(f"channel.tsv:{number}: log P must be finite and at most 0")
+        if (char, reading) in seen:
+            problems.append(f"channel.tsv:{number}: duplicate")
+        seen.add((char, reading))
+        if groups and not set(groups.split(",")) <= set(GROUPS):
+            problems.append(f"channel.tsv:{number}: unknown source group")
+        if previous and previous[0] == char and (previous[1], previous[2]) > (-value, reading.encode()):
+            problems.append(f"channel.tsv:{number}: rows of a character out of order")
+        previous = (char, -value, reading.encode())
+        totals[char] += math.exp(value)
+    problems += [f"channel.tsv: {c} sums to {t:.4f}" for c, t in totals.items() if abs(t - 1) > 1e-3]
+    lines = (directory / "taiwan.tsv").read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0] != TAIWAN_HEADER.rstrip("\n"):
+        problems.append("taiwan.tsv: missing ZTRT/1 header")
+    for number, line in enumerate(lines[1:], 2):
+        parts = line.split("\t")
+        if len(parts) != 5 or not SYLLABLE.fullmatch(parts[1]) or not SYLLABLE.fullmatch(parts[2]):
+            problems.append(f"taiwan.tsv:{number}: bad row")
+        elif float(parts[3]) > 1e-9 or parts[4] not in ("0", "1"):
+            problems.append(f"taiwan.tsv:{number}: bad strength or standard flag")
+    return problems
 
 
 def load(directory: Path) -> Channel:
@@ -601,14 +703,17 @@ def load(directory: Path) -> Channel:
         for line in lines:
             if line.startswith("#"):
                 continue
-            char, reading, mechanism, logq = line.rstrip("\n").split("\t")
+            char, reading, mechanism, logq, *rest = line.rstrip("\n").split("\t")
             channel.share.setdefault(char, {})[reading] = math.exp(float(logq))
             channel.mechanism[(char, reading)] = mechanism
+            channel.evidence[(char, reading)] = rest[0] if rest else ""
     with open(directory / "taiwan.tsv", encoding="utf-8") as lines:
         for line in lines:
             if not line.startswith("#"):
-                char, mainland, taiwan, strength = line.rstrip("\n").split("\t")
+                char, mainland, taiwan, strength, *rest = line.rstrip("\n").split("\t")
                 channel.taiwan[(char, mainland)] = (taiwan, math.exp(float(strength)))
+                if rest and rest[0] == "1":
+                    channel.standard.add((char, mainland))
     channel.familiar = set((directory / "familiar.txt").read_text(encoding="utf-8").strip())
     summary = json.loads((directory / "channel.json").read_text(encoding="utf-8"))
     channel.misread = summary["misread"]
@@ -631,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
         wiktionary.read(args.wiktionary),
         read_unihan(sources.path("Unihan-18.0.0.zip")),
         read_ids(sources.path("IDS.TXT")),
+        read_cns(sources.path("CNS11643-Properties.zip"), sources.path("CNS11643-MapingTables.zip")),
         base_lexicon.read_cedict(),
         cedict_interjections(),
         corpus_lines("chat", args.spoken, "name"),

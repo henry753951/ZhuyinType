@@ -159,6 +159,42 @@ class Merge(unittest.TestCase):
         self.assertIn(("ㄒㄧㄢ ㄎㄜ", "鮮蚵"), builder.rows)  # the pack word gets the channel's variants
 
 
+class Format(unittest.TestCase):
+    """channel.tsv and taiwan.tsv as resources/formats/reading-channel.md defines them (the engine reads them too)."""
+
+    def test_written_tables_validate_and_load_back(self):
+        c = toy_channel()
+        c.taiwan[("期", "ㄑㄧ")] = ("ㄑㄧˊ", 0.99)
+        c.standard.add(("期", "ㄑㄧ"))
+        c.evidence[("蚵", "ㄎㄜ")] = "wiktionary,cns"
+        with tempfile.TemporaryDirectory() as tmp:
+            c.write(Path(tmp))
+            self.assertEqual(channel.validate(Path(tmp)), [])
+            again = channel.load(Path(tmp))
+        self.assertAlmostEqual(again.share["蚵"]["ㄎㄜ"], 0.1, places=4)
+        self.assertEqual(again.evidence[("蚵", "ㄎㄜ")], "wiktionary,cns")
+        self.assertIn(("期", "ㄑㄧ"), again.standard)
+
+    def test_validate_reports_problems(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "channel.tsv").write_text(
+                channel.CHANNEL_HEADER + "蚵\tㄎㄜ\tseries\t0.5\tids\n蚵\tx\tnope\t-1\tother\n", encoding="utf-8"
+            )
+            Path(tmp, "taiwan.tsv").write_text(channel.TAIWAN_HEADER + "期\tㄑㄧ\tㄑㄧˊ\t-0.01\t2\n", encoding="utf-8")
+            problems = channel.validate(Path(tmp))
+        self.assertTrue(any("at most 0" in p for p in problems))
+        self.assertTrue(any("bad character" in p for p in problems))
+        self.assertTrue(any("standard flag" in p for p in problems))
+
+    def test_built_table_validates(self):
+        from zhuyintype_ml.core import paths
+
+        directory = paths.data("lexicon_coverage", "channel")
+        if not (directory / "channel.tsv").exists():
+            self.skipTest("no built table (zt train lexicon channel)")
+        self.assertEqual(channel.validate(directory), [])
+
+
 class Ids(unittest.TestCase):
     def test_first_level(self):
         self.assertEqual(channel.first_level("虫可"), ["虫", "可"])

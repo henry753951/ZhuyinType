@@ -12,6 +12,7 @@
 |---|---|---|
 | [Unicode Unihan](https://www.unicode.org/Public/18.0.0/ucd/Unihan.zip) 18.0.0 | 讀音通道：kHanyuPinyin、kXHC1983、kTGHZ2013、kMandarin 的全部讀音；kHanyuPinlu 估計比例 | Unicode License v3 |
 | 英文 Wiktionary 的中文詞條，經 [Wiktextract](https://kaikki.org/dictionary/Chinese/)（2026-10-25 的擷取） | 讀音通道：字與詞的國語讀音（含台灣、異讀、常見誤讀的標記）、台語台羅讀音、形聲字的聲符、詞類（語氣詞）與「台灣華語」分類；只取這些事實，不含釋義 | CC BY-SA 4.0（與 GFDL）；署名 Wiktionary 貢獻者、Tatu Ylonen（Wiktextract） |
+| [CNS11643 中文標準交換碼全字庫](https://data.gov.tw/dataset/5961)（屬性資料 2026-08-05） | 讀音通道：台灣官方的字音（`CNS_phonetic.txt`，經 CNS2UNICODE 對照表），是「台灣讀音當標準」的必要條件，也決定資料端可以收哪些單字讀音 | 政府資料開放授權條款第 1 版：「本資料由國家發展委員會提供，依政府資料開放授權條款進行公眾釋出」 |
 | [BabelStone IDS](https://www.babelstone.co.uk/CJK/IDS.TXT)（2025-06-27） | 讀音通道：字的第一層部件，找出形聲字的聲旁（有邊讀邊） | 維護者 Andrew West 聲明 IDS 是事實、不受著作權保護，並放棄對格式的權利；資料部分源自 Kawabata Taichi 的 IDS 與 IRG 的提交資料 |
 | [小麥注音](https://github.com/openvanilla/McBopomofo) 3.1.1 的 `data.txt`（取自善解 `bd3b609` 未修改的複本） | 讀音通道：只取我們詞庫已有的詞的其他讀音（危險 ㄨㄟˊ ㄒㄧㄢˇ），不取它的詞與詞頻 | MIT；片語源自 libtabe `tsi.src`（BSD） |
 | [全國營業(稅籍)登記資料集](https://data.gov.tw/dataset/9400)（2026-10-26） | 自動找詞的語料：營業人名稱（店名、品牌）與營業地址（地名、路名）；只留下出現 10 次以上、像詞的 n-gram，不保存個別登記 | 政府資料開放授權條款第 1 版：「本資料由財政部財政資訊中心提供，依政府資料開放授權條款進行公眾釋出」 |
