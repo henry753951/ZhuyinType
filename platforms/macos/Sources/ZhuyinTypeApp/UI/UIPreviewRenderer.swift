@@ -7,13 +7,18 @@ import ZhuyinCore
 /// never sees; it uses a throwaway settings suite and engine with sample words, and never touches personal data,
 /// the user's settings or the focused app.
 enum UIPreviewRenderer {
-    static func render(to directory: URL) {
+    /// Rows whose trailing block was not centred on the leading block, by page; the render fails when any.
+    private static var misaligned: [String] = []
+
+    /// Returns false when a page has a misaligned row.
+    @discardableResult
+    static func render(to directory: URL) -> Bool {
         precondition(Thread.isMainThread)
         NSApp.setActivationPolicy(.accessory)
         NSApp.finishLaunching()
         // One fixed throwaway suite, emptied before and removed after.
         let suite = "org.zhuyintype.preview"
-        guard let defaults = UserDefaults(suiteName: suite) else { return }
+        guard let defaults = UserDefaults(suiteName: suite) else { return false }
         defaults.removePersistentDomain(forName: suite)
         defer {
             defaults.removePersistentDomain(forName: suite)
@@ -46,7 +51,15 @@ enum UIPreviewRenderer {
             print("UI previews: \(directory.path)")
         } catch {
             fputs("UI preview failed: \(error.localizedDescription)\n", stderr)
+            return false
         }
+        if misaligned.isEmpty {
+            print("Row geometry: every trailing block centred on its leading block")
+            return true
+        }
+        print("FAIL row geometry: trailing block not centred in \(misaligned.count) rows:")
+        misaligned.forEach { print("  \($0)") }
+        return false
     }
 
     // MARK: Panels
@@ -266,7 +279,8 @@ enum UIPreviewRenderer {
         bindings[.singleCharacterList] = [Shortcut("↓", option: true)]
         bindings[.typeZhuyin] = [Shortcut("z", control: true)]
         bindings[.selectLeft] = [Shortcut("←", control: true, shift: true)]
-        bindings[.nextPage] = [Shortcut("]", control: true), Shortcut("Tab"), Shortcut("PageDown", control: true, option: true)]
+        bindings[.nextPage] = [Shortcut("]", control: true), Shortcut("Tab"), Shortcut("PageDown")]
+        bindings[.previousPage] = [Shortcut("Tab", shift: true), Shortcut("PageUp", option: true)]
         preferences.bindings = bindings
         preferences.selectionKeys = .homeRow
         preferences.candidatesPerPage = 6
@@ -286,11 +300,15 @@ enum UIPreviewRenderer {
     ]
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
+        // Every row reports its blocks while the settings render, for the geometry check and the grid.
+        RowGeometry.recording = true
+        defer { RowGeometry.recording = false }
         Preferences.shared.resetToDefaults()
         settings.model.subpage = nil
         // The window, with its sidebar, at its usual size, at the minimum size and large.
         for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (640, 440, "-min"), (1280, 900, "-large")] {
             for pane in SettingsPane.allCases {
+                RowGeometry.reset()
                 let window = settings.makeWindow(pane: pane)
                 window.setContentSize(NSSize(width: width, height: height))
                 window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
@@ -299,6 +317,7 @@ enum UIPreviewRenderer {
                 settings.model.reloadLists()
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
                 try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)\(label)-\(suffix).png"))
+                try capture(window: window, to: directory.appendingPathComponent("grid-\(pane.rawValue)\(label)-\(suffix).png"), grid: true)
                 window.orderOut(nil)
             }
         }
@@ -335,6 +354,19 @@ enum UIPreviewRenderer {
                         label: "-field-states", suffix: suffix)
         DemoPinning.fieldStates = [:]
         Preferences.shared.resetToDefaults()
+        // The arrival cue, frame by frame: on a row (its section's header in the accent colour), then on a section.
+        for (target, row, section) in [("row", Optional(ShortcutCommand.correctionsList.keysRow), "按錯鍵"),
+                                       ("section", nil, "前文")] {
+            for (frame, opacity) in [("before", 0.0), ("rising", 0.09), ("peak", ArrivalHighlight.peakOpacity), ("fading", 0.05)] {
+                settings.model.arrivedRow = frame == "before" ? nil : row
+                settings.model.arrivedSection = frame == "before" ? nil : section
+                DemoPinning.arrivalOpacity = opacity
+                try renderPages(settings, [(.choosing, nil, 1180)], to: directory, label: "-arrival-\(target)-\(frame)", suffix: suffix)
+            }
+        }
+        settings.model.arrivedRow = nil
+        settings.model.arrivedSection = nil
+        DemoPinning.arrivalOpacity = nil
         settings.model.subpage = nil
     }
 
@@ -344,6 +376,7 @@ enum UIPreviewRenderer {
             settings.model.subpage = subpage
             for (width, name) in [(CGFloat(440), "narrow"), (860, "wide")] {
                 let tall = width < 500 ? height * 1.3 : height
+                RowGeometry.reset()
                 let hosting = NSHostingView(rootView: SettingsPaneView(pane: pane, model: settings.model))
                 hosting.frame = NSRect(x: 0, y: 0, width: width, height: tall)
                 let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: width, height: tall),
@@ -355,7 +388,10 @@ enum UIPreviewRenderer {
                 window.orderFrontRegardless()
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
                 let file = "page-\(pane.rawValue)" + (subpage.map { "-" + $0.rawValue } ?? "") + "\(label)-\(name)-\(suffix).png"
-                try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent(file))
+                hosting.layoutSubtreeIfNeeded()
+                hosting.display()
+                try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent(file), grid: label.isEmpty ? .zero : nil,
+                          page: file, checks: true)
                 window.orderOut(nil)
                 window.contentView = nil
                 window.close()
@@ -390,11 +426,12 @@ enum UIPreviewRenderer {
 
     // MARK: Capture
 
-    private static func capture(window: NSWindow, to url: URL) throws {
+    private static func capture(window: NSWindow, to url: URL, grid: Bool = false) throws {
         guard let frameView = window.contentView?.superview else { return }
         frameView.layoutSubtreeIfNeeded()
         frameView.display()
-        try write(view: frameView, rect: frameView.bounds, to: url)
+        try write(view: frameView, rect: frameView.bounds, to: url, grid: grid ? .zero : nil, page: url.lastPathComponent,
+                  checks: grid)
     }
 
     private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
@@ -421,9 +458,44 @@ enum UIPreviewRenderer {
         window.close()
     }
 
-    private static func write(view: NSView, rect: NSRect, to url: URL) throws {
+    /// Writes `view` as a PNG; with `grid` (an offset; rows report window coordinates, so zero), draws the rows' geometry over it: title
+    /// left edges in red, trailing right edges in blue, row centre lines in green, misaligned rows in magenta.
+    private static func write(view: NSView, rect: NSRect, to url: URL, grid: CGPoint? = nil, page: String = "",
+                              checks: Bool = false) throws {
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: rect) else { throw CocoaError(.fileWriteUnknown) }
         view.cacheDisplay(in: rect, to: bitmap)
+        let rows = RowGeometry.all
+        let bad = RowGeometry.misaligned(rows)
+        if checks { misaligned += bad.map { "\(page): 「\($0.id)」 leading midY \($0.leading.midY), trailing midY \($0.trailing.midY)" } }
+        if let offset = grid, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            let height = bitmap.size.height
+            func flip(_ y: CGFloat) -> CGFloat { height - (offset.y + y) }
+            var lefts = Set<Int>(), rights = Set<Int>()
+            for row in rows {
+                let isBad = bad.contains { $0.leading == row.leading }
+                lefts.insert(Int((offset.x + row.leading.minX).rounded()))
+                rights.insert(Int((offset.x + row.trailing.maxX).rounded()))
+                let centre = NSBezierPath()
+                centre.move(to: NSPoint(x: offset.x + row.leading.minX, y: flip(row.leading.midY)))
+                centre.line(to: NSPoint(x: offset.x + row.trailing.maxX, y: flip(row.trailing.midY)))
+                centre.lineWidth = isBad ? 2 : 0.5
+                (isBad ? NSColor.magenta : NSColor.systemGreen.withAlphaComponent(0.8)).setStroke()
+                centre.stroke()
+            }
+            for (xs, color) in [(lefts, NSColor.systemRed), (rights, NSColor.systemBlue)] {
+                color.withAlphaComponent(0.6).setStroke()
+                for x in xs {
+                    let line = NSBezierPath()
+                    line.move(to: NSPoint(x: CGFloat(x) + 0.5, y: 0))
+                    line.line(to: NSPoint(x: CGFloat(x) + 0.5, y: height))
+                    line.lineWidth = 0.5
+                    line.stroke()
+                }
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
         guard let data = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
         try data.write(to: url, options: .atomic)
     }
