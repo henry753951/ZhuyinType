@@ -25,7 +25,7 @@ tools/zt check all
 | 路徑 | 內容 |
 |---|---|
 | `pyproject.toml`、`uv.lock` | uv 專案、相依群組、ruff 與 mypy 設定 |
-| `src/zhuyintype_ml/core/` | 共用核心：路徑、注音讀音與按鍵、評測集、結果、引擎行程池 |
+| `src/zhuyintype_ml/core/` | 共用核心：路徑、注音讀音與按鍵、評測集、結果、引擎行程池、App 的改字記錄 |
 | `src/zhuyintype_ml/cli/` | `zt` 指令 |
 | `src/zhuyintype_ml/eval/` | 評測與 ZhuyinBench（[../docs/ml/EVALUATION.md](../docs/ml/EVALUATION.md)） |
 | `src/zhuyintype_ml/training/` | 訓練流程（[README](src/zhuyintype_ml/training/README.md)） |

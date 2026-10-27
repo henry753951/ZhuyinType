@@ -20,6 +20,7 @@ if let index = arguments.firstIndex(of: "--settings-demo") {
     application.setActivationPolicy(.regular)
     if arguments.contains("--dark") { application.appearance = NSAppearance(named: .darkAqua) }
     let pane = arguments.indices.contains(index + 1) ? SettingsPane(rawValue: arguments[index + 1]) : nil
+    if let log = try? UIPreviewRenderer.sampleCorrectionLog() { CorrectionLog.shared = log }
     SettingsWindowController.shared.engine = try? UIPreviewRenderer.sampleEngine()
     let window = SettingsWindowController.shared.makeWindow(pane: pane)
     DispatchQueue.main.async {

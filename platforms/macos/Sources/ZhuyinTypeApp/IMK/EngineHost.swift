@@ -215,9 +215,11 @@ enum EngineHost {
         exit(0)
     }
 
-    /// Before the process ends for an update: write personal data and remember Chinese or English mode.
+    /// Before the process ends for an update: write personal data and the correction log, and remember Chinese or
+    /// English mode.
     static func prepareForExit() {
         engine?.flushPersonalData()
+        CorrectionLog.shared.flush()
         if let lastEnglishMode {
             UserDefaults.standard.set(["english": lastEnglishMode, "time": Date().timeIntervalSince1970], forKey: modeKey)
         }

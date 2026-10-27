@@ -430,6 +430,186 @@ enum ControllerCoreSelfTest {
             panel.onZhuyin = nil
         }
 
+        // MARK: Correction log
+
+        final class Records { var all: [[String: Any]] = [] }
+        func recording(_ core: ControllerCore, context: Bool = false) -> Records {
+            let records = Records()
+            let recorder = CorrectionRecorder { record in
+                guard let data = CorrectionLog.encode(record),
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+                records.all.append(object)
+            }
+            recorder.recordsContext = context
+            core.recorder = recorder
+            return records
+        }
+        var clock = 100.0
+        /// Keys in zhuyin-cli syntax (characters, <bs>, <esc>, <down>, <enter>), 0.15 s apart.
+        func press(_ keys: String, into core: ControllerCore) {
+            var index = keys.startIndex
+            while index < keys.endIndex {
+                let key: KeyInput
+                if keys[index] == "<", let end = keys[index...].firstIndex(of: ">") {
+                    let name = keys[keys.index(after: index)..<end]
+                    key = ["bs": .backspace, "esc": .escape, "down": .down, "enter": .enter, "space": .space][String(name)]!
+                    index = keys.index(after: end)
+                } else {
+                    key = .char(keys[index])
+                    index = keys.index(after: index)
+                }
+                clock += 0.15
+                _ = core.handle(key, time: clock)
+            }
+        }
+        func plain(_ value: Any?) -> String {
+            (value as? String ?? "").replacingOccurrences(of: "<dt:[0-9]+>", with: "", options: .regularExpression)
+        }
+        func events(_ record: [String: Any], _ type: String) -> [[String: Any]] {
+            (record["events"] as? [[String: Any]] ?? []).filter { $0["type"] as? String == type }
+        }
+
+        test("correction log: nothing without a correction, nothing once turned off") {
+            let (core, client) = session()
+            let records = recording(core)
+            press("su3cl3<enter>", into: core)
+            try expect(records.all.isEmpty && client.inserts.count == 1, "a composition without corrections was recorded")
+            core.recorder = nil
+            press("su3cl3<down>", into: core)
+            core.selectCandidate(at: (core.composer.presentation.candidates?.items.count ?? 1) - 1)
+            press("<enter>", into: core)
+            try expect(records.all.isEmpty, "recorded with the recorder removed")
+        }
+        test("correction log: a pick gives one record with before, after and keys") {
+            let (core, client) = session()
+            let records = recording(core)
+            press("su3cl3<down>", into: core)
+            guard let list = core.composer.presentation.candidates,
+                  let index = list.items.indices.first(where: { !"你好".hasSuffix(list.items[$0].text) }),
+                  index < 9 else { throw Failure(description: "no other candidate for 你好") }
+            press(String(index + 1), into: core)
+            let picked = core.composer.presentation.text
+            press("<enter>", into: core)
+            guard records.all.count == 1, let record = records.all.first else {
+                throw Failure(description: "\(records.all.count) records")
+            }
+            let pick = events(record, "pick").first ?? [:]
+            try expect(record["corrections"] as? [String] == ["pick"], "corrections \(record["corrections"] ?? "")")
+            try expect(pick["before"] as? String == "你好" && pick["after"] as? String == picked
+                       && pick["rank"] as? Int == index + 1 && pick["list"] as? String == "normal"
+                       && pick["via"] as? String == "key", "pick \(pick)")
+            try expect(record["committed"] as? String == picked && client.inserts == [picked], "committed")
+            try expect(plain(record["typing"]) == "su3cl3" && record["replayable"] as? Bool == true, "typing \(record)")
+            try expect(plain(record["keys"]) == "su3cl3<down>\(index + 1)<enter>"
+                       && (record["keys"] as? String ?? "").contains("<dt:150>"), "keys \(record["keys"] ?? "")")
+            try expect(record["shown"] as? String == "你好" && record["schema"] as? Int == 1
+                       && record["context"] == nil && record["original_typing"] != nil, "record \(record)")
+            try expect(events(record, "open_list").first?["list"] as? String == "normal", "open_list")
+        }
+        test("correction log: Backspace and retyping keep the deleted and retyped keys") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su31j6<bs>1j4<enter>", into: core)
+            guard let record = records.all.first, let deletion = events(record, "backspace").first else {
+                throw Failure(description: "no record: \(records.all)")
+            }
+            try expect(record["corrections"] as? [String] == ["backspace"], "corrections \(record["corrections"] ?? "")")
+            try expect(deletion["deleted_keys"] as? String == "1j6" && deletion["retyped_keys"] as? String == "1j4",
+                       "deletion \(deletion)")
+            try expect(plain(record["typing"]) == "su31j4" && plain(record["original_typing"]) == "su31j6"
+                       && record["original_replayable"] as? Bool == true, "typing \(record)")
+        }
+        test("correction log: Esc that clears the composition, then typing again") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su3<esc>su4<enter>", into: core)
+            guard let record = records.all.first, let escape = events(record, "escape").first else {
+                throw Failure(description: "no record: \(records.all)")
+            }
+            try expect(escape["cleared"] as? String == "composition" && escape["deleted_keys"] as? String == "su3"
+                       && escape["retyped_keys"] as? String == "su4", "escape \(escape)")
+            try expect(plain(record["typing"]) == "su4" && plain(record["original_typing"]) == "su3", "typing \(record)")
+        }
+        test("correction log: deleting the commit within 30 seconds and typing again") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su3<enter>", into: core)
+            clock += 1
+            _ = core.handle(.backspace, time: clock)
+            press("su4<enter>", into: core)
+            guard let record = records.all.first, let deletion = events(record, "delete_after_commit").first else {
+                throw Failure(description: "no record: \(records.all)")
+            }
+            try expect(deletion["deleted"] as? String == "你" && plain(deletion["previous_typing"]) == "su3"
+                       && record["corrections"] as? [String] == ["delete_after_commit"], "record \(record)")
+        }
+        test("correction log: nothing under secure input") {
+            let (core, _) = session()
+            let records = recording(core)
+            core.secureInput = { true }
+            press("su31j6<bs>1j4<enter>", into: core)
+            press("su3cl3<down>", into: core)
+            core.selectCandidate(at: (core.composer.presentation.candidates?.items.count ?? 1) - 1)
+            press("<enter>", into: core)
+            try expect(records.all.isEmpty, "recorded under secure input")
+        }
+        test("correction log: the text before the cursor only with its option") {
+            for option in [false, true] {
+                let (core, client) = session()
+                client.documentText = "我們"
+                let records = recording(core, context: option)
+                press("su31j6<bs>1j4<enter>", into: core)
+                let context = records.all.first?["context"] as? String
+                try expect(records.all.count == 1 && context == (option ? "我們" : nil),
+                           "option \(option): context \(context ?? "nil")")
+            }
+        }
+        test("correction log: literal Zhuyin, selections and custom phrases are corrections") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su3cl3`<enter>", into: core)
+            press("su3cl3", into: core)
+            _ = core.handle(.shiftLeft, time: clock + 0.1)
+            _ = core.handle(.enter, time: clock + 0.2)
+            clock += 0.2
+            press("<enter>", into: core)
+            try expect(records.all.map { $0["corrections"] as? [String] ?? [] } == [["literal_zhuyin"], ["select", "add_phrase"]],
+                       "corrections \(records.all.map { $0["corrections"] ?? "" })")
+            try expect(events(records.all[1], "add_phrase").first?["phrase"] as? String == "好", "phrase")
+        }
+        test("correction log: ` and its undo (` again or Esc)") {
+            for undo in ["`", "<esc>"] {
+                let (core, client) = session()
+                let records = recording(core)
+                press("su3cl3`" + undo + "<enter>", into: core)
+                let undone = events(records.all.first ?? [:], "undo_literal").first
+                try expect(records.all.first?["corrections"] as? [String] == ["literal_zhuyin", "undo_literal"]
+                           && undone?["shown"] as? String == "你好" && client.inserts == ["你好"],
+                           "undo \(undo): \(records.all) inserted \(client.inserts)")
+                try expect(plain(records.all.first?["typing"]) == "su3cl3`" + undo, "typing \(undo)")
+            }
+        }
+        test("correction log file: appended, exported and cleared") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeTest-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let log = CorrectionLog(directory: directory)
+            let (core, _) = session()
+            let recorder = CorrectionRecorder { log.append($0) }
+            core.recorder = recorder
+            press("su31j6<bs>1j4<enter>su3<esc>su4<enter>", into: core)
+            log.flush()
+            let lines = (try? String(contentsOf: log.url, encoding: .utf8))?.split(separator: "\n") ?? []
+            let attributes = try? FileManager.default.attributesOfItem(atPath: log.url.path)
+            try expect(lines.count == 2 && lines.allSatisfy { $0.hasPrefix("{") }, "\(lines.count) lines")
+            try expect((attributes?[.posixPermissions] as? Int) == 0o600, "file is readable by others")
+            let copy = directory.appendingPathComponent("copy.jsonl")
+            try log.export(to: copy)
+            try expect((try? Data(contentsOf: copy)) == (try? Data(contentsOf: log.url)), "export differs")
+            log.clear {}
+            log.flush()
+            try expect(!FileManager.default.fileExists(atPath: log.url.path), "clear left the file")
+        }
+
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
     }

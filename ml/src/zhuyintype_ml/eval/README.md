@@ -17,6 +17,7 @@ zt eval sets                                         # 評測集與是否已下�
 zt eval conversion --set colloquial-dev wiki-dev     # 整句轉換（app 設定）
 zt eval conversion --config engine --cli-args "--typo off" --json data/build/eval/off.json
 zt eval candidates | repick | errors | typo | typing-errors | rows | latency
+zt eval corrections corrections.jsonl                # App 的改字記錄重播（每種改字）
 zt eval stats base.json new.json                     # 兩份報告的成對比較
 zt eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json      # 設定 × 評測集
 zt bench run v0.5.0                                  # ZhuyinBench（GPU 主機）
@@ -44,6 +45,7 @@ zt --remote eval conversion --set dev                # 在 GPU 主機上執行
 | `typo.py` | 依比例隨機按錯，各容錯模式的正確率與誤修正率 |
 | `typing_errors.py` | 有按鍵時間的打字錯誤；方法與結果見 `TYPING_ERRORS.md` |
 | `rows.py` | 善解格式的評測集：整句全對率、CER、前 16 句命中，三種正規化 |
+| `corrections.py` | App 的改字記錄重播：每種改字，引擎現在不靠改字就打對、仍是改字前的字或其他 |
 | `latency.py` | 每鍵延遲、CPU、能耗、記憶體（Mac） |
 | `stats.py` | 成對比較：McNemar、bootstrap、改壞率上界、最小可偵測效果；`zt eval stats` |
 | `sweep.py` | 設定 × 評測集的掃描；`zt eval sweep` |

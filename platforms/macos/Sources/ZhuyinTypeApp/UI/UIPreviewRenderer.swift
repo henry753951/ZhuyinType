@@ -32,6 +32,7 @@ enum UIPreviewRenderer {
                 try FileManager.default.createDirectory(at: directory.appendingPathComponent(sub), withIntermediateDirectories: true)
             }
             let settings = SettingsWindowController.shared
+            CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
             for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 NSApp.appearance = NSAppearance(named: appearanceName)
@@ -124,11 +125,18 @@ enum UIPreviewRenderer {
             ("typo", AnyView(InfoCard(title: "按錯鍵修正") { TypoInfo(current: .standard, correctionsKey: "⇧↑") })),
             ("fuzzy", AnyView(InfoCard(title: "模糊音") { FuzzyInfo() })),
             ("learned", AnyView(InfoCard(title: "記住的字詞") { LearnedInfo() })),
+            ("corrections", AnyView(InfoCard(title: "記錄改字") { CorrectionLogInfo(keys: CurrentKeys(Preferences.shared)) })),
         ]
         for (name, card) in cards {
             try capture(swiftUI: card.background(Color(nsColor: .windowBackgroundColor)), width: 340,
                         to: directory.appendingPathComponent("info-\(name)-\(suffix).png"))
         }
+        // The correction log's keys follow the shortcuts.
+        customKeys(Preferences.shared)
+        let custom = InfoCard(title: "記錄改字") { CorrectionLogInfo(keys: CurrentKeys(Preferences.shared)) }
+        try capture(swiftUI: custom.background(Color(nsColor: .windowBackgroundColor)), width: 340,
+                    to: directory.appendingPathComponent("info-corrections-custom-keys-\(suffix).png"))
+        Preferences.shared.resetToDefaults()
     }
 
     private static func renderFrames(to directory: URL, suffix: String) throws {
@@ -224,8 +232,13 @@ enum UIPreviewRenderer {
             window.orderOut(nil)
         }
         // Whole pages, taller than a screen: the pane alone in a borderless window, which is not fitted to the screen.
-        let tall: [SettingsPane: CGFloat] = [.general: 1060, .keys: 1420, .candidates: 1400, .context: 740, .about: 620]
+        let tall: [SettingsPane: CGFloat] = [.general: 1060, .keys: 1420, .candidates: 1400, .context: 740, .about: 620,
+                                             .advanced: 700]
         try renderFull(settings, tall, to: directory, label: "full", suffix: suffix)
+        // 進階 with the correction log on.
+        Preferences.shared.recordsCorrections = true
+        try renderFull(settings, [.advanced: 700], to: directory, label: "recording", suffix: suffix)
+        Preferences.shared.resetToDefaults()
         // The same pages with non-default keys: every key shown must follow.
         customKeys(Preferences.shared)
         try renderFull(settings, [.general: 1060, .keys: 1420, .candidates: 1400], to: directory, label: "custom-keys",
@@ -251,6 +264,15 @@ enum UIPreviewRenderer {
             window.contentView = nil
             window.close()
         }
+    }
+
+    /// A correction log with three sample lines in a temporary folder, so the 進階 page never reads the user's.
+    static func sampleCorrectionLog() throws -> CorrectionLog {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypePreview-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try String(repeating: "{\"schema\":1}\n", count: 3)
+            .write(to: directory.appendingPathComponent(CorrectionLog.fileName), atomically: true, encoding: .utf8)
+        return CorrectionLog(directory: directory)
     }
 
     static func sampleEngine() throws -> Engine {

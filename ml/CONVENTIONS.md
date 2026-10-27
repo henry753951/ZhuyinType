@@ -10,7 +10,7 @@
 cli/                     指令列：main.py 依序載入 commands/ 底下每個模組（tools/zt 呼叫 python -m zhuyintype_ml.cli）
 cli/commands/<群組>.py   一個指令群組一個模組，提供 register(subparsers)
 core/                    共用核心：paths、zhuyin（讀音與按鍵）、engine（設定與 zhuyin-cli 行程池）、
-                         sets（評測集登錄）、results（Report／Section）
+                         sets（評測集登錄）、results（Report／Section）、corrections（App 的改字記錄）
 eval/                    評測：每種評測一個模組，實作 eval/base.py 的 Evaluator，登記在 registry.py
 training/<模型>/         訓練：pipeline.py 定義 PIPELINE（training/pipeline.py 的 Pipeline／Step）
 data/                    資料與模型的版本（resources/assets.json）、詞庫建置

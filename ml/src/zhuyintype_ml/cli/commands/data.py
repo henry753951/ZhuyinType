@@ -7,6 +7,8 @@ zt data pack data-4 v3            # archive changed components into dist/assets/
 zt data publish data-4            # upload them as a GitHub release (gh)
 zt data lexicon [--rebuild]       # build lexicon.tsv from CC-CEDICT, Unihan and wordfreq
 zt data compile [OUT]             # lexicon and language models as mmap binaries (lexicon.bin, lm/lm.bin, …)
+zt data corrections LOG --summary              # the app's correction log: most frequent retyped keys and changes
+zt data corrections LOG --rows rows.txt        # its replays as context|truth|syllables rows (zt eval rows)
 """
 
 from __future__ import annotations
@@ -64,6 +66,20 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     compile_.add_argument("--source", default=None, help="data directory to read (default: the data directory)")
     compile_.set_defaults(func=compile_data)
 
+    fixes = actions.add_parser(
+        "corrections",
+        help="summarize the app's correction log, or write it as rows",
+        description="The app's correction log (corrections.jsonl, 「記錄改字」): a summary of what was corrected, "
+        "or context|truth|syllables rows for `zt eval rows` from the records whose keys spell one syllable per "
+        "character (each syllable ended by a tone key or Space, nothing deleted, keys in order).",
+    )
+    fixes.add_argument("files", nargs="+", metavar="FILE", help="correction logs")
+    fixes.add_argument("--summary", action="store_true", help="print the most frequent corrections (default)")
+    fixes.add_argument("--top", type=int, default=20, help="entries per list in the summary (default: 20)")
+    fixes.add_argument("--rows", metavar="OUT", help="write context|truth|syllables rows to OUT")
+    fixes.add_argument("--json", metavar="FILE", help="also save the summary as JSON")
+    fixes.set_defaults(func=correction_log)
+
     parser.set_defaults(func=lambda a: parser.print_help())
 
 
@@ -97,4 +113,30 @@ def compile_data(args: argparse.Namespace) -> int:
     compiled.compile_all(
         Path(args.source).resolve() if args.source else None, Path(args.output).resolve() if args.output else None
     )
+    return 0
+
+
+def correction_log(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+
+    from zhuyintype_ml.core import corrections
+
+    records = [record for name in args.files for record in corrections.load(name)]
+    if args.rows:
+        lines = corrections.rows(records)
+        Path(args.rows).write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+        print(f"{len(lines)} rows from {len(records)} records: {args.rows}")
+    if args.summary or not args.rows:
+        summary = corrections.summarize(records, args.top)
+        print(f"{summary['records']} records")
+        print("corrections: " + ", ".join(f"{kind} {count}" for kind, count in summary["corrections"].items()))
+        print("\nretyped keys (typed → retyped):")
+        for entry in summary["keys"]:
+            print(f"  {entry['count']:5}  {entry['typed']} → {entry['retyped']}")
+        print("\nchanges (shown → final):")
+        for entry in summary["words"]:
+            print(f"  {entry['count']:5}  {entry['shown']} → {entry['final']}")
+        if args.json:
+            Path(args.json).write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return 0

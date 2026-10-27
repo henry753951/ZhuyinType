@@ -293,6 +293,14 @@ final class ZhuyinInputController: IMKInputController {
         core?.shortcuts = Dictionary(p.shortcuts.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         EngineHost.engine?.fuzzySounds = p.fuzzySounds
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
+        if let core, p.recordsCorrections {
+            let recorder = core.recorder ?? CorrectionRecorder { CorrectionLog.shared.append($0) }
+            recorder.recordsContext = p.recordsCorrectionContext
+            recorder.settings = p.correctionSettings
+            core.recorder = recorder
+        } else {
+            core?.recorder = nil
+        }
     }
 
     private func setPanelCallbacks() {

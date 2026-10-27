@@ -18,7 +18,7 @@ from . import paths
 class EvalSet:
     name: str
     path: str
-    kind: str  # "text" or "rows"
+    kind: str  # "text", "rows" or "corrections" (app correction logs, given as files)
     role: str  # "dev", "test" or "external"
     source: str  # how to get it: an assets.json component, "tracked", or "local"
     description: str

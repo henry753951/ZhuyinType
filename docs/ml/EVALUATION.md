@@ -59,6 +59,7 @@ v0.4.0 以前的 ZhuyinBench 紀錄，app 設定是直接列出模型選項，�
 | `zt eval typo` | 依比例隨機按錯（預設 0、10%、20%），三種容錯模式各自的整句全對率與字準確率；比例 0 時另報誤修正率 |
 | `zt eval typing-errors` | 有按鍵時間的打字錯誤：對調、幾乎同時按下、熱區誤觸、多按、漏按、聲調、一聲省略空白、混合；`--variant` 比較多組選項；方法見 `ml/src/zhuyintype_ml/eval/TYPING_ERRORS.md` |
 | `zt eval rows` | 善解格式（`前文|答案|注音`）的評測集：整句全對率、CER、前 16 句命中，各以三種正規化計算（原文、善解的正規化、我們的寫法對照） |
+| `zt eval corrections FILE…` | App 的改字記錄（`corrections.jsonl`）重播：每一種改字，引擎現在不靠改字就打對的有幾筆（見下方） |
 | `zt eval latency` | 固定 10 句在這台機器上的每鍵延遲、CPU、能耗（macOS）、記憶體；只在 Mac 上執行 |
 | `zt eval stats A B` | 兩份結果的成對比較：McNemar 精確檢定、成對 bootstrap 信賴區間、改對／改壞、改壞率上界、最小可偵測效果 |
 | `zt eval sweep MATRIX` | 多組設定 × 多個評測集，每個組合一份報告，最後列一張表；矩陣範例在 `ml/src/zhuyintype_ml/eval/matrices/` |
@@ -68,6 +69,26 @@ v0.4.0 以前的 ZhuyinBench 紀錄，app 設定是直接列出模型選項，�
 | `make checks` | 核心行為與延遲檢查（3,000 多項） |
 
 每個工具的說明與完整選項見 `zt eval NAME --help`。共用的選項有 `--config`、`--data`、`--cli-args`、`--set`、`-n`、`--seed`、`--jobs`、`--json`。
+
+### 改字記錄
+
+使用者在 App 開啟「記錄改字」後，每段有改字的組字記成 `~/Library/Application Support/ZhuyinType/corrections.jsonl` 的一行（格式見 [DESIGN.md §2.7](../product/DESIGN.md#27-改字記錄)）。這份檔案只在使用者自己的 Mac 上，評測前由使用者匯出提供；它含有使用者打的字，不放進版本庫，也不放進資料目錄的共用檔案。讀取記錄的程式在 `ml/src/zhuyintype_ml/core/corrections.py`。
+
+`zt eval corrections` 把每筆記錄當時的按鍵再打一次，問引擎現在能不能不靠這次改字就打出使用者最後送出的字。檔名直接接在指令後面（也可以用 `--set`），`-n` 是每個檔案從頭取幾筆（預設 0，全部）。每一種改字各重播一次：
+
+| 改字 | 重播的按鍵 | 對照 |
+|---|---|---|
+| `pick`、`literal_zhuyin`、`undo_literal`、`select`、`add_phrase`、`cursor_edit` | 最後那段組字的按鍵（`typing`），不含清單與選字 | 送出的字 |
+| `backspace`、`escape` | 第一次打的按鍵（`original_typing`），也就是刪掉重打之前的鍵 | 送出的字 |
+| `delete_after_commit` | 上一段組字的按鍵 | 上一段送出的字，刪掉的部分換成重打的這一段開頭同樣字數的字 |
+
+- 重播用記錄的設定：按錯鍵修正、標點按法、台／臺、模糊音（`--typo`、`--punctuation`、`--forms`、`--fuzzy`）；`--cli-args` 明確給的選項優先。有記錄游標前的文字時，以它為前文。按鍵間隔照 `<dt:毫秒>` 重現，所以按鍵解碼看到的時間和當時相同。
+- 結果分三種：`right`（打出送出的字）、`unchanged`（還是第一次改字之前畫面上的字，`shown`）、`other`。`backspace`、`escape` 在第一次改字之後還有打字時，`shown` 只是當時畫面的一部分，`unchanged` 不會成立，算在 `other`。
+- 無法重播的記錄（在句中修改過，或有 `zhuyin-cli` 寫不出的鍵）只計入筆數。
+- 重播不帶個人記憶：當時由記住的字詞決定的結果，重播時可能不同。
+- 報告的每一項有 `id`（記錄編號加改字種類）、`group`（改字種類）、`reference`、`output`、`shown`、`keys` 與 `outcome`，可以用 `zt eval stats` 比較兩個版本的引擎。
+
+`zt data corrections FILE… --summary` 列出改字的種類與次數、最常見的「刪掉的鍵 → 重打的鍵」（例如 `1j6 → 1j4`），以及最常見的「畫面上的字 → 改成的字」（選字、刪掉重打、送出後刪掉重打）。`--rows OUT` 把可重播的項目寫成 `前文|答案|注音` 的列，給 `zt eval rows` 使用：注音由按鍵推出，只收每個音節都以聲調鍵或空白結束、沒有刪除、按鍵順序和注音順序相同、每個字一個音節的項目；刪掉重打的項目用第一次打的鍵，所以按錯的鍵保留在注音中。
 
 ## 5. 常用指令
 
@@ -95,6 +116,10 @@ zt eval typing-errors --config engine --variant current "" --variant timed "--de
 
 # 善解的評測集
 zt eval rows --set shanjie
+
+# App 的改字記錄：重播、統計、轉成列
+zt eval corrections corrections.jsonl --json data/build/eval/corrections.json
+zt data corrections corrections.jsonl --summary --rows data/build/eval/correction-rows.txt
 
 # 在 GPU 主機上執行同一個指令
 zt --remote eval conversion --set dev

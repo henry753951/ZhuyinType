@@ -20,6 +20,7 @@
  │
  ├─ Presentation                      組字文字、游標、底線、候選字清單（§7、§8）
  ├─ ControllerCore.render             setMarkedText、insertText、候選字視窗
+ │    └─ CorrectionRecorder           「記錄改字」開啟時：觀察按鍵、畫面與送出（§9.4）
  │
  └─ 選字與送出                         Engine.learn、recordTypos、weaken（§8、§9）
 ```
@@ -30,7 +31,7 @@
 
 | 模組 | 位置 | 負責 |
 |---|---|---|
-| IMK 層 | `platforms/macos/Sources/ZhuyinTypeApp/IMK/` | `ZhuyinInputController` 接 IMK 事件；`IMKTextClient` 讀寫 App 的文字；`ControllerCore` 處理快捷鍵、中英切換、前文與畫面；`KeyMapping` 把 keyCode 轉成按鍵；`EngineHost` 在背景載入引擎與模型；`UpdateMonitor` 監看檔案變動 |
+| IMK 層 | `platforms/macos/Sources/ZhuyinTypeApp/IMK/` | `ZhuyinInputController` 接 IMK 事件；`IMKTextClient` 讀寫 App 的文字；`ControllerCore` 處理快捷鍵、中英切換、前文與畫面；`KeyMapping` 把 keyCode 轉成按鍵；`EngineHost` 在背景載入引擎與模型；`UpdateMonitor` 監看檔案變動；`CorrectionRecorder` 與 `CorrectionLog` 記錄改字（§9.4） |
 | 介面 | `platforms/macos/Sources/ZhuyinTypeApp/UI/` | 候選字視窗（`CandidatePanel`）、設定視窗（`Settings/`） |
 | 共用設定 | `platforms/macos/Sources/ZhuyinTypeApp/Shared/` | `Preferences`（設定與預設值）、`Shortcuts`（可重新指定的快捷鍵） |
 | 自動更新 | `platforms/macos/Sources/ZhuyinTypeApp/Update/` | `Updater`（Sparkle） |
@@ -301,6 +302,17 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 - 整個刪掉的詞記下來，連同它前面的歷史。
 
 接著打出和刪掉的詞相同的讀音、送出不同的字時，`Composer.correctedPrefix` 把它當成改字：新的字以手動選字的權重學習，刪掉的字在原本的前文減弱。
+
+### 9.4 改字記錄
+
+「記錄改字」開啟時（[DESIGN.md §2.7](../product/DESIGN.md#27-改字記錄)），`ZhuyinInputController.refreshPreferences` 給每個 `ControllerCore` 一個 `CorrectionRecorder`；關閉時拿掉。記錄器只觀察，不改變任何結果，引擎也不知道它存在，所以 Swift 與 Rust 兩版引擎都不需要修改。
+
+- `ControllerCore.handle`、`selectCandidate`、`toggleCorrections` 與 `commit` 在畫面更新之後呼叫 `CorrectionRecorder.observe`，傳入按鍵（或點按、送出）、按下的時間（`NSEvent.timestamp`；點按用同一個時鐘的現在時間）、處理前後的 `Presentation`、送出的字與按鍵是否交給 App；`breakContext` 也通知它。
+- 記錄器依處理前的清單狀態分類按鍵：清單開著時，選字鍵、Return、方向鍵、翻頁、⇧↓ ⇧↑、Esc 與 ⌫ 是清單的鍵；其他鍵關閉清單後照組字中的規則處理。改變組字內容的鍵（注音、聲調、空白、標點、⌫、⌥⌫、⌦、Esc）是打字；開啟清單時順便完成音節的鍵（↓ 在未完成的注音上），以「該鍵加 `<esc>`」記在打字中，重播時效果相同。
+- 打字的按鍵存成堆疊，每個鍵之後記下畫面的形狀（轉好的字數與結尾未完成的注音）。⌫、⌥⌫ 或 Esc 之後，回到上一次形狀相同的位置，中間的鍵就是刪掉的鍵；之後補打、直到轉好的字數回到刪除前的鍵是重打的鍵。第一次打的按鍵另存一份，刪掉的鍵留在那份裡、重打的鍵不加入；刪掉後沒有再打，就兩份一起刪。游標不在組字結尾時的修改無法這樣回推，該筆標為無法重播。
+- Esc 或 ⌫ 清空組字後，30 秒內再開始的組字接在同一筆記錄；中間有交給 App 的鍵、點進文字或切換中英就放棄。送出後 30 秒內交給 App 的 ⌫ 逐一計數（送出並輸入空白、⇧Return 時先刪掉那個空白或換行），下一段組字開始時記成 `delete_after_commit`。
+- 安全輸入時（`Composer.learningSuspended` 或 `IsSecureEventInputEnabled`）不記錄，進行中的記錄捨棄。游標前的文字（`recentText`）只在開啟第二個選項時於組字開始時讀取。
+- 送出時，有改字的記錄交給 `CorrectionLog`：在自己的背景佇列（utility）以 `JSONEncoder`（snake_case、排序欄位）編碼，附加到 `corrections.jsonl`（第一次建立時權限 600），完成後在主執行緒通知設定視窗更新筆數。`EngineHost.prepareForExit` 先等佇列寫完。
 
 ## 10. 資料與模型
 

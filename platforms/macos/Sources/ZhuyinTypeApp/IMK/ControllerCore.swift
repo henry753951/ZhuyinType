@@ -27,6 +27,8 @@ final class ControllerCore {
     var showPanel: ((CandidateList?, String?, NSRect, String?, String?) -> Void)?
     var hidePanel: (() -> Void)?
     var modeChanged: ((Bool, NSRect) -> Void)?
+    /// 「記錄改字」 when it is on: observes keys, clicks and commits, never changes what happens.
+    var recorder: CorrectionRecorder?
 
     private struct Mark: Equatable {
         var text: String
@@ -118,9 +120,11 @@ final class ControllerCore {
     func handle(_ key: KeyInput, time: TimeInterval? = nil) -> Bool {
         guard !rendering else { return false }
         if !composer.isComposing, Self.startsComposition(key) { prepareContext() }
-        let visible = composer.presentation.text
+        let before = composer.presentation
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
-        render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+        let commit = preservingVisibleSuffix(result.commit, visible: before.text)
+        render(commit: commit)
+        observe(.key(key, time: time), before: before, commit: commit, handled: result.handled)
         if !result.handled {
             // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)
             // may move it; the next composition reads the app again, or the remembered text ages out.
@@ -165,6 +169,13 @@ final class ControllerCore {
         recentTime = time
     }
 
+    private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool) {
+        guard let recorder else { return }
+        recorder.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
+                         options: composer.options, secure: composer.learningSuspended || secureInput(),
+                         context: recentText)
+    }
+
     /// Whether the system's secure event input is on; a closure so the self-test can switch it.
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
 
@@ -178,9 +189,11 @@ final class ControllerCore {
     func selectCandidate(at index: Int) {
         guard !rendering, let list = composer.presentation.candidates,
               list.items.indices.contains(index) else { return }
-        let visible = composer.presentation.text
+        let before = composer.presentation
         let result = composer.selectCandidate(at: index)
-        render(commit: preservingVisibleSuffix(result.commit, visible: visible))
+        let commit = preservingVisibleSuffix(result.commit, visible: before.text)
+        render(commit: commit)
+        observe(.click(index: index), before: before, commit: commit, handled: true)
     }
 
     /// The candidate window switches between every span from the target and its single character (Shift-↓).
@@ -192,8 +205,10 @@ final class ControllerCore {
     /// The candidate window switches between words for the keys as typed and typing corrections.
     func toggleCorrections() {
         guard !rendering else { return }
+        let before = composer.presentation
         composer.toggleCorrections()
         render()
+        observe(.toggleCorrections, before: before, commit: nil, handled: true)
     }
 
     func selectZhuyin() {
@@ -260,13 +275,16 @@ final class ControllerCore {
     /// The reranker keeps the recent text as loose context until the app is read again or it ages out.
     func breakContext() {
         composer.breakContext()
+        recorder?.breakContext()
     }
 
     func commit() {
         guard !rendering else { return }
-        let visible = composer.presentation.text
+        let before = composer.presentation
         let text = composer.commitAll()
-        render(commit: preservingVisibleSuffix(text, visible: visible))
+        let commit = preservingVisibleSuffix(text, visible: before.text)
+        render(commit: commit)
+        observe(.commit, before: before, commit: commit, handled: true)
     }
 
     private func preservingVisibleSuffix(_ commit: String?, visible: String) -> String? {

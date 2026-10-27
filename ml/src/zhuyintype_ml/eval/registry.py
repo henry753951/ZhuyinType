@@ -15,6 +15,7 @@ EVALUATORS = {
     "typo": "zhuyintype_ml.eval.typo:Typo",
     "typing-errors": "zhuyintype_ml.eval.typing_errors:TypingErrors",
     "rows": "zhuyintype_ml.eval.rows:Rows",
+    "corrections": "zhuyintype_ml.eval.corrections:Corrections",
     "latency": "zhuyintype_ml.eval.latency:Latency",
 }
 

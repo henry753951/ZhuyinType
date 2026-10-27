@@ -49,6 +49,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt data publish data-4` | 用 gh 把打包好的檔案上傳成 GitHub release |
 | `zt data lexicon` | 沿用 `lexicon.tsv`；沒有時下載 CC-CEDICT 與 Unihan 再建置。`--rebuild` 重新建置 |
 | `zt data compile` | 把詞庫與語言模型編成 mmap 二進位，放在 TSV 旁邊；`zt data compile OUT` 輸出到 OUT |
+| `zt data corrections LOG --summary` | App 的改字記錄：改字的種類、最常見的「刪掉的鍵 → 重打的鍵」與「畫面上的字 → 改成的字」；`--rows OUT` 寫成 `前文\|答案\|注音` 的列 |
 
 ### 建置
 

@@ -90,6 +90,8 @@ final class Preferences: ObservableObject {
             Key.usesPrecedingText: true,
             Key.characterForms: CharacterForms.common.rawValue,
             Key.punctuationKeys: PunctuationKeys.windows.rawValue,
+            Key.recordsCorrections: false,
+            Key.recordsCorrectionContext: false,
         ])
     }
 
@@ -123,12 +125,17 @@ final class Preferences: ObservableObject {
         static let shortcuts = "shortcuts"
         static let characterForms = "characterForms"
         static let punctuationKeys = "punctuationKeys"
+        /// 「記錄改字」: compositions with a correction go to corrections.jsonl (CorrectionRecorder).  Off by default.
+        static let recordsCorrections = "recordsCorrections"
+        /// With it, the text before the insertion point the engine read.  Off by default.
+        static let recordsCorrectionContext = "recordsCorrectionContext"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
                           popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts,
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
-                          showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation]
+                          showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
+                          recordsCorrections, recordsCorrectionContext]
     }
 
     func resetToDefaults() {
@@ -289,6 +296,19 @@ final class Preferences: ObservableObject {
     var usesPrecedingText: Bool {
         get { defaults.bool(forKey: Key.usesPrecedingText) }
         set { defaults.set(newValue, forKey: Key.usesPrecedingText); changed() }
+    }
+
+    var recordsCorrections: Bool {
+        get { defaults.bool(forKey: Key.recordsCorrections) }
+        set { defaults.set(newValue, forKey: Key.recordsCorrections); changed() }
+    }
+    var recordsCorrectionContext: Bool {
+        get { defaults.bool(forKey: Key.recordsCorrectionContext) }
+        set { defaults.set(newValue, forKey: Key.recordsCorrectionContext); changed() }
+    }
+    /// The settings recorded with each correction.
+    var correctionSettings: CorrectionSettings {
+        CorrectionSettings(options: composerOptions, fuzzy: fuzzySounds, precedingText: usesPrecedingText)
     }
 
     var fuzzySounds: FuzzySounds {

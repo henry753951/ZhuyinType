@@ -120,11 +120,28 @@ final class SettingsModel: ObservableObject {
     lazy var phrases = PhraseListController(model: self)
     lazy var learned = LearnedListController(model: self)
     lazy var apps = AppListController()
+    /// Records in the correction log, for the 進階 page.
+    @Published var correctionCount = 0
+    private var correctionObserver: NSObjectProtocol?
+
+    init() {
+        correctionObserver = NotificationCenter.default.addObserver(forName: CorrectionLog.didChange, object: nil,
+                                                                    queue: .main) { [weak self] _ in
+            self?.reloadCorrections()
+        }
+    }
+
+    deinit { correctionObserver.map(NotificationCenter.default.removeObserver) }
 
     func reloadLists() {
         phrases.reload()
         learned.reload()
         apps.reload()
+        reloadCorrections()
+    }
+
+    func reloadCorrections() {
+        CorrectionLog.shared.count { [weak self] in self?.correctionCount = $0 }
     }
 }
 

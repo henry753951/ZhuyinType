@@ -652,9 +652,42 @@ private struct AdvancedPane: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var preferences: Preferences
     @State private var confirmingReset = false
+    @State private var confirmingClear = false
 
     var body: some View {
         Form {
+            Section {
+                OptionRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字") {
+                    InfoButton(title: "記錄改字") { CorrectionLogInfo(keys: CurrentKeys(preferences)) }
+                } control: {
+                    Toggle("記錄改字", isOn: binding(preferences, \.recordsCorrections))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                OptionRow(title: "一併記錄游標前的文字", subtitle: "重播記錄時使用同樣的前文") {
+                    Color.clear.frame(height: 1)
+                } control: {
+                    Toggle("一併記錄游標前的文字", isOn: binding(preferences, \.recordsCorrectionContext))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                .disabled(!preferences.recordsCorrections)
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Button("在 Finder 中顯示") { CorrectionLogActions.reveal() }
+                        Button("匯出…") { CorrectionLogActions.export() }
+                            .disabled(model.correctionCount == 0)
+                        Button("清除…") { confirmingClear = true }
+                            .disabled(model.correctionCount == 0)
+                    }
+                } label: {
+                    Text("\(model.correctionCount) 筆記錄").monospacedDigit()
+                }
+            } header: {
+                Text("改字記錄")
+            } footer: {
+                FooterText("記錄只存在這台 Mac；密碼欄位中不記錄。")
+            }
             Section {
                 ListEditor(view: model.apps.view)
                     .frame(height: 200)
@@ -681,6 +714,60 @@ private struct AdvancedPane: View {
         } message: {
             Text("自訂詞與記住的字詞會保留。")
         }
+        .alert("要清除所有改字記錄嗎？", isPresented: $confirmingClear) {
+            Button("清除", role: .destructive) { CorrectionLog.shared.clear {} }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("清除後無法復原。")
+        }
+    }
+}
+
+/// What the correction log records (docs/product/DESIGN.md §2.7), with the current keys.
+struct CorrectionLogInfo: View {
+    let keys: CurrentKeys
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            FactRow(symbol: "checkmark.circle", text: "只記錄有改字的組字")
+            FactRow(symbol: "keyboard", text: "打的鍵與按鍵間隔，以及每一步畫面上的字")
+            FactRow(symbol: "list.bullet.rectangle",
+                    text: "從清單選字，包括 \(keys.text(.correctionsList)) 修正與 \(keys.text(.singleCharacterList)) 單字")
+            FactRow(symbol: "delete.left", text: "⌫ 或 Esc 刪掉後重打；送出後 30 秒內刪掉重打")
+            FactRow(symbol: "character.cursor.ibeam",
+                    text: "\(keys.text(.typeZhuyin)) 打出注音、\(keys.text(.selectLeft)) \(keys.text(.selectRight)) 加入自訂詞、在句中修改")
+            FactRow(symbol: "text.alignleft", text: "游標前的文字只在開啟第二個選項時記錄")
+            FactRow(symbol: "lock", text: "密碼欄位中不記錄；記錄中沒有 App 的名稱")
+            FactRow(symbol: "internaldrive", text: "存在這台 Mac 的 corrections.jsonl，可以匯出")
+        }
+    }
+}
+
+/// The buttons of the correction log section.
+enum CorrectionLogActions {
+    static func reveal() {
+        let log = CorrectionLog.shared
+        log.flush()
+        if FileManager.default.fileExists(atPath: log.url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([log.url])
+        } else {
+            NSWorkspace.shared.open(log.url.deletingLastPathComponent())
+        }
+    }
+
+    static func export() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "ZhuyinType 改字記錄.jsonl"
+        let save: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try CorrectionLog.shared.export(to: url) } catch {
+                let alert = NSAlert()
+                alert.messageText = "無法匯出"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
+        if let window = NSApp.keyWindow { panel.beginSheetModal(for: window, completionHandler: save) }
+        else { panel.begin(completionHandler: save) }
     }
 }
 
