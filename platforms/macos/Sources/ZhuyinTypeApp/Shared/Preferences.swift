@@ -128,6 +128,11 @@ final class Preferences: ObservableObject {
         /// Before multiple bindings: one shortcut per command.  Read while `keyBindings` is unset.
         static let shortcuts = "shortcuts"
         static let keyBindings = "keyBindings"
+        /// 2: `keyBindings` holds only the commands whose keys differ from the default.  Before, every command was
+        /// stored once any was changed, so a stored list equal to that version's default means "the default".
+        static let keyBindingsVersion = "keyBindingsVersion"
+        /// 「到頁底時 ↓ 翻到下一頁」 (`ComposerOptions.pageAtListEdge`).  On by default.
+        static let pageAtListEdge = "pageAtListEdge"
         static let characterForms = "characterForms"
         static let punctuationKeys = "punctuationKeys"
         /// 「記錄改字」: compositions with a correction go to corrections.jsonl (CorrectionRecorder).  Off by default.
@@ -143,7 +148,7 @@ final class Preferences: ObservableObject {
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
-                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, keyBindings,
+                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
@@ -275,6 +280,11 @@ final class Preferences: ObservableObject {
         get { PunctuationKeys(rawValue: defaults.string(forKey: Key.punctuationKeys) ?? "") ?? .windows }
         set { defaults.set(newValue.rawValue, forKey: Key.punctuationKeys); changed() }
     }
+    /// 「到頁底時 ↓ 翻到下一頁」: ↓ on a page's last candidate goes to the next page's first, ↑ on the first goes back.
+    var pageAtListEdge: Bool {
+        get { defaults.object(forKey: Key.pageAtListEdge) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.pageAtListEdge); changed() }
+    }
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
@@ -284,27 +294,56 @@ final class Preferences: ObservableObject {
     /// otherwise the default.  Stored as {command: [shortcut]}; a single shortcut stored by an earlier version
     /// (`shortcuts`, {command: shortcut}) is read as a one-binding list until the bindings are first changed.
     var bindings: [ShortcutCommand: [Shortcut]] {
-        get {
-            var result = ShortcutCommand.defaultBindings
-            if let data = defaults.data(forKey: Key.keyBindings),
-               let stored = try? JSONDecoder().decode([String: [Shortcut]].self, from: data) {
-                for (name, list) in stored {
-                    if let command = ShortcutCommand(rawValue: name) { result[command] = list }
-                }
-            } else if let data = defaults.data(forKey: Key.shortcuts),
-                      let stored = try? JSONDecoder().decode([String: Shortcut].self, from: data) {
-                for (name, shortcut) in stored {
-                    if let command = ShortcutCommand(rawValue: name) { result[command] = [shortcut] }
-                }
-            }
-            return result
-        }
+        get { Self.withDefaults(userBindings) }
         set {
-            let stored = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
+            // Store only the user's own keys.  A command that was on its defaults and still has what they resolved to
+            // (all of them, or those left after another action took one) stays on its defaults.
+            let before = userBindings
+            let resolved = Self.withDefaults(before)
+            let own = newValue.filter { command, list in
+                before[command] != nil ? list != command.defaultBindings : list != resolved[command] && list != command.defaultBindings
+            }
+            let stored = Dictionary(uniqueKeysWithValues: own.map { ($0.key.rawValue, $0.value) })
             defaults.set(try? JSONEncoder().encode(stored), forKey: Key.keyBindings)
+            defaults.set(2, forKey: Key.keyBindingsVersion)
             defaults.removeObject(forKey: Key.shortcuts)
             changed()
         }
+    }
+
+    /// The user set `command`'s keys (they are not its defaults).
+    func isCustomized(_ command: ShortcutCommand) -> Bool { userBindings[command] != nil }
+
+    /// The keys the user set, by command; the other commands use their defaults.
+    private var userBindings: [ShortcutCommand: [Shortcut]] {
+        var user: [ShortcutCommand: [Shortcut]] = [:]
+        let current = defaults.integer(forKey: Key.keyBindingsVersion) >= 2
+        if let data = defaults.data(forKey: Key.keyBindings),
+           let stored = try? JSONDecoder().decode([String: [Shortcut]].self, from: data) {
+            for (name, list) in stored {
+                guard let command = ShortcutCommand(rawValue: name), current || list != command.legacyDefaultBindings else { continue }
+                user[command] = list
+            }
+        } else if let data = defaults.data(forKey: Key.shortcuts),
+                  let stored = try? JSONDecoder().decode([String: Shortcut].self, from: data) {
+            for (name, shortcut) in stored {
+                guard let command = ShortcutCommand(rawValue: name), [shortcut] != command.legacyDefaultBindings else { continue }
+                user[command] = [shortcut]
+            }
+        }
+        return user
+    }
+
+    /// The user's keys, and the default keys for every other command, leaving out a default the user gave to another
+    /// command (a command keeps all its defaults when every one is taken, and shows the conflict).
+    static func withDefaults(_ user: [ShortcutCommand: [Shortcut]]) -> [ShortcutCommand: [Shortcut]] {
+        var result = user
+        let taken = Set(user.values.joined())
+        for command in ShortcutCommand.allCases where result[command] == nil {
+            let free = command.defaultBindings.filter { !taken.contains($0) }
+            result[command] = free.isEmpty ? command.defaultBindings : free
+        }
+        return result
     }
 
     /// Each command's first binding (none: the command has no key).
@@ -337,10 +376,12 @@ final class Preferences: ObservableObject {
     func resetBindings(_ command: ShortcutCommand) -> String? {
         var all = bindings
         all[command] = []
-        for shortcut in command.defaultBindings {
-            if let problem = ShortcutCommand.problem(assigning: shortcut, to: command, at: 0, in: all) { return problem }
+        // The defaults another action now uses stay with it; the rest come back.
+        let free = command.defaultBindings.filter { ShortcutCommand.problem(assigning: $0, to: command, at: 0, in: all) == nil }
+        guard !free.isEmpty else {
+            return command.defaultBindings.first.flatMap { ShortcutCommand.problem(assigning: $0, to: command, at: 0, in: all) }
         }
-        all[command] = command.defaultBindings
+        all[command] = free
         bindings = all
         return nil
     }
@@ -430,6 +471,7 @@ final class Preferences: ObservableObject {
         o.verticalList = candidateLayout == .vertical
         o.characterForms = characterForms
         o.punctuationKeys = punctuationKeys
+        o.pageAtListEdge = pageAtListEdge
         return o
     }
 }

@@ -8,7 +8,7 @@ struct IntroPane: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
                 VStack(spacing: 14) {
                     HStack(spacing: 14) {
@@ -23,7 +23,6 @@ struct IntroPane: View {
                     }
                     IntroStage(preferences: preferences, pinned: DemoPinning.intro)
                 }
-                .padding(.vertical, 8)
             }
             SettingsSection("目前的設定") {
                 SummaryRow(title: "空白鍵", value: preferences.spaceAction == .openCandidates ? "開啟候選字視窗" : "送出並輸入空白",
@@ -35,9 +34,8 @@ struct IntroPane: View {
                 SummaryRow(title: "中英切換", value: CurrentKeys(preferences).modeKey.map { "按 \($0)" } ?? "不使用",
                            place: SettingsPlace(.typing, row: SettingsRow.shiftTap))
             }
-            SettingsSection("功能") {
+            SettingsSection("功能", card: false) {
                 FeatureGrid(features: IntroFeature.all(CurrentKeys(preferences), preferences: preferences))
-                    .padding(.vertical, 6)
             }
         }
     }
@@ -79,8 +77,9 @@ struct IntroFeature: Identifiable {
 struct FeatureGrid: View {
     let features: [IntroFeature]
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top), GridItem(.flexible(), spacing: 12, alignment: .top)],
-                  alignment: .leading, spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: RowMetrics.tileSpacing, alignment: .top),
+                            GridItem(.flexible(), spacing: RowMetrics.tileSpacing, alignment: .top)],
+                  alignment: .leading, spacing: RowMetrics.tileSpacing) {
             ForEach(features) { feature in
                 FeatureCard(feature: feature)
             }
@@ -107,9 +106,9 @@ private struct FeatureCard: View {
             Spacer(minLength: 0)
             PlaceLink(title: feature.place.subpage?.title ?? feature.place.pane.title, place: feature.place)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.35)))
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+        .padding(RowMetrics.tilePadding)
+        .background(RoundedRectangle(cornerRadius: RowMetrics.cardRadius, style: .continuous).fill(Color.primary.opacity(0.03)))
     }
 }
 

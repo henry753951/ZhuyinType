@@ -104,9 +104,9 @@ struct KeysPane: View {
         let sections = all.map { ($0.0, $0.1.filter { !$0.isFixed }) }.filter { !$0.1.isEmpty }
         let fixed = all.flatMap { $0.1.filter(\.isFixed) }
         let conflicts = preferences.allConflicts
-        let changed = preferences.bindings != ShortcutCommand.defaultBindings || !preferences.disabledKeyFeatures.isEmpty
+        let changed = ShortcutCommand.allCases.contains(where: preferences.isCustomized) || !preferences.disabledKeyFeatures.isEmpty
             || preferences.shiftToggle != .both
-        Form {
+        SettingsForm {
             if !conflicts.isEmpty {
                 SettingsSection("按鍵衝突") {
                     ForEach(Array(conflicts.enumerated()), id: \.offset) { _, conflict in
@@ -165,7 +165,6 @@ struct KeysPane: View {
                             .buttonStyle(.link)
                             .disabled(!changed)
                     }
-                    .padding(.top, 6)
                 }
             }
         }
@@ -209,9 +208,12 @@ struct KeysPane: View {
                         keys: .fixed([keys.selection]), link: ("在「視窗與提示」設定", SettingsPlace(.candidates, row: SettingsRow.selection))),
                 KeyItem(id: "move", title: "移動反白", subtitle: vertical ? "直式清單" : "橫式清單；↑ ↓ 翻頁",
                         keys: .fixed(vertical ? ["↑", "↓"] : ["←", "→"]), link: ("排列在「視窗與提示」設定", SettingsPlace(.candidates, row: SettingsRow.layout))),
-            ] + (vertical ? [KeyItem(id: "neighbour", title: "改前一個或後一個字", subtitle: "直式清單", keys: .fixed(["←", "→"]))] : []) + [
                 KeyItem(id: "nextPage", title: "下一頁", subtitle: "空白也翻到下一頁", keys: .command(.nextPage), feature: .pageKeys),
                 KeyItem(id: "previousPage", title: "上一頁", keys: .command(.previousPage), feature: .pageKeys),
+                KeyItem(id: "previousCharacter", title: "改前一個字", subtitle: vertical ? "清單開著時；直式清單也可以按 ←" : "清單開著時",
+                        keys: .command(.previousCharacter)),
+                KeyItem(id: "nextCharacter", title: "改後一個字", subtitle: vertical ? "清單開著時；直式清單也可以按 →" : "清單開著時",
+                        keys: .command(.nextCharacter)),
                 KeyItem(id: "single", title: "只列一個字", subtitle: "再按一次還原", keys: .command(.singleCharacterList),
                         feature: .singleCharacterList),
                 KeyItem(id: "corrections", title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
@@ -294,7 +296,7 @@ private struct KeyItemRow: View {
             if !on {
                 Text("已關閉").foregroundStyle(.secondary)
             } else {
-                if case .command(let command) = item.keys, preferences.bindings[command] != command.defaultBindings {
+                if case .command(let command) = item.keys, preferences.isCustomized(command) {
                     Text("已自訂")
                         .font(.caption)
                         .foregroundStyle(.secondary)

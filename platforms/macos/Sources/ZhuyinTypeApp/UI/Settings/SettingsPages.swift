@@ -84,7 +84,12 @@ extension ShortcutCommand {
 
     /// Where the command's keys are set: its 「快捷鍵」 row.
     var place: SettingsPlace {
-        var place = feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
+        var place: SettingsPlace = {
+            switch self {
+            case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
+            default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
+            }
+        }()
         place.row = keysRow
         return place
     }
@@ -107,7 +112,6 @@ struct SettingsPaneView: View {
                     page()
                 }
             }
-            .formStyle(.grouped)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onChange(of: model.scrollTarget) { _, target in reveal(target, proxy) }
             .onAppear { reveal(model.scrollTarget, proxy) }
@@ -194,9 +198,12 @@ private struct SubpageHeader: View {
             Text(title).font(.headline).lineLimit(1).truncationMode(.tail).help(title)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 2)
+        // Lined up with the cards' content below: the page inset, then the card inset, in the same column.
+        .padding(.horizontal, RowMetrics.cardInset)
+        .frame(maxWidth: RowMetrics.maxWidth)
+        .padding(.horizontal, RowMetrics.pageInset)
+        .padding(.top, RowMetrics.pageTop)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -247,16 +254,24 @@ struct FeatureRow: View {
                                                       set: { preferences.setEnabled(feature, $0) }))
             }
         }
-        if on {
-            ForEach(commands, id: \.self) { command in
-                SettingRow(title: commands.count > 1 ? command.label : "快捷鍵", indent: true, anchor: command.keysRow) {
-                    if preferences.bindings[command] != command.defaultBindings {
-                        Button("還原預設") { _ = preferences.resetBindings(command) }
-                            .buttonStyle(.link)
-                            .help("還原成 \(command.defaultShortcut.keycaps.joined())")
-                    }
-                    ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
+        if on { CommandKeyRows(preferences: preferences, commands: commands) }
+    }
+}
+
+/// The indented 「快捷鍵」 rows of a setting: one per command (named after the command when there are several), with
+/// 「還原預設」 while the keys differ from the default.
+struct CommandKeyRows: View {
+    @ObservedObject var preferences: Preferences
+    let commands: [ShortcutCommand]
+    var body: some View {
+        ForEach(commands, id: \.self) { command in
+            SettingRow(title: commands.count > 1 ? command.label : "快捷鍵", indent: true, anchor: command.keysRow) {
+                if preferences.isCustomized(command) {
+                    Button("還原預設") { _ = preferences.resetBindings(command) }
+                        .buttonStyle(.link)
+                        .help("還原成 " + command.defaultBindings.map(\.spoken).joined(separator: " 或 "))
                 }
+                ShortcutField(preferences: preferences, command: command, preview: DemoPinning.fieldStates[command])
             }
         }
     }
@@ -267,7 +282,6 @@ struct KeysOverviewLink: View {
     var body: some View {
         PlaceLink(title: "在快捷鍵總覽中查看全部按鍵", place: SettingsPlace(.keys))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 6)
     }
 }
 
@@ -298,7 +312,7 @@ private struct TypingPane: View {
     var body: some View {
         let keys = CurrentKeys(preferences)
         let punctuationOff = [KeyFeature.controlPunctuation, .optionSymbols].filter { !preferences.isEnabled($0) }.count
-        Form {
+        SettingsForm {
             SettingsSection("空白與 Esc") {
                 SettingRow(title: "空白鍵", subtitle: OptionDemos.spaceSubtitle(preferences.spaceAction),
                            accessory: .info(title: "空白鍵", content: AnyView(SpaceInfo(current: preferences.spaceAction))),
@@ -388,9 +402,9 @@ private struct AnchorInfo: View {
 private struct PunctuationPage: View {
     @ObservedObject var preferences: Preferences
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection("標點按法：\(preferences.punctuationKeys == .windows ? "Windows" : "macOS")") {
-                PunctuationTable(current: preferences.punctuationKeys).padding(.vertical, 6)
+                PunctuationTable(current: preferences.punctuationKeys)
             } footer: {
                 PlaceLink(title: "標點按法在「打字」設定", place: SettingsPlace(.typing, row: SettingsRow.punctuationKeys))
             }
@@ -413,7 +427,7 @@ private struct PunctuationPage: View {
 private struct TypingKeysPage: View {
     @ObservedObject var preferences: Preferences
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
                 ForEach([("拼注音", ["注音鍵"], "注音鍵的位置依標準注音鍵盤"),
                          ("聲調：二聲、三聲、四聲、輕聲", ["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"], "標準注音鍵盤的聲調鍵"),
@@ -440,7 +454,7 @@ private struct ChoosingPane: View {
 
     var body: some View {
         let fuzzy = [FuzzySounds.zZh, .cCh, .sSh, .enEng, .anAng].filter { preferences.fuzzySounds.contains($0) }.count
-        Form {
+        SettingsForm {
             SettingsSection("轉換") {
                 SettingRow(title: "游標在句中時改", subtitle: "要改的字以底線標出",
                            accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor)))) {
@@ -492,9 +506,9 @@ private struct FuzzyPage: View {
         ("ㄢ 與 ㄤ", .anAng, "例如 ㄈㄢˊ 也打得出「房」"),
     ]
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
-                MiniDemo(frames: OptionDemos.fuzzy, pinned: DemoPinning.mini).padding(.vertical, 6)
+                MiniDemo(frames: OptionDemos.fuzzy, pinned: DemoPinning.mini)
             } footer: {
                 FooterText("開啟的兩個音互相通用；兩個詞同樣常用時，讀音完全符合的排在前面。")
             }
@@ -526,17 +540,18 @@ struct CandidatesPane: View {
         let single = keys.text(.singleCharacterList)
         let switches = [single.map { "\($0) 單字" }, corrections.map { "\($0) 修正" }].compactMap { $0 }
         let vertical = preferences.candidateLayout == .vertical
-        Form {
+        SettingsForm {
             SettingsSection {
                 CandidatePreview(preferences: preferences, animated: !DemoPinning.still)
-                    .padding(.vertical, 6)
             }
             SettingsSection("候選字視窗") {
-                SettingRow(title: "排列", subtitle: vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字" : "← → 移動反白，↑ ↓ 翻頁",
+                SettingRow(title: "排列", subtitle: vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
+                           : "← → 移動反白，↑ ↓ 翻頁" + (keys.text(.previousCharacter).map { "，\($0) 改前一個字" } ?? ""),
                            anchor: SettingsRow.layout) {
                     RowPicker(title: "排列", selection: binding(preferences, \.candidateLayout),
                               options: [("直式", CandidateLayout.vertical), ("橫式", .horizontal)], segmented: true)
                 }
+                CommandKeyRows(preferences: preferences, commands: [.previousCharacter, .nextCharacter])
                 SettingRow(title: "字級", value: "\(Int(preferences.candidateFontSize)) pt") {
                     Slider(value: Binding(get: { preferences.candidateFontSize },
                                           set: { preferences.candidateFontSize = $0.rounded() }), in: 13...28) {
@@ -600,7 +615,7 @@ private struct PlacementPage: View {
     @ObservedObject var preferences: Preferences
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
                 SettingRow(title: "位置", subtitle: "空間不足時換到另一邊，一律留在螢幕內") {
                     RowPicker(title: "位置", selection: binding(preferences, \.candidatePlacement),
@@ -619,7 +634,6 @@ private struct PlacementPage: View {
             }
             SettingsSection {
                 CandidatePreview(preferences: preferences, animated: !DemoPinning.still)
-                    .padding(.vertical, 6)
             }
         }
     }
@@ -634,7 +648,7 @@ private struct WordsPane: View {
 
     var body: some View {
         let keys = CurrentKeys(preferences)
-        Form {
+        SettingsForm {
             SettingsSection {
                 SettingRow(title: "記住選過的字詞", subtitle: "下次打同樣的讀音時排在前面；只存在這台 Mac",
                            accessory: .info(title: "記住的字詞", content: AnyView(LearnedInfo()))) {
@@ -667,14 +681,14 @@ private struct WordListPage: View {
 
     var body: some View {
         let keys = CurrentKeys(preferences)
-        Form {
+        SettingsForm {
             SettingsSection {
                 if model.engine == nil {
                     LoadingRow()
                 } else {
                     ListEditor(view: list == .learned ? model.learned.view : model.phrases.view)
                         .frame(minHeight: 340, maxHeight: .infinity)
-                        .listRowInsets(EdgeInsets())
+                        .cardFullBleed()
                 }
             } footer: {
                 if list == .phrases {
@@ -696,11 +710,11 @@ private struct WordListPage: View {
 private struct AppsPage: View {
     @ObservedObject var model: SettingsModel
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
                 ListEditor(view: model.apps.view)
                     .frame(minHeight: 240, maxHeight: .infinity)
-                    .listRowInsets(EdgeInsets())
+                    .cardFullBleed()
             } footer: {
                 FooterText("清單中的 App，組字顯示在候選字視窗上方。")
             }

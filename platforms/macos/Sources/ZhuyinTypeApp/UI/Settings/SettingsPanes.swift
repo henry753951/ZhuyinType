@@ -97,7 +97,7 @@ struct AdvancedPane: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection("改字記錄") {
                 SettingRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字",
                            accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences))))) {
@@ -210,7 +210,7 @@ struct AboutPane: View {
     }
 
     var body: some View {
-        Form {
+        SettingsForm {
             SettingsSection {
                 VStack(spacing: 6) {
                     Image(nsImage: NSApp.applicationIconImage)
@@ -222,7 +222,6 @@ struct AboutPane: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
             if updater.isAvailable {
                 SettingsSection("更新") {

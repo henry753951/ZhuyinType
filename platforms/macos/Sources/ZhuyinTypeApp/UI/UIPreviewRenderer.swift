@@ -54,10 +54,10 @@ enum UIPreviewRenderer {
             return false
         }
         if misaligned.isEmpty {
-            print("Row geometry: every trailing block centred on its leading block")
+            print("Row geometry: every trailing block centred on its leading block; every card balanced")
             return true
         }
-        print("FAIL row geometry: trailing block not centred in \(misaligned.count) rows:")
+        print("FAIL row geometry: \(misaligned.count) problems (trailing block not centred, or a card unbalanced):")
         misaligned.forEach { print("  \($0)") }
         return false
     }
@@ -465,8 +465,12 @@ enum UIPreviewRenderer {
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: rect) else { throw CocoaError(.fileWriteUnknown) }
         view.cacheDisplay(in: rect, to: bitmap)
         let rows = RowGeometry.all
+        let cards = RowGeometry.cards
         let bad = RowGeometry.misaligned(rows)
-        if checks { misaligned += bad.map { "\(page): 「\($0.id)」 leading midY \($0.leading.midY), trailing midY \($0.trailing.midY)" } }
+        if checks {
+            misaligned += bad.map { "\(page): 「\($0.id)」 leading midY \($0.leading.midY), trailing midY \($0.trailing.midY)" }
+            misaligned += RowGeometry.imbalances(cards: cards, rows: rows).map { "\(page): \($0)" }
+        }
         if let offset = grid, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
@@ -483,6 +487,24 @@ enum UIPreviewRenderer {
                 centre.lineWidth = isBad ? 2 : 0.5
                 (isBad ? NSColor.magenta : NSColor.systemGreen.withAlphaComponent(0.8)).setStroke()
                 centre.stroke()
+            }
+            // Cards: their outline in orange, and their content edges (the card inset) dashed.
+            for card in cards {
+                let frame = NSRect(x: offset.x + card.frame.minX, y: flip(card.frame.maxY), width: card.frame.width, height: card.frame.height)
+                NSColor.systemOrange.withAlphaComponent(0.7).setStroke()
+                let outline = NSBezierPath(rect: frame.insetBy(dx: 0.25, dy: 0.25))
+                outline.lineWidth = 0.5
+                outline.stroke()
+                let content = NSBezierPath(rect: frame.insetBy(dx: RowMetrics.cardInset, dy: 0))
+                content.setLineDash([3, 3], count: 2, phase: 0)
+                content.lineWidth = 0.5
+                content.stroke()
+                NSColor.systemPurple.withAlphaComponent(0.7).setStroke()
+                for child in card.children {
+                    let box = NSBezierPath(rect: NSRect(x: offset.x + child.minX, y: flip(child.maxY), width: child.width, height: child.height))
+                    box.lineWidth = 0.5
+                    box.stroke()
+                }
             }
             for (xs, color) in [(lefts, NSColor.systemRed), (rights, NSColor.systemBlue)] {
                 color.withAlphaComponent(0.6).setStroke()
