@@ -26,8 +26,8 @@ var v3Boundaries = true
 var v3InList = true
 /// Batch mode: print the open candidate list (tab-separated) instead of what was committed.
 var reportList = false
-var rerankGate = Double.infinity
-var rerankSwitch = 0.0
+var rerankGate: Double?
+var rerankSwitch: Double?
 var freezeOnPick = true
 var nbest = 0
 var context = ""
@@ -128,7 +128,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         guard arguments.count >= 2 else { fail("\(arguments[0]) needs a value") }
         if arguments[0] == "--freeze-on-pick" { freezeOnPick = arguments[1] != "off" }
         else if let value = Double(arguments[1]) {
-            if arguments[0] == "--rerank-gate" { rerankGate = value } else { rerankSwitch = value }
+            if arguments[0] == "--rerank-gate" { rerankGate = value.isFinite ? value : .infinity } else { rerankSwitch = value }
         } else { fail("\(arguments[0]) needs a number") }
         arguments.removeFirst(2)
     case "--report-list":
@@ -309,8 +309,8 @@ do {
         guard let reranker else { return }
         composer.rerankingCount = rerankCount
         if let exactMargin { reranker.exactMargin = exactMargin }
-        reranker.gateMargin = rerankGate
-        reranker.switchMargin = rerankSwitch
+        if let rerankGate { reranker.gateMargin = rerankGate }
+        if let rerankSwitch { reranker.switchMargin = rerankSwitch }
         func timed<T>(_ label: String, _ body: () -> T) -> T {
             let start = DispatchTime.now().uptimeNanoseconds
             defer {

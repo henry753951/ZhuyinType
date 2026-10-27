@@ -155,9 +155,12 @@ public final class NeuralReranker: @unchecked Sendable {
 
     /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.
     public var exactMargin = 4.0
-    /// τ: the model is consulted only when the engine's two best sentences are this close (∞: always).
-    public var gateMargin = Double.infinity
-    /// δ: the model's choice replaces the engine's first sentence only when it wins by at least this much.
+    /// τ: the model is consulted only when the engine's two best sentences are this close.  At 8 the outputs on the
+    /// three dev sets are identical to always consulting it (1,200/1,200 runs), and short compositions skip the
+    /// model often enough to cut per-key p95 from 24 to 15 ms (docs/MODEL.md §7).
+    public var gateMargin = 8.0
+    /// δ: the model's choice replaces the engine's first sentence only when it wins by at least this much.  Any
+    /// δ > 0 lost accuracy on every dev set (its switches are mostly right), so it stays 0.
     public var switchMargin = 0.0
 
     /// The index of the sentence to display.  The keys as typed win unless a correction scores clearly better.
