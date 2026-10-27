@@ -12,6 +12,7 @@ export PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 torch_python=${ZHUYIN_TORCH_PYTHON:-$HOME/zhuyintype/work/onnx-eval-claude/.venv/bin/python}
 python3 nlp/data/assets.py fetch lexicon lm lm_chat reranker v3 eval-sets checkpoints
 swift build -c release --package-path nlp/engine --scratch-path .build
+python3 training/lm/compile_data.py data/build >/dev/null   # mapped data: small processes, never stale
 stamp=$(cat data/build/reranker/charlm.pt.sha256 2>/dev/null || true)
 current=$(sha256sum data/build/reranker/charlm.pt data/build/v3/context.pt data/build/v3/syllable.pt \
     training/remote_eval/export_onnx.py | sha256sum | cut -d' ' -f1)

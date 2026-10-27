@@ -31,7 +31,7 @@ if [[ -d training/eval/sets/external/shanjie ]]; then
     rsync -azcR training/eval/sets/external/shanjie "$HOST:$REMOTE_DIR/"
 fi
 rsync -azcR training/remote_eval/*.py training/remote_eval/*.json training/remote_eval/*.sh training/remote_eval/requirements.txt \
-    training/reranker/train.py training/reranker/export_tree.py training/v3/models.py \
+    training/reranker/train.py training/reranker/export_tree.py training/v3/models.py training/lm/compile_data.py \
     data/build/lexicon.tsv data/build/lm/{unigram,bigram,backoff}.tsv \
     data/build/lm_chat/{unigram,bigram,backoff}.tsv data/build/lm_chat/*_chat_tt.txt \
     data/build/corpus/{dev_colloquial,dev_wikipedia,test_colloquial}.txt data/build/lm/test_sentences.txt \
@@ -81,6 +81,9 @@ PYTHON="$PWD/.venv/bin/python"
 swift --version
 # The engine package is nlp/engine; products stay in .build at the remote root (.build/release/zhuyin-cli).
 swift build -c release --package-path nlp/engine --scratch-path .build 2>&1 | tee data/build/remote_eval/build.log
+# Compile the lexicon and language models next to their TSVs every run (about 6 s): the engine maps the binaries,
+# so each of the many parallel CLI processes takes tens of MB instead of ~400 MB, and they can never be stale.
+python3 training/lm/compile_data.py data/build > data/build/remote_eval/compile-data.log 2>&1
 # Re-export only when checkpoint/export source contents change, not once per sweep.
 sha256sum data/build/"$RERANKER_MODEL"/charlm.pt data/build/"$V3_MODEL"/{context,syllable}.pt \
     training/remote_eval/export_onnx.py training/reranker/train.py training/reranker/export_tree.py training/v3/models.py > data/build/remote_eval/export-inputs.current
