@@ -7,6 +7,7 @@ import math
 import multiprocessing as mp
 from pathlib import Path
 import re
+import shutil
 import time
 import numpy as np
 from opencc import OpenCC
@@ -25,7 +26,7 @@ def mcbopomofo(path):
         if len(fields) != 3:
             raise ValueError(f'malformed McBopomofo row: {line}')
         reading, word, score = fields
-        if not re.fullmatch(r'[\u3400-\u9fff\uf900-\ufaff]+', word):
+        if not re.fullmatch(lm.HAN.pattern+'+', word):
             rejected['non_han'] += 1
             continue
         reading = reading.replace('-', ' ')
@@ -59,17 +60,6 @@ def merge(seed, extra):
         else:
             best[r,w] = p + calibration.get(min(len(w),5),global_offset)
             added['new_word_rows'] += 1
-    # The existing builder's phonological rule is reused only for newly added rows.
-    spec = __import__('common').load('base_lexicon_habits','training/eval/error_analysis.py')
-    seed_keys = {(r,w) for r,w,_ in seed}
-    for (r,w),p in list(best.items()):
-        if (r,w) in seed_keys: continue
-        if len(w)>1 and ('一' in w or '不' in w):
-            changed = spec.sandhi(w,r.split())
-            for variant in [' '.join(changed)] if changed else []:
-                if (variant,w) not in best:
-                    best[variant,w]=p-.01
-                    added['sandhi_rows']+=1
     assert all(best[r,w] == p for r,w,p in seed)
     return best, dict(added, offsets_by_length=calibration, shared_words=sum(map(len,offsets.values())))
 
@@ -78,12 +68,12 @@ def lexicon(a):
     _, seed, _ = lm.read_lexicon(OUT/'inputs/lexicon.tsv')
     extra, rejected = mcbopomofo(a.source)
     best, report = merge(seed,extra)
-    target = OUT/'lexicon_mcbopomofo.tsv'
+    target = OUT/'lexicon_source.tsv'
     with target.open('w') as f:
         f.write('# ZhuyinType + McBopomofo; CC BY-SA 4.0 and retained MIT/BSD notices. See base/NOTICE.md.\n')
         for (r,w),p in sorted(best.items(),key=lambda x:(x[0][0],-x[1],x[0][1])):
             f.write(f'{r}\t{w}\t{p:.12f}\n')
-    save(OUT/'lexicon-merge.json',dict(report,source_rows=len(extra),rejected=dict(rejected),
+    save(OUT/'lexicon-source-merge.json',dict(report,source_rows=len(extra),rejected=dict(rejected),
          seed_rows=len(seed),merged_rows=len(best),source_sha256=digest(a.source),
          seed_sha256=digest(OUT/'inputs/lexicon.tsv'),output_sha256=digest(target)))
     print(json.dumps(report),flush=True)
@@ -164,21 +154,32 @@ def heldouts(source):
     return paths,texts,lm.automaton(texts)
 
 
+def verify_shard(path):
+    count=0
+    for line in path.open():
+        text=line.rstrip('\n')
+        for value in (text,text.replace('臺','台')):
+            assert value not in VERIFY_HELD and next(VERIFY_MACHINE.iter(value),None) is None, path
+        count+=1
+    return path.name,count,digest(path)
+
+
 def verify_corpus(a):
+    global VERIFY_HELD,VERIFY_MACHINE
     directory=OUT/'corpus'
     if (directory/'validation.json').exists(): return
     paths,held,machine=heldouts(a.source_root)
+    VERIFY_HELD,VERIFY_MACHINE=held,machine
     assert json.loads((directory/'holdouts.json').read_text())=={str(p):digest(p) for p in paths}
     counts=Counter()
-    for path in sorted(directory.glob('*.txt')):
-        for line in path.open():
-            text=line.rstrip('\n')
-            for value in (text,text.replace('臺','台')):
-                assert value not in held and next(machine.iter(value),None) is None, path
-            counts[path.name.split('-')[0]]+=1
+    files={}
+    with mp.get_context('fork').Pool(a.workers) as pool:
+        for name,count,sha in pool.imap_unordered(verify_shard,sorted(directory.glob('*.txt'))):
+            counts[name.split('-')[0]]+=count
+            files[name]=sha
     prepared=json.loads((directory/'prepared.json').read_text())
     assert all(counts[name]==prepared[name+'_kept'] for name in ('wiki','real','generated'))
-    assert prepared['files']=={p.name:digest(p) for p in directory.glob('*.txt')}
+    assert prepared['files']==files
     save(directory/'validation.json',{'rescanned':dict(counts),'exact_or_eight_character_overlap':0,
                                      'prepared_sha256':digest(directory/'prepared.json')})
     print('CORPUS VALIDATED',dict(counts),flush=True)
@@ -268,44 +269,70 @@ def fit(a):
     _,_,old=lm.read_lexicon(a.lexicon)
     words=['<s>','</s>','<unk>']+sorted(set(old)|set(prepared['training_characters']))
     IDS={w:i for i,w in enumerate(words)};TRIE=lm.make_trie(words,old)
-    # Freeze the incumbent final-E segmentation distribution to isolate posterior vs hard counts.
-    tokenizer=a.source_root/('work' if a.domain=='wiki' else 'data/build/lm_chat/work')
-    prior_words=json.loads((tokenizer/'vocabulary.json').read_text())
-    prior_scores=np.load(tokenizer/'segmentation_scores.npy')
-    prior=dict(zip(prior_words,map(float,prior_scores)))
-    _,_,seed=lm.read_lexicon(OUT/'inputs/lexicon.tsv')
-    shift=float(np.median([prior[w]-math.log(p) for w,p in seed.items() if w in prior]))
-    SCORES=np.array([prior.get(w,math.log(old.get(w,1e-10))+shift) for w in words])
-    tasks=[]
+    if a.fresh:
+        initial=np.array([old.get(w,1e-10) for w in words])
+        SCORES=np.log(initial/initial.sum())
+    else:
+        # Matched final-E controls retain the incumbent tokenizer.
+        tokenizer=a.source_root/('work' if a.domain=='wiki' else 'data/build/lm_chat/work')
+        prior_words=json.loads((tokenizer/'vocabulary.json').read_text())
+        prior_scores=np.load(tokenizer/'segmentation_scores.npy')
+        prior=dict(zip(prior_words,map(float,prior_scores)))
+        _,_,seed=lm.read_lexicon(OUT/'inputs/lexicon.tsv')
+        shift=float(np.median([prior[w]-math.log(p) for w,p in seed.items() if w in prior]))
+        SCORES=np.array([prior.get(w,math.log(old.get(w,1e-10))+shift) for w in words])
     sources=['wiki'] if a.domain=='wiki' else ['real']+(['generated'] if a.generated_weight else [])
-    for source in sources:
-        tasks.extend((p,work,a.method) for p in sorted((OUT/'corpus').glob(source+'-*.txt')))
-    with mp.get_context('fork').Pool(a.workers) as pool:
-        for result in pool.imap_unordered(shard,tasks): print(a.name,result,flush=True)
-    keys=[];counts=[];uni=np.zeros(len(words))
-    for path,_,_ in tasks:
-        weight=a.generated_weight if path.name.startswith('generated') else 1.
-        stem=work/path.stem
-        uni+=weight*np.load(str(stem)+'.uni.npy')
-        keys.append(np.load(str(stem)+'.keys.npy'))
-        counts.append(weight*np.load(str(stem)+'.counts.npy'))
-    keys=np.concatenate(keys);counts=np.concatenate(counts)
-    order=np.argsort(keys);keys=keys[order];counts=counts[order]
-    starts=np.r_[0,np.flatnonzero(keys[1:]!=keys[:-1])+1]
-    keys=keys[starts];counts=np.add.reduceat(counts,starts)
+    passes=3 if a.fresh else 1
+    for iteration in range(passes):
+        directory=work/f'em{iteration}' if a.fresh else work
+        directory.mkdir(exist_ok=True)
+        tasks=[(p,directory,a.method) for source in sources
+               for p in sorted((OUT/'corpus').glob(source+'-*.txt'))]
+        with mp.get_context('fork').Pool(a.workers) as pool:
+            for result in pool.imap_unordered(shard,tasks): print(a.name,iteration,result,flush=True)
+        keys=[];counts=[];uni=np.zeros(len(words))
+        for path,_,_ in tasks:
+            weight=a.generated_weight if path.name.startswith('generated') else 1.
+            stem=directory/path.stem
+            uni+=weight*np.load(str(stem)+'.uni.npy')
+            keys.append(np.load(str(stem)+'.keys.npy'))
+            counts.append(weight*np.load(str(stem)+'.counts.npy'))
+        keys=np.concatenate(keys);counts=np.concatenate(counts)
+        order=np.argsort(keys);keys=keys[order];counts=counts[order]
+        starts=np.r_[0,np.flatnonzero(keys[1:]!=keys[:-1])+1]
+        keys=keys[starts];counts=np.add.reduceat(counts,starts)
+        if iteration<passes-1:
+            SCORES=np.log((uni+.1)/(float(uni.sum())+.1*len(words)))
+            assert np.isfinite(SCORES).all() and abs(float(np.exp(SCORES).sum())-1)<1e-12
+    np.save(work/'segmentation_scores.npy',SCORES)
+    save(work/'vocabulary.json',words)
     np.save(work/'expected_keys.npy',keys);np.save(work/'expected_counts.npy',counts)
-    # Existing MKN uses integer count-of-count bins; round once AFTER all posterior/weight sums.
+    # shortcut: integer MKN rounds pooled counts once; revisit fractional discounts if paired dev justifies it.
     rounded=np.floor(counts+.5).astype(np.uint64);keep=rounded>0
     model=lm.fit_mkn(keys[keep],rounded[keep],len(words),3_000_000 if a.domain=='wiki' else 1_600_000)
     chat.export(output,words,model)
+    shutil.copyfile(OUT/'NOTICE.md',output/'NOTICE.md')
+    if a.domain=='wiki':
+        for name in ('NOTICE.md','articles.tsv.gz'):
+            shutil.copyfile(a.source_root/'data/build/lm'/name,
+                            output/('SOURCE-NOTICE.md' if name=='NOTICE.md' else name))
+    else:
+        for name in ('NOTICE.md','source-manifest.json','attribution.jsonl'):
+            shutil.copyfile(a.source_root/'data/build/lm_chat2'/name,
+                            output/('SOURCE-NOTICE.md' if name=='NOTICE.md' else name))
+        for name in ('Taiwan-Tongues-LICENSE','Taiwan-Tongues-README.md','source_receipts.json'):
+            shutil.copyfile(a.source_root/'data/build/lm_chat'/name,output/name)
+        if a.generated_weight:
+            shutil.copyfile(a.source_root/'data/build/lm_chat/Qwen3-8B-LICENSE',output/'Qwen3-8B-LICENSE')
     validation=chat.Model(output).verify()
     save(output/'validation.json',validation)
     save(output/'stats.json',{'name':a.name,'domain':a.domain,'method':a.method,
          'generated_weight':a.generated_weight,'seed_lexicon_sha256':digest(a.lexicon),
          'posterior_bigram_mass':float(counts.sum()),'posterior_word_mass':float(uni.sum()),
          'posterior_pair_types':len(keys),'rounded_pair_types':int(keep.sum()),'model':model[4],
-         'tokenizer_scores_sha256':digest(tokenizer/'segmentation_scores.npy'),
-         'tokenizer_vocabulary_sha256':digest(tokenizer/'vocabulary.json'),
+         'segmentation_passes':passes,'segmentation_initialization':'lexicon' if a.fresh else 'incumbent final E',
+         'tokenizer_scores_sha256':digest(work/'segmentation_scores.npy'),
+         'tokenizer_vocabulary_sha256':digest(work/'vocabulary.json'),
          'code':{p.name:digest(p) for p in Path(__file__).parent.glob('*.py')},
          'seconds':time.monotonic()-started,
          'files':{p.name:digest(p) for p in output.glob('*.tsv')},'validation':validation})
@@ -322,8 +349,9 @@ if __name__=='__main__':
     p.add_argument('--name',default='wiki_expected')
     p.add_argument('--domain',choices=['wiki','chat'],default='wiki')
     p.add_argument('--method',choices=['hard','expected'],default='expected')
+    p.add_argument('--fresh',action='store_true',help='refit segmentation with three corpus E/M passes')
     p.add_argument('--generated-weight',type=float,default=0.)
-    p.add_argument('--lexicon',type=Path,default=OUT/'lexicon_mcbopomofo.tsv')
+    p.add_argument('--lexicon',type=Path,default=OUT/'lexicon_source.tsv')
     a=p.parse_args()
     if a.workers<1 or not 0<=a.generated_weight<=1:p.error('invalid workers/weight')
     {'lexicon':lexicon,'prepare':prepare,'fit':fit}[a.phase](a)

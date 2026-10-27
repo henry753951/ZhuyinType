@@ -27,3 +27,13 @@ save, digest = lm.save_json, lm.digest
 def remote_only():
     if platform.system() != 'Linux':
         raise SystemExit('Run training and evaluation on the GPU host only.')
+
+
+def verify_frozen():
+    import json
+    path=OUT/'frozen-inputs.json'
+    if not path.is_file(): raise ValueError('missing frozen-inputs.json; freeze inputs before evaluation')
+    expected=json.loads(path.read_text())
+    if not expected: raise ValueError('empty frozen input manifest')
+    changed=[name for name,sha in expected.items() if not Path(name).is_file() or digest(Path(name))!=sha]
+    if changed: raise ValueError(f'frozen experiment inputs changed: {changed}')

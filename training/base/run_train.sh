@@ -11,5 +11,6 @@ done
 for spec in 'chat_hard chat hard 0' 'chat_expected chat expected 0' 'chat_generated01 chat expected 0.1' 'wiki_hard wiki hard 0' 'wiki_expected wiki expected 0'; do
     read -r name domain method generated <<< "$spec"
     .venv/bin/python -u training/base/train.py fit --source-root "$source_root" \
-        --name "$name" --domain "$domain" --method "$method" --generated-weight "$generated" --workers 8
+        --name "$name" --domain "$domain" --method "$method" --generated-weight "$generated" --workers 8 \
+        --lexicon data/build/base/lexicon_mcbopomofo.tsv
 done
