@@ -79,6 +79,7 @@ private final class CandidateRow: NSView {
     private var keyInset: CGFloat { compact ? 6 : 8 }
     var textInset: CGFloat { keyInset + ceil(fontSize * 0.68) + (compact ? 5 : 8) }
     private var trailingPad: CGFloat { compact ? 7 : 10 }
+    var isSelectedRow: Bool { selected }
     var preferredWidth: CGFloat = 0
 
     func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool) {
@@ -116,8 +117,11 @@ private final class CandidateRow: NSView {
         refreshAttributes()
         needsDisplay = true
     }
+    /// The highlight of the selected row is drawn by the window (`SelectionHighlight`), so it stays put while pages turn.
+    var drawsSelection = false
+    var cornerRadius: CGFloat { compact ? 6 : 8 }
     override func draw(_ dirtyRect: NSRect) {
-        if selected || hovered {
+        if selected && drawsSelection || hovered && !selected {
             (selected ? NSColor.controlAccentColor : NSColor.quaternaryLabelColor).setFill()
             let radius: CGFloat = compact ? 6 : 8
             NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
@@ -324,6 +328,15 @@ private final class RowPage: NSView {
     }
 }
 
+/// The selected row's highlight, under the pages: it does not move or fade when the page turns.
+private final class SelectionHighlight: NSView {
+    var radius: CGFloat = 8
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.controlAccentColor.setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
+    }
+}
+
 /// What makes two lists the same list, so that a new page of it is a page change (and not a new list).
 private struct ListIdentity: Equatable {
     var count: Int, first: String, pageSize: Int, tolerant: Bool?, singleCharacter: Bool
@@ -339,8 +352,10 @@ private struct ListIdentity: Equatable {
 /// How a page change and the end of the list move: short, eased out, a few points along the list, never delaying a key.
 enum PageMotion {
     static let duration: TimeInterval = 0.14
-    /// The old page is gone sooner than the new one settles, so the two barely overlap.
-    static let outDuration: TimeInterval = 0.08
+    /// The old rows are gone after the first 35% and the new ones start at 30%, so two pages of text are never
+    /// legible at once (their opacities add up to about 1 at most).
+    static let outDuration: TimeInterval = 0.05
+    static let inDelay: TimeInterval = 0.042
     /// How far the pages travel.
     static let offset: CGFloat = 10
     /// The nudge at the first or last page.
@@ -353,6 +368,8 @@ final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
     private let rowClip = InputMaterialView()
     private let pageViews = [RowPage(frame: .zero), RowPage(frame: .zero)]
+    private let highlight = SelectionHighlight()
+    private var highlightOrigin = NSPoint.zero
     private var front = 0
     private var rows: [CandidateRow] { pageViews[front].rows }
     /// The list shown and its page, to tell a page change of the same list from a new list.
@@ -386,6 +403,7 @@ final class CandidateContentView: InputMaterialView {
         super.init(frame: frame)
         rowClip.wantsLayer = true
         rowClip.layer?.masksToBounds = true
+        rowClip.addSubview(highlight)
         for page in pageViews { rowClip.addSubview(page) }
         pageViews[1].isHidden = true
         addSubview(rowClip)
@@ -538,6 +556,15 @@ final class CandidateContentView: InputMaterialView {
         }
         rowClip.frame = rowsArea
         rowClip.isHidden = !listOpen
+        if let selected = activeRows.first(where: { $0.isSelectedRow }) {
+            highlight.radius = selected.cornerRadius
+            highlight.frame = selected.frame
+            highlightOrigin = selected.frame.origin
+            highlight.isHidden = false
+            highlight.needsDisplay = true
+        } else {
+            highlight.isHidden = true
+        }
         layoutIsVertical = layout == .vertical
         if layout == .vertical { y += rowsArea.height }
         let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
@@ -606,6 +633,8 @@ final class CandidateContentView: InputMaterialView {
         }
         pageViews[front].isHidden = false
         pageViews[1 - front].isHidden = true
+        highlight.layer?.removeAllAnimations()
+        highlight.setFrameOrigin(highlightOrigin)
     }
 
     /// After a page change (`direction`): the old page moves out against it and fades, the new one comes in from the
@@ -626,14 +655,22 @@ final class CandidateContentView: InputMaterialView {
         let generation = transitionGeneration
         let travel = PanelMotion.reduceMotion ? 0 : PageMotion.offset * CGFloat(direction)
         incoming.setFrameOrigin(origin(travel))
-        incoming.alphaValue = 0
         NSAnimationContext.runAnimationGroup { context in
             context.duration = PageMotion.duration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
             incoming.animator().setFrameOrigin(.zero)
-            incoming.animator().alphaValue = 1
         }
+        // The new rows stay clear until the old ones are nearly gone, then fade in.
+        incoming.alphaValue = 1
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 1
+        fadeIn.beginTime = CACurrentMediaTime() + PageMotion.inDelay
+        fadeIn.duration = PageMotion.duration - PageMotion.inDelay
+        fadeIn.fillMode = .backwards
+        fadeIn.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        incoming.layer?.add(fadeIn, forKey: "pageIn")
         NSAnimationContext.runAnimationGroup { context in
             context.duration = PageMotion.outDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -660,7 +697,14 @@ final class CandidateContentView: InputMaterialView {
             context.duration = PageMotion.bounceOut
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             context.allowsImplicitAnimation = true
-            if reduce { page.animator().alphaValue = 0.7 } else { page.animator().setFrameOrigin(origin(PageMotion.bounce * CGFloat(direction))) }
+            if reduce {
+                page.animator().alphaValue = 0.7
+            } else {
+                // The rows and the highlight nudge together.
+                let nudge = origin(PageMotion.bounce * CGFloat(direction))
+                page.animator().setFrameOrigin(nudge)
+                highlight.animator().setFrameOrigin(NSPoint(x: highlightOrigin.x + nudge.x, y: highlightOrigin.y + nudge.y))
+            }
         } completionHandler: { [weak self] in
             guard let self, self.transitionGeneration == generation else { return }
             NSAnimationContext.runAnimationGroup { context in
@@ -669,6 +713,7 @@ final class CandidateContentView: InputMaterialView {
                 context.allowsImplicitAnimation = true
                 page.animator().setFrameOrigin(.zero)
                 page.animator().alphaValue = 1
+                self.highlight.animator().setFrameOrigin(self.highlightOrigin)
             }
         }
     }
@@ -682,7 +727,8 @@ final class CandidateContentView: InputMaterialView {
         case .page:
             let travel = PageMotion.offset * CGFloat(pinned.direction)
             incoming.setFrameOrigin(origin(travel * (1 - eased)))
-            incoming.alphaValue = eased
+            let fadeIn = max(0, min(1, (t * PageMotion.duration - PageMotion.inDelay) / (PageMotion.duration - PageMotion.inDelay)))
+            incoming.alphaValue = 1 - (1 - fadeIn) * (1 - fadeIn)
             let out = min(1, t * PageMotion.duration / PageMotion.outDuration)
             let outEased = 1 - (1 - out) * (1 - out)
             outgoing.isHidden = out >= 1
@@ -692,6 +738,7 @@ final class CandidateContentView: InputMaterialView {
             // Out over the first third, back over the rest.
             let amount = t < 1.0 / 3 ? t * 3 : max(0, 1 - (t - 1.0 / 3) * 1.5)
             incoming.setFrameOrigin(origin(PageMotion.bounce * CGFloat(pinned.direction) * amount))
+            highlight.setFrameOrigin(NSPoint(x: highlight.frame.minX + incoming.frame.minX, y: highlight.frame.minY + incoming.frame.minY))
             incoming.alphaValue = 1
             outgoing.isHidden = true
         }

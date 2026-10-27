@@ -102,7 +102,7 @@ enum UIPreviewRenderer {
             let style = CandidateStyle(layout: layout, fontSize: 18)
             for (name, from, to, kind, direction) in [("next", 0, 9, CandidateContentView.PinnedMotion.page, 1),
                                                       ("previous", 9, 0, .page, -1), ("end", 9, 9, .bounce, 1)] {
-                for progress in [0.0, 0.2, 0.45, 1.0] {
+                for progress in [0.0, 0.2, 0.35, 0.5, 1.0] {
                     let content = CandidateContentView(frame: .zero)
                     var list = many
                     list.selection = from
