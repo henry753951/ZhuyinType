@@ -1,0 +1,5 @@
+# The toolchain every build, test and CI job uses.  Edition 2024 needs 1.85; let chains need 1.88.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

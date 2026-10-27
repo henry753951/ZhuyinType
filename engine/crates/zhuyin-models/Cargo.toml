@@ -1,0 +1,13 @@
+[package]
+name = "zhuyin-models"
+description = "Neural model interfaces for the ZhuyinType engine: the sentence reranker (v2b) and the syllable-to-character model (v3)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
