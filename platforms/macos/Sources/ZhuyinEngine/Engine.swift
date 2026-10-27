@@ -27,16 +27,22 @@ public final class Engine: @unchecked Sendable {
 
     /// The chat-domain model directory, read when an engine is created (Swift's `Engine.chatModelDirectory`).
     nonisolated(unsafe) public static var chatModelDirectory: URL?
+    /// The reading channel's table (`channel.bin`), read when an engine is created; nil turns the channel off.
+    nonisolated(unsafe) public static var readingChannel: URL?
 
     private static func config() -> ZtEngineConfig { zt_engine_config_default() }
 
     public init(lexiconURL: URL, userDataDirectory: URL?) throws {
         var config = Self.config()
         let chat = Self.chatModelDirectory?.path, user = userDataDirectory?.path
+        let channel = Self.readingChannel?.path
         handle = try chat.withOptionalCString { chatPath in
             config.chat_model_directory = chatPath
-            return try user.withOptionalCString { user in
-                try checked { error in zt_engine_open(lexiconURL.path, user, &config, error) }
+            return try channel.withOptionalCString { channelPath in
+                config.reading_channel = channelPath
+                return try user.withOptionalCString { user in
+                    try checked { error in zt_engine_open(lexiconURL.path, user, &config, error) }
+                }
             }
         }
     }

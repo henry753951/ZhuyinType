@@ -349,6 +349,8 @@ typedef struct {
   double domain_evidence_centre;
   // Hotspot replacement costs in the typing channel.
   bool hotspot;
+  // The reading channel's table (`channel.bin`), or NULL for no reading channel.
+  const char *reading_channel;
 } ZtEngineConfig;
 
 // One personal-data entry.

@@ -2,7 +2,7 @@
 // composer set up as ControllerCore sets it up, keys typed one at a time, with Core ML as in the app.  Accepts the zhuyin-cli options `zt eval latency` passes, so
 //   ZT_CLI=.build/release/EngineBench tools/zt eval latency
 // measures it the same way:
-//   EngineBench --models DIR [--timing] "<keys>"
+//   EngineBench --models DIR [--channel on|off|PATH] [--timing] "<keys>"
 // prints each commit and, with --timing, the per-key latency, CPU, energy and memory summary.
 import Foundation
 import ZhuyinEngine
@@ -15,6 +15,7 @@ func fail(_ message: String) -> Never {
 var arguments = Array(CommandLine.arguments.dropFirst())
 var models: URL?
 var timing = false
+var channel: String?
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--models":
@@ -24,6 +25,11 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--timing":
         timing = true
         arguments.removeFirst()
+    case "--channel":
+        // The reading channel: `on` for channel.bin beside the lexicon, a path, or `off`.
+        guard arguments.count >= 2 else { fail("--channel needs on, off or a path") }
+        channel = arguments[1] == "off" ? nil : arguments[1]
+        arguments.removeFirst(2)
     case "--check-v3":
         // The v3 golden outputs through the app's character model (Rust with Core ML called back), as
         // zhuyin-cli --check-v3 does with ONNX Runtime.
@@ -34,7 +40,7 @@ while let option = arguments.first, option.hasPrefix("--") {
             print("v3 test vectors: \(check.passed)/\(check.total) within tolerance; largest difference \(check.worst)")
             exit(check.passed == check.total ? 0 : 1)
         } catch { fail(error.localizedDescription) }
-    default: fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"")
+    default: fail("Usage: EngineBench --models DIR [--channel on|off|PATH] [--timing] \"<keys>\"")
     }
 }
 guard let models, arguments.count == 1 else { fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"") }
@@ -65,6 +71,7 @@ func exists(_ directory: String, _ file: String) -> URL? {
 }
 let loadStart = Date()
 Engine.chatModelDirectory = exists("lm_chat", "lm.bin") ?? exists("lm_chat", "bigram.tsv")
+Engine.readingChannel = channel.map { $0 == "on" ? models.appendingPathComponent("channel.bin") : URL(fileURLWithPath: $0) }
 let engine: Engine
 do { engine = try Engine(lexiconURL: models.appendingPathComponent("lexicon.tsv"), userDataDirectory: nil) }
 catch { fail("engine: \(error.localizedDescription)") }

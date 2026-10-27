@@ -40,6 +40,8 @@ pub struct ZtEngineConfig {
     pub domain_evidence_centre: f64,
     /// Hotspot replacement costs in the typing channel.
     pub hotspot: bool,
+    /// The reading channel's table (`channel.bin`), or NULL for no reading channel.
+    pub reading_channel: *const c_char,
 }
 
 /// The default settings (no chat model).
@@ -54,11 +56,12 @@ pub extern "C" fn zt_engine_config_default() -> ZtEngineConfig {
         domain_evidence_scale: config.domain_evidence_scale,
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
+        reading_channel: std::ptr::null(),
     }
 }
 
 /// # Safety
-/// `config` is NULL or a valid `ZtEngineConfig` whose directory is NULL or a C string.
+/// `config` is NULL or a valid `ZtEngineConfig` whose paths are NULL or C strings.
 unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
     // SAFETY: the caller passes NULL or a valid config.
     let Some(config) = (unsafe { config.as_ref() }) else { return EngineConfig::default() };
@@ -71,6 +74,8 @@ unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
         domain_evidence_scale: config.domain_evidence_scale,
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
+        // SAFETY: NULL or a C string per the contract.
+        reading_channel: unsafe { borrowed(config.reading_channel) }.map(PathBuf::from),
         ..EngineConfig::default()
     }
 }

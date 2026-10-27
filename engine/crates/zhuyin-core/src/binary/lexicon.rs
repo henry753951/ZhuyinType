@@ -258,6 +258,13 @@ impl MappedLexicon {
         self.reading_strs_of(word).map(|(reading, score)| (reading.to_owned(), score)).collect()
     }
 
+    /// The word's most common reading, borrowed.
+    #[must_use]
+    pub fn best_reading_str(&self, word: &str) -> Option<&str> {
+        let i = self.word_index(word)?;
+        Some(self.reading_entry(self.uint(self.sections[WORDS] + i * 24 + 16)).0)
+    }
+
     /// The word's most common reading (the first of the highest-scoring ones) and its score.
     #[must_use]
     pub fn best_reading(&self, word: &str) -> Option<(String, f64)> {

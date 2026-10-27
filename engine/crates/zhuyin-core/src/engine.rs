@@ -25,7 +25,8 @@ use crate::language_model::{
 use crate::lexicon::{TextLexicon, WordEntry, swift_max, swift_min};
 use crate::personal::{DecayingCount, PersonalLanguageModel, Word};
 use crate::reading_channel::{
-    ChannelClass, ChannelIndex, ChannelOption, ChannelSettings, ChannelTable, ChannelUse, LexiconRow, VariantRow,
+    ChannelClass, ChannelIndex, ChannelOption, ChannelSettings, ChannelTable, ChannelUse, LexiconRows, RowRef,
+    VariantRow,
 };
 use crate::swift_format::{format_double, grapheme_count, graphemes};
 use crate::syllables::{SyllableSet, without_tones};
@@ -609,9 +610,7 @@ impl Engine {
             channel: None,
         };
         if let Some(table) = channel {
-            let index = engine.with_lexicon_rows(|rows, best, readings| {
-                ChannelIndex::build(table, &engine.config.channel, rows, best, readings)
-            });
+            let index = ChannelIndex::build(table, &engine.config.channel, &engine.lexicon_rows());
             engine.channel = Some(index);
         }
         {
@@ -622,26 +621,9 @@ impl Engine {
         engine
     }
 
-    /// Calls `body` with every lexicon row (entries with word IDs), each word's best reading and its readings.
-    fn with_lexicon_rows<T>(
-        &self,
-        body: impl FnOnce(&[LexiconRow], &dyn Fn(&str) -> Option<String>, &dyn Fn(&str) -> Vec<String>) -> T,
-    ) -> T {
-        let mut state = self.lock();
-        let readings: Vec<String> = match &self.mapped {
-            Some(mapped) => mapped.reading_strs().map(str::to_owned).collect(),
-            None => state.lexicon.keys().cloned().collect(),
-        };
-        let mut rows: Vec<LexiconRow> = Vec::new();
-        for reading in readings {
-            for entry in self.lexical_entries(&mut state, &reading) {
-                rows.push(LexiconRow { reading: reading.clone(), entry });
-            }
-        }
-        let state = &*state;
-        let best = |word: &str| self.best_reading(state, word).map(|b| b.0);
-        let known = |word: &str| self.known_readings(state, word).into_iter().map(|r| r.0).collect();
-        body(&rows, &best, &known)
+    /// The lexicon's rows for the reading channel, read under the lock.
+    fn lexicon_rows(&self) -> EngineRows<'_> {
+        EngineRows { engine: self, state: self.lock() }
     }
 
     /// The reading channel's index, when the channel is on.
@@ -654,9 +636,7 @@ impl Engine {
     /// Python reference is checked against).
     #[must_use]
     pub fn channel_variants(&self, table: &ChannelTable) -> Vec<VariantRow> {
-        self.with_lexicon_rows(|rows, best, readings| {
-            ChannelIndex::table(table, &self.config.channel, rows, best, readings)
-        })
+        ChannelIndex::table(table, &self.config.channel, &self.lexicon_rows())
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -1172,12 +1152,11 @@ impl Engine {
             let Some(channel) = &self.channel else { return };
             let typed = walk.typed[*position];
             let mut annotation: Option<Arc<str>> = None;
-            for word in channel.words(next).iter().filter(|w| w.position == *position) {
-                let Some((class, cost)) = option.character(word.character, word.single) else { continue };
-                if word.excluded.iter().any(|x| &**x == typed) {
+            for (mut entry, character, single, excluded) in channel.entries(next, *position) {
+                let Some((class, cost)) = option.character(character, single) else { continue };
+                if excluded.contains(&typed) {
                     continue;
                 }
-                let mut entry = word.entry.clone();
                 entry.penalty += total;
                 entry.penalty += cost;
                 let key_corrected = total > 0.0;
@@ -2096,4 +2075,62 @@ struct Path0<'a> {
     cost: f64,
     edits: usize,
     used: Option<Used<'a>>,
+}
+
+/// The engine's lexicon rows, for building the reading channel's index.
+struct EngineRows<'a> {
+    engine: &'a Engine,
+    state: MutexGuard<'a, State>,
+}
+
+impl LexiconRows for EngineRows<'_> {
+    fn rows(&self, each: &mut dyn FnMut(&RowRef<'_>)) {
+        match &self.engine.mapped {
+            Some(mapped) => {
+                for reading in mapped.reading_strs() {
+                    for entry in mapped.entry_refs(reading) {
+                        let word_id = self
+                            .engine
+                            .model
+                            .word_id(entry.word)
+                            .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32));
+                        each(&RowRef {
+                            reading,
+                            word: entry.word,
+                            logp: entry.logp,
+                            reading_prior: entry.reading_prior,
+                            word_id,
+                        });
+                    }
+                }
+            }
+            None => {
+                for (reading, entries) in &self.state.lexicon {
+                    for entry in entries {
+                        each(&RowRef {
+                            reading,
+                            word: &entry.word,
+                            logp: entry.logp,
+                            reading_prior: entry.reading_prior,
+                            word_id: entry.word_id,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_best(&self, word: &str, reading: &str) -> bool {
+        match &self.engine.mapped {
+            Some(mapped) => mapped.best_reading_str(word).is_some_and(|b| b == reading),
+            None => self.engine.best_reading(&self.state, word).is_some_and(|b| b.0 == reading),
+        }
+    }
+
+    fn readings(&self, word: &str, each: &mut dyn FnMut(&str)) {
+        match &self.engine.mapped {
+            Some(mapped) => mapped.reading_strs_of(word).for_each(|(r, _)| each(r)),
+            None => self.state.reverse.get(word).into_iter().flatten().for_each(|(r, _)| each(r)),
+        }
+    }
 }

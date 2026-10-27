@@ -28,7 +28,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -69,6 +69,7 @@ struct Settings {
     channel: Option<String>,
     reading_margin: Option<f64>,
     variant_scores: VariantScores,
+    variant_window: f64,
     channel_report: bool,
     channel_table: bool,
 }
@@ -127,6 +128,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         channel: None,
         reading_margin: None,
         variant_scores: VariantScores::default(),
+        variant_window: zhuyin_core::composer::VARIANT_WINDOW,
         channel_report: false,
         channel_table: false,
     };
@@ -171,6 +173,9 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
             "--v3-variants" => {
                 s.variant_scores = VariantScores::from_raw(next_value(&arguments))
                     .unwrap_or_else(|| fail("--v3-variants needs one of: standard, best, zero, typed"));
+            }
+            "--v3-variant-window" => {
+                s.variant_window = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
             }
             "--neutral-costs" => {
                 let values: Vec<f64> = next_value(&arguments).split(',').filter_map(parse_double).collect();
@@ -821,6 +826,7 @@ fn main() {
     attach(&mut composer, &models, &s, &model_context);
     composer.decoder_costs = s.costs;
     composer.variant_scores = s.variant_scores;
+    composer.variant_window = s.variant_window;
     let mut typist = Typist { clock: 1000.0, timing: s.timing, key_times: vec![] };
     if s.batch {
         // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line

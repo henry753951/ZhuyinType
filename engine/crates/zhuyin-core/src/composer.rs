@@ -4,7 +4,7 @@
 //! the conversion is the engine's lattice decoding, optionally reranked by a sentence model and adjusted by a
 //! character model, both supplied by the client as callbacks.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -87,6 +87,9 @@ impl VariantScores {
     }
 }
 
+/// The default [`Composer::variant_window`].
+pub const VARIANT_WINDOW: f64 = 3.0;
+
 /// A character only a reading-channel variant put at a position: its lexicon syllable, and the variant's state and
 /// cost, from the best-scoring such match.
 #[derive(Clone, Debug)]
@@ -158,6 +161,9 @@ pub struct Composer {
     pub decoder_costs: Costs,
     /// How the character model scores characters only a reading-channel variant brings.
     pub variant_scores: VariantScores,
+    /// Only variant characters whose prior (without the variant's cost) is within this many nats of the best other
+    /// character at their position get [`VariantScores`]; the rest keep the model's score as typed.
+    pub variant_window: f64,
     presentation: Presentation,
 }
 
@@ -245,6 +251,7 @@ impl Composer {
             candidate_scoring_count: 24,
             decoder_costs: Costs::default(),
             variant_scores: VariantScores::default(),
+            variant_window: VARIANT_WINDOW,
             presentation: Presentation::default(),
         }
     }
@@ -983,10 +990,10 @@ impl Composer {
             return None;
         }
         let count = self.tokens.len();
-        let mut candidates: Vec<HashMap<String, f64>> = vec![HashMap::new(); count];
-        let mut plain: Vec<HashSet<String>> = vec![HashSet::new(); count];
+        // Each character's best prior, and whether some match puts it there without a reading-channel variant.
+        let mut candidates: Vec<HashMap<String, (f64, bool)>> = vec![HashMap::new(); count];
         let mut variants: Vec<HashMap<String, VariantCharacter>> = vec![HashMap::new(); count];
-        let channel = self.engine.reading_channel().is_some();
+        let mut plain_best: Vec<f64> = vec![f64::NEG_INFINITY; count];
         for start in 0..count {
             if self.tokens[start].reading().is_none() {
                 continue;
@@ -998,58 +1005,58 @@ impl Composer {
                         continue;
                     }
                     let mut value = prior;
-                    match m.channel.filter(|c| c.position == offset) {
-                        Some(channel) => {
-                            value = prior + channel.cost;
-                            let syllable = m
-                                .entry
-                                .reading
-                                .as_deref()
-                                .and_then(|r| r.split(' ').nth(offset))
-                                .unwrap_or_default()
-                                .to_owned();
-                            let seen =
-                                variants[start + offset].entry(character.to_owned()).or_insert(VariantCharacter {
-                                    prior: f64::NEG_INFINITY,
-                                    syllable: String::new(),
-                                    correction: false,
-                                    cost: 0.0,
-                                });
-                            if value > seen.prior {
-                                *seen = VariantCharacter {
-                                    prior: value,
-                                    syllable,
-                                    correction: channel.correction,
-                                    cost: channel.cost,
-                                };
-                            }
+                    let through = m.channel.filter(|c| c.position == offset);
+                    if let Some(channel) = through {
+                        value = prior + channel.cost;
+                        let syllable = m
+                            .entry
+                            .reading
+                            .as_deref()
+                            .and_then(|r| r.split(' ').nth(offset))
+                            .unwrap_or_default()
+                            .to_owned();
+                        let seen = variants[start + offset].entry(character.to_owned()).or_insert(VariantCharacter {
+                            prior: f64::NEG_INFINITY,
+                            syllable: String::new(),
+                            correction: false,
+                            cost: 0.0,
+                        });
+                        if value > seen.prior {
+                            *seen = VariantCharacter {
+                                prior: value,
+                                syllable,
+                                correction: channel.correction,
+                                cost: channel.cost,
+                            };
                         }
-                        None if channel => {
-                            plain[start + offset].insert(character.to_owned());
-                        }
-                        None => {}
                     }
-                    let slot = candidates[start + offset].entry(character.to_owned()).or_insert(f64::NEG_INFINITY);
-                    *slot = swift_max(*slot, value);
+                    let slot =
+                        candidates[start + offset].entry(character.to_owned()).or_insert((f64::NEG_INFINITY, false));
+                    slot.0 = swift_max(slot.0, value);
+                    slot.1 |= through.is_none();
+                    if through.is_none() {
+                        plain_best[start + offset] = plain_best[start + offset].max(value);
+                    }
                 }
             }
         }
         for word in &self.fixed {
             for (offset, character) in graphemes(&word.text).into_iter().enumerate() {
                 if word.range.start + offset < count {
-                    candidates[word.range.start + offset].insert(character.to_owned(), 0.0);
-                    plain[word.range.start + offset].insert(character.to_owned());
+                    candidates[word.range.start + offset].insert(character.to_owned(), (0.0, true));
+                    plain_best[word.range.start + offset] = plain_best[word.range.start + offset].max(0.0);
                 }
             }
         }
         for (position, seen) in variants.iter_mut().enumerate() {
-            seen.retain(|character, _| !plain[position].contains(character));
+            let floor = plain_best[position] - self.variant_window;
+            seen.retain(|character, v| candidates[position].get(character).is_none_or(|c| !c.1) && v.prior >= floor);
         }
         // Equal priors by character, so the cut does not depend on the table's order.
         let lists: Vec<Vec<String>> = candidates
             .into_iter()
             .map(|position| {
-                let mut entries: Vec<(String, f64)> = position.into_iter().collect();
+                let mut entries: Vec<(String, f64)> = position.into_iter().map(|(c, (v, _))| (c, v)).collect();
                 entries.sort_by(|a, b| {
                     if a.1 == b.1 {
                         a.0.as_bytes().cmp(b.0.as_bytes())

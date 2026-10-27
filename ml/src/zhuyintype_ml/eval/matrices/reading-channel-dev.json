@@ -1,0 +1,259 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "on",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on"
+   ]
+  },
+  {
+   "name": "only-lexicon",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "lexicon"
+   ]
+  },
+  {
+   "name": "only-taiwan",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "taiwan"
+   ]
+  },
+  {
+   "name": "only-word",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "word"
+   ]
+  },
+  {
+   "name": "only-attested",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "attested"
+   ]
+  },
+  {
+   "name": "only-cns",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "cns"
+   ]
+  },
+  {
+   "name": "only-unihan",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "unihan"
+   ]
+  },
+  {
+   "name": "only-series",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "series"
+   ]
+  },
+  {
+   "name": "only-interjection",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "interjection"
+   ]
+  },
+  {
+   "name": "only-taiwan-word",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "taiwan-word"
+   ]
+  },
+  {
+   "name": "only-neutral",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "neutral"
+   ]
+  },
+  {
+   "name": "only-sandhi",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-classes",
+    "sandhi"
+   ]
+  },
+  {
+   "name": "sandhi-correction",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-state",
+    "sandhi=correction"
+   ]
+  },
+  {
+   "name": "neutral-correction",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-state",
+    "neutral=correction"
+   ]
+  },
+  {
+   "name": "v3-best",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--v3-variants",
+    "best"
+   ]
+  },
+  {
+   "name": "v3-zero",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--v3-variants",
+    "zero"
+   ]
+  },
+  {
+   "name": "margin2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--reading-margin",
+    "2"
+   ]
+  },
+  {
+   "name": "margin8",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--reading-margin",
+    "8"
+   ]
+  },
+  {
+   "name": "plus2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-offset",
+    "lexicon=2",
+    "--channel-offset",
+    "taiwan=2",
+    "--channel-offset",
+    "word=2",
+    "--channel-offset",
+    "attested=2",
+    "--channel-offset",
+    "cns=2",
+    "--channel-offset",
+    "unihan=2",
+    "--channel-offset",
+    "series=2",
+    "--channel-offset",
+    "interjection=2",
+    "--channel-offset",
+    "taiwan-word=2",
+    "--channel-offset",
+    "neutral=2",
+    "--channel-offset",
+    "sandhi=2"
+   ]
+  },
+  {
+   "name": "cap8",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-cap",
+    "8"
+   ]
+  },
+  {
+   "name": "neutral-log",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--neutral-costs",
+    "0.37,4.22"
+   ]
+  },
+  {
+   "name": "off-neutral-log",
+   "config": "app",
+   "cli_args": [
+    "--neutral-costs",
+    "0.37,4.22"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  }
+ ]
+}

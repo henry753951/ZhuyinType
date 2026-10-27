@@ -171,11 +171,12 @@ fn invalid_binaries_are_refused() {
 type Calls = Arc<Mutex<Vec<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)>>>;
 
 /// Types `keys` with a character model that answers −1 everywhere and records each call.
-fn model_calls(mode: VariantScores, keys: &str) -> Vec<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)> {
+fn model_calls(mode: VariantScores, window: f64, keys: &str) -> Vec<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)> {
     let engine = Arc::new(engine(ChannelSettings::default()));
     let options = ComposerOptions { typo_tolerance: TypoTolerance::Off, ..ComposerOptions::default() };
     let mut composer = Composer::new(engine, options);
     composer.variant_scores = mode;
+    composer.variant_window = window;
     let calls = Calls::default();
     let record = calls.clone();
     composer.set_character_scorer(Some(Box::new(move |syllables, lists| {
@@ -191,7 +192,7 @@ fn model_calls(mode: VariantScores, keys: &str) -> Vec<(Vec<CharacterModelSyllab
 #[test]
 fn the_character_model_sees_variant_characters() {
     // ㄕㄡˊ: 熟 comes only through the channel; it is in the list (ranked without the variant's cost).
-    let standard = model_calls(VariantScores::Standard, "g.6");
+    let standard = model_calls(VariantScores::Standard, f64::INFINITY, "g.6");
     let (syllables, lists) = &standard[standard.len() - 2];
     assert_eq!((syllables[0].base.as_deref(), syllables[0].tone), (Some("ㄕㄡ"), 2));
     assert!(lists[0].contains(&"熟".to_owned()));
@@ -201,12 +202,15 @@ fn the_character_model_sees_variant_characters() {
     assert_eq!(lists[0], ["熟"]);
     // The other modes ask once; an accepted reading needs no bucket.
     for mode in [VariantScores::Best, VariantScores::Zero, VariantScores::Typed] {
-        let calls = model_calls(mode, "g.6");
+        let calls = model_calls(mode, f64::INFINITY, "g.6");
         assert!(calls.iter().all(|(s, _)| s[0].base.as_deref() == Some("ㄕㄡ") && s[0].cost_bucket == 0), "{mode:?}");
     }
     // A correction, as typed: one more call with its cost bucket (−log P ≤ 6: bucket 1), as v3's training noise.
-    let typed = model_calls(VariantScores::Typed, "sul35.4");
+    let typed = model_calls(VariantScores::Typed, f64::INFINITY, "sul35.4");
     let (syllables, lists) = typed.last().unwrap();
     assert_eq!((syllables[1].base.as_deref(), syllables[1].cost_bucket), (Some("ㄓㄡ"), 1));
     assert_eq!(lists[1], ["喙"]);
+    // Within the window only: 喙 (−13) is far from 宙 (−9) at its position, so no second call.
+    let windowed = model_calls(VariantScores::Typed, 3.0, "sul35.4");
+    assert!(windowed.iter().all(|(s, _)| s.iter().all(|x| x.cost_bucket == 0)));
 }
