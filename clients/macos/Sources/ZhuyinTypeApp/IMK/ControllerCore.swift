@@ -50,8 +50,6 @@ final class ControllerCore {
     /// 255, the reranker its last 24.
     static let contextRead = 128
     static let contextKept = 255
-    /// How much the character model's scores count in the lattice (docs/MODEL.md §6).
-    static let characterWeight = 0.5
     /// Per app, what was last committed there: context across fields and focus changes, for `contextWindow`.
     private static var appContext: [String: (text: String, time: Date)] = [:]
     var now: () -> Date = Date.init
@@ -62,7 +60,7 @@ final class ControllerCore {
         self.client = client
         self.isEnglish = isEnglish
         if let characterModel {
-            composer.characterWeight = Self.characterWeight
+            composer.characterWeight = SyllableScorer.appWeight
             composer.characterScorer = { [weak self] syllables, candidates in
                 characterModel.scores(context: self?.recentText ?? "", syllables: syllables.map {
                     SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: $0.implicit)

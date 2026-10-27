@@ -23,7 +23,7 @@
 在專案根目錄執行以下指令，可沿用現有詞庫，或下載來源並產生詞庫：
 
 ```sh
-make lexicon
+tools/zt data lexicon             # 或 make lexicon；--rebuild 重新產生
 ```
 
-首次準備詞庫需要網路與 uv，腳本會在專案的 `.venv` 安裝 wordfreq。轉換工具位於 `data/tools/`。需要重新產生時，將現有的 `data/build/lexicon.tsv` 移至備份位置，再執行 `make lexicon`。
+首次準備詞庫需要網路與 uv：來源下載到 `data/raw/`，詞頻用 `data` 相依群組的 wordfreq。轉換程式是 `nlp/data/lexicon.py`。

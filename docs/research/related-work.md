@@ -61,7 +61,7 @@
 
 我們學到並採用的（細節見 [log.md](log.md)）：
 
-- 成對檢定工具（`nlp/eval/stats.py`）
+- 成對檢定工具（`zt eval stats`）
 - 重排門檻 τ
 - 選字後固定其他字
 - 安全輸入時不讀前文、不學習
@@ -152,6 +152,6 @@
 
 引進的評測集已排除和我們訓練資料重疊的列，放在 `nlp/eval/sets/external/shanjie/`，出處與授權見該目錄的 README。
 
-- 執行：`nlp/eval/rows_eval.py`
-- 成對比較：`nlp/eval/stats.py`
+- 執行：`zt eval rows`
+- 成對比較：`zt eval stats`
 - 每個版本的完整結果：[ZhuyinBench](../benchmarks/)

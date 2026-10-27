@@ -1,0 +1,101 @@
+# The Python side of ZhuyinType: the `zt` tools (nlp/cli), evaluation, training, data and the GPU host runner.
+# Managed with uv: `tools/zt setup` prepares this machine, `uv.lock` pins every version.  The tools themselves use the
+# standard library only; steps that need third-party packages run with a dependency group (`uv run --group NAME`).
+[project]
+name = "zhuyintype-tools"
+version = "0.1.0"
+description = "ZhuyinType data, evaluation, training and build tools"
+readme = "tools/README.md"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+# Lint, format and type checks (`zt check lint`, `zt check types`).
+dev = ["ruff==0.17.3", "mypy==2.4.0"]
+# Building the basic lexicon from open data (`zt data lexicon`).
+data = ["wordfreq==3.1.1"]
+# ONNX export and parity of the neural models (`zt models export`, `zt models parity`); Core ML export on macOS.
+# On macOS the versions the shipped Core ML packages were exported with, so a re-export matches them byte for byte.
+export = [
+    "onnx==1.20.1",
+    "onnxruntime==1.24.4",
+    "torch==2.13.0; sys_platform != 'darwin'",
+    "numpy==2.5.4; sys_platform != 'darwin'",
+    "torch==2.7.0; sys_platform == 'darwin'",
+    "numpy==2.3.5; sys_platform == 'darwin'",
+    "coremltools==9.0; sys_platform == 'darwin'",
+]
+# Model training (`zt train`): PyTorch and the corpus and LM preparation libraries.
+train = [
+    "torch==2.13.0",
+    "numpy==2.5.4",
+    "opencc==1.4.2",
+    "pyahocorasick==2.3.1",
+    "mwparserfromhell==0.7.2",
+    "datasketch==2.0.0",
+    "aiohttp==3.14.5",
+]
+# The vLLM server that generates the colloquial corpus (`zt train corpus generate`, GPU host only).
+generate = ["vllm==0.32.0; sys_platform == 'linux'"]
+
+[tool.uv]
+# Not an installable package: `tools/zt` runs `python -m nlp.cli` with the repository on PYTHONPATH.
+package = false
+# A plain `uv run` (every `zt` command) needs no third-party packages; groups are added by the steps that need them.
+default-groups = []
+# Groups pinned to different PyTorch builds are never installed together.
+conflicts = [
+    [{ group = "export" }, { group = "train" }],
+    [{ group = "export" }, { group = "generate" }],
+    [{ group = "train" }, { group = "generate" }],
+]
+
+# PyTorch with CUDA on Linux (the GPU host); the default PyPI build (CPU and MPS) on macOS.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["references", "data", ".build", "dist", ".cache", ".tools"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "ANN"]
+ignore = [
+    "E731",   # small lambdas assigned to names read well in argument tables
+    "B905",   # zip() without strict= is fine where lengths are checked by construction
+    "ANN401", # Any is the honest type at JSON and PyTorch boundaries
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Type annotations are required everywhere (CONVENTIONS.md) except in unit tests.
+"**/test_*.py" = ["ANN"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nlp"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["nlp"]
+exclude = ['/test_[^/]*\.py$', '^nlp/engine/', '^nlp/eval/sets/']
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "torch.*", "onnx.*", "onnxruntime.*", "numpy.*", "wordfreq.*", "coremltools.*",
+    "opencc.*", "ahocorasick.*", "mwparserfromhell.*", "datasketch.*", "aiohttp.*", "vllm.*",
+]
+ignore_missing_imports = true

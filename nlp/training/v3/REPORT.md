@@ -2,9 +2,11 @@
 
 訓練、匯出、編譯、CPU 延遲量測與介面驗證都已完成。以下是詳細結果與範圍限制。
 
+訓練當時的輸出目錄是 `data/build/v3/`；0.4.0 起 `v3/` 放 app 使用的繼續訓練版本，這次的產物改名為 `data/build/v3_030/`，下文的路徑都已改成新名稱。重現方式見 [README.md](README.md)（`zt train v3`）。
+
 ## 範圍與來源
 
-- 本機只寫入 `nlp/training/v3/` 與 `data/build/v3/`。沒有變更 Swift、文件、既有訓練程式碼、Git 歷史，也沒有變更引擎整合。
+- 本機只寫入 `nlp/training/v3/` 與 `data/build/v3_030/`。沒有變更 Swift、文件、既有訓練程式碼、Git 歷史，也沒有變更引擎整合。
 - 遠端：`$ZHUYIN_REMOTE_HOST`，`~/zhuyintype`；NVIDIA H100L-3-47C MIG，48,128 MiB，起始時閒置；可用磁碟 384 GiB。
 - 遠端既有執行環境：Python 3.12.15、torch 2.13.0+cu130、coremltools 9.0、numpy 2.3.5。既有的 `.venv` 含 mwparserfromhell 0.7.2；做法是在 `.venv-gen` 之後沿用它的 site-packages，而不變更任何一個環境。
 - 實作前已閱讀 MODEL_V3.md、MODEL.md、所有 reranker Python 檔案、lm/pipeline.py 與 corpus/README.md。
@@ -24,7 +26,7 @@
 - 遠端不變量自我檢查通過：嘗試 10,000 次擾動，得到 3,303 個有效且有改變的讀音；每個結果輸入都仍在詞庫的音節清單內。
 - 已檢查因果前綴不變性、候選字填充、機率正規化、投影後記憶的形狀與資料型態、Torch tracing，以及較短的動態維度。
 - 一個暫時的遠端傳輸檔一開始被放在 v3 的上一層，隨即移入 v3；沒有取代任何既有的遠端資料。除了要求的遠端紀錄檔外，所有持久輸出都留在 v3 內。
-- 本機 uv 環境：Python 3.12.14、torch 2.7.0、coremltools 9.0、numpy 2.3.5、uv 0.12.7；鎖定檔在 nlp/training/v3 下，環境在 data/build/v3/.venv 下。
+- 本機 uv 環境：Python 3.12.14、torch 2.7.0、coremltools 9.0、numpy 2.3.5、uv 0.12.7；當時的鎖定檔放在 nlp/training/v3 下，環境在 data/build/v3/.venv 下；鎖定檔已移除，相依版本改由根目錄 `pyproject.toml` 的 `train`／`export` 群組管理。
 
 - 維基百科完成：來自 1,130,481 篇文章、經洩漏篩選的 10,101,669 個段落，643,655,802 個字元，12.11 分鐘；依傾印檔順序截斷。
 - 最新的 Core ML 冒煙測試在最小／預設／最大形狀（Lc/Ls/C = 1/1/1、64/10/32、256/64/64）下通過；以隨機權重比較 fp32 與 fp16，logprob 最大差異為 0、0.01266、0.02508。這些是匯出檢查，不是模型品質結果。
@@ -39,7 +41,7 @@
 
 - 每個詞庫候選字在訓練中都有代表：不在語料詞彙中的字元共用 UNK id 2 作為負例桶。參考推論同樣把未見過的候選字元對應到 UNK；dev 中的 OOV 位置計為錯誤。
 
-- 第一次啟動 syllable 階段時，在建立 dev 讀音的過程中、訓練開始前就失敗了：Torch 檢查點的標籤是 tuple，但 Lexicon.label 比較的是 list，導致允許的讀音集合為空。已在共用的呼叫端修正 tuple 比較，並加入以實際檢查點為依據的歧義字回歸檢查。編碼後的標註原本就使用 tuple 鍵，不受影響。最初的失敗紀錄保留在遠端 data/build/v3/first-syllable-failure.log。接續執行使用 --from-syllable，保留已完成的 context 檢查點。
+- 第一次啟動 syllable 階段時，在建立 dev 讀音的過程中、訓練開始前就失敗了：Torch 檢查點的標籤是 tuple，但 Lexicon.label 比較的是 list，導致允許的讀音集合為空。已在共用的呼叫端修正 tuple 比較，並加入以實際檢查點為依據的歧義字回歸檢查。編碼後的標註原本就使用 tuple 鍵，不受影響。最初的失敗紀錄保留在遠端 data/build/v3_030/first-syllable-failure.log。接續執行從 syllable 步驟開始（`zt train v3 syllable`；當時是舊流程的 `--from-syllable`），保留已完成的 context 檢查點。
 
 - syllable 訓練達到最初 60,000 步上限時仍未平穩（選定 57,000 步；NLL 0.1432105）。在評估與匯出前只暫停協調程序，接著從選定的檢查點繼續，初始學習率 6e-5，使用新的資料種子與新的最佳化器。累計步數、時間與原始歷史紀錄都保留；完成條件同樣是連續四次評估的平穩準則。
 
@@ -47,6 +49,8 @@
 - 即時資料增強：sigma_x=0.9、sigma_y=0.45 個按鍵單位；嘗試的音節雜訊均勻分布於 0-15%，無效的結果還原為乾淨輸入。一／不變調 50%，輕聲當一聲 30%，台灣讀音替代 10%，隱含一聲邊界 20%。雜訊類型權重：替換／聲調互換／對調／多打／漏打 = 45/20/15/10/10。
 
 ## 實際執行
+
+這一節原由已移除的 `finish.py` 依各步驟的 JSON 紀錄（`wiki.json`、`colloquial.json`、`provenance.json`、`polyphone.json`、`encode.json`、`data-audit.json`、`*-done.json`、`quality.json`、`latency.json`、`parity.json`）自動產生；數字都可以從 `data/build/v3_030/` 的這些檔案重新讀出。
 
 更新時間（UTC）：2026-10-26T21:23:07.559490+00:00
 
@@ -90,7 +94,7 @@
 
 編碼時間：3.31 分鐘。低信心樣本不納入 syllable 訓練，但保留給 context LM。口語的上下文是前一個保留的行；既有的生成行是彼此獨立的訊息，不是真正的對話。
 
-擷取後的完整洩漏稽核在 wiki 與口語兩者都通過；檢查了 20 個編碼後的讀音與上下文樣本。詳情：data/build/v3/data-audit.json。
+擷取後的完整洩漏稽核在 wiki 與口語兩者都通過；檢查了 20 個編碼後的讀音與上下文樣本。詳情：data/build/v3_030/data-audit.json。
 
 | 模型 | 參數量 | 步數 | 選定步數 | 分鐘 | 選定 dev NLL | 已達平穩 |
 |---|---:|---:|---:|---:|---:|---|
@@ -143,8 +147,8 @@ syllable 在 Ls=30、C=32、Lc=256 的目標為 <=15 ms：p50 通過，p95 通�
 
 兩個 fp16 套件合計 129.38 MiB（64.43 + 64.95 MiB）；編譯後的模型合計 129.42 MiB。
 
-Mac 上的產出物：`data/build/v3/{ContextEncoder,SyllableEncoder}.{mlpackage,mlmodelc}`、`chars.json`、`syllables.json`、`config.json`、`test_vectors.json`、`syllable.pt`、`polyphone.pt` 與 `articles.tsv.gz`。`nlp/training/v3/reference.py` 支援 CPU Core ML 與 PyTorch；兩種後端都已用 `data/build/v3/example.json` 執行過。
+Mac 上的產出物：`data/build/v3_030/{ContextEncoder,SyllableEncoder}.{mlpackage,mlmodelc}`、`chars.json`、`syllables.json`、`config.json`、`test_vectors.json`、`syllable.pt`、`polyphone.pt` 與 `articles.tsv.gz`。`python -m nlp.training.v3.reference` 支援 CPU Core ML 與 PyTorch；兩種後端都已用 `data/build/v3_030/example.json` 執行過。
 
-原始的有序語料與編碼後的分片留在遠端的 `~/zhuyintype/data/build/v3/` 下：`wiki.txt`、`colloquial.txt`、`wiki_shards/`、`encoded/`。沒有升級為 App 資源，也沒有做 Git commit。
+原始的有序語料與編碼後的分片留在 GPU 主機的 `data/build/v3_030/` 下：`wiki.txt`、`colloquial.txt`、`wiki_shards/`、`encoded/`。沒有升級為 App 資源，也沒有做 Git commit。
 
 成對檢查點的 SHA256：`03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`。與 Swift 比對時以精確的 CPU Core ML 輸出為準；PyTorch 只是近似的數值參考。

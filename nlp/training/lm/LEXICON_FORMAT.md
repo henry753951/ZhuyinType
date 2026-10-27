@@ -3,10 +3,10 @@
 在 repository 根目錄執行：
 
 ```sh
-scripts/compile-data.sh OUT_DIR
+zt data compile OUT_DIR      # 呼叫 nlp/training/lm/compile_data.py；不給 OUT_DIR 時寫在資料目錄的 TSV 旁
 ```
 
-這個指令使用專案既有的 `.venv/bin/python` 與 Python 標準函式庫。它讀取 `data/build/lexicon.tsv`、
+這個指令只使用 Python 標準函式庫。它讀取 `data/build/lexicon.tsv`、
 `data/build/lm/{unigram,bigram,backoff}.tsv`，以及 `lm_chat/` 中同樣的三個檔案。過程中沒有下載、
 安裝、訓練或時間戳記。相同的輸入在 Mac 與 Linux 上產生位元組完全相同的二進位檔與 JSON。
 OUT_DIR 可以是 App 暫存的 Resources 目錄，也可以是 `data/build` 本身（來源 TSV 保持不變）。
@@ -92,8 +92,7 @@ MixtureLanguageModel 直接使用百科 ID。只出現在聊天模型的詞編�
 ## 檢查
 
 ```sh
-# 編譯器測試在遠端 Linux 工作區執行，不在 Mac 上執行。
-.venv/bin/python nlp/training/lm/test_compile_data.py
+python -m unittest nlp.training.lm.test_compile_data
 # Swift 檢查包括獨立的二進位 fixture、每一種截斷的詞庫前綴、
 # 格式錯誤的 offset、個人覆蓋層、ASCII ID 與混合格式 LM。
 .build/release/ZhuyinCoreChecks

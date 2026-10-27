@@ -50,7 +50,7 @@
 | 「台／臺」寫法 | 預設「台」，只改顯示與送出的文字，清單合併兩種寫法。設定可改 |
 | v3 前文 | App 讀 128 字、保留 255 字。「一聲省略空白」的邊界傳給 v3，沒有可測的差異，維持開啟 |
 | 隱私與安裝 | 密碼欄位（安全輸入）時不讀前文、不學習。升級時若輸入法已在清單，就不重新註冊，Caps Lock 切換不會失效 |
-| 評測 | 所有評測與訓練在 GPU 主機上跑（`nlp/remote/`），成對統計用 `nlp/eval/stats.py`，ZhuyinBench 每個版本自動執行。和靈犀注音、善解在同一批句子上比較，附條件與限制（[research/related-work.md](research/related-work.md)） |
+| 評測 | 所有評測與訓練在 GPU 主機上跑（`zt --remote`），成對統計用 `zt eval stats`，ZhuyinBench 每個版本自動執行。和靈犀注音、善解在同一批句子上比較，附條件與限制（[research/related-work.md](research/related-work.md)） |
 | 統計底子（A1，研究） | 小麥注音詞庫＋期望次數語言模型。只用引擎時口語從 71% 提高到 80%，但 app 沒有可測的提升，未採用（[research/log.md](research/log.md)） |
 | 專案結構 | 選字相關全部在 `nlp/`（engine、data、training、eval、remote），各平台的輸入法在 `clients/` |
 

@@ -35,12 +35,14 @@ jobs:
           [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "docs/releases/$GITHUB_REF_NAME.md is missing"; exit 1; }
           tools/check-public.sh
           echo "latest=$(gh release view --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@v7
       - name: Data assets
         uses: actions/cache@v6
         with:
           path: .cache/assets
           key: assets-app-${{ hashFiles('nlp/data/assets.json') }}
-      - run: python3 nlp/data/assets.py fetch
+      - run: tools/zt setup
+      - run: tools/zt data fetch
       - name: SwiftPM build cache
         uses: actions/cache@v6
         with:
@@ -53,7 +55,7 @@ jobs:
           path: .tools
           key: sparkle-tools-${{ hashFiles('clients/macos/scripts/sparkle-tools.sh') }}
       - name: Engine checks
-        run: swift run -c release --package-path nlp/engine --scratch-path .build ZhuyinCoreChecks
+        run: tools/zt check engine
       - name: Build, package, sign the appcast
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
@@ -63,14 +65,11 @@ jobs:
           SWIFT_SCRATCH_PATH=.build SPARKLE_ED_KEY_FILE="$key" clients/macos/scripts/release.sh
           rm -f "$key"
       - name: Self-test and packaging checks
-        run: |
-          dist/ZhuyinType.app/Contents/MacOS/ZhuyinType --self-test --lexicon data/build/lexicon.tsv
-          swift clients/macos/scripts/check-packaging.swift dist/ZhuyinType.app
+        run: tools/zt check app
       - name: Speed, energy and memory on this Mac
         run: |
-          swift build -c release --package-path nlp/engine --scratch-path .build --product zhuyin-cli
-          python3 nlp/eval/mac_metrics.py --cli .build/release/zhuyin-cli \
-            --engine-data dist/ZhuyinType.app/Contents/Resources --out dist/release/metrics-mac.json
+          tools/zt build cli --product zhuyin-cli
+          tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources --json dist/release/metrics-mac.json
       - name: Publish
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

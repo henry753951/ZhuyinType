@@ -6,10 +6,10 @@
 
 - 只寫入 `nlp/training/lm_chat/` 與 `data/build/lm_chat/`，以及明確要求的遠端 `logs/lm-chat-*.log`。沒有修改 Swift、文件或既有的訓練程式，沒有變更相依套件，也沒有 Git commit、stash、reset 或 checkout。
 - 嚴格的寫入範圍與要求的同層語料路徑互相衝突。兩個 holdout 交付為 `data/build/lm_chat/{test,dev}_chat_tt.txt`；若需要放在語料路徑，負責整合的工程師必須自行搬移。
-- 先讀過要求的全部五個檔案。直接重用 `pipeline.py` 的 Viterbi、三輪斷詞、計數合併與 MKN。`train2.py` 把估計交給 KenLM；沒有引入新的估計器或相依套件。
+- 先讀過要求的全部五個檔案。直接重用維基百科模型的 Viterbi、三輪斷詞、計數合併與 MKN（當時的 `nlp/training/lm/pipeline.py`，現在是 `nlp/training/lm/mkn.py`）。三元模型實驗 `lm2` 把估計交給 KenLM；這裡沒有引入新的估計器或相依套件。
 - 遠端：`$ZHUYIN_REMOTE_HOST`，`~/zhuyintype`；既有的 uv 管理 Python 3.12.15、NumPy 2.5.4、OpenCC 1.4.2、mwparserfromhell 0.7.2、pyahocorasick 2.3.1。48 個 CPU worker；未使用 GPU。
-- 執行：`nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -u nlp/training/lm_chat/train.py --workers 48 > logs/lm-chat-train-20261027.log 2>&1 < /dev/null &`。測試與輸入配置見 README.md。
-- 完成於 2026-10-26T21:47:46.575354+00:00；耗時 94.30 秒。遠端的檢查點與固定輸入保留在 `data/build/lm_chat/`；本機的 `training.log` 保存 nohup 記錄。程式碼與輸入雜湊在 stats.json 中。執行前，遠端共用的 pipeline／train2 雜湊與 Mac 一致。
+- 執行：當時以 `nohup` 在主機上執行 `nlp/training/lm_chat/train.py --workers 48`（單執行緒 BLAS），記錄在 `logs/lm-chat-train-20261027.log`。現在的對應指令是 `zt --remote train lm_chat`（見 README.md）。
+- 完成於 2026-10-26T21:47:46.575354+00:00；耗時 94.30 秒。遠端的檢查點與固定輸入保留在 `data/build/lm_chat/`；本機的 `training.log` 保存 nohup 記錄。程式碼與輸入雜湊在 stats.json 中。執行前，遠端共用的估計程式（`pipeline.py`、`train2.py`）雜湊與 Mac 一致。
 - 將目前 Mac 上的詞庫（SHA256 `9e651e711661ae942a3bc4c4cd7c9422ec3794e7b828a82095c566ecc2f3ae60`）與基準 TSV 快照到允許寫入的遠端輸入目錄。複製的 11 個輸入全部與 Mac 雜湊一致；完成後，Mac 上 11 個原始輸入仍全部一致。既有未追蹤的 `nlp/training/v3/` 未被更動。
 
 ## 語料與 holdout

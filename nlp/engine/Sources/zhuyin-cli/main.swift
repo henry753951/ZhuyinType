@@ -11,6 +11,10 @@ func fail(_ message: String) -> Never {
 }
 var arguments = Array(CommandLine.arguments.dropFirst())
 var lexiconPath = "data/build/lexicon.tsv"
+/// --models DIR: everything the app loads from a data directory, set up the way the app sets it up.
+var modelsPath: String?
+/// Options given explicitly, which --models does not override.
+var given = Set<String>()
 var batch = false
 var keepMemory = false
 var rerankerPath: String?
@@ -38,9 +42,14 @@ var fuzzy: FuzzySounds = []
 var options = ComposerOptions()
 // The engine's own forms by default, so results compare with the evaluation text and earlier runs; the app writes 台.
 options.characterForms = .standard
-let usage = "Usage: zhuyin-cli [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
+let usage = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]"
 while let option = arguments.first, option.hasPrefix("--") {
+    given.insert(option)
     switch option {
+    case "--models":
+        guard arguments.count >= 2 else { fail(usage) }
+        modelsPath = arguments[1]
+        arguments.removeFirst(2)
     case "--lexicon":
         guard arguments.count >= 2 else { fail(usage) }
         lexiconPath = arguments[1]
@@ -276,6 +285,26 @@ assert((try? parse("a<space><bs><obs><del><left><right><home><end><up><down><ent
        == [.char("a"), .space, .backspace, .optionBackspace, .forwardDelete, .left, .right,
            .home, .end, .up, .down, .enter, .shiftEnter, .escape, .tab, .shiftedChar("x"), .shiftLeft, .shiftRight])
 assert((try? parse("<unknown>")) == nil)
+if let modelsPath {
+    // The app's setup: lexicon (and lm/ beside it), lm_chat/, reranker/ with its config.json, v3/ at the app's weight.
+    // Explicit options still win, so one setting can be varied against the app.
+    let root = URL(fileURLWithPath: modelsPath)
+    func has(_ directory: String, _ file: String) -> Bool {
+        FileManager.default.fileExists(atPath: root.appendingPathComponent(directory).appendingPathComponent(file).path)
+    }
+    if !given.contains("--lexicon") { lexiconPath = root.appendingPathComponent("lexicon.tsv").path }
+    if !given.contains("--chat-lm"), has("lm_chat", "bigram.tsv") || has("lm_chat", "lm.bin") {
+        Engine.chatModelDirectory = root.appendingPathComponent("lm_chat")
+    }
+    if !given.contains("--reranker"), has("reranker", "vocab.json") { rerankerPath = root.appendingPathComponent("reranker").path }
+    if let rerankerPath, let data = try? Data(contentsOf: URL(fileURLWithPath: rerankerPath).appendingPathComponent("config.json")),
+       let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if !given.contains("--rerank-weight"), let weight = config["weight"] as? Double { rerankWeight = weight }
+        if !given.contains("--rerank-count"), let count = config["count"] as? Int, count > 0 { rerankCount = count }
+    }
+    if !given.contains("--v3"), has("v3", "chars.json") { v3Path = root.appendingPathComponent("v3").path }
+    if !given.contains("--v3-weight") { v3Weight = SyllableScorer.appWeight }
+}
 do {
     let engineStart = DispatchTime.now().uptimeNanoseconds
     let engine = try Engine(lexiconURL: URL(fileURLWithPath: lexiconPath), userDataDirectory: nil)

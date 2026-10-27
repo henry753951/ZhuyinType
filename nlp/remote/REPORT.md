@@ -2,6 +2,8 @@
 
 2026-10-27（Asia/Taipei）。CPU／GPU 評測路徑、模型一致性、兩組完整的 15 列平台比較，以及遠端 runner 的兩種模式都已驗證。已知的延遲失敗明確保留在報告中。
 
+這份紀錄寫於 2026-10-27，當時的工具是 `run.sh`、`evaluate.py`、`sweep.py`、`compare.py`、`manifest.py` 與 `gpu_benchmark.sh`。這些工具後來由 `zt --remote`、`zt eval`、`zt models` 取代（對應見 [README.md](README.md)）；以下保留當時的指令與數字作為紀錄。
+
 ## 起始狀態與範圍
 
 工作目錄中原本已有同時進行中的引擎與 App 變更、條件式的 Package.swift／Core ML import、預測注入用的初始化函式、一個 Python GPU socket 後端，以及一個執行中的 Mac 矩陣。這些都保留原狀。這項工作沒有 commit、reset、stash，也沒有編輯 App 原始碼、文件、建置 App 的腳本或其他訓練目錄。隔離的遠端目的地是 `~/zhuyintype/work/onnx-eval`；同音字工作區與其 GPU 行程都未被觸碰。

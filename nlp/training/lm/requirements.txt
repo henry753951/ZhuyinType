@@ -1,4 +1,0 @@
-mwparserfromhell==0.7.2
-numpy==2.5.4
-opencc==1.4.2
-pyahocorasick==2.3.1

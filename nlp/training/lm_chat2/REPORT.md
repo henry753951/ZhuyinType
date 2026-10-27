@@ -90,7 +90,7 @@ dev／test 雜湊、文件分離與跨分割的 8-gram 分離。test 仍未計�
 
 基準 P=0.3 的平均為完全相同 81.44%、寫法視為相同 85.00%。這不能用來為 chat2 選擇 prior。不含生成文字的消融模型只有詞 perplexity 結果。有序的輸入、目標、預測、部分摘要與失敗記錄都有保留；沒有評估任何 test 分割。
 
-記錄的 26 個檔案的執行環境指紋全部維持不變。隔離工作區中沒有本實驗擁有的評估、CLI 或模型伺服器程序在執行。帶有已存批次診斷的重試在同步時結束：共用 runner 同時進行的修改現在預期 `nlp/engine`，而本實驗的快照保留的是原本的根目錄版面。原始啟動腳本保留為 `data/build/lm_chat2/frozen-runner.sh`；主機有足夠資源後要續跑前，請先參閱 README。
+記錄的 26 個檔案的執行環境指紋全部維持不變。隔離工作區中沒有本實驗擁有的評估、CLI 或模型伺服器程序在執行。帶有已存批次診斷的重試在同步時結束：共用 runner 同時進行的修改現在預期 `nlp/engine`，而本實驗的快照保留的是原本的根目錄版面。原始啟動腳本保留為 `data/build/lm_chat2/frozen-runner.sh`；主機有足夠資源後要續跑前，請先參閱下方「當時的執行方式」。
 
 ## 執行與失敗
 
@@ -116,5 +116,62 @@ dev／test 雜湊、文件分離與跨分割的 8-gram 分離。test 仍未計�
   commit／stash／reset／checkout，沒有對 test 分割計分，也沒有在 Mac 上評估模型。本任務對共用 runner 只新增了
   chat2 進入點與可設定的本機記錄位置。
 
-重現方式與檔案配置見 [README.md](README.md)。重新散布這些模型時，請保留
+現在的指令與檔案配置見 [README.md](README.md)。重新散布這些模型時，請保留
 [NOTICE.md](../../../data/build/lm_chat2/NOTICE.md) 與精簡的 0.49 MB `attribution.jsonl` 清單。
+
+## 當時的執行方式
+
+以下是 2026-10-27 實驗時的做法，保留作為紀錄。現在的對應指令是 `zt --remote train lm_chat2 perplexity conversion`；
+`conversion` 直接使用 `nlp.common.zhuyin` 的讀音與按鍵（與當時 `conversion_eval.py` 的做法相同），模型路徑改為
+資料目錄中的絕對路徑，所以既有的逐列結果會被視為過期。
+
+### 遠端評估（隔離工作區）
+
+依 README 的設定方式建立 `nlp/remote`，位置為 `~/zhuyintype/work/onnx-eval-chat2/.venv`。其 `.pth`
+檔以唯讀方式重用 `.venv-gen` 的 Torch，以及 `.venv` 的 parser／OpenCC／Aho-Corasick 套件。
+在這個隔離環境中只安裝 runner 固定版本的需求套件。共用 runner 新增了 `chat2`（只對目標做 TSV 評估）
+與 `LOCAL_RESULTS`（讓收集到的記錄留在本實驗內）。`EXTRA_SYNC` 處理新檔案。
+
+`ENGINE_SNAPSHOT=data/build/lm_chat2/engine` 固定既有的引擎與轉換評估工具；其 SHA256 清單為
+`engine-manifest.json`。比對雜湊後，可以用遠端既有、完全相同的檢查點副本初始化隔離目錄，
+省去第二次網路傳輸。
+
+將下列已完成的目錄與檔案複製到隔離工作區中相同的相對路徑：模型 TSV、`no_generated/` TSV、兩個對話檔、
+`inputs/`（包括舊的聊天斷詞器）、當時的 `nlp/training/lm/pipeline.py` 與 `nlp/training/lm_chat/train.py`。
+由 Mac 同步時，將它們列在 `EXTRA_SYNC`：
+
+```sh
+REMOTE_DIR=zhuyintype/work/onnx-eval-chat2 JOBS=60 BACKEND=cpu \
+  ENGINE_SNAPSHOT=data/build/lm_chat2/engine \
+  LOCAL_RESULTS=data/build/lm_chat2/remote-logs \
+  EXTRA_SYNC="nlp/training/lm_chat2 nlp/training/lm/pipeline.py nlp/training/lm_chat/train.py data/build/lm_chat2/inputs data/build/lm_chat2/dev_dialogue.txt data/build/lm_chat2/test_dialogue.txt data/build/lm_chat2/unigram.tsv data/build/lm_chat2/bigram.tsv data/build/lm_chat2/backoff.tsv data/build/lm_chat2/no_generated/unigram.tsv data/build/lm_chat2/no_generated/bigram.tsv data/build/lm_chat2/no_generated/backoff.tsv" \
+  bash -c "$(cat data/build/lm_chat2/frozen-runner.sh)" \
+    nlp/remote/run.sh chat2 --phase conversion -n 400
+```
+
+這會以原本的腳本位置作為 `$0` 呼叫保留下來的原始啟動腳本，因此即使線上 runner 同時遷移，仍維持固定快照
+的根目錄版面。只在目前的輸入檔與記錄的雜湊一致時使用；否則請另開新實驗，不要重用已快取的七列。
+
+runner 以 `nohup` 啟動評估工具並記錄其 PID。評估在遠端 GPU 主機上使用 ONNX CPU，並拒絕在 macOS 上執行。
+選用的 `BACKEND=cuda` 使用 runner 私有的 2 GiB 批次伺服器；在本次執行的共用負載下它比較慢。部分比較使用
+CPU。評估工具設定為所要求的 v2b count 16／v3 weight 0.5 組態，兩個聊天 LM 的 prior 分別為 0.3／0.5／0.7，
+60 個 worker，每個集合 400 次，seed 7。標準集合使用既有評估工具的選取規則；對話集只以目標發言產生測試
+片段，以前一則發言加上較早的目標文字作為上下文（最後 32 個字元，與 `conversion_eval.py` 一致）。
+有序的按鍵、目標、輸出與寫法視為相同的準確率逐列存於 `conversion/`。沒有評估任何 test 分割。
+
+perplexity 對四個模型（包括消融模型）都使用**同一個固定的舊聊天模型最終 E-step 斷詞器**，在所有 dev 行上
+計算。分母包括 EOS，不含 BOS 與上下文。新出現的目標與上下文 token 對應到各模型的 `<unk>`；未知詞數量
+另行回報。對話分數只預測目標，若前一則的最後一個詞以漢字結尾，就以它作為起始上下文，否則用 BOS。
+這些不是新模型以自己的斷詞器重新斷詞後的訓練 perplexity。計數與逐行對數概似可用於重建結果。
+
+### 多輪生成試跑
+
+`serve.sh` 使用私有連接埠 8112，並要求至少 40,500 MiB 的 GPU 記憶體空閒；啟動前**也要檢查主機 RAM**。
+絕不重新啟動既有的伺服器，也不停止其他工作。已停止的伺服器 PID 與其記錄都保留。
+`generate.py` 送出有上限的請求，並在三次請求錯誤後停止。
+`clean.py` 檢查 4–12 則發言、是否完整結束、台灣用詞與長度，接著進行完全相同與模板去重、64-permutation
+MinHash 加上完全 5-gram Jaccard >=.8，以及 v3 的前六字／後四字家族上限 100。被拒絕的發言會切斷相鄰關係。
+MinHash 檢索是機率性的。這些過濾無法保證語意正確或完全沒有錯字：**兩次實際試跑都沒有通過人工樣本審查**。
+非空的生成訓練文字另外需要帶有已審查 `approved_sha256` 的 `generation-review.json`；本實驗沒有核准任何生成文字。
+
+試跑用的 `generate.py`、`clean.py` 與 `serve.sh` 在兩次試跑都沒有通過審查後移除，見 commit 1341eb7；`prepare` 在沒有 `synthetic_dialogues.jsonl` 時與檔案為空時相同。

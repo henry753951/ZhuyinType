@@ -17,7 +17,7 @@ holdout news 資料列各自保留其授權：政府新聞稿（依上游紀錄�
 
 重疊檢查（containment）在遠端主機（`$ZHUYIN_REMOTE_HOST`）上執行，對象是 corpus、Wikipedia LM、v3、lm_chat 與 lm_chat2 已準備好的訓練文字（另含可取得的歷史訓練 shard）。它在 NFC 正規化並取兩種字元摺疊的聯集後，掃描 truth 或 context 是否與訓練文字有任何共同的 8 字元子字串；完全相同的短 truth 也會捨棄。來源路徑、位元組大小、SHA-256、時間戳記與被移除的原始行號記錄在 containment.json。每個檔案只掃描到其記錄的起始大小；有變動或持續增長的檔案揭露在這份收據中。這無法證明資料不存在於無法取得的歷史語料或未來的訓練資料中。
 
-沒有匯入任何 BY-ND 檔案。若要在評測時使用 shanjie 的完整正規化，請在被忽略的評測目錄中讀取固定 commit 中未修改的 eval/variants.tsv，並以 --shanjie-variants PATH 傳給 rows_eval.py。原始的 moedict.txt 同樣只保留在隔離的遠端參考 checkout 中；任何評測讀音都只留在被忽略的基準輸出中。
+沒有匯入任何 BY-ND 檔案。若要在評測時使用 shanjie 的完整正規化，請在被忽略的評測目錄中讀取固定 commit 中未修改的 eval/variants.tsv，並以 `zt eval rows --shanjie-variants PATH` 傳入。原始的 moedict.txt 同樣只保留在隔離的遠端參考 checkout 中；任何評測讀音都只留在被忽略的基準輸出中。
 
 | 檔案 | 授權 | 資料列：原始／捨棄／保留 | SHA-256 |
 |---|---|---:|---|

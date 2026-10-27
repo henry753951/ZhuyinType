@@ -1,6 +1,8 @@
 #!/bin/bash
 # Fails when files about to be published contain private details: the host and key named in .remote.env, or a
-# private-network address.  Run before pushing; CI runs it too (without .remote.env it checks addresses only).
+# private-network address.  Checks tracked files and untracked files that are not ignored (what `git add -A` would
+# publish).  Run before pushing (`tools/zt check public`); CI runs it too (without .remote.env it checks addresses
+# only).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Private-network addresses (not version numbers such as ==10.4.0.35 or -10.3.7.77 in lock files).
@@ -16,7 +18,8 @@ if [[ -f .remote.env ]]; then
 fi
 found=""
 for pattern in "${patterns[@]}"; do
-    found+=$(git ls-files -z | grep -zv -e '^references/' -e '\.lock$' | xargs -0 grep -nIE "$pattern" -- 2>/dev/null || true)
+    found+=$(git ls-files -z --cached --others --exclude-standard | grep -zv -e '^references/' -e '\.lock$' \
+        | xargs -0 grep -nIsE "$pattern" -- 2>/dev/null || true)
 done
 if [[ -n "$found" ]]; then
     printf '%s\n' "$found"

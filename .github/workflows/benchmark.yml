@@ -36,13 +36,18 @@ jobs:
         with:
           ref: ${{ inputs.ref || inputs.version }}
           clean: false
+      - name: Environment
+        run: |
+          # Archives are shared between checkouts on the host (verified by hash like any download).
+          echo "ZHUYIN_ASSET_CACHE=$HOME/zhuyintype/asset-cache" >> "$GITHUB_ENV"
+          tools/zt setup --group export
       - name: ZhuyinBench
-        run: nlp/eval/bench/run.sh "$VERSION" ${{ inputs.quick && '--quick' || '' }}
+        run: tools/zt bench run "$VERSION" ${{ inputs.quick && '--quick' || '' }}
       - name: Mac metrics from the release
         run: |
           gh release download "$VERSION" --pattern metrics-mac.json --output "docs/benchmarks/$VERSION-mac.json" --clobber \
             || echo "No metrics-mac.json on the release"
-          python3 nlp/eval/bench/history.py
+          tools/zt bench history
       - name: Publish results
         if: startsWith(inputs.version, 'v') && !inputs.quick
         run: |

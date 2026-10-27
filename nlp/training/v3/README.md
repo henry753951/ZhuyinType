@@ -1,69 +1,100 @@
-# ZhuyinType v3 神經網路訓練
+# v3：前文編碼器與音節對字編碼器
 
-所有新程式碼都放在這裡，所有產出物都放在 `data/build/v3/`。既有的訓練檔案只以唯讀方式匯入。
-實際結果與限制見 `REPORT.md`。這裡的內容不會安裝進 App。
+從維基百科與台灣口語語料訓練 0.3.0 的 v3：一個讀前文的字級語言模型，和一個依讀音與前文為每個位置的候選字評分的編碼器。
 
-## 既有環境
+## 用途
 
-遠端：`ssh -i $ZHUYIN_REMOTE_KEY $ZHUYIN_REMOTE_HOST`，專案在 `~/zhuyintype`，Python 為 `.venv-gen/bin/python`（已安裝 Torch 2.13/CUDA、coremltools 9、NumPy、OpenCC、datasketch、pyahocorasick）。維基百科擷取會把既有的 `.venv/lib/python3.12/site-packages` 加到 Python 模組搜尋路徑的最後，以沿用 mwparserfromhell 0.7.2。兩個環境都不做任何變更。
+- 產生 0.3.0 的 v3 模型與它的訓練資料：有序的維基百科段落、去重後的口語句、多音字讀音、編碼後的分片、兩個編碼器的檢查點、Core ML 套件與介面測試向量。
+- 產物在資料目錄的 `v3_030/`。0.4.0 起 app 使用的 v3 是同音字流程從這裡繼續訓練的版本，見 [../homophone/README.md](../homophone/README.md)；它的起點、詞彙表與分片都取自 `v3_030/`。
+- `models.py` 也由 `nlp/remote`（ONNX 匯出、模型伺服器）與 ZhuyinBench 匯入。
 
-Mac：用以下指令還原獨立、已鎖定版本的環境：
-
-```sh
-UV_PROJECT_ENVIRONMENT="$PWD/data/build/v3/.venv" uv sync --project nlp/training/v3 --python 3.12.14
-```
-
-這會把 Mac 上的版本固定為 Torch 2.7／coremltools 9。既有的專案 `.venv` 不受影響。
-
-## 資料與工作
-
-把目前的 `data/build/lexicon.tsv` 快照到遠端的 `data/build/v3/lexicon.tsv`。`common.py` 中列出的四個保留測試檔必須都存在於遠端，且雜湊值與 Mac 上一致。不得修改這些檔案，也不得用它們訓練。
-
-在遠端根目錄啟動兩個彼此獨立的準備工作，各啟動一次：
+## 指令
 
 ```sh
-nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-gen/bin/python -u nlp/training/v3/prepare.py wiki > logs/v3-wiki.log 2>&1 < /dev/null &
-nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 .venv-gen/bin/python -u nlp/training/v3/prepare.py colloquial > logs/v3-colloquial.log 2>&1 < /dev/null &
-nohup env PYTHONDONTWRITEBYTECODE=1 OPENBLAS_NUM_THREADS=1 .venv-gen/bin/python -u nlp/training/v3/pipeline.py > logs/v3-pipeline.log 2>&1 < /dev/null &
+zt train list                                # 列出所有流程與步驟
+zt --remote train v3                         # GPU 主機：test 到 export；到 compile 會停止（compile 只能在 macOS 執行）
+zt train v3 export compile validate          # Mac：取回 v3_030/ 的檢查點、詞彙表與 lexicon.tsv 之後
+zt train v3 syllable --force                 # 重跑單一步驟
+zt --remote train v3 --option workers=48     # 維基百科擷取的程序數（預設 24）
+python -m nlp.training.v3.reference --input data/build/v3_030/example.json
+python -m nlp.training.v3.reference --backend torch --data data/build/v3 --input case.json
 ```
 
-用 `data/build/v3/status.json`、各階段的紀錄檔，以及 `pgrep -f '[p]ython -u .*nlp/training/v3/|[p]ython -u nlp/training/v3/'` 檢查程序狀態。不要重複啟動工作。流程會等兩個資料工作都完成，再依序執行 vocab → polyphone → encoding → leakage audit → self-check → context LM → syllable training → dev quality → export。任一階段失敗就停止整個佇列，不會自動重試。重新啟動單一階段前，先查明失敗原因。預設流程是全新執行：重新執行就會重新訓練。context 階段完成後，`pipeline.py --from-syllable` 會接續剩下的階段而不重新訓練 context；syllable 訓練則從頭開始。如果某一段 syllable 訓練在達到平穩前就用完步數上限，流程會自動以每段 10,000 步繼續，使用 `train.py syllable --resume --steps 10000 --batch 64`：新的最佳化器、新的取樣種子，初始學習率 6e-5。累計的歷史紀錄與時間會保留；要連續四次驗證沒有進步，才會進入後續的匯出。這是接續訓練，不是對失敗階段的自動重試。準備階段同樣是全新執行；變更擷取上限或輸入時，不要沿用舊的分片目錄。
+步驟依 0.3.0 實際執行的順序排列：
 
-XML 傾印檔依文件順序讀取。既有的 `lm/pipeline.py` 負責移除標記與 s2twp 轉換；4–200 字、漢字比例 60% 的句子篩選在每個原始段落內進行。被接受的句子保留原本的標點。文章結尾與被排除的段落會中斷上下文。`articles.tsv.gz` 保留原始的頁面、修訂版本與標題出處。擷取在第一個使保留段落數達到一千萬的批次後停止。
+| 步驟 | 內容 | 執行位置 |
+|---|---|---|
+| `test` | 單元測試：讀音、打字變體、匯出介面 | 任一 |
+| `snapshot` | 把 `lexicon.tsv` 與兩個開發集複製到 `v3_030/`（已存在就保留） | 任一 |
+| `wiki` | 依傾印檔順序擷取維基百科段落，排除與保留集有 8 字重疊的段落 | GPU 主機 |
+| `colloquial` | 口語句範本正規化、MinHash 近似去重、每個家族最多 100 句 | GPU 主機 |
+| `vocab` | 字元與音節詞彙表、輸入雜湊 | GPU 主機 |
+| `polyphone` | 多音單字的讀音分類器（只用單一讀音的詞當監督） | GPU 主機（CUDA） |
+| `encode` | 編碼成 mmap 分片：字元、讀音、聲調、文件與訓練樣本 | GPU 主機 |
+| `audit` | 洩漏稽核與分片檢查 | GPU 主機 |
+| `selfcheck` | 以實際資料檢查讀音、變體、UNK 候選與匯出介面 | GPU 主機 |
+| `context` | 前文語言模型訓練到開發集不再進步（30,000 步上限） | GPU 主機（CUDA） |
+| `syllable` | 音節對字編碼器訓練到開發集不再進步；60,000 步後每次接續 10,000 步 | GPU 主機（CUDA） |
+| `quality` | 開發集首選正確率：有無前文、有無 5% 打字雜訊 | GPU 主機（CUDA） |
+| `export` | 兩個 Core ML 套件（fp16、macOS 14）與 `config.json` | 任一（需要 coremltools） |
+| `compile` | 以 `xcrun coremlcompiler` 編譯 | 只限 macOS |
+| `validate` | Core ML 與 PyTorch 一致性、20 組測試向量、CPU 延遲 | 只限 macOS |
 
-範本正規化會移除標點，替換數字（包括中文數字）與明確的人名欄位，再刪除正規化後完全相同的行。以 64 個排列的 MinHash LSH 找出 5-gram Jaccard >=0.8 的疑似重複，再做精確確認。家族的定義是正規化後的前六個字加最後四個字；每個家族上限 100。這是近似的範本偵測器，不保證能找出語意上的重複。
+訓練步驟需要 `train` 相依群組，匯出與驗證需要 `export` 相依群組；`zt train` 會自動帶入。
 
-語料中的每個字元都視為不同的字，因此詞彙量可能超過預期的漢字數。ID 0–3 依規格保留。詞庫提供不含聲調的音節清單。標籤取自最長匹配的詞；有歧義的單字只在 p>=0.9 時採用上下文視窗分類器的結果。低信心的樣本仍保留給語言模型使用，但不納入 syllable 訓練。syllable 階段中 context LM 保持凍結。交叉注意力的 K/V 投影權重由 syllable 損失訓練，並與 context 模型一起匯出。
+## 輸入與輸出
 
-不在語料詞彙中的字元共用 UNK id 2；當某個讀音有未見過的詞庫候選字時，訓練會保留一個 UNK 桶。參考推論同樣把未見過的字元對應到 UNK。訓練使用完整的候選聯集，包括三個相近讀音的所有候選字與正確字，數量可能超過 64。依照需求，匯出的模型接受呼叫端選出、最多 64 個的子集。dev 數字衡量的是在保證含有正確答案的完整聯集中選字的表現，不是檢索或解碼器的準確率。填充用的記憶向量為零並被遮罩；空的上下文只有 BOS。
+路徑相對於資料目錄（預設 `data/build/`）。
 
-## Mac 上的收尾與推論
+讀取：
 
-`data/build/v3/.venv/bin/python nlp/training/v3/finish.py` 會監看遠端、更新 REPORT.md、取回檢查點／詞彙表／套件，用 Mac 上固定版本的 Torch 重新匯出，用 Xcode 編譯，寫出 20 組向量，檢查一致性，並量測只用 CPU 的延遲。遠端無法連線或某階段失敗時，它會停止並記錄。避免同時啟動兩次。原始的有序語料與 mmap 訓練分片留在遠端；交付用的模型、詞彙表、檢查點與統計資料會複製到 Mac。
+- `lexicon.tsv`、`corpus/dev_wikipedia.txt`、`corpus/dev_colloquial.txt`（由 `snapshot` 凍結到 `v3_030/`）；
+- `corpus/synthetic_*.txt`、`corpus/train_commonvoice.txt`（口語來源）；
+- 保留集 `lm/test_sentences.txt`、`corpus/test_colloquial.txt` 與兩個開發集（只用來排除，不訓練）；
+- 維基百科傾印檔 `../raw/lm/zhwiki-latest-pages-articles.xml.bz2`（`zt train lm download` 下載；清理方式沿用 `nlp/training/lm`）。
 
-複製最終的檢查點與詞彙表後，手動收尾：
+寫入 `v3_030/`：
 
-```sh
-data/build/v3/.venv/bin/python nlp/training/v3/export.py
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun coremlcompiler compile data/build/v3/ContextEncoder.mlpackage data/build/v3/
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun coremlcompiler compile data/build/v3/SyllableEncoder.mlpackage data/build/v3/
-data/build/v3/.venv/bin/python nlp/training/v3/validate.py
-```
+- 語料：`wiki.txt`、`articles.tsv.gz`（每篇保留文章的頁面、修訂版本與標題，作為出處）、`colloquial.txt`、`wiki_shards/`、`colloquial_shards/`、`encoded/`；
+- 詞彙與紀錄：`chars.json`、`syllables.json`、`provenance.json`、`wiki.json`、`colloquial.json`、`polyphone.json`、`encode.json`、`data-audit.json`；
+- 模型：`polyphone.pt`、`context.pt`、`syllable.pt`、`*-history.json`、`*-done.json`、`quality.json`；
+- 交付：`ContextEncoder`／`SyllableEncoder` 的 `.mlpackage` 與 `.mlmodelc`、`config.json`、`example.json`、`test_vectors.json`、`parity.json`、`latency.json`。
 
-參考輸入 JSON：
+介面重點（完整的約定寫在 `config.json` 的 `contract`）：
 
-```json
-{"context":"我們住在", "syllables":[["ㄊㄞ",2,0,0],["ㄨㄢ",1,0,0]], "candidates":[["臺","台"],["灣","彎"]]}
-```
+- 前文只取最後 255 個字，前面加 BOS；段落換行對應到 SEP（id 3），段落不可直接相連。
+- 前文編碼器輸出 `memory_k`、`memory_v`，形狀 `[6, Lc, 512]`、float16，已經用音節編碼器每一層的交叉注意力 K/V 投影過，不要再投影。兩個套件必須來自同一個檢查點。
+- 每個位置最多 64 個候選字，由呼叫端挑選；未知字共用 UNK（id 2），填充為 0。
+- `test_vectors.json` 是 CPU Core ML 的實際輸出；float16 記憶以 base64 little-endian 位元組加 SHA256 儲存，請直接解碼成張量。`zhuyin-cli --check-v3` 以它比對 Swift 的結果。
 
-```sh
-data/build/v3/.venv/bin/python nlp/training/v3/reference.py --input data/build/v3/example.json
-# 或使用對應的 fp32 檢查點：
-data/build/v3/.venv/bin/python nlp/training/v3/reference.py --backend torch --input data/build/v3/example.json
-```
+授權：模型與衍生語料為 CC BY-SA 4.0，程式碼為 AGPL-3.0-only。再散布時保留來源聲明與 `articles.tsv.gz`。
 
-`config.json` 描述維度、名稱、ID 與介面限制。上下文文字只取最後 255 個字元，並在前面加上 BOS。段落換行對應到 SEP id 3，必須保留這些邊界。記憶輸出為 `[6,Lc,512]` float16，已經包含最後每一層 syllable 的 K/V 投影，不要再投影一次。context 與 syllable 套件必須來自同一個檢查點。
+## 檔案
 
-`test_vectors.json` 包含整數型態的模型輸入，以及 CPU Core ML 的精確 logprob。預期的記憶陣列是 base64 編碼、little-endian、連續的 float16 位元組，並附上形狀與 SHA256；請直接解碼到記憶張量。每個案例都附上完整的原文、輸入的讀音與候選字串。不要把記憶字串當成十進位陣列解讀。呼叫端可以拿 context 輸出與這些位元組比對，也可以把這些位元組直接餵入，單獨檢查 syllable 的一致性。fp16 執行與 fp32 PyTorch 並非逐位元相同；容許誤差與實測差異都有記錄。
+| 檔案 | 說明 |
+|---|---|
+| `pipeline.py` | `zt train v3` 的步驟 |
+| `common.py` | 輸出目錄 `v3_030/`、保留集、JSON 與雜湊工具 |
+| `prepare.py` | 維基百科段落、口語去重、詞彙表 |
+| `readings.py` | 詞庫最長匹配與逐字讀音（不需要 PyTorch） |
+| `polyphone.py` | 多音單字讀音分類器的訓練與載入 |
+| `encode.py` | 編碼成 mmap 分片 |
+| `verify_data.py` | 洩漏稽核與分片檢查 |
+| `selfcheck.py` | 以實際資料做的訓練前檢查 |
+| `noise.py` | 打字變體：鄰鍵、聲調、對調、多打、漏打、變調、台灣讀音 |
+| `dataset.py` | 訓練批次與候選字集合 |
+| `models.py` | 前文編碼器、音節對字編碼器與匯出介面 |
+| `train.py` | 兩個編碼器的訓練與接續訓練 |
+| `evaluate.py` | 開發集首選正確率 |
+| `export.py` | Core ML 匯出與 `config.json` |
+| `coreml.py` | 以 `coremlcompiler` 編譯（macOS） |
+| `validate.py` | Core ML 一致性、測試向量、延遲（macOS） |
+| `reference.py` | 以 Core ML 或 PyTorch 執行單一案例 |
+| `test_v3.py` | 單元測試 |
 
-模型與資料授權：與既有語料相同，為 CC BY-SA 4.0；程式碼為 AGPL-3.0-only。再散布訓練產出物時，請保留既有的來源聲明與維基百科頁面／修訂版本出處清單。
+## 相關文件
+
+- [REPORT.md](REPORT.md)：0.3.0 訓練的過程與數字
+- [../homophone/README.md](../homophone/README.md)：0.4.0 起 app 使用的繼續訓練版本
+- [docs/MODEL.md](../../../docs/MODEL.md) §6、[docs/MODEL_V3.md](../../../docs/MODEL_V3.md)：方法與接進引擎的方式
+- [../README.md](../README.md)：所有訓練流程

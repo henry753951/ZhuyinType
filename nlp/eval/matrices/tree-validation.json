@@ -1,0 +1,18 @@
+{
+  "evaluator": "conversion",
+  "configurations": [
+    {"name": "current", "config": "engine",
+     "cli_args": ["--reranker", "{data}/reranker/tree-validation/current", "--rerank-count", "16", "--rerank-weight", "1",
+                  "--v3", "{data}/v3", "--v3-weight", "0.5", "--chat-lm", "{data}/lm_chat", "--chat-prior", "0.5"]},
+    {"name": "tree", "config": "engine",
+     "cli_args": ["--reranker", "{data}/reranker", "--rerank-count", "16", "--rerank-weight", "1",
+                  "--v3", "{data}/v3", "--v3-weight", "0.5", "--chat-lm", "{data}/lm_chat", "--chat-prior", "0.5"]}
+  ],
+  "sets": [
+    {"name": "colloquial", "set": "colloquial-dev"},
+    {"name": "wikipedia", "set": "wiki-dev"},
+    {"name": "chat", "set": "chat-dev"},
+    {"name": "context", "set": "wiki-dev", "options": ["--context", "line"]},
+    {"name": "continue", "set": "colloquial-dev", "options": ["--split", "continue"]}
+  ]
+}

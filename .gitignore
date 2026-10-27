@@ -12,16 +12,18 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 dist/
 
-# Python environments and caches
+# Python environments and caches (the uv environment is .venv; uv.lock is tracked)
 .venv/
 .venv-*/
 __pycache__/
 *.pyc
+.mypy_cache/
+.ruff_cache/
 
 # Data: downloads and everything generated from them (lexicon, corpora, language models, Core ML and ONNX models,
-# checkpoints, evaluation outputs). Each nlp/training/ directory documents how to rebuild its outputs.
-data/raw/
-data/build/
+# checkpoints, evaluation outputs), in data/raw/ and data/build/; data/ may also be a symlink to a shared copy.
+# Each nlp/training/ directory documents how to rebuild its outputs.
+/data
 
 # Training, inference and evaluation outputs written next to the code
 nlp/**/results/
@@ -46,7 +48,6 @@ nlp/**/checkpoints/
 
 # Agent run logs
 .codex-logs/
-nlp/remote/run.*-snapshot.sh
 
 # Downloaded build tools (Sparkle CLI)
 .tools/

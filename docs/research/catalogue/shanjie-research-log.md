@@ -21,8 +21,8 @@
 
 **狀態欄**（ZhuyinType）：**有**、**有（做法不同）**、**沒有**、**不適用**，或 **待確認**（無法從我們的文件或程式碼確認）。以下幾項說法已對照程式碼確認：
 - `nlp/engine/Sources/ZhuyinCore/Conversion.swift` 以語言模型歷史狀態解碼，排序時納入結尾分數。
-- `nlp/eval/stats.py` 已經有精確 McNemar、配對 bootstrap、Poisson 改壞上界、MDE 與叢集。
-- `nlp/eval/rows_eval.py` 報告 oracle@16 與 CER，並套用善解式的異體合併。
+- `zt eval stats`（`nlp/eval/stats.py`）已經有精確 McNemar、配對 bootstrap、Poisson 改壞上界、MDE 與叢集。
+- `zt eval rows`（`nlp/eval/rows.py`）報告 oracle@16 與 CER，並套用善解式的異體合併。
 - pkg 安裝到 `/Library/Input Methods`。
 - `RecallKind` 有四種：whole、span、typo 與 phrase。
 
