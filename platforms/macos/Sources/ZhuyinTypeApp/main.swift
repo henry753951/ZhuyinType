@@ -18,6 +18,11 @@ if let index = arguments.firstIndex(where: { $0 == "--render-ui" || $0 == "--ren
          ? 0 : 1)
 }
 
+// `--setup-wizard`: open the setup wizard (for the installer's last step), then run as the input method.
+if arguments.contains("--setup-wizard") {
+    DispatchQueue.main.async { WizardWindowController.shared.show(.quick) }
+}
+
 // Development: open the settings window with sample words, print its window number, and keep running.
 if let index = arguments.firstIndex(of: "--settings-demo") {
     let application = NSApplication.shared

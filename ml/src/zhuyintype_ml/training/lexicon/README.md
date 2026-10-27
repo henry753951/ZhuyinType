@@ -14,7 +14,7 @@
   - `loan`：台灣華語從台語借的詞，一個字打台語音（仔 ㄚ），聲調不限；
   - `misread`：不熟悉的字在詞裡打成它的其他讀音（蚵仔煎 ㄎㄜ ㄗˇ ㄐㄧㄢ）。
 - 每一列都比該詞最常見的讀音低，所以照詞典讀音打時分數和原本相同。每一類可以用 `--offset` 加上成本，在開發集上調整：照標準讀音打的結果不能變差。`misread-dev` 和字音表同源，只用來確認解碼。
-- 分工：台灣讀音與詞專屬的讀音是詞庫的列；系統性、能從單一字推出的變體（輕聲打本調、三聲變調、聲旁誤讀、台語音、語氣詞的聲調）交給引擎的讀音通道，引擎讀 `channel.tsv` 與 `taiwan.tsv`，格式見 [reading-channel.md](../../../../../resources/formats/reading-channel.md)。`merge` 步驟的預設是資料端的合併候選（`--data-only`，各類加 2 nats），強的台灣讀音直接成為詞的讀音（期中 ㄑㄧˊ），原讀音降為變體；`--option standard=0` 保留 CC-CEDICT 的讀音，`--option expanded=1` 產生每一類都展開的對照版。`misread` 步驟也照台灣標準讀音打，另有 `mainland` 子集照被取代的讀音打。
+- 分工：台灣讀音與詞專屬的讀音是詞庫的列；系統性、能從單一字推出的變體（輕聲打本調、三聲變調、聲旁誤讀、台語音、語氣詞的聲調）交給引擎的讀音通道，引擎讀 `channel.tsv` 與 `taiwan.tsv`，格式見 [reading-channel.md](../../../../../resources/formats/reading-channel.md)。`merge` 步驟的預設是資料端的合併候選（`--data-only`，各類加 2 nats），強的台灣讀音直接成為詞的讀音（期中 ㄑㄧˊ），原讀音降為變體；單字的列只收台灣讀音與詞典詞裡的讀音（`--option char_classes=taiwan,word`），帶進詞的台灣讀音強度至少 0.5（`--option min_taiwan=0.5`），其餘留給引擎，因為單字的列在每個音節都會比對、拖慢每一鍵；`--option standard=0` 保留 CC-CEDICT 的讀音，`--option expanded=1` 產生每一類都展開的對照版。`misread` 步驟也照台灣標準讀音打，另有 `mainland` 子集照被取代的讀音打。
 - 自動找詞：在維基百科、聊天語料（立法院公報、維基討論頁、Common Voice）、營業稅籍登記的名稱與地址上，挑出凝固度、自由度至少是同長度詞典詞中位數、邊界字不常單獨成詞的 2–6 字 n-gram；用目前的引擎單獨打一次，打錯的才收。讀音用 v3 的讀音標注，詞頻由次數換算，依語料分成詞包。
 - 新詞要有語言模型的計數才選得上：`lm` 步驟把基本詞庫加詞包當成斷詞詞彙，重新斷詞並重算維基百科與聊天兩個 bigram（文字、保留集、平滑與剪枝都和出貨的模型相同）。
 - 評測集：`misread-dev`（開發集文字照實際讀音打，依機制分子集，`misread.json` 記錄各子集的讀音狀態）與 `wiki-new-dev`（傾印檔之後新建的維基條目名稱）。
@@ -29,7 +29,7 @@ zt --remote --push data/build/lexicon_coverage --push data/raw/lexicon \
     --push data/build/lm_chat2/real_dialogues.jsonl --push data/build/lm_chat2/splits.json \
     --push data/build/corpus/train_commonvoice.txt \
     --detach train lexicon prepare mine vocabulary lm --option wiki=WIKI_SENTENCES_DIR --option workers=16
-zt train lexicon merge --force --option packs=wiki,chat,registry --option max_cost=8
+zt train lexicon merge --force    # data-4 的詞庫；加 --option packs=wiki,chat,registry,places 會收詞包
 zt --remote eval rows --config app --data data/build/lexcov-X --set misread wiki-new-dev
 python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 ```
@@ -47,7 +47,7 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 | `mine` | n-gram 次數、分支熵、選詞 | GPU 主機（16 程序，numpy） |
 | `vocabulary` | 讀音、詞頻、引擎檢查，依語料分成詞包 | GPU 主機（`train` 相依群組） |
 | `lm` | 以詞包重新斷詞，重算維基百科與聊天兩個 bigram | GPU 主機（16 程序） |
-| `merge` | `lexicon.tsv`：資料端的合併候選（基本詞庫、全字庫讀音、詞層級的台灣讀音與異讀、詞包） | 任一 |
+| `merge` | `lexicon.tsv`：資料端的合併候選（基本詞庫、台灣標準讀音、單字的台灣讀音與詞典詞讀音、詞層級的台灣讀音與異讀；詞包要另外指定） | 任一 |
 
 ## 輸入與輸出
 

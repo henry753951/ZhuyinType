@@ -26,6 +26,14 @@
 ### 2.1 來源
 CC-CEDICT（詞彙、正體字形、讀音，有標註時優先採用台灣讀音）、Unicode Unihan（Big5 字元與讀音）與 wordfreq（詞頻）。產生方式見 `ml/src/zhuyintype_ml/data/tools/build_lexicon.py` 與 [data/SOURCES.md](../../resources/SOURCES.md)。
 
+data-4 起，詞庫在這之上加讀音通道的資料端部分（`zt train lexicon`，`ml/src/zhuyintype_ml/training/lexicon/`）：
+
+- CNS11643 全字庫有收、且至少兩組獨立來源同意的台灣讀音，成為詞的標準讀音（期中 ㄑㄧˊ、危險 ㄨㄟˊ，共 3,102 個詞），被取代的讀音降為變體，成本 −log max(1 − 強度, m)；
+- 全字庫也列出的台灣讀音與字在詞典詞裡的讀音收成單字的列（熟 ㄕㄡˊ、蚵 ㄎㄜ）；強度至少 0.5 的台灣讀音帶進含這個字的詞（成熟 ㄕㄡˊ）；Wiktionary 與小麥注音給特定詞的台灣讀音與異讀也收成列。這些列都比詞的讀音低 2 nats 以上。
+- 全字庫與 Wiktionary 的其他單字讀音（約 3,700 列）不收：單字的列在每個音節都會比對，這些列讓 Mac 每鍵 CPU 多約 8%，在所有評測集上量不出差別，所以留給引擎的讀音通道。
+
+系統性的讀音變體（輕聲打本調、三聲變調、有邊讀邊、台語音）由引擎的讀音通道處理，格式與三種讀音狀態見 [reading-channel.md](../../resources/formats/reading-channel.md)。
+
 ### 2.2 分數
 每行是 log P(詞, 讀音)。引擎讀詞庫時拆成詞的機率（取最常見讀音的分數）和讀音的相對機率：分數 = log P(詞 | 前文) + log P(讀音 | 詞)。
 
