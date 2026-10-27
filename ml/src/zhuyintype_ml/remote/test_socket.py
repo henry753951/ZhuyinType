@@ -1,7 +1,7 @@
 """Regression: zhuyin-cli reads a short model-server reply while the Unix socket stays open (the Linux `recv` path;
 macOS keeps its original read, which waits for the connection to close, so the test runs on Linux only).
 
-    zt --remote check python --start zhuyintype_ml/remote      # skipped until zhuyin-cli is built (`zt build cli`)
+    zt --remote check python --start src/zhuyintype_ml/remote      # skipped until zhuyin-cli is built (`zt build cli`)
 """
 
 from __future__ import annotations

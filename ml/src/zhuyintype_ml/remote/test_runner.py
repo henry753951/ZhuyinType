@@ -1,6 +1,6 @@
 """The runner's pure parts: the steps of a run, output paths on the host, the host settings, asset groups.
 
-zt check python --start ml/src/zhuyintype_ml/remote
+zt check python --start src/zhuyintype_ml/remote
 """
 
 from __future__ import annotations
@@ -38,6 +38,20 @@ class StepsTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             runner.environment(runner.Options("w", env=["nonsense"]))
         self.assertEqual(runner.environment(runner.Options("w", env=["A=1=2"])), {"A": "1=2"})
+
+
+class OptionTests(unittest.TestCase):
+    def test_nice_is_parsed_and_bounded(self) -> None:
+        import argparse
+
+        from zhuyintype_ml.cli.commands import remote
+
+        parser = argparse.ArgumentParser()
+        remote.run_options(parser)
+        self.assertEqual(remote.options_from(parser.parse_args(["--nice", "10"])).nice, 10)
+        self.assertEqual(remote.options_from(parser.parse_args([])).nice, 0)
+        with self.assertRaises(argparse.ArgumentTypeError):
+            remote.nice_value("20")
 
 
 class OutputTests(unittest.TestCase):

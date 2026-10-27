@@ -37,7 +37,7 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     python.add_argument(
         "--start",
         default="src/zhuyintype_ml",
-        help="directory to discover tests in, relative to ml/ (default: src/zhuyintype_ml)",
+        help="directory to discover tests in, relative to ml/ or the repository (default: src/zhuyintype_ml)",
     )
     python.add_argument("-p", "--pattern", default="test_*.py", help="test file pattern (default: test_*.py)")
     python.set_defaults(func=python_tests)
@@ -83,10 +83,22 @@ def app(_args: argparse.Namespace) -> int:
     )
 
 
+def test_start(start: str) -> str:
+    """The test directory relative to ml/, whether it was given relative to ml/, to the repository, or to the
+    package (`src/zhuyintype_ml/remote`, `ml/src/zhuyintype_ml/remote` and `zhuyintype_ml/remote` are the same)."""
+    start = start.rstrip("/")
+    if start.startswith("ml/"):
+        start = start[len("ml/") :]
+    if start.startswith("zhuyintype_ml"):
+        start = "src/" + start
+    return start
+
+
 def python_tests(args: argparse.Namespace) -> int:
+    start = test_start(args.start)
     return run(
         paths.python_command(
-            "unittest", "discover", "-s", args.start, "-t", "src", "-p", args.pattern, groups=tuple(args.group)
+            "unittest", "discover", "-s", start, "-t", "src", "-p", args.pattern, groups=tuple(args.group)
         )
     )
 

@@ -66,7 +66,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 |---|---|
 | `zt check engine` | 引擎行為與延遲檢查（ZhuyinCoreChecks）；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
 | `zt check app` | 已建置 App 的自我測試與封裝檢查 |
-| `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄 |
+| `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄（相對於 `ml/` 或版本庫根目錄都可以） |
 | `zt check lint` | ruff；`--fix` 自動修正，`--format` 一併檢查排版 |
 | `zt check types` | mypy，範圍在 `pyproject.toml` 的 `[tool.mypy] files` |
 | `zt check public` | 確認要發布的檔案裡沒有私人主機、金鑰或內部網路位址（`tools/check-public.sh`） |
@@ -100,13 +100,15 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt --remote --backend cuda eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json` | 模型呼叫改由 GPU 上的 PyTorch 伺服器計算 |
 | `zt --remote --push data/build/v3_new --detach train v3` | 先傳送本機檔案，並在背景執行 |
 | `zt --remote --workdir onnx-eval-x --env ZT_BUILD_JOBS=16 ...` | 指定主機上的工作目錄；限制建置使用的核心數 |
+| `zt --remote --nice 10 --detach eval sweep ...` | 降低優先順序執行。沒有人在等結果的長時間掃描用這個，把 CPU 讓給別人在等的工作 |
 | `zt remote status` | 主機負載、執行中的工作與記錄的最後幾行 |
 | `zt remote logs -f` | 持續顯示最近一次執行的記錄 |
+| `zt remote wait [--timeout 540]` | 等到工作結束，以它的結束狀態返回；超過時限還在執行時回傳 124，再呼叫一次就繼續等。不要自己寫 ssh 加 sleep 的迴圈 |
 | `zt remote pull [PATH ...]` | 取回 `data/build/remote_eval/` 與指定的路徑 |
 | `zt remote stop` | 依記錄的 PID 停止背景執行的工作 |
 | `zt remote shell` | 在主機的工作目錄開一個 shell |
 | `zt remote sync` | 只同步原始碼 |
-| `zt remote list` | 主機上的工作目錄與最後的結束狀態 |
+| `zt remote list` | 主機的負載，以及每個工作目錄的最後結束狀態、執行中的工作跑了多久與優先順序 |
 
 `zt --remote` 的流程、選項與主機上的目錄見 [ml/src/zhuyintype_ml/remote/README.md](../ml/src/zhuyintype_ml/remote/README.md)。
 

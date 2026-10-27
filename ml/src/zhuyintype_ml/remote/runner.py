@@ -12,7 +12,9 @@ A run on the host:
 4. copies back the files the command was asked to write (--json/--out/--output), the work directory's
    data/build/remote_eval/ and any --pull paths, also after a failure.
 
-With --detach the run continues on the host after the connection closes; `zt remote status|logs|pull|stop` follow it.
+With --detach the run continues on the host after the connection closes; `zt remote status|logs|pull|stop` follow it
+and `zt remote wait` blocks until it ends.  --nice lowers a run's priority, so long sweeps leave the CPU to runs
+someone is waiting for.
 """
 
 from __future__ import annotations
@@ -34,6 +36,8 @@ from zhuyintype_ml.remote.host import Host
 OUTPUT_OPTIONS = ("--json", "--out", "--output")
 REMOTE_OUTPUTS = "data/build/remote_eval"
 BUSY = 75
+# `zt remote wait` gave up while the run is still going (the `timeout` command's status).
+STILL_RUNNING = 124
 # Commands that read the data directory, so a run fetches the evaluation data first unless --fetch says otherwise.
 DATA_COMMANDS = ("eval", "bench", "models", "train")
 
@@ -50,6 +54,8 @@ class Options:
     detach: bool = False
     env: list[str] = field(default_factory=list)
     groups: list[str] = field(default_factory=list)
+    # Priority on the host: 0 (normal) to 19 (only what other runs leave).
+    nice: int = 0
 
 
 def steps(argv: list[str], options: Options) -> list[list[str]]:
@@ -275,21 +281,23 @@ class RemoteRunner(Runner):
         log = self.host.home_path("logs", f"{options.workdir}-{stamp}.log")
         self.host.run(f"cat > {self.work(options.workdir, job)}", stdin=self.job(options.workdir, argv, options))
         inner = shlex.quote(f"bash {job}; s=$?; echo $s > .zt/last-status; exit $s")
+        shell = f"nice -n {options.nice} bash" if options.nice else "bash"
         # `;` rather than `&&` before the job: a trailing `&` would otherwise put the cd in the background too.
         prefix = f"cd {self.work(options.workdir)} || exit 1; ln -sfn {log} .zt/last.log; "
         if options.detach:
             script = (
-                prefix + f"nohup setsid flock -n -E {BUSY} .zt/lock bash -c {inner} > {log} 2>&1 < /dev/null "
+                prefix + f"nohup setsid flock -n -E {BUSY} .zt/lock {shell} -c {inner} > {log} 2>&1 < /dev/null "
                 '& echo $! > .zt/run.pid; echo "started in the background: pid $(cat .zt/run.pid), '
                 'log $(readlink .zt/last.log)"'
             )
             self.host.run(script)
             print(
-                f"follow it with `zt remote logs -f --workdir {options.workdir}`; "
+                f"follow it with `zt remote logs -f --workdir {options.workdir}`, wait for it with `zt remote wait "
+                f"--workdir {options.workdir}`; "
                 f"copy results back with `zt remote pull --workdir {options.workdir}`"
             )
             return 0
-        script = prefix + f"flock -n -E {BUSY} .zt/lock bash -c {inner} 2>&1 | tee {log}; exit ${{PIPESTATUS[0]}}"
+        script = prefix + f"flock -n -E {BUSY} .zt/lock {shell} -c {inner} 2>&1 | tee {log}; exit ${{PIPESTATUS[0]}}"
         tty = sys.stdin.isatty() and sys.stdout.isatty()
         try:
             status = self.host.run(script, check=False, tty=tty).returncode
@@ -333,6 +341,22 @@ class RemoteRunner(Runner):
         )
         return self.host.run(script, check=False).returncode
 
+    def wait(self, workdir: str, timeout: int) -> int:
+        """Blocks until the run holding this work directory (detached or not) ends; returns its exit status, or
+        STILL_RUNNING when `timeout` seconds (0: no limit) pass first.  The loop runs on the host, in one connection,
+        and prints a line every five minutes so the connection stays alive."""
+        script = (
+            f"cd {self.work(workdir)} 2>/dev/null || {{ echo 'no work directory {workdir}'; exit 1; }}; t=0; "
+            "while [ -e .zt/lock ] && ! flock -n .zt/lock true; do "
+            f"if [ {int(timeout)} -gt 0 ] && [ $t -ge {int(timeout)} ]; then "
+            f'echo "still running after ${{t}}s"; exit {STILL_RUNNING}; fi; '
+            '[ $t -gt 0 ] && [ $((t % 300)) -eq 0 ] && echo "still running ($((t / 60)) min)"; '
+            "sleep 10; t=$((t + 10)); done; "
+            's=$(cat .zt/last-status 2>/dev/null || echo 0); echo "finished: exit status $s"; '
+            '[ -e .zt/last.log ] && tail -n 5 .zt/last.log; exit "$s"'
+        )
+        return self.host.run(script, check=False).returncode
+
     def logs(self, workdir: str, follow: bool, lines: int) -> int:
         script = f"tail -n {int(lines)} {'-F ' if follow else ''}{self.work(workdir, '.zt/last.log')}"
         return self.host.run(script, check=False, tty=follow and sys.stdout.isatty()).returncode
@@ -351,11 +375,17 @@ class RemoteRunner(Runner):
         return self.host.run(script, check=False, tty=True).returncode
 
     def list(self) -> int:
+        """Every work directory on the host: its last exit status and, while it runs, for how long and at what
+        priority; the host's load first, so it is clear who is using the CPU."""
         script = (
-            f"cd {self.host.home_path('work')} 2>/dev/null || exit 0; for d in */.zt; do d=${{d%/.zt}}; "
+            f"echo \"load $(cut -d' ' -f1-3 /proc/loadavg) on $(nproc) cores\"; "
+            f"cd {self.host.home_path('work')} 2>/dev/null || exit 0; "
+            "printf '%-40s %-6s %s\\n' 'work directory' 'exit' 'run'; for d in */.zt; do d=${d%/.zt}; "
             's=$(cat "$d/.zt/last-status" 2>/dev/null || echo -); r=; '
-            '[ -f "$d/.zt/run.pid" ] && kill -0 "$(cat "$d/.zt/run.pid")" 2>/dev/null && r=running; '
-            'printf \'%-40s %-8s %s\\n\' "$d" "$s" "$r"; done'
+            'if [ -e "$d/.zt/lock" ] && ! flock -n "$d/.zt/lock" true; then r=running; '
+            'p=$(cat "$d/.zt/run.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then '
+            'r="running $(ps -o etime= -p "$p" | tr -d " "), nice $(ps -o ni= -p "$p" | tr -d " ")"; fi; fi; '
+            'printf \'%-40s %-6s %s\\n\' "$d" "$s" "$r"; done'
         )
         return self.host.run(script, check=False).returncode
 

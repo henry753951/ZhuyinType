@@ -44,6 +44,7 @@ tools/zt --remote eval conversion --set dev           # 在 GPU 主機上評測�
 tools/zt eval stats BEFORE.json AFTER.json            # 成對比較
 tools/zt --remote bench run vX.Y.Z          # ZhuyinBench（CI 會在每次發布後執行）
 tools/zt --remote train v3                  # 訓練流程（tools/zt train list）
+tools/zt remote wait --timeout 540          # 等背景工作結束（不要自己寫 ssh／sleep 迴圈）；list 看主機上誰在跑
 platforms/macos/scripts/release.sh            # 發布流程執行的內容（pkg、Sparkle zip、差分更新、appcast）
 ```
 

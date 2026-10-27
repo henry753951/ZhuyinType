@@ -4,7 +4,8 @@
     zt --remote --workdir onnx-eval-x --export eval conversion --json out.json
     zt --remote --backend cuda eval conversion --set colloquial-dev  # model calls on the GPU (PyTorch server)
     zt --remote --push data/build/v3_new --detach train v3          # copy local files, keep running after logout
-    zt remote status | logs [-f] | pull [PATH ...] | stop | shell | sync | list
+    zt --remote --nice 10 --detach eval sweep ...                    # a long sweep that yields the CPU to others
+    zt remote status | logs [-f] | wait [--timeout S] | pull [PATH ...] | stop | shell | sync | list
 
 The host comes from ZHUYIN_REMOTE_HOST / ZHUYIN_REMOTE_KEY in .remote.env or the environment (.remote.env.example).
 Each checkout has its own work directory on the host (<base>/work/<checkout>-<hash>) unless --workdir names one;
@@ -20,6 +21,10 @@ runs log to <base>/logs.  Options of `zt --remote` come before the command:
   --group GROUP       also install a dependency group on the host (repeatable)
   --env KEY=VALUE     environment for the run, e.g. ZT_BUILD_JOBS=16 (repeatable)
   --detach            keep running on the host after this command returns (nohup); see `zt remote status`
+  --nice N            run at a lower priority (0-19; default 0); use 10 for long sweeps nobody is waiting on
+
+Waiting for a detached run: `zt remote wait --timeout 540` returns the run's exit status when it ends, or 124 if it
+is still running after 540 seconds; call it again to keep waiting.  Do not write ssh/sleep loops for this.
 """
 
 from __future__ import annotations
@@ -46,6 +51,16 @@ def run_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--group", action="append", default=[], help="dependency group to install on the host")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE", help="environment for the run")
     parser.add_argument("--detach", action="store_true", help="keep running after this command returns")
+    parser.add_argument(
+        "--nice", type=nice_value, default=0, metavar="N", help="lower priority on the host, 0-19 (default: 0)"
+    )
+
+
+def nice_value(text: str) -> int:
+    value = int(text)
+    if not 0 <= value <= 19:
+        raise argparse.ArgumentTypeError("--nice takes 0 to 19")
+    return value
 
 
 def options_from(args: argparse.Namespace) -> Options:
@@ -62,6 +77,7 @@ def options_from(args: argparse.Namespace) -> Options:
         args.detach,
         args.env,
         args.group,
+        args.nice,
     )
 
 
@@ -89,7 +105,7 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser(
         "remote",
         description="Run zt commands on the GPU host and follow them.",
-        help="the GPU host: run, status, logs, pull, stop, shell",
+        help="the GPU host: run, status, logs, wait, pull, stop, shell, list",
         epilog=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -126,6 +142,12 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     logs.add_argument("-n", "--lines", type=int, default=40, help="lines to show (default: 40)")
     logs.set_defaults(func=lambda a: remote_runner().logs(a.workdir or default_workdir(), a.follow, a.lines))
 
+    wait = workdir(actions.add_parser("wait", help="block until the run ends; exit with its status"))
+    wait.add_argument(
+        "--timeout", type=int, default=0, metavar="S", help="give up after S seconds with status 124 (default: none)"
+    )
+    wait.set_defaults(func=lambda a: remote_runner().wait(a.workdir or default_workdir(), a.timeout))
+
     pull = workdir(actions.add_parser("pull", help="copy back data/build/remote_eval and other paths"))
     pull.add_argument("paths", nargs="*", help="paths relative to the checkout")
     pull.set_defaults(func=lambda a: remote_runner().pull(a.workdir or default_workdir(), a.paths))
@@ -136,9 +158,9 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     workdir(actions.add_parser("shell", help="a login shell in the work directory")).set_defaults(
         func=lambda a: remote_runner().shell(a.workdir or default_workdir())
     )
-    actions.add_parser("list", help="work directories on the host and their last exit status").set_defaults(
-        func=lambda a: remote_runner().list()
-    )
+    actions.add_parser(
+        "list", help="host load; every work directory, its last exit status and current run"
+    ).set_defaults(func=lambda a: remote_runner().list())
     parser.set_defaults(func=lambda a: parser.print_help())
 
 
