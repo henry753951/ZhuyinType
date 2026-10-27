@@ -9,7 +9,7 @@ struct IntroPane: View {
 
     var body: some View {
         Form {
-            Section {
+            SettingsSection {
                 VStack(spacing: 14) {
                     HStack(spacing: 14) {
                         Image(nsImage: NSApp.applicationIconImage)
@@ -25,7 +25,7 @@ struct IntroPane: View {
                 }
                 .padding(.vertical, 8)
             }
-            Section("目前的設定") {
+            SettingsSection("目前的設定") {
                 SummaryRow(title: "空白鍵", value: preferences.spaceAction == .openCandidates ? "開啟候選字視窗" : "送出並輸入空白",
                            place: SettingsPlace(.typing, row: SettingsRow.space))
                 SummaryRow(title: "標點按法", value: preferences.punctuationKeys == .windows ? "Windows" : "macOS",
@@ -35,7 +35,7 @@ struct IntroPane: View {
                 SummaryRow(title: "中英切換", value: CurrentKeys(preferences).modeKey.map { "按 \($0)" } ?? "不使用",
                            place: SettingsPlace(.typing, row: SettingsRow.shiftTap))
             }
-            Section("功能") {
+            SettingsSection("功能") {
                 FeatureGrid(features: IntroFeature.all(CurrentKeys(preferences), preferences: preferences))
                     .padding(.vertical, 6)
             }
@@ -119,20 +119,8 @@ private struct SummaryRow: View {
     let value: String
     let place: SettingsPlace
     var body: some View {
-        Button {
+        SettingLinkRow(title: title, value: value) {
             SettingsWindowController.shared.open(place)
-        } label: {
-            LabeledContent {
-                HStack(spacing: 6) {
-                    Text(value).foregroundStyle(.secondary).lineLimit(1)
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
-                }
-            } label: {
-                Text(title)
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("開啟「\(place.pane.title)」")
     }
 }
