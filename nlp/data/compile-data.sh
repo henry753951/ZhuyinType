@@ -5,4 +5,4 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # No third-party packages, dependency restore, or network access.
 python="$ROOT/.venv/bin/python"
 [[ -x "$python" ]] || python=python3
-exec "$python" "$ROOT/training/lm/compile_data.py" "$1"
+exec "$python" "$ROOT/nlp/training/lm/compile_data.py" "$1"

@@ -1,10 +1,10 @@
 {
   "components": {
     "checkpoints": {
-      "file": "zhuyintype-checkpoints-0a2e000f0796.tar.gz",
-      "release": "data-1",
-      "sha256": "0a2e000f0796454243bfdebcabbb3adf099a7607a1ce0637c9483d4546225e84",
-      "size": 509144323
+      "file": "zhuyintype-checkpoints-2659054d6777.tar.gz",
+      "release": "data-3",
+      "sha256": "2659054d6777dbed1fae5a408cfb6e6be28ea25bb2a328d119fc1d22a133b827",
+      "size": 530279479
     },
     "eval-sets": {
       "file": "zhuyintype-eval-sets-e0612940c268.tar.gz",
@@ -37,10 +37,10 @@
       "size": 115712744
     },
     "v3": {
-      "file": "zhuyintype-v3-a5139173441e.tar.gz",
-      "release": "data-1",
-      "sha256": "a5139173441e3e2101c2c36b2d0af8b57cbaddad9d53f910501292a09c50dc49",
-      "size": 125111511
+      "file": "zhuyintype-v3-13c33b64947a.tar.gz",
+      "release": "data-3",
+      "sha256": "13c33b64947a674f967f1b884531c6edf52ac965103e61acac7d2537cc70c1cb",
+      "size": 125215560
     }
   },
   "repository": "henry753951/ZhuyinType"

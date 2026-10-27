@@ -28,7 +28,7 @@ flowchart LR
 | `lm_chat/` | `lm_chat_v1/`、Taiwan Tongues 評測集 | — | 第一版聊天模型（0.3.0，含產生的句子與 Taiwan Tongues，已停用）；Taiwan Tongues 開發、測試集仍用於評測。見 `lm_chat/REPORT.md` |
 | `lm_chat2/` | `lm_chat/` | 同 `lm/`，加上 `NOTICE.md`、`attribution.jsonl`、`source-manifest.json` | 真實口語的聊天詞 bigram（立法院逐字稿、維基百科討論頁、Common Voice），0.4.0 起出貨。見 `lm_chat2/REPORT.md` |
 | `reranker/` | `reranker/` | `Reranker.mlmodelc`、`RerankerTree.mlmodelc`、`vocab.json`、`config.json` | 字級 Transformer 語言模型（v2b），整句重排（前綴樹計分）與候選字排序。見 `reranker/REPORT_v2.md` |
-| `v3/` | `v3_0.3/`（0.3.0 的 v3） | — | 前文編碼器與音節對字編碼器、多音字分類器、打字變體。見 `v3/README.md`、`v3/REPORT.md` |
+| `v3/` | `v3_030/`（0.3.0 的 v3） | — | 前文編碼器與音節對字編碼器、多音字分類器、打字變體。見 `v3/README.md`、`v3/REPORT.md` |
 | `homophone/` | `homophone/`、`v3/`（0.4.0 起） | `ContextEncoder.mlmodelc`、`SyllableEncoder.mlmodelc`、`chars.json`、`syllables.json`、`config.json`、授權與出處 | 同音字（在／再等 26 組）資料集與評測；v3 以可發布的來源微調，0.4.0 起取代原本的 v3。見 `homophone/REPORT.md` |
 | `base/` | `base/` | — | 統計底子 A1：小麥注音詞庫、期望次數語言模型（研究，0.4.0 未採用）。見 `base/REPORT.md` |
 | `memory/` | — | — | 記憶體量測與 mmap 二進位的驗證 |

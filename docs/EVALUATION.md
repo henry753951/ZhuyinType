@@ -23,7 +23,8 @@
 | `data/build/corpus/test_colloquial.txt` | 台灣口語測試句 | 測試 |
 | `data/build/lm_chat/test_chat_tt.txt` | Taiwan Tongues 測試 1,500 句 | 測試 |
 | `nlp/eval/colloquial_smoke.txt` | 日常短句 | 測試 |
-| `data/build/homophone/{dev,test}_zai.txt` | 「在／再」等同音字（建置中，見 [ROADMAP.md](ROADMAP.md)） | 開發／測試 |
+| `data/build/homophone/{dev,test}_zai.txt` | 「在／再」各約 1,000 句，依位置分類（詞內、代名詞後、句首、動詞前、地點時間前、其他）；工具 `nlp/training/homophone/` | 開發／測試 |
+| `data/build/homophone/{dev,test}_pairs.txt` | 其他 25 組常見同音字（做／作、已／以、他／她／它……） | 開發／測試 |
 
 `data/build/` 不在 git 裡；產生方式見 `nlp/training/corpus/README.md`、`nlp/training/lm_chat/README.md`。
 
