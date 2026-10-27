@@ -139,7 +139,7 @@
 
 ## 4. 接下來（0.4.x 與 0.5.0）
 
-依建議的順序排列，對應的研究依據在 [research/plan.md](research/plan.md)。
+依建議的順序排列，對應的研究依據在 [research/plan.md](research/plan.md)。準確率的整體方法與階段見 [research/method.md](research/method.md)：先補讀音變體與開放詞彙（只改資料，進行中），Rust 引擎換上後加入讀音通道，再重新訓練逐字模型與重排模型。
 
 | # | 工作 | 為什麼 | 怎麼做 | 完成標準 |
 |---|---|---|---|---|
