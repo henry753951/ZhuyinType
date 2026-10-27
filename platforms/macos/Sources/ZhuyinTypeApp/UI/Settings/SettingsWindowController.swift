@@ -103,8 +103,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         open(SettingsPlace(.keys, row: RowSections.headerID((command?.section ?? section).title)))
     }
 
+    /// The settings window, when it is on screen.
+    var visibleWindow: NSWindow? { window?.isVisible == true ? window : nil }
+
     func windowWillClose(_ notification: Notification) {
         guard !Self.isPreview else { return }
+        // The wizard may still be open over it; the app stays in front for it.
+        if WizardWindowController.shared.isOpen { return }
         NSApp.setActivationPolicy(.accessory)
     }
 
