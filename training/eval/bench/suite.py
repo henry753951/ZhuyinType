@@ -31,6 +31,15 @@ SETS = {
 APP = ["--reranker", "data/build/reranker", "--rerank-count", "16", "--v3", "data/build/v3", "--v3-weight", "0.5",
        "--chat-lm", "data/build/lm_chat", "--chat-prior", "0.3"]
 CONFIGS = {"app": APP, "engine": []}
+# 善解's reusable rows (CC0; rows overlapping our training text removed).  Holdout shards are not here: they are kept
+# for one-off confirmations, not tracked every release.
+EXTERNAL = "training/eval/sets/external/shanjie/eval"
+ROWS = {"dev302": f"{EXTERNAL}/bench/suite-v1/dev302.clean.rows.txt",
+        "typing76": f"{EXTERNAL}/bench/suite-v1/typing76.clean.rows.txt",
+        "reported": f"{EXTERNAL}/bench/suite-v2/user-reported.clean.rows.txt",
+        "fw": f"{EXTERNAL}/bench/suite-v2/fw.clean.rows.txt",
+        "trap": f"{EXTERNAL}/sets/trap.clean.rows.txt",
+        "daily": f"{EXTERNAL}/sets/daily.clean.rows.txt"}
 
 
 def run(tool, args, cli_args, jobs, cli):
@@ -89,6 +98,19 @@ def repicks(output):
     return rows
 
 
+def rows_sets(output):
+    """rows_eval prints one JSON object per rows file: {"source": ..., "n": ..., "shanjie": {"top1": ...}, ...}."""
+    rows = {}
+    for line in output.splitlines():
+        if line.startswith('{"source"'):
+            record = json.loads(line)
+            name = next((k for k, v in ROWS.items() if v == record["source"]), record["source"])
+            rows[name] = {"n": record["n"], "top1": round(record["shanjie"]["top1"] * 100, 2),
+                          "cer": round(record["shanjie"]["cer"] * 100, 2),
+                          "oracle16": round(record["shanjie"]["oracle16"] * 100, 2)}
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
@@ -116,6 +138,12 @@ def main():
     results["habits/app"] = habits(run("error_analysis", ["-n", n, "--test", SETS["colloquial"], SETS["wikipedia"]],
                                        APP, args.jobs, args.cli))
     results["candidates/app"] = candidates(run("candidate_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
+    present = [path for path in ROWS.values() if os.path.exists(os.path.join(ROOT, path))]
+    if present:
+        for label, config in CONFIGS.items():
+            results[f"external/{label}"] = rows_sets(run("rows_eval", ["--rows", *present, "--output",
+                                                                       f"data/build/bench/rows-{label}.jsonl"],
+                                                         config, args.jobs, args.cli))
     results["repick/app"] = repicks(run("repick_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:

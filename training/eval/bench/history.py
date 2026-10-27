@@ -54,6 +54,12 @@ def page(record, mac):
         row = r.get("candidates/app", {}).get(file)
         if row:
             lines.append(f"| {label} | {pct(row['first'])} | {pct(row['first_page'])} | {row['mean_rank']:.2f} |")
+    external = r.get("external/app", {})
+    if external:
+        lines += ["", "## 善解的評測集（善解的正規化，整句全對率）", "", "| 集合 | 段數 | app | 只用引擎 |", "|---|---|---|---|"]
+        for name, row in external.items():
+            engine = r.get("external/engine", {}).get(name, {})
+            lines.append(f"| {name} | {row['n']} | {pct(row['top1'])} | {pct(engine.get('top1'))} |")
     lines += ["", "## 免選字（模擬使用者：錯了就到第一個錯字選正確的候選）", "",
               "| 測試集 | 不用選字 | 最多選 1 次 | 最多選 2 次 | 平均選字次數 | 選字改壞其他字 |", "|---|---|---|---|---|---|"]
     for _, file, label in SETS:
