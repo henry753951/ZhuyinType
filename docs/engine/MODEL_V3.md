@@ -77,7 +77,7 @@
 
 ### M1 實作結果
 
-程式在 `engine/swift/Sources/ZhuyinCore/KeyDecoder.swift`，預設 `timed`。
+程式在 `engine/crates/zhuyin-core/src/key_decoder.rs`，預設 `timed`。
 
 實作採「保留三格，只對切分做搜尋」。同一個音節裡的鍵序本來就由三格處理，解碼器只決定音節在哪裡結束，並修復跨音節的順序錯亂。音節內的按錯仍交給 KeyChannel。結構相同（音節數相同、都有或都沒有未完成音節）且成本相近（6 分內）的幾種切法，由語言模型挑最通順的。按錯鍵修正關閉時只做音節切分，按鍵照打的算。
 

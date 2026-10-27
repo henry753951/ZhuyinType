@@ -1,8 +1,7 @@
-//! The `ZhuyinType` input engine, ported from the Swift package in `engine/swift` (see `engine/DESIGN.md`).
+//! The `ZhuyinType` input engine: the data layer, decoding and the composer.  Ported from the Swift engine (removed in
+//! phase 5; `engine/DESIGN.md`), bit for bit; the table maps its files to the modules.
 //!
-//! Phases 1–3: the data layer, decoding and the composer.
-//!
-//! | Swift (`engine/swift/Sources/ZhuyinCore`) | Rust |
+//! | Swift (`ZhuyinCore`) | Rust |
 //! |---|---|
 //! | `API.swift` | [`api`] |
 //! | `Keyboard.swift` (`ZhuyinKeyboard`) | [`keyboard`] |

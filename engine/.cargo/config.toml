@@ -1,0 +1,4 @@
+[env]
+# The `onnx` feature links the system ONNX Runtime as a shared library from ORT_LIB_PATH (its lib/ directory), never
+# a static or downloaded copy.
+ORT_PREFER_DYNAMIC_LINK = "1"

@@ -43,7 +43,7 @@ CC-CEDICT 把整筆標成台灣讀音的（「微」/Taiwan pr. [wei2]/），承
 
 ## 3. 按鍵層級解碼器（KeyDecoder）
 
-`engine/swift/Sources/ZhuyinCore/KeyDecoder.swift`。組字器保留聲母、介音、韻母三格，所以同一個音節裡的鍵序本來就不重要；解碼器決定音節在哪裡結束，並修復跨音節的順序錯亂。
+`engine/crates/zhuyin-core/src/key_decoder.rs`。組字器保留聲母、介音、韻母三格，所以同一個音節裡的鍵序本來就不重要；解碼器決定音節在哪裡結束，並修復跨音節的順序錯亂。
 
 - 對按鍵位置做 Viterbi 搜尋，每個位置保留 24 個狀態。一個狀態包含三格內容、這個音節的按鍵與最後兩個音節。最後兩個音節不同的切法分開保留，留給語言模型判斷。成本相同的狀態依第一次出現的順序排列，所以每次執行的結果相同。
 - 聲調鍵或空白是明確的音節邊界。音節已是完整的一聲、下一鍵是聲母時，可以隱含地結束（一聲不按空白），成本 4。
@@ -72,7 +72,7 @@ CC-CEDICT 把整筆標成台灣讀音的（「微」/Taiwan pr. [wei2]/），承
 
 ## 4. 容錯（KeyChannel）
 
-`engine/swift/Sources/ZhuyinCore/KeyChannel.swift`、`Engine.swift`。
+`engine/crates/zhuyin-core/src/key_channel.rs`、`engine.rs`。
 
 ### 4.1 演算法
 - 每個音節的按鍵各自修正：以 Mac 鍵盤（US ANSI）實際的相鄰關係，嘗試換一個鍵、多一個鍵、少一個鍵、兩鍵對調、換聲調，留下合法讀音中成本最低的 8 個。音節有 4 個以上的鍵時，才在最好的結果上再改第二處。
@@ -224,7 +224,7 @@ App 不提供時，改用同一個 App 在 10 分鐘內送出的字。空白、R
 
 ## 9. 個人模型
 
-`engine/swift/Sources/ZhuyinCore/PersonalLanguageModel.swift`、`Engine.swift`。
+`engine/crates/zhuyin-core/src/personal.rs`、`engine.rs`。
 
 ### 9.1 記住選過的字詞（recall）
 以「打的讀音 + 寫法」為 key，記住四種：整段、部分、修正（照打錯的鍵記）、詞庫沒有的詞。只在手動選字、送出後刪掉重打時建立。下次打一樣的讀音時，這個寫法不再經過語言模型評分。容量約 20,000 筆，分數同樣以 8 小時與 90 天兩種半衰期衰減，手動選過 3 次以上有最低分數。

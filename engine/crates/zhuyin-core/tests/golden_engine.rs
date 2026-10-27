@@ -1,4 +1,4 @@
-//! Golden tests of the engine against the Swift code (twin of `parity/Sources/SwiftParity/EngineSweeps.swift`):
+//! Golden tests of the engine against the Swift engine's digests (its tool's `EngineSweeps.swift`, see `golden.rs`):
 //! Swift's number formatting, conversions of dev-set key scripts (best, 16-best with scores, incremental typing with
 //! the cache, fixed words and groups, character scores, the text before the cursor), and a learning session with
 //! its personal data files, export and import.  Needs `ZHUYIN_PARITY_DEV` (colloquial:encyclopedic:chat dev sets)
@@ -620,6 +620,8 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
         "<left><down><right><down><enter><esc><esc>",
         "<home><sdown><down><enter><end><bs><obs><enter>",
         "<down><space><tab><stab><pgdown><pgup><up>`<enter>",
+        "``<enter>",
+        "<left>`<esc><enter>",
     ];
     let mut scripts = vec![];
     for (index, (file, _, before, tokens)) in dev_scripts(inputs, files, 60).into_iter().enumerate() {
@@ -641,6 +643,20 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
     }
     let targeted = [
         "18 q8 a8 <left><left><bs>18 <home><del><end><bs><S-,>18 ek4`<bs><enter>".to_owned(),
+        "18 q8 <space>a8 <space><enter>".to_owned(),
+        "18 <down><down><down><down><down><down><down><down><down><down><down><up><up><enter>".to_owned(),
+        "18 <down><right><right><right><right><right><right><right><right><right><right><left><left><enter><enter>"
+            .to_owned(),
+        "su3 <down><pgdown><up><down><down><enter><enter>".to_owned(),
+        "18 <space><space><bs><bs><enter>".to_owned(),
+        "18 q8<space><space><left><left><down><enter><enter>".to_owned(),
+        "18 q8 ``<enter>".to_owned(),
+        "18 q8 `<esc>a8 <enter>".to_owned(),
+        "18 q8`<esc> <enter>".to_owned(),
+        "18 q8 <down>``<enter>".to_owned(),
+        "18 q8 `a8 <esc><esc>".to_owned(),
+        "su3cl3`<bs>`<esc><enter>".to_owned(),
+        "18 q8 <down>`<esc><enter>".to_owned(),
         "su3cl38 <sleft><sleft><enter><end>18 <enter>".to_owned(),
         "su3cl38 <left><sleft><sright><sright><esc><enter>".to_owned(),
         "rup wu0 wu0 fu4cp3cl3<home><down><down><down><enter><right><down><sdown><down><enter><enter>".to_owned(),
@@ -692,6 +708,9 @@ fn composer_configurations() -> Vec<(&'static str, ComposerOptions)> {
         ("legacy", legacy),
         ("other", other),
         ("commit", commit),
+        ("insert-space", ComposerOptions { space_action: SpaceAction::InsertSpace, ..ComposerOptions::default() }),
+        // Recorded from the Rust engine: the Swift engine always paged at the list's edge.
+        ("edge-stays", ComposerOptions { page_at_list_edge: false, ..ComposerOptions::default() }),
     ]
 }
 

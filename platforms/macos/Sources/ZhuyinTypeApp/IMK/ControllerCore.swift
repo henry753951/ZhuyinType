@@ -1,7 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
-import ZhuyinCore
-import ZhuyinML
+import ZhuyinEngine
 
 protocol TextClient: AnyObject {
     func insertText(_ text: String, replacementRange: NSRange)
@@ -94,7 +93,10 @@ final class ControllerCore {
 
     private var capsLock = false
     /// Rebindable shortcuts, by key.
-    var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(uniqueKeysWithValues: ShortcutCommand.defaults.map { ($1, $0) })
+    /// A key that pages or moves through the open list stopped at its end (1: past the last, -1: before the first).
+    var listEdge: ((Int) -> Void)?
+    var shortcuts: [Shortcut: ShortcutCommand] = Dictionary(
+        ShortcutCommand.defaultBindings.flatMap { command, list in list.map { ($0, command) } }, uniquingKeysWith: { first, _ in first })
 
     func update(options: ComposerOptions, shiftToggle: ShiftToggle, popupCompositionApps: [String]) {
         composer.options = options
@@ -117,7 +119,8 @@ final class ControllerCore {
             return false
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
-            return handle(command.input, time: time)
+            if let input = command.input { return handle(input, time: time) }
+            return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
@@ -148,6 +151,11 @@ final class ControllerCore {
         let started = stats == nil ? 0 : DispatchTime.now().uptimeNanoseconds
         let before = composer.presentation
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
+        if let move = Self.listMove(key, vertical: composer.options.verticalList), let old = before.candidates,
+           let new = composer.presentation.candidates, old.items.count == new.items.count, old.pageSize == new.pageSize,
+           move.page ? old.page == new.page : old.selection == new.selection {
+            listEdge?(move.direction)
+        }
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
         let latency = stats == nil ? nil : DispatchTime.now().uptimeNanoseconds - started
@@ -164,6 +172,34 @@ final class ControllerCore {
             remember()
         }
         return result.handled
+    }
+
+    /// 改前一個字／改後一個字: with the list open, the list moves to the neighbouring character in the same mode.  A
+    /// vertical list does it with ← →; a horizontal one uses ← → for the highlight, so the list is closed, the cursor
+    /// moved and the list opened again.  With no list the key is ← or →: it moves the cursor, or goes to the app.
+    private func neighbour(_ delta: Int, time: TimeInterval?) -> Bool {
+        let arrow: KeyInput = delta < 0 ? .left : .right
+        guard let list = composer.presentation.candidates, !composer.options.verticalList else { return handle(arrow, time: time) }
+        let reopen: KeyInput = list.singleCharacter ? .shiftDown : list.tolerant == true ? .shiftUp : .down
+        _ = composer.handle(.escape)
+        _ = composer.handle(arrow)
+        _ = composer.handle(reopen)
+        render()
+        return true
+    }
+
+    /// How `key` moves through an open list, for keys that stop at its ends: the direction (1 on, -1 back) and whether
+    /// it turns pages (or moves the highlight); nil for other keys.  Space goes round to the first page, so it never stops.
+    static func listMove(_ key: KeyInput, vertical: Bool) -> (direction: Int, page: Bool)? {
+        switch key {
+        case .tab, .pageDown: return (1, true)
+        case .shiftTab, .pageUp: return (-1, true)
+        case .down: return (1, !vertical)
+        case .up: return (-1, !vertical)
+        case .right where !vertical: return (1, false)
+        case .left where !vertical: return (-1, false)
+        default: return nil
+        }
     }
 
     private static func startsComposition(_ key: KeyInput) -> Bool {

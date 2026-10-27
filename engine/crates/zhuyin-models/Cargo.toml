@@ -1,13 +1,21 @@
 [package]
 name = "zhuyin-models"
-description = "Neural model interfaces for the ZhuyinType engine: the sentence reranker (v2b) and the syllable-to-character model (v3)"
+description = "Neural models for the ZhuyinType engine: the sentence reranker (v2b) and the syllable-to-character model (v3), with an optional ONNX Runtime backend"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish.workspace = true
 rust-version.workspace = true
+build = "build.rs"
+
+[features]
+# ONNX Runtime backend (Linux, Windows): links the system ONNX Runtime named by ORT_LIB_PATH (see README.md).
+onnx = ["dep:ort"]
 
 [dependencies]
+zhuyin-core = { path = "../zhuyin-core" }
+serde_json.workspace = true
+ort = { workspace = true, optional = true }
 
 [lints]
 workspace = true

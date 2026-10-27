@@ -8,7 +8,7 @@
 // clock reads and an array increment.
 import Darwin
 import Foundation
-import ZhuyinCore
+import ZhuyinEngine
 
 /// What was counted, for one day or in total.
 struct UsageCounters: Codable, Equatable {

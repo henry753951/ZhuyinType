@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// Fixed frames for the demos, so the UI previews show a chosen moment.  Nil while the app runs.
 enum DemoPinning {
@@ -11,8 +11,20 @@ enum DemoPinning {
     /// A conflict message to show on a row of the 快捷鍵 page, by row.
     /// The 快捷鍵 page's fixed keys shown, not folded.
     static var showsFixedKeys = false
+    /// The arrival tint at a fixed strength, for frames of its pulse.
+    static var arrivalOpacity: Double?
     /// States of shortcut fields to draw, by command.
     static var fieldStates: [ShortcutCommand: ShortcutFieldPreview] = [:]
+    /// A push into the current sub-page (or a pop out of it) drawn still at `progress` (0…1).
+    static var navigation: (push: Bool, progress: Double)?
+    /// The vignettes of the 視窗與提示 page drawn at this phase.
+    static var vignettePhase: Int?
+    /// The floating preview after a change, drawn at this point (window coordinates, top left).
+    static var flashAt: CGPoint?
+    /// A row drawn as if the pointer were over it.
+    static var hoveredRow: String?
+    /// A list row being removed, drawn still at `progress` (0: in place, 1: gone).
+    static var removal: (id: String, progress: Double)?
     static var mini: Int?
 }
 
@@ -24,10 +36,10 @@ struct SpaceInfo: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            ChoiceDemo(title: "送出並輸入空白", selected: current != .openCandidates,
-                       frames: OptionDemos.space(.commitAndSpace), pinned: DemoPinning.mini)
-            ChoiceDemo(title: "開啟候選字視窗", selected: current == .openCandidates,
-                       frames: OptionDemos.space(.openCandidates), pinned: DemoPinning.mini)
+            ForEach(Preferences.spaceActions, id: \.self) { action in
+                ChoiceDemo(title: OptionDemos.spaceLabel(action), selected: current == action || current == .commit && action == .commitAndSpace,
+                           frames: OptionDemos.space(action), pinned: DemoPinning.mini)
+            }
         }
     }
 }
@@ -95,48 +107,35 @@ struct AdvancedPane: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        Form {
-            Section {
-                OptionRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字") {
-                    InfoButton(title: "記錄改字") { CorrectionLogInfo(keys: CurrentKeys(preferences)) }
-                } control: {
-                    Toggle("記錄改字", isOn: binding(preferences, \.recordsCorrections))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+        SettingsForm {
+            SettingsSection("改字記錄") {
+                SettingRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字",
+                           accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences))))) {
+                    RowSwitch(title: "記錄改字", isOn: binding(preferences, \.recordsCorrections))
                 }
-                OptionRow(title: "一併記錄游標前的文字", subtitle: "重播記錄時使用同樣的前文") {
-                    Color.clear.frame(height: 1)
-                } control: {
-                    Toggle("一併記錄游標前的文字", isOn: binding(preferences, \.recordsCorrectionContext))
-                        .labelsHidden()
-                        .toggleStyle(.switch)
+                SettingRow(title: "一併記錄游標前的文字", subtitle: "重播記錄時使用同樣的前文", indent: true,
+                           dimmed: !preferences.recordsCorrections) {
+                    RowSwitch(title: "一併記錄游標前的文字", isOn: binding(preferences, \.recordsCorrectionContext))
+                        .disabled(!preferences.recordsCorrections)
                 }
-                .disabled(!preferences.recordsCorrections)
-                LabeledContent {
-                    HStack(spacing: 8) {
-                        Button("在 Finder 中顯示") { CorrectionLogActions.reveal() }
-                        Button("匯出…") { CorrectionLogActions.export() }
-                            .disabled(model.correctionCount == 0)
-                        Button("清除…") { confirmingClear = true }
-                            .disabled(model.correctionCount == 0)
-                    }
-                } label: {
-                    Text("\(model.correctionCount) 筆記錄").monospacedDigit()
+                SettingRow(title: "\(model.correctionCount) 筆記錄") {
+                    Button("在 Finder 中顯示") { CorrectionLogActions.reveal() }
+                    Button("匯出…") { CorrectionLogActions.export() }
+                        .disabled(model.correctionCount == 0)
+                    Button("清除…") { confirmingClear = true }
+                        .disabled(model.correctionCount == 0)
                 }
-            } header: {
-                Text("改字記錄")
             } footer: {
                 FooterText("記錄只存在這台 Mac；密碼欄位中不記錄。")
             }
-            Section("相容性") {
+            SettingsSection("相容性") {
                 DrillRow(model: model, title: "在候選字視窗顯示組字的 App", subtitle: "少數 App 需要",
-                         value: preferences.popupCompositionApps.isEmpty ? "沒有" : "\(preferences.popupCompositionApps.count) 個", subpage: .apps)
+                         value: preferences.popupCompositionApps.isEmpty ? "沒有" : "\(preferences.popupCompositionApps.count) 個",
+                         subpage: .apps)
             }
-            Section {
-                LabeledContent {
+            SettingsSection {
+                SettingRow(title: "回復預設設定", subtitle: "自訂詞與記住的字詞會保留") {
                     Button("回復…") { confirmingReset = true }
-                } label: {
-                    RowLabel("回復預設設定", "自訂詞與記住的字詞會保留")
                 }
             }
         }
@@ -221,8 +220,8 @@ struct AboutPane: View {
     }
 
     var body: some View {
-        Form {
-            Section {
+        SettingsForm {
+            SettingsSection {
                 VStack(spacing: 6) {
                     Image(nsImage: NSApp.applicationIconImage)
                         .resizable()
@@ -233,33 +232,32 @@ struct AboutPane: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
             if updater.isAvailable {
-                Section("更新") {
-                    Toggle(isOn: Binding(get: { updater.automaticallyChecks }, set: { updater.automaticallyChecks = $0 })) {
-                        RowLabel("自動檢查更新", "每天一次；更新檔都經過簽章驗證")
+                SettingsSection("更新") {
+                    SettingRow(title: "自動檢查更新", subtitle: "每天一次；更新檔都經過簽章驗證") {
+                        RowSwitch(title: "自動檢查更新", isOn: Binding(get: { updater.automaticallyChecks },
+                                                                  set: { updater.automaticallyChecks = $0 }))
                     }
-                    Toggle(isOn: Binding(get: { updater.automaticallyInstalls }, set: { updater.automaticallyInstalls = $0 })) {
-                        RowLabel("自動安裝更新", "在組字結束後換上新版本")
+                    SettingRow(title: "自動安裝更新", subtitle: "在組字結束後換上新版本", dimmed: !updater.automaticallyChecks) {
+                        RowSwitch(title: "自動安裝更新", isOn: Binding(get: { updater.automaticallyInstalls },
+                                                                  set: { updater.automaticallyInstalls = $0 }))
+                            .disabled(!updater.automaticallyChecks)
                     }
-                    .disabled(!updater.automaticallyChecks)
                     if let pending = updater.pendingVersion {
-                        LabeledContent("已下載", value: "\(pending)，組字結束後安裝")
+                        SettingRow(title: "已下載", value: "\(pending)，組字結束後安裝")
                     }
-                    LabeledContent {
+                    SettingRow(title: "檢查更新", subtitle: updater.lastCheck.map {
+                        "上次檢查：" + $0.formatted(date: .abbreviated, time: .shortened)
+                    }) {
                         Button("立即檢查…") { updater.checkNow() }
-                    } label: {
-                        RowLabel("檢查更新", updater.lastCheck.map {
-                            "上次檢查：" + $0.formatted(date: .abbreviated, time: .shortened)
-                        })
                     }
                 }
             }
-            Section {
-                LabeledContent("程式授權", value: "AGPL 3.0")
-                LabeledContent("詞庫授權", value: "CC BY-SA 4.0")
-                LabeledContent("詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
+            SettingsSection {
+                SettingRow(title: "程式授權", value: "AGPL 3.0")
+                SettingRow(title: "詞庫授權", value: "CC BY-SA 4.0")
+                SettingRow(title: "詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
             }
         }
     }
