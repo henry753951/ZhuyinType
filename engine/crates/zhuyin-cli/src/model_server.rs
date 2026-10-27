@@ -5,10 +5,10 @@
 //! or parse as text.  Little-endian throughout.  A frame is an 8-byte header — marker 0, kind, version 1 (u16), payload
 //! length in bytes (u32) — then the payload:
 //!
-//! - kind 1, reranker: i32 rows, length, ids[rows × length], targets[rows × length]; the reply holds rows × length
+//! - kind 1, reranker: i32 rows, length, `ids[rows × length]`, `targets[rows × length]`; the reply holds rows × length
 //!   f32 log-probabilities (0 after a row's last target);
-//! - kind 2, character model: i32 context length C, syllables N, width W, context[C], syllable ids[N], tones[N],
-//!   costs[N], boundaries[N], candidates[N × W]; the reply holds N × W f32 log-probabilities.
+//! - kind 2, character model: i32 context length C, syllables N, width W, `context[C]`, `syllable_ids[N]`,
+//!   `tones[N]`, `costs[N]`, `boundaries[N]`, `candidates[N × W]`; the reply holds N × W f32 log-probabilities.
 //!
 //! A reply of kind 1 carries an error message (UTF-8) instead.
 

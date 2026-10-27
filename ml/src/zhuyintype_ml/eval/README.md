@@ -22,6 +22,8 @@ zt eval stats base.json new.json                     # 兩份報告的成對比�
 zt eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json      # 設定 × 評測集
 zt bench run v0.5.0                                  # ZhuyinBench（GPU 主機）
 zt bench history                                     # 重建 docs/benchmarks/ 的頁面
+zt systems setup                                     # 取得並建置靈犀注音與善解（GPU 主機）
+zt bench compare                                     # 和其他輸入法的比較（GPU 主機）；--render 產生頁面
 zt --remote eval conversion --set dev                # 在 GPU 主機上執行
 ```
 
@@ -30,7 +32,7 @@ zt --remote eval conversion --set dev                # 在 GPU 主機上執行
 ## 輸入與輸出
 
 - 讀：資料目錄（預設 `data/build`）的詞庫、語言模型與神經模型；評測集（`ml/src/zhuyintype_ml/core/sets.py` 登錄的名稱，或任意檔案）；`ml/src/zhuyintype_ml/eval/sets/` 的外部評測集；`zhuyin-cli`（預設 `.build/release/zhuyin-cli`，`ZT_CLI` 可指定）。
-- 寫：`--json FILE` 的報告；`zt eval sweep` 的報告預設在 `eval/sweeps/<矩陣>/`；`zt bench run` 的報告在 `bench/<版本>/`（以上相對於資料目錄），紀錄在 `docs/benchmarks/<版本>.json`，頁面在 `docs/benchmarks/`。
+- 寫：`--json FILE` 的報告；`zt eval sweep` 的報告預設在 `eval/sweeps/<矩陣>/`；`zt bench run` 的報告在 `bench/<版本>/`（以上相對於資料目錄），紀錄在 `docs/benchmarks/<版本>.json`，頁面在 `docs/benchmarks/`；`zt bench compare` 的每格結果在 `bench/compare/<label>/`，紀錄在 `docs/benchmarks/competition.json`。
 
 ## 檔案
 
@@ -52,6 +54,9 @@ zt --remote eval conversion --set dev                # 在 GPU 主機上執行
 | `matrices/` | sweep 的矩陣：`validation.json`（引擎、整句重排、v3）、`tree-validation.json`（樹狀重排模型） |
 | `bench/suite.py` | ZhuyinBench 的固定內容，產生每版紀錄 |
 | `bench/history.py` | 由紀錄產生 `docs/benchmarks/` 的每版頁面與歷代表 |
+| `bench/compare.py` | 和其他輸入法的比較：tasks（集合 × 情境）、可接續的矩陣、紀錄 `docs/benchmarks/competition.json` |
+| `bench/competition.py` | 由比較的紀錄產生 `docs/benchmarks/competition.md` |
+| `systems/` | 比較的對象（ZhuyinType、靈犀注音、善解）共用的 `System` 介面與轉接器，見其中的 README |
 | `fake_cli.py` | 測試用的假 `zhuyin-cli` |
 | `test_*.py` | 單元測試（`python -m unittest discover -s ml/src/zhuyintype_ml/eval -t .`） |
 | `colloquial_smoke.txt`、`latency_sentences.txt` | 日常短句 68 句、量測延遲的 10 句 |
