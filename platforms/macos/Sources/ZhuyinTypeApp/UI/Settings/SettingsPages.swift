@@ -102,16 +102,30 @@ struct SettingsPaneView: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var preferences: Preferences = .shared
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ScrollViewReader { proxy in
-            VStack(spacing: 0) {
-                if let subpage = model.subpage, subpage.pane == pane {
-                    SubpageHeader(parent: pane.title, title: subpage.title) { model.subpage = nil }
-                    page(subpage)
+            ZStack(alignment: .top) {
+                if let pinned = DemoPinning.navigation, let subpage = model.subpage, subpage.pane == pane {
+                    // The UI previews: a push (or pop) drawn still at `progress`.
+                    let shown = pinned.push ? pinned.progress : 1 - pinned.progress
+                    page().modifier(NavigationMotion(offset: -12, visible: 1 - shown))
+                    subpageView(subpage).modifier(NavigationMotion(offset: 24, visible: shown))
+                } else if let subpage = model.subpage, subpage.pane == pane {
+                    subpageView(subpage)
+                        .id(subpage)
+                        .transition(reduceMotion ? .opacity : .modifier(active: NavigationMotion(offset: 24, visible: 0),
+                                                                         identity: NavigationMotion(offset: 24, visible: 1)))
                 } else {
                     page()
+                        .transition(reduceMotion ? .opacity : .modifier(active: NavigationMotion(offset: -12, visible: 0),
+                                                                         identity: NavigationMotion(offset: -12, visible: 1)))
                 }
             }
+            // The UI previews draw offscreen, where animations do not run: they show pushes through DemoPinning.
+            .animation(SettingsWindowController.isPreview ? nil
+                       : reduceMotion ? .easeInOut(duration: 0.18) : .easeOut(duration: 0.22), value: model.subpage)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onChange(of: model.scrollTarget) { _, target in reveal(target, proxy) }
             .onAppear { reveal(model.scrollTarget, proxy) }
@@ -163,6 +177,11 @@ struct SettingsPaneView: View {
         }
     }
 
+    /// A sub-page, with its pinned bar (drawn by its `SettingsForm`).
+    private func subpageView(_ subpage: SettingsSubpage) -> some View {
+        page(subpage).environment(\.subpageHeader, SubpageHeaderInfo(parent: pane.title, title: subpage.title) { model.subpage = nil })
+    }
+
     @ViewBuilder private func page(_ subpage: SettingsSubpage) -> some View {
         switch subpage {
         case .punctuation: PunctuationPage(preferences: preferences)
@@ -178,32 +197,54 @@ struct SettingsPaneView: View {
     }
 }
 
-/// The bar above a sub-page: back to the page it belongs to, and its title.
-private struct SubpageHeader: View {
-    let parent: String
-    let title: String
-    let back: () -> Void
+/// The bar pinned above a sub-page: back to the page it belongs to, and its title, on the content column's left edge.
+/// It is clear at the top; once content scrolls under it, it takes the bar material and a hairline below.
+struct SubpageBar: View {
+    let info: SubpageHeaderInfo
+    let scrolled: Bool
     var body: some View {
         HStack(spacing: 8) {
-            Button(action: back) {
+            Button(action: info.back) {
                 HStack(spacing: 3) {
                     Image(systemName: "chevron.left").font(.system(size: 12, weight: .semibold))
-                    Text(parent).lineLimit(1)
+                    Text(info.parent).lineLimit(1)
                 }
             }
             .buttonStyle(.borderless)
             .keyboardShortcut("[", modifiers: .command)
-            .help("回到「\(parent)」")
+            .help("回到「\(info.parent)」")
             Text("／").foregroundStyle(.tertiary)
-            Text(title).font(.headline).lineLimit(1).truncationMode(.tail).help(title)
+            Text(info.title).font(.headline).lineLimit(1).truncationMode(.tail).help(info.title)
             Spacer(minLength: 0)
         }
         // Lined up with the cards' content below: the page inset, then the card inset, in the same column.
         .padding(.horizontal, RowMetrics.cardInset)
         .frame(maxWidth: RowMetrics.maxWidth)
         .padding(.horizontal, RowMetrics.pageInset)
-        .padding(.top, RowMetrics.pageTop)
+        .padding(.vertical, RowMetrics.barPadding)
         .frame(maxWidth: .infinity)
+        .background {
+            ZStack(alignment: .bottom) {
+                Rectangle().fill(.bar).opacity(scrolled ? 1 : 0)
+                Rectangle().fill(Color(nsColor: .textBackgroundColor)).opacity(scrolled ? 0 : 1)
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1).opacity(scrolled ? 1 : 0)
+            }
+            // Up to the window's top edge, so nothing scrolls into view between the toolbar and the bar.
+            .ignoresSafeArea(edges: .top)
+            .animation(.easeOut(duration: 0.15), value: scrolled)
+        }
+        .background(BarProbe())
+    }
+}
+
+private struct BarProbe: View {
+    var body: some View {
+        if RowGeometry.recording {
+            GeometryReader { proxy in
+                let _ = RowGeometry.recordBar(proxy.frame(in: .global))
+                Color.clear
+            }
+        }
     }
 }
 
@@ -682,24 +723,23 @@ private struct WordListPage: View {
     var body: some View {
         let keys = CurrentKeys(preferences)
         SettingsForm {
-            SettingsSection {
-                if model.engine == nil {
-                    LoadingRow()
-                } else {
-                    ListEditor(view: list == .learned ? model.learned.view : model.phrases.view)
-                        .frame(minHeight: 340, maxHeight: .infinity)
-                        .cardFullBleed()
-                }
-            } footer: {
-                if list == .phrases {
-                    if let left = keys.text(.selectLeft), let right = keys.text(.selectRight) {
-                        FooterText("自訂詞在選字時優先列出；打字時用 \(left) \(right) 選取字詞，再按 Return 也能加入。")
+            if model.engine == nil {
+                SettingsSection { LoadingRow() }
+            } else {
+                ListSection(list: list == .learned ? model.learned.list : model.phrases.list)
+                Group {
+                    if list == .phrases {
+                        if let left = keys.text(.selectLeft), let right = keys.text(.selectRight) {
+                            FooterText("自訂詞在選字時優先列出；打字時用 \(left) \(right) 選取字詞，再按 Return 也能加入。")
+                        } else {
+                            FooterText("自訂詞在選字時優先列出。")
+                        }
                     } else {
-                        FooterText("自訂詞在選字時優先列出。")
+                        FooterText("選過的字詞下次排在前面；設為「不記住」的字詞之後不再學。")
                     }
-                } else {
-                    FooterText("依次數由多到少排列；設為「不記住」的字詞之後不再學。")
                 }
+                .padding(.horizontal, RowMetrics.cardInset)
+                .padding(.top, RowMetrics.footerGap - RowMetrics.sectionSpacing)
             }
         }
     }
@@ -711,13 +751,10 @@ private struct AppsPage: View {
     @ObservedObject var model: SettingsModel
     var body: some View {
         SettingsForm {
-            SettingsSection {
-                ListEditor(view: model.apps.view)
-                    .frame(minHeight: 240, maxHeight: .infinity)
-                    .cardFullBleed()
-            } footer: {
-                FooterText("清單中的 App，組字顯示在候選字視窗上方。")
-            }
+            ListSection(list: model.apps.list)
+            FooterText("清單中的 App，組字顯示在候選字視窗上方。")
+                .padding(.horizontal, RowMetrics.cardInset)
+                .padding(.top, RowMetrics.footerGap - RowMetrics.sectionSpacing)
         }
     }
 }

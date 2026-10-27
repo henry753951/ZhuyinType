@@ -46,6 +46,8 @@ enum RowMetrics {
     static let gap: CGFloat = 12
     /// Between the value, the control and the ⓘ or ›.
     static let trailingSpacing: CGFloat = 8
+    /// Above and below the sub-page bar's breadcrumb.
+    static let barPadding: CGFloat = 10
     /// The arrival tint, inset from the card's edges.
     static let tintInset: CGFloat = 4
 }
@@ -72,9 +74,27 @@ enum RowSections {
     static func headerID(_ section: String) -> String { "section-" + section }
 }
 
-/// A settings page: its sections in a column, scrolled, with the page insets.
+/// A sub-page's bar: the page it belongs to, its title, and going back.
+struct SubpageHeaderInfo {
+    let parent: String
+    let title: String
+    let back: () -> Void
+}
+private struct SubpageHeaderKey: EnvironmentKey { static let defaultValue: SubpageHeaderInfo? = nil }
+extension EnvironmentValues {
+    var subpageHeader: SubpageHeaderInfo? {
+        get { self[SubpageHeaderKey.self] }
+        set { self[SubpageHeaderKey.self] = newValue }
+    }
+}
+
+/// A settings page: its sections in a column, scrolled, with the page insets.  On a sub-page the bar is pinned above:
+/// the content starts below it, and scrolls behind it.
 struct SettingsForm<Content: View>: View {
     @ViewBuilder let content: () -> Content
+    @Environment(\.subpageHeader) private var header
+    @State private var scrolled = false
+    @State private var restTop: CGFloat?
     init(@ViewBuilder content: @escaping () -> Content) { self.content = content }
 
     var body: some View {
@@ -82,11 +102,48 @@ struct SettingsForm<Content: View>: View {
             VStack(alignment: .leading, spacing: RowMetrics.sectionSpacing) { content() }
                 .frame(maxWidth: RowMetrics.maxWidth)
                 .padding(.horizontal, RowMetrics.pageInset)
-                .padding(.top, RowMetrics.pageTop)
+                .padding(.top, header == nil ? RowMetrics.pageTop : RowMetrics.pageTop / 2)
                 .padding(.bottom, RowMetrics.pageBottom)
                 .frame(maxWidth: .infinity)
+                .background(alignment: .top) {
+                    // Where the content's top is, against the scroll view: below its rest position means scrolled.
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ScrollTop.self, value: proxy.frame(in: .named("settingsPage")).minY)
+                    }
+                    .frame(height: 0)
+                }
+        }
+        .coordinateSpace(name: "settingsPage")
+        .onPreferenceChange(ScrollTop.self) { top in
+            // The top at rest is where the content starts below the bar; anything above it has scrolled under.
+            if restTop == nil || top > restTop! { restTop = top }
+            let now = top < (restTop ?? top) - 0.5
+            if now != scrolled { scrolled = now }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let header { SubpageBar(info: header, scrolled: scrolled) }
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+private struct ScrollTop: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Pushing a sub-page in from the trailing side, or the page it leaves moving back a little; both fade.
+struct NavigationMotion: ViewModifier, Animatable {
+    let offset: CGFloat
+    var visible: Double
+    var animatableData: Double {
+        get { visible }
+        set { visible = newValue }
+    }
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset * CGFloat(1 - visible))
+            .opacity(visible)
     }
 }
 
@@ -361,7 +418,23 @@ enum RowGeometry {
     private static var cardFrames: [UUID: CGRect] = [:]
     private static var childFrames: [UUID: [CGRect]] = [:]
 
-    static func reset() { rows = [:]; cardFrames = [:]; childFrames = [:] }
+    static func reset() { rows = [:]; cardFrames = [:]; childFrames = [:]; bar = nil; listRows = [:] }
+
+    /// Rows of the list pages (not `SettingRow`s), for the bar check.
+    private static var listRows: [String: CGRect] = [:]
+    static func recordListRow(_ id: String, _ frame: CGRect) { if recording, frame.height > 0 { listRows[id] = frame } }
+
+    /// The sub-page bar, which no row may be under while the page is at its top.
+    private(set) static var bar: CGRect?
+    static func recordBar(_ frame: CGRect) { if recording, frame.height > 0 { bar = frame } }
+
+    /// Rows under the sub-page bar.
+    static func underBar(_ rows: [Row]) -> [String] {
+        guard let bar else { return [] }
+        let all = rows.map { ($0.id, $0.leading) } + listRows.map { ($0.key, $0.value) }
+        return all.filter { $0.1.minY < bar.maxY - 0.5 && $0.1.maxY > bar.minY }
+            .map { "「\($0.0)」 at y \($0.1.minY) is under the sub-page bar (bottom \(bar.maxY))" }
+    }
 
     /// Records a row's two blocks, measured in the same layout pass; a later pass replaces them.
     static func record(_ probe: UUID, title: String, leading: CGRect, trailing: CGRect, origin: CGPoint) {
@@ -476,6 +549,10 @@ private struct HoverTracked: ViewModifier {
     let id: AnyHashable
     @ObservedObject var state = HoverState.shared
     func body(content: Content) -> some View {
+        // The UI previews draw without a pointer.
+        if SettingsWindowController.isPreview { content } else { tracked(content) }
+    }
+    private func tracked(_ content: Content) -> some View {
         content.onContinuousHover { phase in
             switch phase {
             case .active: state.enter(id)

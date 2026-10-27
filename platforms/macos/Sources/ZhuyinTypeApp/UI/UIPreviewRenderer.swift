@@ -340,9 +340,68 @@ enum UIPreviewRenderer {
                 RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
                 try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)\(label)-\(suffix).png"))
                 try capture(window: window, to: directory.appendingPathComponent("grid-\(pane.rawValue)\(label)-\(suffix).png"), grid: true)
-                window.orderOut(nil)
+                retire(window)
             }
         }
+        // Every sub-page in the window, at its top and scrolled (content under the pinned bar), at each size.
+        let subpages = SettingsSubpage.allCases
+        for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (640, 440, "-min"), (1280, 900, "-large")] {
+            for subpage in subpages {
+                RowGeometry.reset()
+                settings.model.subpage = nil
+                let window = settings.makeWindow(pane: subpage.pane)
+                window.setContentSize(NSSize(width: width, height: height))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                settings.model.subpage = subpage
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+                let name = "sub-\(subpage.rawValue)\(label)"
+                remeasure(window)
+                try capture(window: window, to: directory.appendingPathComponent("\(name)-top-\(suffix).png"), grid: true)
+                if let scroll = firstScrollView(in: window.contentView) {
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: scroll.contentView.bounds.minY + 140))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+                    try capture(window: window, to: directory.appendingPathComponent("\(name)-scrolled-\(suffix).png"))
+                }
+                retire(window)
+            }
+        }
+        // A push into 記住的字詞 and the pop back, frame by frame; a row of it being removed.
+        for (push, kind) in [(true, "push"), (false, "pop")] {
+            for progress in [0.0, 0.25, 0.5, 1.0] {
+                settings.model.subpage = nil
+                let window = settings.makeWindow(pane: .words)
+                window.setContentSize(NSSize(width: 760, height: 600))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                DemoPinning.navigation = (push, progress)
+                settings.model.subpage = .learnedWords
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+                try capture(window: window, to: directory.appendingPathComponent("nav-\(kind)-\(Int(progress * 100))-\(suffix).png"))
+                DemoPinning.navigation = nil
+                retire(window)
+            }
+        }
+        settings.model.reloadLists()
+        if let first = settings.model.learned.list.visible.dropFirst().first {
+            for progress in [0.0, 0.3, 0.6, 1.0] {
+                DemoPinning.removal = (first.id, progress)
+                try renderPages(settings, [(.words, .learnedWords, 560)], to: directory, label: "-remove-\(Int(progress * 100))",
+                                suffix: suffix)
+            }
+            DemoPinning.removal = nil
+        }
+        settings.model.learned.list.query = "天"
+        try renderPages(settings, [(.words, .learnedWords, 560)], to: directory, label: "-search", suffix: suffix)
+        settings.model.learned.list.query = "沒有這個"
+        try renderPages(settings, [(.words, .learnedWords, 560)], to: directory, label: "-no-results", suffix: suffix)
+        settings.model.learned.list.query = ""
+        settings.model.subpage = nil
         // Every page and sub-page whole, at the narrowest window (the page 440 pt wide) and a wide one (860 pt).
         try renderPages(settings, pages, to: directory, label: "", suffix: suffix)
         // 快捷鍵 with the fixed keys unfolded.
@@ -437,6 +496,11 @@ enum UIPreviewRenderer {
         let now = Int(Date().timeIntervalSince1970)
         let learned = [("ㄐㄧㄣ ㄊㄧㄢ", "今天", 12), ("ㄊㄧㄢ ㄑㄧˋ", "天氣", 7), ("ㄒㄧㄝˋ ㄒㄧㄝ˙", "謝謝", 5),
                        ("ㄆㄥˊ ㄧㄡˇ", "朋友", 3), ("ㄍㄨㄥ ㄩㄢˊ", "公園", 2)]
+            + [("ㄨㄛˇ ㄇㄣ˙", "我們"), ("ㄕˊ ㄐㄧㄢ", "時間"), ("ㄍㄨㄥ ㄗㄨㄛˋ", "工作"), ("ㄒㄩㄝˊ ㄒㄧˊ", "學習"),
+               ("ㄉㄧㄢˋ ㄋㄠˇ", "電腦"), ("ㄕㄡˇ ㄐㄧ", "手機"), ("ㄎㄞ ㄒㄧㄣ", "開心"), ("ㄇㄧㄥˊ ㄊㄧㄢ", "明天"),
+               ("ㄗㄨㄛˊ ㄊㄧㄢ", "昨天"), ("ㄏㄨㄟˋ ㄧˋ", "會議"), ("ㄉㄧㄢˋ ㄧㄥˇ", "電影"), ("ㄔ ㄈㄢˋ", "吃飯"),
+               ("ㄒㄧㄤˇ ㄈㄚˇ", "想法"), ("ㄨㄣˋ ㄊㄧˊ", "問題"), ("ㄐㄧㄚ ㄧㄡˊ", "加油"), ("ㄊㄞˊ ㄅㄟˇ", "台北")]
+                .map { ($0.0, $0.1, 1) }
         try learned.map { "\($0.0)\t\($0.1)\t\($0.2)\t\(now)" }.joined(separator: "\n")
             .write(to: directory.appendingPathComponent("learned.tsv"), atomically: true, encoding: .utf8)
         let phrases = [("ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ", "王小明"), ("ㄓㄨˋ ㄧㄣ", "注音"), ("ㄊㄞˊ ㄋㄢˊ", "台南")]
@@ -454,6 +518,31 @@ enum UIPreviewRenderer {
         frameView.display()
         try write(view: frameView, rect: frameView.bounds, to: url, grid: grid ? .zero : nil, page: url.lastPathComponent,
                   checks: grid)
+    }
+
+    /// Measures the rows again from scratch: views that left the window (the page a sub-page replaced) report nothing,
+    /// the ones on screen report again after a 1 pt resize.
+    private static func remeasure(_ window: NSWindow) {
+        RowGeometry.reset()
+        let size = window.contentView?.frame.size ?? .zero
+        window.setContentSize(NSSize(width: size.width + 1, height: size.height))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        window.setContentSize(size)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+    }
+
+    /// Takes a settings window apart after its capture, so its views stop laying out (and reporting geometry) while
+    /// later pages are drawn.
+    private static func retire(_ window: NSWindow) {
+        SettingsWindowController.shared.discardWindow()
+    }
+
+    private static func firstScrollView(in view: NSView?) -> NSScrollView? {
+        guard let view else { return nil }
+        if let scroll = view as? NSScrollView, scroll.documentView != nil,
+           (scroll.documentView?.frame.height ?? 0) > scroll.contentView.bounds.height + 50 { return scroll }
+        for sub in view.subviews { if let found = firstScrollView(in: sub) { return found } }
+        return nil
     }
 
     private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
@@ -492,6 +581,7 @@ enum UIPreviewRenderer {
         if checks {
             misaligned += bad.map { "\(page): 「\($0.id)」 leading midY \($0.leading.midY), trailing midY \($0.trailing.midY)" }
             misaligned += RowGeometry.imbalances(cards: cards, rows: rows).map { "\(page): \($0)" }
+            misaligned += RowGeometry.underBar(rows).map { "\(page): \($0)" }
         }
         if let offset = grid, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
             NSGraphicsContext.saveGraphicsState()
