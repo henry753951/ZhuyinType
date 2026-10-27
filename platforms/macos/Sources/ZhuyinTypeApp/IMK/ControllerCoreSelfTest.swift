@@ -619,6 +619,225 @@ enum ControllerCoreSelfTest {
             try expect(!FileManager.default.fileExists(atPath: log.url.path), "clear left the file")
         }
 
+        // MARK: Usage statistics
+
+        func statsSession() -> (ControllerCore, FakeTextClient, UsageStatsStore) {
+            let (core, client) = session()
+            let store = UsageStatsStore(directory: nil)
+            core.stats = UsageStatsObserver(store: store)
+            return (core, client, store)
+        }
+        test("usage stats: keys, characters, compositions, picks and corrections") {
+            let (core, client, store) = statsSession()
+            press("su3cl3<enter>", into: core)
+            press("su31j6<bs>1j4<enter>", into: core)
+            press("su3cl3<down>", into: core)
+            core.selectCandidate(at: (core.composer.presentation.candidates?.items.count ?? 1) - 1)
+            press("<enter>", into: core)
+            let totals = store.data.totals
+            let sent = client.inserts.reduce(0) { $0 + $1.count }
+            try expect(totals.compositions == 3 && totals.characters == sent, "compositions \(totals.compositions), characters \(totals.characters) of \(sent)")
+            try expect(totals.keys >= 18 && totals.backspaces == 1 && totals.picksNormal == 1, "counters \(totals)")
+            try expect(store.data.latency.total == totals.keys && store.data.latency.maximum > 0, "latency \(store.data.latency.total)")
+            try expect(store.data.days.count == 1, "days \(store.data.days.keys)")
+        }
+        test("usage stats: the file holds numbers only, never text, readings or apps") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let (core, client) = session()
+            let store = UsageStatsStore(directory: directory)
+            core.stats = UsageStatsObserver(store: store)
+            press("su3cl3<enter>su3`<esc><enter>", into: core)
+            store.flush()
+            let file = (try? String(contentsOf: directory.appendingPathComponent(UsageStatsStore.fileName), encoding: .utf8)) ?? ""
+            let attributes = try? FileManager.default.attributesOfItem(atPath: directory.appendingPathComponent(UsageStatsStore.fileName).path)
+            try expect(!file.isEmpty && (attributes?[.posixPermissions] as? Int) == 0o600, "file missing or readable by others")
+            let forbidden = client.inserts + ["ㄋ", "ㄧ", "ㄏ", client.bundleIdentifier, "su3"]
+            try expect(!forbidden.contains { !$0.isEmpty && file.contains($0) }, "text in stats.json: \(file)")
+            try expect(!file.unicodeScalars.contains { $0.value > 0x2E80 }, "CJK text in stats.json")
+            try expect(store.data.totals.literalZhuyin == 1 && store.data.totals.undoLiteral == 1, "` and its undo \(store.data.totals)")
+        }
+        test("usage stats: nothing under secure input") {
+            let (core, _, store) = statsSession()
+            core.secureInput = { true }
+            press("su31j6<bs>1j4<enter>", into: core)
+            try expect(store.data.totals.isZero && store.data.latency.total == 0, "counted under secure input: \(store.data.totals)")
+        }
+        test("usage stats: clear starts over; off counts nothing") {
+            let (core, _, store) = statsSession()
+            press("su3<enter>", into: core)
+            store.clear()
+            try expect(store.data.totals.isZero && store.data.days.isEmpty && store.data.latency.total == 0, "clear left data")
+            core.stats = nil
+            press("su3<enter>", into: core)
+            try expect(store.data.totals.isZero, "counted with statistics off")
+        }
+
+        /// A settings suite for one test: always the same name, emptied before and removed after.
+        func scratchDefaults() -> UserDefaults {
+            let suite = "org.zhuyintype.selftest"
+            let defaults = UserDefaults(suiteName: suite)!
+            defaults.removePersistentDomain(forName: suite)
+            return defaults
+        }
+        defer {
+            UserDefaults(suiteName: "org.zhuyintype.selftest")?.removePersistentDomain(forName: "org.zhuyintype.selftest")
+            CFPreferencesAppSynchronize("org.zhuyintype.selftest" as CFString)
+            try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Preferences/org.zhuyintype.selftest.plist"))
+        }
+
+        test("usage stats: typing time, thinking pauses, runs and first-time-right compositions") {
+            let (core, _, store) = statsSession()
+            let observer = core.stats!
+            let threshold = observer.pauseThreshold
+            var t = 1000.0
+            func key(_ k: KeyInput, after gap: Double) { t += gap; _ = core.handle(k, time: t) }
+            for k in "su3cl3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            key(.char("s"), after: threshold + 3)         // thinking
+            for k in "u3" { key(.char(k), after: 0.2) }
+            key(.backspace, after: 0.2)                    // a correction
+            for k in "su3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            key(.char("s"), after: 120)                    // away: neither
+            for k in "u3" { key(.char(k), after: 0.2) }
+            key(.enter, after: 0.2)
+            let c = store.data.totals
+            try expect(c.compositions == 3 && c.cleanCompositions == 2, "first time right \(c.cleanCompositions)/\(c.compositions)")
+            let expectedTyping = 0.2 * Double(6 + 7 + 3)
+            try expect(abs(Double(c.typingMilliseconds) / 1000 - expectedTyping) < 0.05, "typing \(c.typingMilliseconds) ms")
+            try expect(abs(Double(c.thinkingMilliseconds) / 1000 - (threshold + 3)) < 0.05, "thinking \(c.thinkingMilliseconds) ms")
+            try expect(store.rhythm.longestRun >= 2 && store.rhythm.longestCleanRun >= 2, "runs \(store.rhythm.longestRun)")
+            try expect(store.rhythm.hours.reduce(0, +) == c.characters, "hours")
+        }
+        test("usage stats: per-key cost stays under 2 µs, with no file write while typing") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = UsageStatsStore(directory: directory)
+            var uptime = 0.0
+            store.uptime = { uptime }
+            let observer = UsageStatsObserver(store: store)
+            let before = Presentation(text: "你好", cursor: 2, clauses: [0..<2])
+            let after = Presentation(text: "你好ㄇ", cursor: 3, clauses: [0..<2, 2..<3])
+            let options = ComposerOptions()
+            let count = 200_000
+            var time = 0.0
+            let start = DispatchTime.now().uptimeNanoseconds
+            for _ in 0..<count {
+                time += 0.15
+                observer.observe(.key(.char("a"), time: time), before: before, after: after, commit: nil, handled: true,
+                                 options: options, secure: false, corrected: false, latency: 1_500_000)
+            }
+            let perKey = Double(DispatchTime.now().uptimeNanoseconds - start) / Double(count)
+            print("TIMING usage stats observer: \(String(format: "%.0f", perKey)) ns per key")
+            try expect(perKey < 2000 || ProcessInfo.processInfo.environment["ZHUYIN_CHECKS_TIMING"] == "warn",
+                       "\(perKey) ns per key")
+            try expect(store.writes == 0, "wrote \(store.writes) times while typing")
+            uptime += UsageStatsStore.saveInterval + 1
+            observer.observe(.key(.char("a"), time: time + 0.1), before: before, after: after, commit: nil, handled: true,
+                             options: options, secure: false, corrected: false, latency: nil)
+            try expect(store.writes == 1, "no write after 10 minutes: \(store.writes)")
+            store.saveIfNeeded()
+            try expect(store.writes == 1, "wrote without a change")
+            store.flush()
+            try expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(UsageStatsStore.fileName).path),
+                       "no file")
+        }
+
+        // MARK: Optional key features
+
+        test("a feature turned off: its key goes to the app; on again restores it") {
+            let (core, client) = session()
+            let all = core.shortcuts
+            type("su3", into: core)
+            try expect(core.keyDown(keyCode: 50, modifiers: []), "` with typeZhuyin on")
+            press("<enter>", into: core)
+            core.shortcuts = all.filter { $0.value != .typeZhuyin }
+            type("su3", into: core)
+            client.inserts.removeAll()
+            try expect(!core.keyDown(keyCode: 50, modifiers: []) && client.inserts.count == 1 && !core.composer.isComposing,
+                       "` with typeZhuyin off: \(client.inserts)")
+            core.shortcuts = all
+            type("su3", into: core)
+            try expect(core.keyDown(keyCode: 50, modifiers: []), "` after turning typeZhuyin on again")
+            press("<enter>", into: core)
+            for (feature, keyCode, modifiers) in [(KeyFeature.controlPunctuation, UInt16(43), NSEvent.ModifierFlags.control),
+                                                  (.optionSymbols, 47, .option)] {
+                core.disabledFeatures = []
+                try expect(core.keyDown(keyCode: keyCode, modifiers: modifiers), "\(feature) on")
+                press("<enter>", into: core)
+                core.disabledFeatures = [feature]
+                try expect(!core.keyDown(keyCode: keyCode, modifiers: modifiers), "\(feature) off still handled")
+            }
+            core.disabledFeatures = []
+            try expect(!core.keyDown(keyCode: 1, modifiers: .capsLock), "Caps Lock types English")
+            core.disabledFeatures = [.capsLockEnglish]
+            try expect(core.keyDown(keyCode: 1, modifiers: .capsLock) && core.composer.isComposing,
+                       "with Caps Lock English off, keys still type Zhuyin")
+            press("<esc><esc>", into: core)
+        }
+        test("bindings: two both work, one removed, reset, migration and conflicts") {
+            let defaults = scratchDefaults()
+            // An earlier version's single shortcut is read as one binding.
+            defaults.set(try? JSONEncoder().encode(["correctionsList": Shortcut("u", control: true)]), forKey: "shortcuts")
+            let preferences = Preferences(defaults: defaults)
+            try expect(preferences.bindings[.correctionsList] == [Shortcut("u", control: true)], "migration \(preferences.bindings[.correctionsList] ?? [])")
+            try expect(preferences.bind(.correctionsList, at: 1, to: Shortcut("↑", shift: true)) == nil, "second binding refused")
+            try expect(preferences.bind(.typeZhuyin, at: 1, to: Shortcut("u", control: true)) == "已用於「列出修正的字」",
+                       "conflict not refused")
+            try expect(preferences.bind(.typeZhuyin, at: 0, to: Shortcut("a")) != nil, "a typing key was accepted")
+            let (core, _) = session()
+            core.shortcuts = Dictionary(preferences.activeBindings.flatMap { command, list in list.map { ($0, command) } },
+                                        uniquingKeysWith: { first, _ in first })
+            for (keyCode, modifiers) in [(UInt16(32), NSEvent.ModifierFlags.control), (126, .shift)] {
+                type("su3cl3", into: core)
+                _ = core.keyDown(keyCode: keyCode, modifiers: modifiers)
+                try expect(core.composer.presentation.candidates?.tolerant == true, "binding \(keyCode) did not open corrections")
+                press("<esc><esc><esc>", into: core)
+            }
+            preferences.unbind(.correctionsList, at: 0)
+            try expect(preferences.bindings[.correctionsList] == [Shortcut("↑", shift: true)], "remove")
+            preferences.unbind(.correctionsList, at: 0)
+            try expect(preferences.bindings[.correctionsList]?.count == 1, "the last binding was removed")
+            try expect(preferences.resetBindings(.correctionsList) == nil
+                       && preferences.bindings[.correctionsList] == ShortcutCommand.correctionsList.defaultBindings, "reset")
+            preferences.setEnabled(.correctionsList, false)
+            try expect(preferences.activeBindings[.correctionsList] == nil, "turned off but still active")
+            preferences.setEnabled(.correctionsList, true)
+            try expect(preferences.activeBindings[.correctionsList] != nil, "turned on again but not active")
+        }
+
+        // MARK: Space
+
+        test("Space: commits the composition and the app types the space; stored choices migrate") {
+            let (core, client) = session()
+            var options = core.composer.options
+            options.spaceAction = .commitAndSpace
+            core.update(options: options, shiftToggle: .both, popupCompositionApps: [])
+            type("su3", into: core)
+            try expect(!core.keyDown(keyCode: 49, modifiers: []) && client.inserts.last == "你" && !core.composer.isComposing,
+                       "space did not commit and pass: \(client.inserts)")
+            type("su", into: core)
+            try expect(core.keyDown(keyCode: 49, modifiers: []) && core.composer.isComposing, "space did not finish the first tone")
+            press("<down>", into: core)
+            try expect(core.keyDown(keyCode: 49, modifiers: []) && core.composer.presentation.candidates != nil, "space picked from the list")
+            press("<esc><esc><esc>", into: core)
+            for (stored, expected) in [("commit", SpaceAction.commitAndSpace), ("commitAndSpace", .commitAndSpace),
+                                       ("openCandidates", .openCandidates)] {
+                let defaults = scratchDefaults()
+                defaults.set(stored, forKey: "spaceAction")
+                try expect(Preferences(defaults: defaults).spaceAction == expected, "stored \(stored)")
+            }
+            for (legacy, expected) in [(false, SpaceAction.commitAndSpace), (true, .openCandidates)] {
+                let defaults = scratchDefaults()
+                defaults.set(legacy, forKey: "spaceOpensCandidates")
+                try expect(Preferences(defaults: defaults).spaceAction == expected, "legacy \(legacy)")
+            }
+            let defaults = scratchDefaults()
+            try expect(Preferences(defaults: defaults).spaceAction == .commitAndSpace, "default")
+        }
+
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
     }

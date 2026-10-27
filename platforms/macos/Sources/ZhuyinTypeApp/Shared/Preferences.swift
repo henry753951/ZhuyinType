@@ -92,6 +92,9 @@ final class Preferences: ObservableObject {
             Key.punctuationKeys: PunctuationKeys.windows.rawValue,
             Key.recordsCorrections: false,
             Key.recordsCorrectionContext: false,
+            Key.disabledKeyFeatures: [String](),
+            Key.lastShiftSide: ShiftToggle.both.rawValue,
+            Key.recordsUsageStats: true,
         ])
     }
 
@@ -122,20 +125,29 @@ final class Preferences: ObservableObject {
         static let candidateAnchor = "candidateAnchor"
         static let fuzzySounds = "fuzzySounds"
         static let usesPrecedingText = "usesPrecedingText"
+        /// Before multiple bindings: one shortcut per command.  Read while `keyBindings` is unset.
         static let shortcuts = "shortcuts"
+        static let keyBindings = "keyBindings"
         static let characterForms = "characterForms"
         static let punctuationKeys = "punctuationKeys"
         /// 「記錄改字」: compositions with a correction go to corrections.jsonl (CorrectionRecorder).  Off by default.
         static let recordsCorrections = "recordsCorrections"
         /// With it, the text before the insertion point the engine read.  Off by default.
         static let recordsCorrectionContext = "recordsCorrectionContext"
+        /// Optional key features turned off on the 快捷鍵 page (`KeyFeature` raw values).  Empty: everything on.
+        static let disabledKeyFeatures = "disabledKeyFeatures"
+        /// The Shift used for 中/英 before the switch was turned off, to restore when it is turned on again.
+        static let lastShiftSide = "lastShiftSide"
+        /// 「記錄使用統計」: counts and timings for the 分析 page (UsageStatsStore).  On by default.
+        static let recordsUsageStats = "recordsUsageStats"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
-                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts,
+                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, keyBindings,
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
-                          recordsCorrections, recordsCorrectionContext]
+                          recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
+                          recordsUsageStats]
     }
 
     func resetToDefaults() {
@@ -160,17 +172,23 @@ final class Preferences: ObservableObject {
         get { SelectionKeySet(rawValue: defaults.string(forKey: Key.selectionKeys) ?? "") ?? .digits }
         set { defaults.set(newValue.rawValue, forKey: Key.selectionKeys); changed() }
     }
-    /// What Space does with no syllable being typed; by default it commits.  Not registered, so that a choice saved
-    /// by an earlier version (the Bool) is kept.
+    /// The choices the app offers for Space: it never confirms a selection, so 「送出文字」 (`.commit`) is not one.
+    static let spaceActions: [SpaceAction] = [.commitAndSpace, .openCandidates]
+
+    /// What Space does with no syllable being typed: send the composition and type a space (the default), or open
+    /// the candidate window.  A choice saved by an earlier version is kept, except 「送出文字」, which becomes 「送出並
+    /// 輸入空白」; the earlier Bool is read too.  Not registered, so the stored value can be told from the default.
     var spaceAction: SpaceAction {
         get {
-            if let action = defaults.string(forKey: Key.spaceAction).flatMap(SpaceAction.init(rawValue:)) { return action }
-            if let opens = defaults.object(forKey: Key.legacySpaceOpensCandidates) as? Bool { return opens ? .openCandidates : .commit }
-            return .commit
+            if let action = defaults.string(forKey: Key.spaceAction).flatMap(SpaceAction.init(rawValue:)) {
+                return action == .commit ? .commitAndSpace : action
+            }
+            if let opens = defaults.object(forKey: Key.legacySpaceOpensCandidates) as? Bool { return opens ? .openCandidates : .commitAndSpace }
+            return .commitAndSpace
         }
         set {
             defaults.removeObject(forKey: Key.legacySpaceOpensCandidates)
-            defaults.set(newValue.rawValue, forKey: Key.spaceAction)
+            defaults.set((newValue == .commit ? .commitAndSpace : newValue).rawValue, forKey: Key.spaceAction)
             changed()
         }
     }
@@ -262,40 +280,125 @@ final class Preferences: ObservableObject {
         set { defaults.set(newValue.rawValue, forKey: Key.candidateAnchor); changed() }
     }
 
-    /// Every rebindable command's shortcut: the user's where set, otherwise the default.
-    var shortcuts: [ShortcutCommand: Shortcut] {
+    /// Every rebindable command's bindings, in order (the first is the one shown first): the user's where set,
+    /// otherwise the default.  Stored as {command: [shortcut]}; a single shortcut stored by an earlier version
+    /// (`shortcuts`, {command: shortcut}) is read as a one-binding list until the bindings are first changed.
+    var bindings: [ShortcutCommand: [Shortcut]] {
         get {
-            var result = ShortcutCommand.defaults
-            if let data = defaults.data(forKey: Key.shortcuts),
-               let stored = try? JSONDecoder().decode([String: Shortcut].self, from: data) {
+            var result = ShortcutCommand.defaultBindings
+            if let data = defaults.data(forKey: Key.keyBindings),
+               let stored = try? JSONDecoder().decode([String: [Shortcut]].self, from: data) {
+                for (name, list) in stored {
+                    if let command = ShortcutCommand(rawValue: name) { result[command] = list }
+                }
+            } else if let data = defaults.data(forKey: Key.shortcuts),
+                      let stored = try? JSONDecoder().decode([String: Shortcut].self, from: data) {
                 for (name, shortcut) in stored {
-                    if let command = ShortcutCommand(rawValue: name) { result[command] = shortcut }
+                    if let command = ShortcutCommand(rawValue: name) { result[command] = [shortcut] }
                 }
             }
             return result
         }
         set {
             let stored = Dictionary(uniqueKeysWithValues: newValue.map { ($0.key.rawValue, $0.value) })
-            defaults.set(try? JSONEncoder().encode(stored), forKey: Key.shortcuts)
+            defaults.set(try? JSONEncoder().encode(stored), forKey: Key.keyBindings)
+            defaults.removeObject(forKey: Key.shortcuts)
             changed()
         }
     }
 
+    /// Each command's first binding (none: the command has no key).
+    var shortcuts: [ShortcutCommand: Shortcut] { bindings.compactMapValues(\.first) }
+
+    /// Sets one binding of `command` (`index` past the end adds one), unless `shortcut` is reserved or bound to
+    /// another command; returns why not, naming that command.
+    @discardableResult
+    func bind(_ command: ShortcutCommand, at index: Int, to shortcut: Shortcut) -> String? {
+        var all = bindings
+        var list = all[command] ?? []
+        if let problem = ShortcutCommand.problem(assigning: shortcut, to: command, at: index, in: all) { return problem }
+        if index < list.count { list[index] = shortcut } else { list.append(shortcut) }
+        all[command] = list
+        bindings = all
+        return nil
+    }
+
+    /// Removes one binding of `command`; its last binding stays (turn the feature off instead).
+    func unbind(_ command: ShortcutCommand, at index: Int) {
+        var all = bindings
+        guard var list = all[command], list.count > 1, list.indices.contains(index) else { return }
+        list.remove(at: index)
+        all[command] = list
+        bindings = all
+    }
+
+    /// Restores `command`'s default bindings, unless another command now uses one of them; returns why not.
+    @discardableResult
+    func resetBindings(_ command: ShortcutCommand) -> String? {
+        var all = bindings
+        all[command] = []
+        for shortcut in command.defaultBindings {
+            if let problem = ShortcutCommand.problem(assigning: shortcut, to: command, at: 0, in: all) { return problem }
+        }
+        all[command] = command.defaultBindings
+        bindings = all
+        return nil
+    }
+
     var candidateKeyLabels: CandidateKeyLabels {
-        let all = shortcuts
-        return CandidateKeyLabels(zhuyin: all[.typeZhuyin]?.compact ?? "`",
-                                  single: all[.singleCharacterList]?.compact ?? "⇧↓",
-                                  corrections: all[.correctionsList]?.compact ?? "⇧↑")
+        let all = activeShortcuts
+        return CandidateKeyLabels(zhuyin: all[.typeZhuyin]?.compact ?? "",
+                                  single: all[.singleCharacterList]?.compact ?? "",
+                                  corrections: all[.correctionsList]?.compact ?? "",
+                                  zhuyinClickable: isEnabled(.zhuyinRowClick))
     }
 
     func resetShortcuts() {
         defaults.removeObject(forKey: Key.shortcuts)
+        defaults.removeObject(forKey: Key.keyBindings)
         changed()
     }
 
     var usesPrecedingText: Bool {
         get { defaults.bool(forKey: Key.usesPrecedingText) }
         set { defaults.set(newValue, forKey: Key.usesPrecedingText); changed() }
+    }
+
+    var recordsUsageStats: Bool {
+        get { defaults.bool(forKey: Key.recordsUsageStats) }
+        set { defaults.set(newValue, forKey: Key.recordsUsageStats); changed() }
+    }
+
+    /// Optional key features that are off.
+    var disabledKeyFeatures: Set<KeyFeature> {
+        get { Set((defaults.stringArray(forKey: Key.disabledKeyFeatures) ?? []).compactMap(KeyFeature.init(rawValue:))) }
+        set { defaults.set(newValue.map(\.rawValue).sorted(), forKey: Key.disabledKeyFeatures); changed() }
+    }
+    func isEnabled(_ feature: KeyFeature) -> Bool { !disabledKeyFeatures.contains(feature) }
+    func setEnabled(_ feature: KeyFeature, _ on: Bool) {
+        var disabled = disabledKeyFeatures
+        if on { disabled.remove(feature) } else { disabled.insert(feature) }
+        disabledKeyFeatures = disabled
+    }
+    /// Whether `command` works: its feature, if it has one, is on.
+    func isEnabled(_ command: ShortcutCommand) -> Bool { command.feature.map(isEnabled) ?? true }
+    /// The bindings the controller uses: those of commands whose feature is off are left out, so their keys go to the
+    /// app as any unbound key does.
+    var activeBindings: [ShortcutCommand: [Shortcut]] { bindings.filter { isEnabled($0.key) } }
+    var activeShortcuts: [ShortcutCommand: Shortcut] { activeBindings.compactMapValues(\.first) }
+
+    /// The Shift tap switch on the 快捷鍵 page: on uses the side chosen before.
+    var shiftSwitchEnabled: Bool {
+        get { shiftToggle != .none }
+        set {
+            if newValue {
+                shiftToggle = ShiftToggle(rawValue: defaults.string(forKey: Key.lastShiftSide) ?? "")
+                    .flatMap { $0 == .none ? nil : $0 } ?? .both
+            } else {
+                if shiftToggle != .none { defaults.set(shiftToggle.rawValue, forKey: Key.lastShiftSide) }
+                shiftToggle = .none
+            }
+        }
     }
 
     var recordsCorrections: Bool {

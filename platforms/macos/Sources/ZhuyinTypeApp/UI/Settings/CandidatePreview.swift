@@ -11,40 +11,59 @@ import ZhuyinCore
 /// compared with the list next to them.
 struct CandidatePreview: View {
     @ObservedObject var preferences: Preferences
-    /// The parts to highlight: the setting being pointed at or just changed.
-    var highlighted: Set<PreviewPart> = []
     /// False for the UI previews: keycaps drawn at rest.
     var animated = true
     @State private var width: CGFloat = 520
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     static let spacing: CGFloat = 12
 
     var body: some View {
+        // The rows take the width offered (a GeometryReader never grows with its content); the height is what the
+        // rows need at that width.
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: Self.rowSpacing) {
+                ForEach(Array(rows(width: proxy.size.width).enumerated()), id: \.offset) { _, row in
+                    self.row(row.scenes, widths: row.widths)
+                }
+            }
+            .frame(width: proxy.size.width, alignment: .leading)
+            .onAppear { width = proxy.size.width }
+            .onChange(of: proxy.size.width) { _, now in width = now }
+        }
+        .frame(height: height(width: width))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("候選字視窗預覽")
+    }
+
+    static let rowSpacing: CGFloat = 14
+    /// The scene title's line above each card.
+    static let titleHeight: CGFloat = 22
+
+    /// The scenes row by row, with each card's width, for `width`.
+    private func rows(width: CGFloat) -> [(scenes: [PreviewScene], widths: [CGFloat])] {
         let scenes = PreviewScenes(preferences: preferences)
         let vertical = preferences.candidateLayout == .vertical
         let half = (width - Self.spacing) / 2
         // The phrase notice is the widest of the small scenes.
-        let small = (width - Self.spacing * 2) * 0.29
-        let wide = width - Self.spacing * 2 - small * 2
-        VStack(alignment: .leading, spacing: 14) {
-            if vertical {
-                row([scenes.list, scenes.corrections], widths: [half, half])
-            } else {
-                row([scenes.list], widths: [width])
-                row([scenes.corrections], widths: [width])
-            }
-            row([scenes.composing, scenes.phrase, scenes.mode], widths: [small, wide, small])
+        let narrow = (width - Self.spacing * 2) * 0.29
+        let wide = width - Self.spacing * 2 - narrow * 2
+        var rows: [(scenes: [PreviewScene], widths: [CGFloat])] = []
+        if vertical, let corrections = scenes.corrections {
+            rows.append(([scenes.list, corrections], [half, half]))
+        } else {
+            rows.append(([scenes.list], [vertical ? half : width]))
+            if let corrections = scenes.corrections { rows.append(([corrections], [width])) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(GeometryReader { proxy in
-            Color.clear
-                .onAppear { width = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, now in width = now }
-        })
-        .animation(reduceMotion || !animated ? nil : .easeInOut(duration: 0.22), value: highlighted)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("候選字視窗預覽")
+        let small = [scenes.composing] + [scenes.phrase, scenes.mode].compactMap { $0 }
+        rows.append((small, small.count == 3 ? [narrow, wide, narrow] : Array(repeating: (width - Self.spacing) / 2, count: small.count)))
+        return rows
+    }
+
+    private func height(width: CGFloat) -> CGFloat {
+        let rows = rows(width: width)
+        let heights = rows.map { row in
+            zip(row.scenes, row.widths).map { SceneLayout(scene: $0, width: $1, preferences: preferences).naturalHeight }.max() ?? 0
+        }
+        return heights.reduce(0) { $0 + Self.titleHeight + $1 } + CGFloat(max(0, rows.count - 1)) * Self.rowSpacing
     }
 
     private func row(_ scenes: [PreviewScene], widths: [CGFloat]) -> some View {
@@ -52,19 +71,11 @@ struct CandidatePreview: View {
         let height = layouts.map(\.naturalHeight).max() ?? 0
         return HStack(alignment: .top, spacing: Self.spacing) {
             ForEach(Array(layouts.enumerated()), id: \.offset) { _, layout in
-                PreviewBlock(layout: layout.fitted(height: height), preferences: preferences, highlighted: highlighted,
-                             animated: animated)
+                PreviewBlock(layout: layout.fitted(height: height), preferences: preferences, animated: animated)
                     .frame(width: layout.width)
             }
         }
     }
-}
-
-/// What the preview can highlight: the whole window, one of its parts, or the 中/英 badge.
-enum PreviewPart: Hashable {
-    case window
-    case part(CandidatePart)
-    case badge
 }
 
 // MARK: - Scenes
@@ -86,7 +97,9 @@ struct PreviewScene {
 
 /// The five scenes for the current settings.  The keys come from the settings, never from here.
 struct PreviewScenes {
-    let composing, list, corrections, phrase, mode: PreviewScene
+    /// Nil for a scene whose feature is turned off on the 快捷鍵 page.
+    let composing, list: PreviewScene
+    let corrections, phrase, mode: PreviewScene?
 
     private static let start = "約了"
     private static let hint = "ㄒㄧㄠˇ ㄇㄧㄥˊ"
@@ -109,12 +122,18 @@ struct PreviewScenes {
         list = PreviewScene(title: "候選字清單", committed: Self.start, marked: [w, DemoSegment("曉明", .focus)],
                             keys: ["↓"], note: preferences.spaceAction == .openCandidates ? "或 空白" : nil,
                             list: candidates(tolerant: false), zhuyinHint: Self.hint)
-        corrections = PreviewScene(title: "修正清單", committed: Self.start, marked: [w, DemoSegment("曉明", .focus)],
-                                   keys: keys.caps(.correctionsList), list: candidates(tolerant: true), zhuyinHint: Self.hint)
-        phrase = PreviewScene(title: "加入自訂詞", committed: Self.start, marked: [DemoSegment("王小明", .focus)],
-                              keys: keys.caps(.selectLeft), note: "×3", notice: "Enter 加入自訂詞：王小明")
-        mode = PreviewScene(title: "中英切換", committed: "王小明", keys: [keys.shiftTap ?? "Caps Lock"],
-                            badge: preferences.showModeToast ? "英" : nil, badgeOff: !preferences.showModeToast)
+        corrections = keys.caps(.correctionsList).map {
+            PreviewScene(title: "修正清單", committed: Self.start, marked: [w, DemoSegment("曉明", .focus)],
+                         keys: $0, list: candidates(tolerant: true), zhuyinHint: Self.hint)
+        }
+        phrase = keys.caps(.selectLeft).map {
+            PreviewScene(title: "加入自訂詞", committed: Self.start, marked: [DemoSegment("王小明", .focus)],
+                         keys: $0, note: "×3", notice: "Enter 加入自訂詞：王小明")
+        }
+        mode = keys.modeKey.map {
+            PreviewScene(title: "中英切換", committed: "王小明", keys: [$0],
+                         badge: preferences.showModeToast ? "英" : nil, badgeOff: !preferences.showModeToast)
+        }
     }
 }
 
@@ -132,7 +151,6 @@ struct SceneLayout {
     var panelSize: CGSize?
     var scale: CGFloat = 1
     var panel: CGRect?
-    var parts: [CandidatePart: [NSRect]] = [:]
     var badge: CGRect?
     var keycapX: CGFloat = 0
 
@@ -161,7 +179,6 @@ struct SceneLayout {
                                                 style: preferences.candidateStyle, notice: scene.notice,
                                                 zhuyinHint: scene.zhuyinHint)
             panelSize = measured.size
-            parts = measured.parts
             scale = min(1, max(0.3, (width - 12) / max(1, measured.size.width)))
             let size = CGSize(width: measured.size.width * scale, height: measured.size.height * scale)
             let x = min(max(start - measured.textInset * scale, 6), max(6, width - size.width - 6))
@@ -189,20 +206,6 @@ struct SceneLayout {
         }
         return copy
     }
-
-    /// The highlight rectangles of `part`, in the card's coordinates.
-    func frames(of part: PreviewPart) -> [CGRect] {
-        switch part {
-        case .window: return panel.map { [$0.insetBy(dx: -3, dy: -3)] } ?? []
-        case .badge: return badge.map { [$0.insetBy(dx: -3, dy: -3)] } ?? []
-        case .part(let inner):
-            guard let panel else { return [] }
-            return (parts[inner] ?? []).map {
-                CGRect(x: panel.minX + $0.minX * scale, y: panel.minY + $0.minY * scale,
-                       width: $0.width * scale, height: $0.height * scale).insetBy(dx: -2, dy: -1)
-            }
-        }
-    }
 }
 
 /// Measures the candidate window offscreen with the view the window itself uses.
@@ -210,10 +213,14 @@ enum PanelMeasure {
     private static let content = CandidateContentView(frame: .zero)
 
     static func measure(list: CandidateList?, keys: [Character], style: CandidateStyle, notice: String?,
-                        zhuyinHint: String?) -> (size: CGSize, textInset: CGFloat, parts: [CandidatePart: [NSRect]]) {
+                        zhuyinHint: String?) -> (size: CGSize, textInset: CGFloat) {
         let size = content.update(list: list, preview: nil, keys: keys, style: style, maxWidth: 4000, notice: notice,
                                   zhuyinHint: zhuyinHint)
-        return (size, content.candidateTextInset, content.partFrames)
+        return (size, content.candidateTextInset)
+    }
+
+    /// The text inset of the window measured last.
+    static var lastTextInset: CGFloat { content.candidateTextInset
     }
 }
 
@@ -222,7 +229,6 @@ enum PanelMeasure {
 private struct PreviewBlock: View {
     let layout: SceneLayout
     @ObservedObject var preferences: Preferences
-    let highlighted: Set<PreviewPart>
     let animated: Bool
 
     var body: some View {
@@ -231,6 +237,8 @@ private struct PreviewBlock: View {
             Text(scene.title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
@@ -259,19 +267,6 @@ private struct PreviewBlock: View {
                         .foregroundStyle(.tertiary)
                         .offset(x: SceneLayout.inset,
                                 y: layout.above ? layout.lineTop - 20 : layout.lineTop + SceneLayout.lineHeight + 4)
-                }
-                ForEach(Array(highlighted), id: \.self) { part in
-                    ForEach(Array(layout.frames(of: part).enumerated()), id: \.offset) { _, rect in
-                        let shape = RoundedRectangle(cornerRadius: part == .window ? 16 : 6, style: .continuous)
-                        // An accent ring with a light inner line, so it also shows on the accent-coloured highlight.
-                        shape.fill(Color.accentColor.opacity(0.1))
-                            .overlay(shape.strokeBorder(Color.accentColor.opacity(0.9), lineWidth: 1.5))
-                            .overlay(shape.inset(by: 1.5).strokeBorder(Color.white.opacity(0.75), lineWidth: 1))
-                            .frame(width: rect.width, height: rect.height)
-                            .offset(x: rect.minX, y: rect.minY)
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                    }
                 }
             }
             .frame(width: layout.width, height: layout.height, alignment: .topLeading)

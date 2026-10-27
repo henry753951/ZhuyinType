@@ -42,7 +42,7 @@ struct Shortcut: Codable, Hashable {
         if shift { caps.append("⇧") }
         if command { caps.append("⌘") }
         let names = ["Space": "空白", "PageUp": "Page Up", "PageDown": "Page Down"]
-        caps.append(names[key] ?? key.uppercased())
+        caps.append(names[key] ?? (key.count == 1 ? key.uppercased() : key))
         return caps
     }
 
@@ -65,11 +65,40 @@ struct Shortcut: Codable, Hashable {
     }
 }
 
-/// The keys the candidate window shows on its keycaps.
+/// The keys the candidate window shows on its keycaps; empty for a command that is turned off.
 struct CandidateKeyLabels: Equatable {
     var zhuyin = "`"
     var single = "⇧↓"
     var corrections = "⇧↑"
+    /// Clicking the Zhuyin row types the Zhuyin itself.
+    var zhuyinClickable = true
+}
+
+/// Key features that can be turned off on the 快捷鍵 page.  Each is implemented in the app: the commands' shortcuts
+/// are left out (their keys go to the app), or the controller passes the keys on, or a click is ignored.  The engine
+/// is unchanged.
+enum KeyFeature: String, CaseIterable, Identifiable {
+    /// ` (typeZhuyin) and its restore.
+    case typeZhuyin
+    /// Clicking the Zhuyin row of the candidate window.
+    case zhuyinRowClick
+    case singleCharacterList
+    case correctionsList
+    /// ⇧← ⇧→ and Return: add a custom phrase.
+    case selectPhrase
+    /// Tab and ⇧Tab turn the list's pages.
+    case pageKeys
+    /// ⌥⌫ deletes a word.
+    case deleteWord
+    /// ⌃ with a symbol key types Chinese punctuation.
+    case controlPunctuation
+    /// ⌥ with a digit or symbol key types the symbol printed on it.
+    case optionSymbols
+    /// Caps Lock types English.
+    case capsLockEnglish
+    /// Deleting what was just sent and typing again counts as a correction (and keeps the sentence going).
+    case deleteAfterCommit
+    var id: String { rawValue }
 }
 
 /// The commands with a rebindable shortcut, most used first.
@@ -119,6 +148,52 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectRight: return .shiftRight
         case .deleteWord: return .optionBackspace
         case .commitWithNewline: return .shiftEnter
+        }
+    }
+
+    /// The short name on the 快捷鍵 page and in conflict messages.
+    var label: String {
+        switch self {
+        case .singleCharacterList: return "只列一個字"
+        case .correctionsList: return "列出修正的字"
+        case .typeZhuyin: return "打出注音本身"
+        case .nextPage: return "下一頁"
+        case .previousPage: return "上一頁"
+        case .selectLeft: return "往左選取"
+        case .selectRight: return "往右選取"
+        case .deleteWord: return "刪掉一個詞"
+        case .commitWithNewline: return "送出並換行"
+        }
+    }
+
+    /// Why `shortcut` cannot be binding `index` of `command`, naming the action that has it; nil when it can.
+    static func problem(assigning shortcut: Shortcut, to command: ShortcutCommand, at index: Int,
+                        in bindings: [ShortcutCommand: [Shortcut]]) -> String? {
+        if let reason = shortcut.reservedReason { return reason }
+        for (other, list) in bindings {
+            for (position, bound) in list.enumerated() where bound == shortcut && !(other == command && position == index) {
+                return other == command ? "已是這個功能的另一個按鍵" : "已用於「\(other.label)」"
+            }
+        }
+        return nil
+    }
+
+    /// The default bindings: one each.
+    var defaultBindings: [Shortcut] { [defaultShortcut] }
+    static var defaultBindings: [ShortcutCommand: [Shortcut]] {
+        Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
+    }
+
+    /// The feature that turns the command off, or nil when it cannot be turned off.
+    var feature: KeyFeature? {
+        switch self {
+        case .singleCharacterList: return .singleCharacterList
+        case .correctionsList: return .correctionsList
+        case .typeZhuyin: return .typeZhuyin
+        case .nextPage, .previousPage: return .pageKeys
+        case .selectLeft, .selectRight: return .selectPhrase
+        case .deleteWord: return .deleteWord
+        case .commitWithNewline: return nil
         }
     }
 
