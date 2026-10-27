@@ -105,9 +105,10 @@ struct PreviewScenes {
     private static let hint = "ㄒㄧㄠˇ ㄇㄧㄥˊ"
     private static let words = ["曉明", "小明", "小名", "明", "名", "鳴", "銘", "冥", "茗", "溟", "螟", "暝", "瞑", "酩"]
 
-    init(preferences: Preferences) {
+    /// `pageLimit`: show at most this many candidates a page (the compact preview), still with the real window.
+    init(preferences: Preferences, pageLimit: Int? = nil) {
         let keys = CurrentKeys(preferences)
-        let pageSize = preferences.pageSelectionKeys.count
+        let pageSize = min(preferences.pageSelectionKeys.count, pageLimit ?? .max)
         func candidates(tolerant: Bool) -> CandidateList {
             var items = Self.words.map { Candidate(text: $0) }
             if tolerant {
