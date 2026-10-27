@@ -71,11 +71,12 @@ def prepare(ctx: Context) -> None:
 
 
 def check(ctx: Context) -> None:
-    """zhuyin-cli --check-v3: the Swift scorer against the golden vectors; output in homophone2/check-v3.log."""
+    """--check-v3 with Core ML: the app's scorer (EngineBench) against the golden vectors; output in
+    homophone2/check-v3.log."""
     from zhuyintype_ml.training.v3.coreml import require_macos
 
-    require_macos("zhuyin-cli --check-v3 with Core ML")
-    done = subprocess.run([str(paths.cli()), "--check-v3", str(MODEL)], capture_output=True, text=True)
+    require_macos("--check-v3 with Core ML")
+    done = subprocess.run([str(paths.bench()), "--check-v3", str(MODEL)], capture_output=True, text=True)
     (ctx.out / "check-v3.log").write_text(done.stdout + done.stderr)
     print(done.stdout + done.stderr, end="")
     done.check_returncode()

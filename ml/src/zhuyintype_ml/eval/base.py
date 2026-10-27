@@ -56,12 +56,16 @@ class Evaluator(ABC):
         self.configure(parser)
         return parser.parse_args(argv)
 
+    def cli(self) -> Path:
+        """The engine command line this evaluation runs (zhuyin-cli, built from the current sources)."""
+        return paths.cli()
+
     def config(self, args: argparse.Namespace) -> EngineConfig:
         return EngineConfig(args.config, args.data, [a for text in args.cli_args for a in shlex.split(text)])
 
     def run(self, args: argparse.Namespace, quiet: bool = False) -> Report:
         config = self.config(args)
-        pool = EnginePool(config, args.jobs)
+        pool = EnginePool(config, args.jobs, self.cli())
         options = {k: v for k, v in vars(args).items() if k not in NOT_OPTIONS and not callable(v)}
         report = Report(self.name, config.describe(), options)
         for eval_set in resolve(args.set, self.kind):
