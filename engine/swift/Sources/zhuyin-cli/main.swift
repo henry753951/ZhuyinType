@@ -389,6 +389,8 @@ do {
             } else {
                 print(committed)
             }
+            // Each answer leaves at once, so a caller can hand out lines one at a time (zt's engine pool streams them).
+            fflush(stdout)
         }
         // On standard error, so batch output stays one line per input.
         if timing {

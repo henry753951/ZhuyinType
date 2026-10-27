@@ -2,7 +2,8 @@
 
     zt --remote eval conversion --config engine -n 3 --set smoke     # any zt command, on the host
     zt --remote --workdir onnx-eval-x --export eval conversion --json out.json
-    zt --remote --backend cuda eval conversion --set colloquial-dev  # model calls on the GPU (PyTorch server)
+    zt --remote eval conversion --set colloquial-dev                 # model calls on the GPU (the default for eval)
+    zt --remote --backend cpu eval conversion --set colloquial-dev   # ONNX Runtime in every engine process
     zt --remote --push data/build/v3_new --detach train v3          # copy local files, keep running after logout
     zt --remote --nice 10 --detach eval sweep ...                    # a long sweep that yields the CPU to others
     zt remote status | logs [-f] | wait [--timeout S] | pull [PATH ...] | stop | shell | sync | list
@@ -17,7 +18,8 @@ runs log to <base>/logs.  Options of `zt --remote` come before the command:
   --fetch COMPONENTS  data to fetch first, comma-separated (default: the eval group for eval, bench, models and
                       train, nothing for other commands; `none` skips it)
   --export            export the ONNX models from the checkpoints first (cached; needed for --config app)
-  --backend cpu|cuda  cpu: ONNX Runtime in every engine process (default); cuda: one PyTorch model server on the GPU
+  --backend cpu|cuda  cuda: one PyTorch model server on the GPU for every engine process (default for `zt eval`);
+                      cpu: ONNX Runtime in every engine process (default for everything else, ZhuyinBench included)
   --group GROUP       also install a dependency group on the host (repeatable)
   --env KEY=VALUE     environment for the run, e.g. ZT_BUILD_JOBS=16 (repeatable)
   --detach            keep running on the host after this command returns (nohup); see `zt remote status`
@@ -47,7 +49,12 @@ def run_options(parser: argparse.ArgumentParser) -> None:
         help="data components to fetch, comma-separated (default: eval for eval/bench/models/train; none: skip)",
     )
     parser.add_argument("--export", action="store_true", help="export the ONNX models first")
-    parser.add_argument("--backend", choices=["cpu", "cuda"], default="cpu", help="model runtime (default: cpu)")
+    parser.add_argument(
+        "--backend",
+        choices=["cpu", "cuda", "auto"],
+        default="auto",
+        help="model runtime (default: cuda for zt eval, cpu for everything else)",
+    )
     parser.add_argument("--group", action="append", default=[], help="dependency group to install on the host")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE", help="environment for the run")
     parser.add_argument("--detach", action="store_true", help="keep running after this command returns")

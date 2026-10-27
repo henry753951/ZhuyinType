@@ -5,10 +5,14 @@ import Darwin
 import Glibc
 #endif
 
-/// Private JSON-lines socket; a server error aborts evaluation instead of silently dropping model scores.
+/// The models through `zt`'s model server (ml/src/zhuyintype_ml/remote/model_server.py) on a private Unix socket, in
+/// its binary frames: an 8-byte little-endian header (marker 0, kind, version 1 as u16, payload bytes as u32), then
+/// int32 values in requests and float32 values in replies.  Requests: kind 1 reranker (B, L, ids, targets), kind 2
+/// character model (C, N, W, context, ids, tones, costs, boundary, candidates as N rows of W).  A reply of kind 1
+/// carries an error message.  A server error aborts evaluation instead of silently dropping model scores.
 final class ModelServer {
-    private let handle: FileHandle
-    private var buffer = Data()
+    private let fd: Int32
+    private var buffer: [UInt8] = []
 
     init(path: String) throws {
         var address = sockaddr_un()
@@ -24,7 +28,7 @@ final class ModelServer {
         let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
         #endif
         guard fd >= 0 else { throw POSIXError(.EIO) }
-        handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        self.fd = fd
         let status = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
@@ -35,46 +39,71 @@ final class ModelServer {
         signal(SIGPIPE, SIG_IGN)
     }
 
-    func predict(_ request: [String: Any]) -> Any {
+    deinit { close(fd) }
+
+    private func sendAll(_ bytes: [UInt8]) throws {
+        var sent = 0
+        while sent < bytes.count {
+            let count = bytes.withUnsafeBytes { write(fd, $0.baseAddress! + sent, bytes.count - sent) }
+            guard count > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            sent += count
+        }
+    }
+
+    /// Reads until `buffer` holds at least `count` bytes.
+    private func fill(_ count: Int) throws {
+        var chunk = [UInt8](repeating: 0, count: 65536)
+        while buffer.count < count {
+            let read = recv(fd, &chunk, chunk.count, 0)
+            guard read > 0 else { throw POSIXError(read == 0 ? .EPIPE : (POSIXErrorCode(rawValue: errno) ?? .EIO)) }
+            buffer.append(contentsOf: chunk.prefix(read))
+        }
+    }
+
+    private static func le32(_ bytes: ArraySlice<UInt8>) -> UInt32 {
+        bytes.reversed().reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+    }
+
+    /// One request (kind, int32 values) and its reply (float32 values).
+    func call(_ kind: UInt8, _ values: [Int32]) -> [Float] {
         do {
-            var data = try JSONSerialization.data(withJSONObject: request)
-            data.append(10)
-            try handle.write(contentsOf: data)
-            while buffer.firstIndex(of: 10) == nil {
-                #if os(Linux)
-                // Foundation may wait to fill the buffer on sockets; recv returns one available response fragment.
-                var bytes = [UInt8](repeating: 0, count: 65536)
-                let count = recv(handle.fileDescriptor, &bytes, bytes.count, 0)
-                guard count > 0 else { throw POSIXError(count == 0 ? .EPIPE : (POSIXErrorCode(rawValue: errno) ?? .EIO)) }
-                buffer.append(contentsOf: bytes.prefix(count))
-                #else
-                guard let part = try handle.read(upToCount: 65536), !part.isEmpty else { throw POSIXError(.EPIPE) }
-                buffer.append(part)
-                #endif
-                guard buffer.count <= 4_194_304 else { throw POSIXError(.EMSGSIZE) }
+            let length = UInt32(values.count * 4)
+            var frame: [UInt8] = [0, kind, 1, 0]
+            frame.reserveCapacity(8 + values.count * 4)
+            for shift in stride(from: 0, to: 32, by: 8) { frame.append(UInt8(truncatingIfNeeded: length >> UInt32(shift))) }
+            values.map(\.littleEndian).withUnsafeBytes { frame.append(contentsOf: $0) }
+            try sendAll(frame)
+            try fill(8)
+            guard buffer[0] == 0, buffer[2] == 1, buffer[3] == 0 else { throw POSIXError(.EPROTO) }
+            let status = buffer[1]
+            let size = Int(Self.le32(buffer[4..<8]))
+            guard size <= 16_777_216 else { throw POSIXError(.EMSGSIZE) }
+            try fill(8 + size)
+            let payload = buffer[8..<(8 + size)]
+            defer { buffer.removeSubrange(0..<(8 + size)) }
+            if status == 1 { fail("model server: " + String(decoding: payload, as: UTF8.self)) }
+            guard status == 0, size % 4 == 0 else { throw POSIXError(.EPROTO) }
+            return payload.withUnsafeBytes { raw in
+                (0..<(size / 4)).map { Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
             }
-            let end = buffer.firstIndex(of: 10)!
-            let response = try JSONSerialization.jsonObject(with: buffer[..<end]) as! [String: Any]
-            buffer.removeSubrange(...end)
-            if let error = response["error"] as? String { fail("model server: " + error) }
-            guard let output = response["output"] else { throw POSIXError(.EPROTO) }
-            return output
         } catch { fail("model server: " + error.localizedDescription) }
     }
 
     func rerank(_ ids: [Int32], _ targets: [Int32], _ batch: Int, _ length: Int) throws -> [Double] {
-        guard let output = predict(["op": "rerank", "ids": ids, "targets": targets, "batch": batch, "length": length]) as? [Double],
-              output.count == ids.count, output.allSatisfy({ $0.isFinite }) else { fail("Invalid reranker response") }
-        return output
+        let output = call(1, [Int32(batch), Int32(length)] + ids + targets)
+        guard output.count == ids.count, output.allSatisfy({ $0.isFinite }) else { fail("Invalid reranker response") }
+        return output.map(Double.init)
     }
 
     func syllable(_ context: [Int32], _ ids: [Int32], _ tones: [Int32], _ costs: [Int32], _ boundary: [Int32],
                   _ candidates: [[Int32]]) throws -> [[Double]] {
-        guard let output = predict(["op": "syllable", "context": context, "ids": ids, "tones": tones,
-                                    "costs": costs, "boundary": boundary, "candidates": candidates]) as? [[Double]],
-              output.count == candidates.count,
-              zip(output, candidates).allSatisfy({ $0.count == $1.count && $0.allSatisfy { $0.isFinite } })
-        else { fail("Invalid syllable response") }
-        return output
+        let width = candidates.first?.count ?? 0
+        guard width > 0, candidates.allSatisfy({ $0.count == width }) else { fail("Invalid syllable request") }
+        let output = call(2, [Int32(context.count), Int32(ids.count), Int32(width)] + context + ids + tones + costs
+                          + boundary + candidates.flatMap { $0 })
+        guard output.count == candidates.count * width, output.allSatisfy({ $0.isFinite }) else {
+            fail("Invalid syllable response")
+        }
+        return (0..<candidates.count).map { row in output[(row * width)..<((row + 1) * width)].map(Double.init) }
     }
 }

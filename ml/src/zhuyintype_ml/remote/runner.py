@@ -40,6 +40,10 @@ BUSY = 75
 STILL_RUNNING = 124
 # Commands that read the data directory, so a run fetches the evaluation data first unless --fetch says otherwise.
 DATA_COMMANDS = ("eval", "bench", "models", "train")
+# Commands that run the engine: the lexicon and language models are compiled first (as the app loads them).
+ENGINE_COMMANDS = ("eval", "bench")
+# `zt eval` tools that do not run engine processes (or, for latency, must not: it measures the app's own path).
+UNSERVED_TOOLS = ("stats", "sets", "latency")
 
 
 @dataclass
@@ -50,7 +54,8 @@ class Options:
     # Data components to fetch first; None: the `eval` group for commands that read data (DATA_COMMANDS), else none.
     fetch: list[str] | None = None
     export: bool = False
-    backend: str = "cpu"
+    # cpu, cuda, or auto: cuda for evaluations (development numbers), cpu for everything else and ZhuyinBench.
+    backend: str = "auto"
     detach: bool = False
     env: list[str] = field(default_factory=list)
     groups: list[str] = field(default_factory=list)
@@ -58,18 +63,31 @@ class Options:
     nice: int = 0
 
 
+def backend(argv: list[str], options: Options) -> str:
+    """Where the models run: --backend when it is cpu or cuda; otherwise the GPU model server for `zt eval` tools that
+    run the engine (development sweeps) and ONNX Runtime on the CPU for everything else, ZhuyinBench included (release
+    numbers)."""
+    if options.backend != "auto":
+        return options.backend
+    tool = argv[1] if argv[:1] == ["eval"] and len(argv) > 1 else ""
+    return "cuda" if tool and not tool.startswith("-") and tool not in UNSERVED_TOOLS else "cpu"
+
+
 def steps(argv: list[str], options: Options) -> list[list[str]]:
     """The zt commands of a run, in order: prepare the machine, then the command."""
-    groups = list(dict.fromkeys(options.groups + (["export"] if options.export or options.backend == "cuda" else [])))
+    runtime = backend(argv, options)
+    groups = list(dict.fromkeys(options.groups + (["export"] if options.export or runtime == "cuda" else [])))
     result = []
     if argv[:1] != ["setup"] or groups:
         result.append(["setup", "--quiet", *[flag for g in groups for flag in ("--group", g)]])
     fetch = options.fetch if options.fetch is not None else (["eval"] if argv[:1] and argv[0] in DATA_COMMANDS else [])
     if fetch:
         result.append(["data", "fetch", "--quiet", *fetch])
+        if argv[:1] and argv[0] in ENGINE_COMMANDS:
+            result.append(["data", "compile", "--quiet"])
     if options.export:
         result.append(["models", "export", "--tree"])
-    if options.backend == "cuda":
+    if runtime == "cuda":
         result.append(["models", "serve", "--device", "cuda", "--", *argv])
     else:
         result.append(argv)
