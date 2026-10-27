@@ -196,8 +196,13 @@ public struct ComposerOptions: Equatable, Sendable {
     public var escapeClearsComposition: Bool = true
     /// Learn from commits and candidate picks.
     public var learningEnabled: Bool = true
-    /// Longest composition, in syllables; further Zhuyin keys are refused (the key is consumed, nothing changes).
+    /// Longest composition, in syllables.  A key that would make it longer first commits the head of the composition
+    /// as shown (`KeyResult.commit`) and composes the rest: up to the last clause or sentence punctuation when at most
+    /// two thirds of the limit follow it, otherwise about the first third, ending between two words.
     public var maxSyllables: Int = 60
+    /// 0: off.  Otherwise a typing key that makes the composition longer than this many syllables first commits
+    /// everything up to the last sentence-ending punctuation (。！？…) before the cursor.
+    public var earlyCommitSyllables: Int = 0
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     public var typoTolerance: TypoTolerance = .standard
     public var candidateAnchor: CandidateAnchor = .afterCursor

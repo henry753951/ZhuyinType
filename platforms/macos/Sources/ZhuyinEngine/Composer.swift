@@ -55,6 +55,7 @@ private func retained<T>(_ value: T) -> UnsafeMutableRawPointer { Unmanaged.pass
 private typealias RerankerClosure = (ScoredSentences) -> Int
 private typealias CandidateClosure = (String, CandidateTexts) -> ScoresWritten?
 private typealias CharacterClosure = ([CharacterModelSyllable], CandidateRows) -> ScoresWritten?
+private typealias CommitClosure = (String) -> Void
 
 private let releaseReranker: @convention(c) (UnsafeMutableRawPointer?) -> Void = {
     Unmanaged<Box<RerankerClosure>>.fromOpaque($0!).release()
@@ -64,6 +65,9 @@ private let releaseCandidates: @convention(c) (UnsafeMutableRawPointer?) -> Void
 }
 private let releaseCharacters: @convention(c) (UnsafeMutableRawPointer?) -> Void = {
     Unmanaged<Box<CharacterClosure>>.fromOpaque($0!).release()
+}
+private let releaseCommit: @convention(c) (UnsafeMutableRawPointer?) -> Void = {
+    Unmanaged<Box<CommitClosure>>.fromOpaque($0!).release()
 }
 
 extension KeyInput {
@@ -138,6 +142,7 @@ public final class Composer {
         o.escape_clears_composition = options.escapeClearsComposition
         o.learning_enabled = options.learningEnabled
         o.max_syllables = max(0, options.maxSyllables)
+        o.early_commit_syllables = max(0, options.earlyCommitSyllables)
         o.typo_tolerance = UInt32(typos[options.typoTolerance]!)
         o.candidate_anchor = UInt32(options.candidateAnchor == .afterCursor ? ZT_ANCHOR_AFTER_CURSOR : ZT_ANCHOR_BEFORE_CURSOR)
         o.key_decoder = UInt32(decoders[options.keyDecoder]!)
@@ -260,6 +265,23 @@ public final class Composer {
                 return closure(String(cString: before!), CandidateTexts(pointer: candidates!, scores: scores!)) != nil
             }, release: releaseCandidates)
             zt_composer_set_candidate_scorer(handle, hook)
+        }
+    }
+
+    /// Told the text a full composition commits by itself in the middle of a key (`ComposerOptions.maxSyllables`),
+    /// before the rest is converted again: the models' text before the composition should end with it.  The same
+    /// text also comes back in the key's `KeyResult.commit`.  It must not use the composer.
+    public var commitListener: ((String) -> Void)? {
+        didSet {
+            guard let commitListener else {
+                zt_composer_set_commit_hook(handle, ZtCommitHook(context: nil, committed: nil, release: nil))
+                return
+            }
+            let hook = ZtCommitHook(context: retained(commitListener as CommitClosure), committed: { context, text in
+                let closure = Unmanaged<Box<CommitClosure>>.fromOpaque(context!).takeUnretainedValue().value
+                closure(String(cString: text!))
+            }, release: releaseCommit)
+            zt_composer_set_commit_hook(handle, hook)
         }
     }
 

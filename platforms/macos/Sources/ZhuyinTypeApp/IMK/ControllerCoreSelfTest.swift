@@ -604,6 +604,79 @@ enum ControllerCoreSelfTest {
                 try expect(plain(records.all.first?["typing"]) == "su3cl3`" + undo, "typing \(undo)")
             }
         }
+
+        // MARK: Long compositions
+
+        func han(_ text: String) -> Int {
+            text.unicodeScalars.filter { (0x4E00...0x9FFF).contains($0.value) }.count
+        }
+        test("a full composition sends its head and keeps every key, the list open or not") {
+            let (core, client) = session()
+            var syllables = 0
+            var heads = 0
+            for round in 0..<60 {
+                // From the 20th round on, every fifth has the list open when its first key comes.
+                if round >= 20, round % 5 == 0 {
+                    _ = core.handle(.down)
+                    try expect(core.composer.presentation.candidates != nil, "round \(round): the list did not open")
+                }
+                let visible = core.composer.presentation.text
+                let inserted = client.inserts.count
+                let operations = client.operations.count
+                type("su3cl3", into: core)
+                syllables += 2
+                if client.inserts.count > inserted {
+                    heads += 1
+                    let head = client.inserts[inserted]
+                    try expect(client.inserts.count == inserted + 1, "round \(round): more than one commit")
+                    try expect(visible.hasPrefix(head) && han(head) >= 18 && han(head) <= 20,
+                               "round \(round): the head \(head) is not about a third of what was shown: \(visible)")
+                    try expect(core.composer.isComposing && client.operations[operations...].first == "insert"
+                               && client.operations.last == "mark", "round \(round): the rest is not marked after the head")
+                    try expect(core.recentText.hasSuffix(head), "round \(round): the head is not the text before the rest")
+                }
+                try expect(han(core.composer.presentation.text) <= 60, "round \(round): past the limit")
+            }
+            _ = core.keyDown(keyCode: 36, modifiers: [])
+            let text = client.inserts.joined()
+            try expect(han(text) == syllables && text.count == syllables,
+                       "\(han(text)) of \(syllables) syllables arrived: \(text)")
+            try expect(heads == 3, "\(heads) heads for \(syllables) syllables (at 61, 81 and 101)")
+        }
+        test("correction log: a pick, then a full composition sends its head: one record of all of it") {
+            let (core, client) = session()
+            let records = recording(core)
+            press("su3cl3<down>", into: core)
+            guard let list = core.composer.presentation.candidates,
+                  let index = list.items.indices.first(where: { !"你好".hasSuffix(list.items[$0].text) }),
+                  index < 9 else { throw Failure(description: "no other candidate for 你好") }
+            press(String(index + 1), into: core)
+            let picked = core.composer.presentation.text
+            press(String(repeating: "su3cl3", count: 35), into: core)
+            press("<enter>", into: core)
+            guard records.all.count == 1, let record = records.all.first else {
+                throw Failure(description: "\(records.all.count) records")
+            }
+            let all = client.inserts.joined()
+            try expect(client.inserts.count >= 2 && client.inserts[0].hasPrefix(picked),
+                       "the head did not keep the pick: \(client.inserts)")
+            try expect(record["committed"] as? String == all && han(all) == 72, "committed \(record["committed"] ?? "")")
+            try expect(events(record, "commit").map { $0["text"] as? String ?? "" } == client.inserts,
+                       "commit events \(events(record, "commit"))")
+            try expect(plain(record["typing"]) == String(repeating: "su3cl3", count: 36)
+                       && record["replayable"] as? Bool == true, "typing \(record["typing"] ?? "")")
+            try expect((record["shown"] as? String)?.hasPrefix("你好") == true, "shown \(record["shown"] ?? "")")
+        }
+        test("secure input: a full composition still sends every key, and nothing is kept or recorded") {
+            let (core, client) = session()
+            let records = recording(core)
+            core.secureInput = { true }
+            press(String(repeating: "su3cl3", count: 40) + "<enter>", into: core)
+            let text = client.inserts.joined()
+            try expect(client.inserts.count == 2 && han(text) == 80, "\(han(text)) of 80 syllables arrived")
+            try expect(core.recentText.isEmpty && core.composer.learningSuspended && records.all.isEmpty,
+                       "secure input kept context, learned or recorded")
+        }
         test("correction log file: appended, exported and cleared") {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeTest-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: directory) }
