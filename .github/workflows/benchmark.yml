@@ -44,6 +44,7 @@ jobs:
             || echo "No metrics-mac.json on the release"
           python3 training/eval/bench/history.py
       - name: Publish results
+        if: startsWith(inputs.version, 'v') && !inputs.quick
         run: |
           cp -r docs/benchmarks /tmp/benchmarks-$GITHUB_RUN_ID
           git config user.name "github-actions[bot]"
