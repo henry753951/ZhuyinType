@@ -3,6 +3,8 @@
     zt bench run v0.4.0                # on the GPU host: prepare, run the suite, write the record and the pages
     zt bench run check-2 --quick       # 50 runs per set, to check the harness
     zt bench history                   # rebuild docs/benchmarks/README.md and the version pages
+    zt bench compare                   # on the GPU host: every system × every set (zhuyintype_ml/eval/bench/compare.py)
+    zt bench compare --render          # docs/benchmarks/competition.md from docs/benchmarks/competition.json
 
 `run` first prepares the host the way a release needs it: the pinned data and models, zhuyin-cli built for this
 platform, the compiled lexicon and language models, and the ONNX models (Linux).  --no-prepare skips that.
@@ -15,7 +17,8 @@ import json
 from pathlib import Path
 
 from zhuyintype_ml.core import paths
-from zhuyintype_ml.eval.bench import history, suite
+from zhuyintype_ml.eval import systems
+from zhuyintype_ml.eval.bench import compare, competition, history, suite
 
 
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -51,6 +54,35 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     actions.add_parser("history", help="rebuild docs/benchmarks/README.md and the version pages").set_defaults(
         func=lambda _args: history.main()
     )
+    compare_ = actions.add_parser(
+        "compare",
+        help="compare with other input methods; write the record and docs/benchmarks/competition.md",
+        description=compare.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    compare_.add_argument("--label", default="main", help="run directory name under data/build/bench/compare")
+    compare_.add_argument("--systems", nargs="+", default=list(systems.NAMES), metavar="NAME", help="systems to run")
+    compare_.add_argument("-n", type=int, default=400, help="runs per text set (default: 400)")
+    compare_.add_argument("--typing-n", type=int, default=300, help="runs per set for typing errors (default: 300)")
+    compare_.add_argument(
+        "--jobs",
+        type=int,
+        default=16,
+        help="processes in all, shared by the systems that run at once (default: 16)",
+    )
+    compare_.add_argument(
+        "--workers",
+        nargs="+",
+        default=[],
+        metavar="NAME=N",
+        help="processes (engines, servers, CLI runs) for a system instead of its share",
+    )
+    compare_.add_argument("--tasks", metavar="REGEX", help="only tasks whose id matches, e.g. '^plain/' (for checks)")
+    compare_.add_argument("--out", type=Path, default=competition.RECORD, help="record (default: %(default)s)")
+    compare_.add_argument("--page", type=Path, default=competition.PAGE, help="page (default: %(default)s)")
+    compare_.add_argument("--render", action="store_true", help="only write the page from an existing record")
+    compare_.add_argument("--no-page", action="store_true", help="write the record only")
+    compare_.set_defaults(func=run_compare)
     parser.set_defaults(func=lambda _args: parser.print_help())
 
 
@@ -73,3 +105,17 @@ def run(args: argparse.Namespace) -> int:
     out.write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     print(f"wrote {paths.relative(out)}")
     return history.main()
+
+
+def run_compare(args: argparse.Namespace) -> int:
+    if not args.render:
+        workers = {}
+        for item in args.workers:
+            name, _, count = item.partition("=")
+            if name not in systems.NAMES or not count.isdigit():
+                raise SystemExit(f"zt bench compare: --workers takes NAME=N with a known system, not {item!r}")
+            workers[name] = int(count)
+        compare.run(args.label, args.systems, args.out, args.n, args.typing_n, args.jobs, workers, args.tasks)
+    if not args.no_page:
+        print(f"wrote {paths.relative(competition.write(args.out, args.page))}")
+    return 0
