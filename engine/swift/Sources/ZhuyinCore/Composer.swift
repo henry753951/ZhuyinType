@@ -269,14 +269,11 @@ public final class Composer {
                     case .openCandidates: openCandidates(); result = .consumed
                     case .commit: return KeyResult(handled: true, commit: commitAll())
                     case .commitAndSpace: return KeyResult(handled: false, commit: commitAll())
+                    case .insertSpace: insertSpace(); result = .consumed
                     }
                 } else { result = .passThrough }
             case .shiftSpace:
-                if hasComposition {
-                    finishBuffer(droppingInvalid: true)
-                    insert(.literal(" "))
-                    result = .consumed
-                } else { result = .passThrough }
+                if hasComposition { insertSpace(); result = .consumed } else { result = .passThrough }
             case .enter, .shiftEnter:
                 guard hasComposition else { return .passThrough }
                 return KeyResult(handled: key == .enter, commit: commitAll())
@@ -633,6 +630,12 @@ public final class Composer {
         }
         if droppingInvalid { clearBuffer() }
         return false
+    }
+
+    /// A literal space in the composition: a sentence boundary that stays until the composition is sent.
+    private func insertSpace() {
+        finishBuffer(droppingInvalid: true)
+        insert(.literal(" "))
     }
 
     private func insert(_ token: CompositionToken) {

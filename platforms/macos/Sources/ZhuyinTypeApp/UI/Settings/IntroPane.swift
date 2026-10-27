@@ -25,7 +25,7 @@ struct IntroPane: View {
                 }
             }
             SettingsSection("目前的設定") {
-                SummaryRow(title: "空白鍵", value: preferences.spaceAction == .openCandidates ? "開啟候選字視窗" : "送出並輸入空白",
+                SummaryRow(title: "空白鍵", value: OptionDemos.spaceLabel(preferences.spaceAction),
                            place: SettingsPlace(.typing, row: SettingsRow.space))
                 SummaryRow(title: "標點按法", value: preferences.punctuationKeys == .windows ? "Windows" : "macOS",
                            place: SettingsPlace(.typing, row: SettingsRow.punctuationKeys))

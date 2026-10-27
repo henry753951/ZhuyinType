@@ -326,6 +326,11 @@ for action in SpaceAction.allCases {
     case .commitAndSpace:
         check(result == KeyResult(handled: false, commit: "八趴") && !typing.isComposing,
               "commitAndSpace: space commits and goes on to the app")
+    case .insertSpace:
+        check(result == .consumed && typing.isComposing && typing.presentation.text == "八趴 " && typing.presentation.candidates == nil,
+              "insertSpace: space goes into the composition, nothing is sent")
+        _ = typing.handle(.char("1")); _ = typing.handle(.char("8")); _ = typing.handle(.space)
+        check(typing.handle(.enter) == KeyResult(handled: true, commit: "八趴 八"), "insertSpace: Enter sends the text with its space")
     }
     // With the list open Space turns the page in every setting.
     let listed = composer(engine, "18 ", options: options)

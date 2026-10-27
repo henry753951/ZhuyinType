@@ -318,7 +318,7 @@ private struct TypingPane: View {
                            accessory: .info(title: "空白鍵", content: AnyView(SpaceInfo(current: preferences.spaceAction))),
                            anchor: SettingsRow.space) {
                     RowPicker(title: "空白鍵", selection: binding(preferences, \.spaceAction),
-                              options: [("送出並輸入空白", SpaceAction.commitAndSpace), ("開啟候選字視窗", .openCandidates)])
+                              options: [SpaceAction.commitAndSpace, .insertSpace, .openCandidates].map { (OptionDemos.spaceLabel($0), $0) })
                 }
                 SettingRow(title: "Esc", subtitle: preferences.escapeClearsComposition
                            ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音",

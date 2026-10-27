@@ -18,6 +18,9 @@ enum OptionDemos {
         case .commit, .commitAndSpace:
             last = DemoFrame(keys: ["空白"], line: [DemoSegment("早安，今天 ", .document)], caption: "再按一次：送出並輸入空白",
                              hold: 2.0)
+        case .insertSpace:
+            last = DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天 ")], caption: "再按一次：在組字中輸入空白，還不送出",
+                             hold: 2.0)
         }
         return [
             DemoFrame(line: [start, DemoSegment("今"), DemoSegment("ㄊ")], keys: ["ㄊ"], caption: "打 ㄐㄧㄣ ㄊㄧㄢ", hold: 0.35),
@@ -27,10 +30,20 @@ enum OptionDemos {
         ]
     }
 
+    /// The option's name, as the 空白鍵 picker shows it.
+    static func spaceLabel(_ action: SpaceAction) -> String {
+        switch action {
+        case .openCandidates: return "開啟候選字視窗"
+        case .commit, .commitAndSpace: return "送出並輸入空白"
+        case .insertSpace: return "輸入空白，不送出"
+        }
+    }
+
     static func spaceSubtitle(_ action: SpaceAction) -> String {
         switch action {
         case .openCandidates: return "打完注音後，再按空白開啟候選字視窗"
         case .commit, .commitAndSpace: return "打完注音後，再按空白送出組字並輸入空白"
+        case .insertSpace: return "打完注音後，再按空白在組字中輸入空白，不送出"
         }
     }
 
