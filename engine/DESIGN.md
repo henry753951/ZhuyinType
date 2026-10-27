@@ -276,15 +276,15 @@ Linux 上的 golden 摘要：提交的摘要在 macOS 上產生。Linux 的 glib
 
 移除 Swift 引擎之前，最後一次完整比對（ba5078b，合併 main 的 e0f1e4b 之後）：CLI 比對 234 組、57,772 行，0 行不同；兩邊的 `--check-v3` 報告相同；golden 摘要在主機的資料上相同。報告在 `parity/reports/swift-final/`。合併 main 之後，Mac 上 App 的引擎路徑（`EngineBench`，Core ML）在 Swift 與 Rust 兩種模式下對 40 段文字送出的結果相同，App 自我測試兩種模式都是 49/49。
 
-切換後，Rust 引擎的 App 與保留下來的 Swift 引擎建置（同一份 App 資料）交錯量測，各 5 次的中位數（Apple M5；Mac 上同時有其他 App 在跑，負載約 5）：
+切換後（合併 main 的 890275f 之後），Rust 引擎的 App 引擎路徑與保留下來的 Swift 引擎建置（同一份 App 資料）交錯量測，各 5 次的中位數（Apple M5；Mac 上同時有其他 App 在跑，負載約 4）：
 
 | 每鍵 | Swift 引擎 | Rust 引擎 |
 |---|---:|---:|
-| p50 | 7.35 ms | 3.4 ms |
-| p95 | 19.8 ms | 12.85 ms |
-| 最大值 | 23.1 ms | 16.8 ms |
-| CPU 時間 | 8.2 ms | 4.7 ms |
-| 能耗 | 44.61 mJ | 24.11 mJ |
+| p50 | 7.45 ms | 3.35 ms |
+| p95 | 20.1 ms | 13.15 ms |
+| 最大值 | 23.4 ms | 16.0 ms |
+| CPU 時間 | 8.3 ms | 4.7 ms |
+| 能耗 | 44.15 mJ | 23.8 mJ |
 | 記憶體（結束時） | 15 MB | 14 MB |
 
 兩者送出的文字逐字相同（40/40）。
