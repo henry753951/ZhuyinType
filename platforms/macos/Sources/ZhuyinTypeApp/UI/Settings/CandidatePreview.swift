@@ -17,30 +17,53 @@ struct CandidatePreview: View {
     static let spacing: CGFloat = 12
 
     var body: some View {
+        // The rows take the width offered (a GeometryReader never grows with its content); the height is what the
+        // rows need at that width.
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: Self.rowSpacing) {
+                ForEach(Array(rows(width: proxy.size.width).enumerated()), id: \.offset) { _, row in
+                    self.row(row.scenes, widths: row.widths)
+                }
+            }
+            .frame(width: proxy.size.width, alignment: .leading)
+            .onAppear { width = proxy.size.width }
+            .onChange(of: proxy.size.width) { _, now in width = now }
+        }
+        .frame(height: height(width: width))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("候選字視窗預覽")
+    }
+
+    static let rowSpacing: CGFloat = 14
+    /// The scene title's line above each card.
+    static let titleHeight: CGFloat = 22
+
+    /// The scenes row by row, with each card's width, for `width`.
+    private func rows(width: CGFloat) -> [(scenes: [PreviewScene], widths: [CGFloat])] {
         let scenes = PreviewScenes(preferences: preferences)
         let vertical = preferences.candidateLayout == .vertical
         let half = (width - Self.spacing) / 2
         // The phrase notice is the widest of the small scenes.
         let narrow = (width - Self.spacing * 2) * 0.29
         let wide = width - Self.spacing * 2 - narrow * 2
-        VStack(alignment: .leading, spacing: 14) {
-            if vertical, let corrections = scenes.corrections {
-                row([scenes.list, corrections], widths: [half, half])
-            } else {
-                row([scenes.list], widths: [vertical ? half : width])
-                if let corrections = scenes.corrections { row([corrections], widths: [width]) }
-            }
-            let small = [scenes.composing] + [scenes.phrase, scenes.mode].compactMap { $0 }
-            row(small, widths: small.count == 3 ? [narrow, wide, narrow] : Array(repeating: (width - Self.spacing) / 2, count: small.count))
+        var rows: [(scenes: [PreviewScene], widths: [CGFloat])] = []
+        if vertical, let corrections = scenes.corrections {
+            rows.append(([scenes.list, corrections], [half, half]))
+        } else {
+            rows.append(([scenes.list], [vertical ? half : width]))
+            if let corrections = scenes.corrections { rows.append(([corrections], [width])) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(GeometryReader { proxy in
-            Color.clear
-                .onAppear { width = proxy.size.width }
-                .onChange(of: proxy.size.width) { _, now in width = now }
-        })
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("候選字視窗預覽")
+        let small = [scenes.composing] + [scenes.phrase, scenes.mode].compactMap { $0 }
+        rows.append((small, small.count == 3 ? [narrow, wide, narrow] : Array(repeating: (width - Self.spacing) / 2, count: small.count)))
+        return rows
+    }
+
+    private func height(width: CGFloat) -> CGFloat {
+        let rows = rows(width: width)
+        let heights = rows.map { row in
+            zip(row.scenes, row.widths).map { SceneLayout(scene: $0, width: $1, preferences: preferences).naturalHeight }.max() ?? 0
+        }
+        return heights.reduce(0) { $0 + Self.titleHeight + $1 } + CGFloat(max(0, rows.count - 1)) * Self.rowSpacing
     }
 
     private func row(_ scenes: [PreviewScene], widths: [CGFloat]) -> some View {
@@ -214,6 +237,8 @@ private struct PreviewBlock: View {
             Text(scene.title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))

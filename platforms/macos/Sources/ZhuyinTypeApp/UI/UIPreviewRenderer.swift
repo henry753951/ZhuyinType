@@ -272,16 +272,19 @@ enum UIPreviewRenderer {
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
         Preferences.shared.resetToDefaults()
         settings.model.subpage = nil
-        // The window, with its sidebar, at its usual size.
-        for pane in SettingsPane.allCases {
-            let window = settings.makeWindow(pane: pane)
-            window.setFrame(NSRect(x: -30000, y: -30000, width: 760, height: 600), display: false)
-            window.alphaValue = 0
-            window.orderFrontRegardless()
-            settings.model.reloadLists()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
-            try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)-\(suffix).png"))
-            window.orderOut(nil)
+        // The window, with its sidebar, at its usual size, at the minimum size and large.
+        for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (640, 440, "-min"), (1280, 900, "-large")] {
+            for pane in SettingsPane.allCases {
+                let window = settings.makeWindow(pane: pane)
+                window.setContentSize(NSSize(width: width, height: height))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+                try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)\(label)-\(suffix).png"))
+                window.orderOut(nil)
+            }
         }
         // Every page and sub-page whole, at the narrowest window (the page 440 pt wide) and a wide one (860 pt).
         try renderPages(settings, pages, to: directory, label: "", suffix: suffix)

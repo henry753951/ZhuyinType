@@ -26,13 +26,14 @@ struct IntroStage: View {
         let step = steps[min(pinned ?? index, steps.count - 1)]
         let current = min(pinned ?? index, steps.count - 1)
         VStack(spacing: 8) {
-            stage(step: step, script: script, width: width, trigger: current)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(GeometryReader { proxy in
-                    Color.clear
-                        .onAppear { width = proxy.size.width }
-                        .onChange(of: proxy.size.width) { _, now in width = now }
-                })
+            // The stage takes the width offered (a GeometryReader never grows with its content) and is as tall as the
+            // layout for that width needs.
+            GeometryReader { proxy in
+                stage(step: step, script: script, width: proxy.size.width, trigger: current)
+                    .onAppear { width = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, now in width = now }
+            }
+            .frame(height: script.layout(step: step, width: width).height)
                 .overlay(alignment: .topTrailing) {
                     if pinned == nil { PlayPauseButton(playing: $playing).padding(8) }
                 }
