@@ -65,11 +65,12 @@ class Evaluator(ABC):
 
     def run(self, args: argparse.Namespace, quiet: bool = False) -> Report:
         config = self.config(args)
-        pool = EnginePool(config, args.jobs, self.cli())
         options = {k: v for k, v in vars(args).items() if k not in NOT_OPTIONS and not callable(v)}
         report = Report(self.name, config.describe(), options)
-        for eval_set in resolve(args.set, self.kind):
-            report.add(self.evaluate(eval_set, pool, args))
+        # One pool for every set: its processes load the models once and serve all of them.
+        with EnginePool(config, args.jobs, self.cli()) as pool:
+            for eval_set in resolve(args.set, self.kind):
+                report.add(self.evaluate(eval_set, pool, args))
         if not quiet:
             print_report(report, self.describe)
         if args.json:

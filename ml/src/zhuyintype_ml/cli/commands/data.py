@@ -6,7 +6,8 @@ zt data status                    # what is present, and whether it is the pinne
 zt data pack data-4 v3            # archive changed components into dist/assets/ and pin them
 zt data publish data-4            # upload them as a GitHub release (gh)
 zt data lexicon [--rebuild]       # build lexicon.tsv from CC-CEDICT, Unihan and wordfreq
-zt data compile [OUT]             # lexicon and language models as mmap binaries (lexicon.bin, lm/lm.bin, …)
+zt data compile [OUT]             # lexicon and language models as mmap binaries (lexicon.bin, lm/lm.bin, …),
+                                  # only what is out of date
 zt data corrections LOG --summary              # the app's correction log: most frequent retyped keys and changes
 zt data corrections LOG --rows rows.txt        # its replays as context|truth|syllables rows (zt eval rows)
 """
@@ -64,6 +65,7 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
         help="output directory (default: next to the TSV files, where evaluations load them)",
     )
     compile_.add_argument("--source", default=None, help="data directory to read (default: the data directory)")
+    compile_.add_argument("--quiet", action="store_true", help="print only what is compiled")
     compile_.set_defaults(func=compile_data)
 
     fixes = actions.add_parser(
@@ -111,7 +113,9 @@ def compile_data(args: argparse.Namespace) -> int:
     from zhuyintype_ml.data import compiled
 
     compiled.compile_all(
-        Path(args.source).resolve() if args.source else None, Path(args.output).resolve() if args.output else None
+        Path(args.source).resolve() if args.source else None,
+        Path(args.output).resolve() if args.output else None,
+        quiet=args.quiet,
     )
     return 0
 

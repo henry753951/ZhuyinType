@@ -52,7 +52,8 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
 
     serve = actions.add_parser("serve", help="run a zt command with every model call on one PyTorch server")
     serve.add_argument("--device", choices=["cuda", "cpu"], default="cuda", help="default: cuda")
-    serve.add_argument("--memory-gb", type=float, default=2, help="GPU memory budget in GiB (default: 2)")
+    serve.add_argument("--memory-gb", type=float, default=12, help="GPU memory per worker in GiB (default: 12)")
+    serve.add_argument("--workers", type=int, default=1, help="server processes (default: 1)")
     serve.add_argument("command", nargs=argparse.REMAINDER, help="-- then the zt command")
     serve.set_defaults(func=serve_command)
 
@@ -73,4 +74,4 @@ def serve_command(args: argparse.Namespace) -> int:
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         raise SystemExit("zt: give the command to run, e.g. `zt models serve -- eval conversion`")
-    return models.run_with_server(command, args.device, args.memory_gb)
+    return models.run_with_server(command, args.device, args.memory_gb, args.workers)

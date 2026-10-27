@@ -18,8 +18,23 @@ from zhuyintype_ml.remote import host, runner
 
 class StepsTests(unittest.TestCase):
     def test_default_steps_prepare_then_run(self) -> None:
-        steps = runner.steps(["eval", "conversion"], runner.Options("w"))
-        self.assertEqual(steps, [["setup", "--quiet"], ["data", "fetch", "--quiet", "eval"], ["eval", "conversion"]])
+        steps = runner.steps(["eval", "conversion"], runner.Options("w", backend="cpu"))
+        self.assertEqual(
+            steps,
+            [
+                ["setup", "--quiet"],
+                ["data", "fetch", "--quiet", "eval"],
+                ["data", "compile", "--quiet"],
+                ["eval", "conversion"],
+            ],
+        )
+
+    def test_evaluations_default_to_the_gpu_and_the_bench_to_the_cpu(self) -> None:
+        options = runner.Options("w")
+        self.assertEqual(runner.steps(["eval", "typo"], options)[-1][:4], ["models", "serve", "--device", "cuda"])
+        for argv in (["bench", "run", "v1"], ["eval", "stats", "a", "b"], ["eval", "latency"], ["train", "v3"]):
+            self.assertEqual(runner.steps(argv, options)[-1], argv)
+        self.assertNotIn(["data", "compile", "--quiet"], runner.steps(["train", "v3"], options))
 
     def test_setup_runs_once_and_fetches_nothing(self) -> None:
         self.assertEqual(runner.steps(["setup"], runner.Options("w")), [["setup"]])
