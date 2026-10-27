@@ -126,7 +126,7 @@ enum UIPreviewRenderer {
 
     private static func renderPopovers(to directory: URL, suffix: String) throws {
         let cards: [(String, AnyView)] = [
-            ("space", AnyView(InfoCard(title: "空白鍵") { SpaceInfo(current: .commitAndSpace) })),
+            ("space", AnyView(InfoCard(title: "空白鍵") { SpaceInfo(current: .insertSpace) })),
             ("escape", AnyView(InfoCard(title: "Esc") {
                 ChoiceDemo(title: "清除整段組字", selected: true, frames: OptionDemos.escape(clearsComposition: true), pinned: 99)
             })),
@@ -196,7 +196,8 @@ enum UIPreviewRenderer {
         }
         let demos: [(String, [DemoFrame])] = [
             ("space-open", OptionDemos.space(.openCandidates)),
-            ("space-commit-space", OptionDemos.space(.commitAndSpace)), ("anchor-after", OptionDemos.anchor(.after)),
+            ("space-commit-space", OptionDemos.space(.commitAndSpace)), ("space-insert", OptionDemos.space(.insertSpace)),
+            ("anchor-after", OptionDemos.anchor(.after)),
             ("typo", OptionDemos.typo(correctionsKey: "⇧↑")),
         ]
         for (name, frames) in demos {

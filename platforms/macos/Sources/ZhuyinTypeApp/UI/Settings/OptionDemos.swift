@@ -10,24 +10,29 @@ enum OptionDemos {
     // MARK: Space
 
     static func space(_ action: SpaceAction) -> [DemoFrame] {
-        let last: DemoFrame
+        let ending: [DemoFrame]
         switch action {
         case .openCandidates:
-            last = DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天", .focus)], list: ["今天", "金田", "今"],
-                             caption: "再按一次：開啟候選字視窗", hold: 2.0)
+            ending = [DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天", .focus)], list: ["今天", "金田", "今"],
+                                caption: "再按一次：開啟候選字視窗", hold: 2.0)]
         case .commit, .commitAndSpace:
-            last = DemoFrame(keys: ["空白"], line: [DemoSegment("早安，今天 ", .document)], caption: "再按一次：送出並輸入空白",
-                             hold: 2.0)
+            ending = [DemoFrame(keys: ["空白"], line: [DemoSegment("早安，今天 ", .document)], caption: "再按一次：送出並輸入空白",
+                                hold: 2.0)]
         case .insertSpace:
-            last = DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天 ")], caption: "再按一次：在組字中輸入空白，還不送出",
-                             hold: 2.0)
+            // The space joins the composition (still underlined), typing goes on, and Return sends it all.
+            ending = [
+                DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天 ")], caption: "再按一次：空白加進組字，還不送出", hold: 1.5),
+                DemoFrame(keys: ["ㄏ"], line: [start, DemoSegment("今天 "), DemoSegment("ㄏ")], caption: "繼續打字", hold: 0.5),
+                DemoFrame(keys: ["ˇ"], line: [start, DemoSegment("今天 好")], caption: "繼續打字", hold: 1.0),
+                DemoFrame(keys: ["Return"], line: [DemoSegment("早安，今天 好", .document)], caption: "按 Return：連同空白一起送出",
+                          hold: 2.0),
+            ]
         }
         return [
             DemoFrame(line: [start, DemoSegment("今"), DemoSegment("ㄊ")], keys: ["ㄊ"], caption: "打 ㄐㄧㄣ ㄊㄧㄢ", hold: 0.35),
             DemoFrame(line: [start, DemoSegment("今"), DemoSegment("ㄊㄧㄢ")], keys: ["ㄢ"], caption: "打 ㄐㄧㄣ ㄊㄧㄢ", hold: 1.0),
             DemoFrame(line: [start, DemoSegment("今天")], keys: ["空白"], caption: "完成一聲", hold: 1.2),
-            last,
-        ]
+        ] + ending
     }
 
     /// The option's name, as the 空白鍵 picker shows it.

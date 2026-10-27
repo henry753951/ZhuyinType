@@ -178,7 +178,7 @@ final class Preferences: ObservableObject {
         set { defaults.set(newValue.rawValue, forKey: Key.selectionKeys); changed() }
     }
     /// The choices the app offers for Space: it never confirms a selection, so 「送出文字」 (`.commit`) is not one.
-    static let spaceActions: [SpaceAction] = [.commitAndSpace, .openCandidates]
+    static let spaceActions: [SpaceAction] = [.commitAndSpace, .insertSpace, .openCandidates]
 
     /// What Space does with no syllable being typed: send the composition and type a space (the default), or open
     /// the candidate window.  A choice saved by an earlier version is kept, except 「送出文字」, which becomes 「送出並

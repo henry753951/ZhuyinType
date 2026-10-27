@@ -26,10 +26,10 @@ struct SpaceInfo: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            ChoiceDemo(title: "送出並輸入空白", selected: current != .openCandidates,
-                       frames: OptionDemos.space(.commitAndSpace), pinned: DemoPinning.mini)
-            ChoiceDemo(title: "開啟候選字視窗", selected: current == .openCandidates,
-                       frames: OptionDemos.space(.openCandidates), pinned: DemoPinning.mini)
+            ForEach(Preferences.spaceActions, id: \.self) { action in
+                ChoiceDemo(title: OptionDemos.spaceLabel(action), selected: current == action || current == .commit && action == .commitAndSpace,
+                           frames: OptionDemos.space(action), pinned: DemoPinning.mini)
+            }
         }
     }
 }
