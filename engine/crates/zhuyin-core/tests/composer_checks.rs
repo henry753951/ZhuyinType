@@ -543,18 +543,25 @@ fn commit_modes_escape_and_limits() {
     kept.handle(KeyInput::Escape);
     assert_eq!(text(&kept), "八", "escape option retains composition");
     let limited_options = ComposerOptions { max_syllables: 2, ..legacy() };
-    let mut limited = composer_with(&tiny, "18 q8 a8", limited_options);
-    assert_eq!(text(&limited), "八趴", "maxSyllables refuses new symbols");
+    let mut limited = composer_with(&tiny, "18 q8 ", limited_options.clone());
     assert!(
         limited.handle(KeyInput::Char('6')) == KeyResult::CONSUMED && text(&limited) == "八趴",
         "tone at limit empty ignored"
     );
     limited.handle(KeyInput::ShiftedChar('a'));
     assert_eq!(text(&limited), "八趴A", "literal allowed at limit");
-    limited.handle(KeyInput::Backspace);
-    limited.handle(KeyInput::Backspace);
-    type_keys("a8 ", &mut limited);
-    assert_eq!(text(&limited), "八媽", "deleting a syllable restores capacity");
+    assert_eq!(
+        limited.handle(KeyInput::Char('a')),
+        KeyResult::new(true, Some("八趴".into())),
+        "maxSyllables: a key past the limit commits the head instead of being refused"
+    );
+    assert_eq!(text(&limited), "Aㄇ", "the key starts the rest");
+    type_keys("8 ", &mut limited);
+    assert_eq!(text(&limited), "A媽");
+    let mut deleting = composer_with(&tiny, "18 q8 ", limited_options);
+    deleting.handle(KeyInput::Backspace);
+    type_keys("a8 ", &mut deleting);
+    assert_eq!(text(&deleting), "八媽", "deleting a syllable restores capacity");
 }
 
 #[test]

@@ -27,7 +27,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -263,6 +263,16 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
             "--report-nbest" => {
                 let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
                 s.report_nbest = count;
+            }
+            // The longest composition; a key past it first commits the head.
+            "--max-syllables" => {
+                s.options.max_syllables = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            // Past this many syllables, a typing key first commits the finished sentences (0: off, the default).
+            "--early-commit" => {
+                let value = next_value(&arguments);
+                s.options.early_commit_syllables =
+                    if value == "0" { 0 } else { positive(value).unwrap_or_else(|| fail(USAGE)) };
             }
             "--sentence-boundaries" => s.config.sentence_boundaries = on_off(next_value(&arguments), USAGE),
             "--anchor" => {
@@ -658,6 +668,11 @@ fn timed<T>(timing: bool, label: &str, body: impl FnOnce() -> T) -> T {
 /// the keys have committed so far).
 fn attach(composer: &mut Composer, models: &Models, s: &Settings, context: &Arc<Mutex<String>>) {
     composer.freezes_on_pick = s.freeze_on_pick;
+    // The head a full composition commits by itself is text before the rest, as in the app (in batch mode too).
+    let committed = context.clone();
+    composer.set_commit_listener(Some(Box::new(move |text| {
+        committed.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push_str(text);
+    })));
     if let Some(model) = &models.character {
         composer.character_weight = s.v3_weight;
         composer.character_scores_in_list = s.v3_in_list;
@@ -703,7 +718,8 @@ fn main() {
     let engine = Arc::new(engine);
     let models = load_models(&s).unwrap_or_else(|e| fail(&e));
     // The text before the composition as the models see it: the context and what the keys have committed.  In batch
-    // mode Swift's `committed` is assigned after each line, so the models see the line's context alone.
+    // mode Swift's `committed` is assigned after each line, so the models see the line's context alone, followed by
+    // the heads a full composition commits by itself (the commit listener).
     let model_context = Arc::new(Mutex::new(s.context.clone()));
     let mut composer = Composer::new(engine.clone(), s.options.clone());
     attach(&mut composer, &models, &s, &model_context);

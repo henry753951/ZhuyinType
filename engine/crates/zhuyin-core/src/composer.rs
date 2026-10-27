@@ -26,6 +26,8 @@ pub type Reranker = Box<dyn FnMut(&[ScoredSentence]) -> Option<usize> + Send>;
 pub type CandidateScorer = Box<dyn FnMut(&str, &[String]) -> Option<Vec<f64>> + Send>;
 /// A character model: for each syllable, log P over the candidate characters given; `None` when it cannot answer.
 pub type CharacterScorer = Box<dyn FnMut(&[CharacterModelSyllable], &[Vec<String>]) -> Option<Vec<Vec<f64>>> + Send>;
+/// Told the text a full composition commits by itself, before the rest is converted again: the models' context.
+pub type CommitListener = Box<dyn FnMut(&str) + Send>;
 
 /// Seconds after a commit in which deleting and retyping it counts as a correction.
 pub const CORRECTION_WINDOW: f64 = 30.0;
@@ -33,6 +35,14 @@ pub const CORRECTION_WINDOW: f64 = 30.0;
 pub const CHARACTER_CANDIDATES: usize = 64;
 /// How much costlier than the cheapest a split may be and still be judged by the language model.
 pub const SPLIT_MARGIN: f64 = 6.0;
+
+/// The last character of a literal that ends a clause or a sentence: an automatic commit prefers to end after it.
+/// ASCII `.`, `,` and `:` are left out, as they also stand inside numbers, times and addresses.
+const CLAUSE_ENDS: &str = "。！？，、；：…．!?;";
+/// The last character of a literal that ends a sentence (the early commit).
+const SENTENCE_ENDS: &str = "。！？…．!?";
+/// Closing brackets and quotes that stay with the punctuation before them.
+const CLOSERS: &str = "」』）〉》】〕”’\"')]";
 
 struct LastCommit {
     words: Vec<ConvertedWord>,
@@ -94,6 +104,9 @@ pub struct Composer {
     /// The key decoder's costs (Swift's shared `KeyDecoder.costs`).
     pub decoder_costs: Costs,
     presentation: Presentation,
+    /// Text committed by the key being handled before what it composes (a full composition's head).
+    sent: String,
+    commit_listener: Option<CommitListener>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -133,6 +146,16 @@ fn grapheme_slice(text: &str, skip: usize, count: usize) -> String {
 
 fn is_zhuyin_key(c: char) -> bool {
     keyboard::symbol(c).is_some() || keyboard::tone(c).is_some()
+}
+
+/// A literal whose last character is one of `marks`.
+fn ends_with(token: &CompositionToken, marks: &str) -> bool {
+    matches!(token, CompositionToken::Literal(text) if text.chars().last().is_some_and(|c| marks.contains(c)))
+}
+
+/// A literal of closing brackets and quotes only.
+fn is_closer(token: &CompositionToken) -> bool {
+    matches!(token, CompositionToken::Literal(text) if !text.is_empty() && text.chars().all(|c| CLOSERS.contains(c)))
 }
 
 impl Composer {
@@ -180,6 +203,8 @@ impl Composer {
             candidate_scoring_count: 24,
             decoder_costs: Costs::default(),
             presentation: Presentation::default(),
+            sent: String::new(),
+            commit_listener: None,
         }
     }
 
@@ -228,6 +253,12 @@ impl Composer {
         self.character_scorer = scorer;
         self.conversion_dirty = true;
         self.refresh();
+    }
+
+    /// Sets the listener told what a full composition commits by itself, before the rest is converted again (the
+    /// host's models read the text before the composition).
+    pub fn set_commit_listener(&mut self, listener: Option<CommitListener>) {
+        self.commit_listener = listener;
     }
 
     /// What to draw.
@@ -293,7 +324,12 @@ impl Composer {
 
     /// Handles a key.
     pub fn handle(&mut self, key: KeyInput) -> KeyResult {
-        let result = self.process(key);
+        let mut result = self.process(key);
+        // A full composition sent its head first: that text goes before anything else the key commits.
+        let sent = std::mem::take(&mut self.sent);
+        if !sent.is_empty() {
+            result.commit = Some(sent + result.commit.as_deref().unwrap_or(""));
+        }
         // A key the app receives may move the insertion point or edit the text before it.
         if !result.handled && (key != KeyInput::Backspace || !self.follow_deletion()) {
             self.forget_context();
@@ -475,11 +511,12 @@ impl Composer {
                     if let Some(symbol) = keyboard::symbol(c)
                         && let Some(slot) = keyboard::slot(symbol)
                     {
-                        let syllables = self.tokens.iter().filter(|t| t.reading().is_some()).count();
-                        if syllables < self.options.max_syllables {
-                            self.buffer[slot] = Some(symbol);
-                            self.buffer_keys.push(c);
+                        if !self.has_buffer() {
+                            // A new syllable at the cursor.
+                            self.make_room(self.syllable_count() + 1);
                         }
+                        self.buffer[slot] = Some(symbol);
+                        self.buffer_keys.push(c);
                         result = KeyResult::CONSUMED;
                     } else if let Some(tone) = keyboard::tone(c) {
                         self.finish_buffer(tone, c, false, true);
@@ -725,9 +762,17 @@ impl Composer {
         }
         self.refresh();
         let text = self.presentation.text.clone();
+        self.record_commit(self.tokens.len(), &text);
+        self.reset();
+        text
+    }
+
+    /// Learns from the words before token `end` as committed (`text`, what was shown), and makes them the text
+    /// before what comes next.
+    fn record_commit(&mut self, end: usize, text: &str) {
+        let words: Vec<ConvertedWord> = self.conversion.iter().take_while(|w| w.range.end <= end).cloned().collect();
         if self.learns() && !text.is_empty() {
-            let mut committed: Vec<CommittedWord> = self
-                .conversion
+            let mut committed: Vec<CommittedWord> = words
                 .iter()
                 .map(|word| CommittedWord {
                     range: word.range.clone(),
@@ -761,24 +806,23 @@ impl Composer {
                     picked: false,
                 })
                 .collect();
-            let syllables = self.tokens.iter().filter(|t| t.reading().is_some()).count();
+            let syllables = self.tokens[..end].iter().filter(|t| t.reading().is_some()).count();
             self.engine.learn(&committed, syllables, &context);
         }
         if !text.is_empty() {
             // A literal at the end (punctuation, symbols as typed) leaves the sentence-start history.
+            let leading_words = trailing_words(&words, &self.leading_words);
+            let leading_history = words.last().and_then(|w| w.history).unwrap_or_default();
             self.last_commit = Some(LastCommit {
-                words: self.conversion.clone(),
+                words,
                 leading: self.leading_history,
-                leading_words: self.leading_words.clone(),
+                leading_words: std::mem::replace(&mut self.leading_words, leading_words),
                 time: self.engine.now(),
             });
-            self.leading_words = trailing_words(&self.conversion, &self.leading_words);
-            self.leading_history = self.conversion.last().and_then(|w| w.history).unwrap_or_default();
+            self.leading_history = leading_history;
             self.deleted_characters = 0;
             self.deleted_words.clear();
         }
-        self.reset();
-        text
     }
 
     /// The number of leading tokens that retype the deleted words' readings as different words; 0 when they do not.
@@ -873,7 +917,7 @@ impl Composer {
             self.run_tokens = 0;
         }
         self.run.push(Key::new(character, self.key_time));
-        if !self.apply_run() {
+        if !self.apply_run(true) {
             self.run.pop();
         }
         KeyResult::CONSUMED
@@ -1031,21 +1075,31 @@ impl Composer {
 
     fn erase_from_run(&mut self) -> KeyResult {
         self.run.pop();
-        if !self.apply_run() {
+        if !self.apply_run(false) {
+            // The shorter run has no split: the run stays as it is, and Backspace takes the unfinished syllable's
+            // last symbol as it does without the decoder.
             self.settle_run();
+            if let Some(last) = self.buffer.iter().rposition(Option::is_some) {
+                self.buffer[last] = None;
+                self.buffer_keys.retain(|k| keyboard::symbol(k).and_then(keyboard::slot) != Some(last));
+            }
         }
         KeyResult::CONSUMED
     }
 
-    /// Splits the run again and replaces the tokens it produced.  False when no split exists or it would make the
-    /// composition too long, and nothing changes.
-    fn apply_run(&mut self) -> bool {
+    /// Splits the run again and replaces the tokens it produced.  False when no split exists, and nothing changes.
+    /// `growing`: a key was added, and a composition that would grow past the limit first commits its head.
+    fn apply_run(&mut self, growing: bool) -> bool {
         let Some(decoded) = self.best_split() else { return false };
+        if !decoded.cost.is_finite() {
+            return false;
+        }
         let settled =
             self.tokens[..self.tokens.len() - self.run_tokens].iter().filter(|t| t.reading().is_some()).count();
         let unfinished = usize::from(!decoded.buffer_keys.is_empty());
-        if !decoded.cost.is_finite() || settled + decoded.syllables.len() + unfinished > self.options.max_syllables {
-            return false;
+        if growing && self.make_room(settled + decoded.syllables.len() + unfinished) {
+            // The head is sent: split the run again after it.
+            return self.apply_run(false);
         }
         if self.run_tokens > 0 {
             let count = self.tokens.len();
@@ -1063,6 +1117,117 @@ impl Composer {
             self.run_tokens = 0;
         }
         true
+    }
+
+    fn syllable_count(&self) -> usize {
+        self.tokens.iter().filter(|t| t.reading().is_some()).count()
+    }
+
+    /// Before a key adds syllables at the cursor: a composition that would then have `total` syllables, more than the
+    /// limit, first commits its head, so no key is ever refused.  With the early commit on and `total` past it, the
+    /// finished sentences before the cursor are committed.  True when something was committed.
+    fn make_room(&mut self, total: usize) -> bool {
+        let max = self.options.max_syllables;
+        let early = self.options.early_commit_syllables;
+        if total <= max && (early == 0 || total <= early) {
+            return false;
+        }
+        if self.conversion_dirty {
+            self.refresh();
+        }
+        let mut total = total;
+        let mut sent = false;
+        loop {
+            let edit = self.cursor;
+            let cut = if total > max {
+                self.commit_point(edit, total)
+            } else if !sent && early > 0 && total > early {
+                (0..edit)
+                    .rev()
+                    .find(|&i| ends_with(&self.tokens[i], SENTENCE_ENDS))
+                    .map(|mark| self.past_closers(mark + 1).min(edit))
+            } else {
+                None
+            };
+            let Some(cut) = cut else { return sent };
+            if cut > self.tokens.len() - self.run_tokens {
+                // The head reaches into the run: its syllables stay as they are, and the run goes on from the
+                // unfinished syllable and the key just typed.
+                let key = self.run.last().copied();
+                self.run = self.buffer_keys.chars().map(|c| Key::new(c, None)).chain(key).collect();
+                self.run_tokens = 0;
+            }
+            total = total.saturating_sub(self.tokens[..cut].iter().filter(|t| t.reading().is_some()).count());
+            self.commit_head(cut);
+            sent = true;
+        }
+    }
+
+    /// Where the head of a full composition ends, between two words of the conversion shown and at most at `limit`
+    /// (the cursor): after the last clause or sentence punctuation when at most two thirds of the limit follow it
+    /// (of `total`, the syllables with the key), otherwise about the first third of the limit.  `None` when no word
+    /// ends before `limit`.
+    fn commit_point(&self, limit: usize, total: usize) -> Option<usize> {
+        let max = self.options.max_syllables;
+        let head = (max / 3).max(1);
+        let keep = max.saturating_sub(head);
+        let mut before = Vec::with_capacity(self.tokens.len() + 1);
+        before.push(0usize);
+        for token in &self.tokens {
+            before.push(before[before.len() - 1] + usize::from(token.reading().is_some()));
+        }
+        if let Some(mark) = (0..limit).rev().find(|&i| ends_with(&self.tokens[i], CLAUSE_ENDS)) {
+            let cut = self.past_closers(mark + 1).min(limit);
+            if total.saturating_sub(before[cut]) <= keep {
+                return Some(cut);
+            }
+        }
+        // Word ends with at least one syllable before them: the last with at most `head`, or else the first.
+        let mut best = None;
+        for word in &self.conversion {
+            let end = word.range.end;
+            if end > limit {
+                break;
+            }
+            if before[end] == 0 || self.fixed.iter().any(|f| f.range.start < end && end < f.range.end) {
+                continue;
+            }
+            if best.is_some() && before[end] > head {
+                break;
+            }
+            best = Some(end);
+        }
+        // Punctuation right after the head goes with it.
+        best.map(|mut cut| {
+            while cut < limit && (ends_with(&self.tokens[cut], CLAUSE_ENDS) || is_closer(&self.tokens[cut])) {
+                cut += 1;
+            }
+            cut
+        })
+    }
+
+    /// `index`, moved past the closing brackets and quotes that start there.
+    fn past_closers(&self, index: usize) -> usize {
+        index + self.tokens[index..].iter().take_while(|t| is_closer(t)).count()
+    }
+
+    /// Commits the first `cut` tokens as shown, as Enter would commit them, and keeps composing the rest.
+    fn commit_head(&mut self, cut: usize) {
+        let text = self.shown(&(0..cut));
+        self.record_commit(cut, &text);
+        self.delete(0..cut);
+        // The rest keeps its words until it is converted again after the head (with the key).
+        self.conversion = self
+            .conversion
+            .iter()
+            .filter(|w| w.range.start >= cut)
+            .map(|w| ConvertedWord { range: w.range.start - cut..w.range.end - cut, ..w.clone() })
+            .collect();
+        self.literal_undo = None;
+        if let Some(listener) = self.commit_listener.as_mut() {
+            listener(&text);
+        }
+        self.sent.push_str(&text);
     }
 
     fn finish_buffer(&mut self, tone: &str, tone_key: char, dropping_invalid: bool, allowing_typo: bool) -> bool {

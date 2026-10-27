@@ -271,6 +271,44 @@ fn reranker_hook_chooses_the_sentence() {
     }
 }
 
+/// Records what the commit hook was told.
+unsafe extern "C" fn heard(context: *mut c_void, text: *const c_char) {
+    // SAFETY: the test's own context, a Vec<String>, and a string valid for the call.
+    unsafe { (*context.cast::<Vec<String>>()).push(CStr::from_ptr(text).to_str().unwrap().to_owned()) };
+}
+
+#[test]
+fn full_composition_commits_its_head_through_the_hook() {
+    let engine = open_engine();
+    let mut options = zt_composer_options_default();
+    options.max_syllables = 3;
+    // SAFETY: live handles; the context outlives the composer.
+    unsafe {
+        let composer = zt_composer_new(engine, &raw const options);
+        let mut told: Vec<String> = vec![];
+        zt_composer_set_commit_hook(
+            composer,
+            ZtCommitHook { context: (&raw mut told).cast(), committed: Some(heard), release: None },
+        );
+        let mut committed = String::new();
+        for c in "su3cl3su3cl3".chars() {
+            let result = zt_composer_handle(composer, key(c));
+            assert!(result.handled, "{c:?} was refused");
+            committed.push_str(&text(result.commit).unwrap_or_default());
+        }
+        assert_eq!(committed, "你好", "the fourth syllable sends the first word");
+        assert_eq!(told, vec!["你好".to_owned()], "the hook hears the head first");
+        committed.push_str(&text(zt_composer_commit_all(composer)).unwrap());
+        assert_eq!(committed, "你好你好");
+        zt_composer_set_commit_hook(
+            composer,
+            ZtCommitHook { context: std::ptr::null_mut(), committed: None, release: None },
+        );
+        zt_composer_free(composer);
+        zt_engine_free(engine);
+    }
+}
+
 struct Directory(PathBuf);
 
 impl Directory {
