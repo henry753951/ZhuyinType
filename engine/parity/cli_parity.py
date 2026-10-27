@@ -73,6 +73,7 @@ CONFIGS = [
     ("end-share", ["--end-share", "0.5"], "<enter>"),
     ("hotspot", ["--hotspot", "on"], "<enter>"),
     ("punctuation-mac", ["--punctuation", "mac"], "<S-,><enter>"),
+    ("space-insert", ["--space", "insertSpace"], "<space>{keys}<enter>"),
     ("forms-common", ["--forms", "common"], "<enter>"),
     ("nbest-16", ["--report-nbest", "16"], ""),
     ("list-home", ["--report-list"], "<home><down>"),
@@ -134,6 +135,9 @@ def main() -> int:
     )
     parser.add_argument("--suite", choices=["engine", "models", "both"], default="both")
     parser.add_argument("--only", nargs="+", metavar="NAME", help="only these configurations")
+    parser.add_argument(
+        "--skip", nargs="+", metavar="NAME", default=[], help="not these configurations (e.g. one the reference lacks)"
+    )
     args = parser.parse_args()
     limit = args.limit or (50 if args.quick else None)
     lexicon = Lexicon(args.lexicon)
@@ -146,6 +150,7 @@ def main() -> int:
         configs = configs + model_configs(args.models)
     if args.only:
         configs = [c for c in configs if c[0] in args.only]
+    configs = [c for c in configs if c[0] not in args.skip]
     pairs = []
     with ThreadPoolExecutor(max(1, args.jobs)) as pool:
         # Submitted in report order, so the first pairs finish first and print as they complete.

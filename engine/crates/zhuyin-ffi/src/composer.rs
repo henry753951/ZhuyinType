@@ -139,6 +139,8 @@ pub const ZT_SPACE_OPEN_CANDIDATES: u32 = 0;
 pub const ZT_SPACE_COMMIT: u32 = 1;
 /// `ZtComposerOptions::space_action`: Space commits and the app receives the Space.
 pub const ZT_SPACE_COMMIT_AND_SPACE: u32 = 2;
+/// `ZtComposerOptions::space_action`: Space puts a space into the composition (as Shift+Space); nothing is sent.
+pub const ZT_SPACE_INSERT_SPACE: u32 = 3;
 /// `ZtComposerOptions::typo_tolerance`: off.
 pub const ZT_TYPO_OFF: u32 = 0;
 /// `ZtComposerOptions::typo_tolerance`: standard.
@@ -221,7 +223,7 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
     // SAFETY: NULL or valid per the contract.
     let Some(o) = (unsafe { options.as_ref() }) else { return Some(ComposerOptions::default()) };
     let pick = |value: u32, count: usize| (value as usize) < count;
-    if !pick(o.space_action, 3)
+    if !pick(o.space_action, SpaceAction::ALL.len())
         || !pick(o.typo_tolerance, 3)
         || !pick(o.candidate_anchor, 2)
         || !pick(o.key_decoder, 4)

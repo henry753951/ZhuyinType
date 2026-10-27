@@ -449,6 +449,8 @@ fn literals_and_punctuation_keys() {
 }
 
 #[test]
+// One block per Swift check group, kept together.
+#[allow(clippy::too_many_lines)]
 fn commit_modes_escape_and_limits() {
     let tiny = engine(TINY);
     for shifted in [false, true] {
@@ -506,6 +508,21 @@ fn commit_modes_escape_and_limits() {
                 assert!(
                     result == KeyResult::new(false, Some("八趴".into())) && !typing.is_composing(),
                     "commitAndSpace: space commits and goes on to the app"
+                );
+            }
+            SpaceAction::InsertSpace => {
+                assert!(
+                    result == KeyResult::CONSUMED
+                        && typing.is_composing()
+                        && text(&typing) == "八趴 "
+                        && typing.presentation().candidates.is_none(),
+                    "insertSpace: space goes into the composition, nothing is sent"
+                );
+                type_keys("18 ", &mut typing);
+                assert_eq!(
+                    typing.handle(KeyInput::Enter),
+                    KeyResult::new(true, Some("八趴 八".into())),
+                    "insertSpace: Enter sends the text with its space"
                 );
             }
         }

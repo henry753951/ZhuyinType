@@ -116,6 +116,9 @@
 // `ZtComposerOptions::space_action`: Space commits and the app receives the Space.
 #define ZT_SPACE_COMMIT_AND_SPACE 2
 
+// `ZtComposerOptions::space_action`: Space puts a space into the composition (as Shift+Space); nothing is sent.
+#define ZT_SPACE_INSERT_SPACE 3
+
 // `ZtComposerOptions::typo_tolerance`: off.
 #define ZT_TYPO_OFF 0
 

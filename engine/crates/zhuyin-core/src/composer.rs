@@ -500,6 +500,10 @@ impl Composer {
                             }
                             SpaceAction::Commit => return KeyResult::new(true, Some(self.commit_all())),
                             SpaceAction::CommitAndSpace => return KeyResult::new(false, Some(self.commit_all())),
+                            SpaceAction::InsertSpace => {
+                                self.insert_space();
+                                result = KeyResult::CONSUMED;
+                            }
                         }
                     } else {
                         result = KeyResult::PASS_THROUGH;
@@ -507,8 +511,7 @@ impl Composer {
                 }
                 KeyInput::ShiftSpace => {
                     if self.has_composition() {
-                        self.finish_buffer("", ' ', true, true);
-                        self.insert(CompositionToken::Literal(" ".into()));
+                        self.insert_space();
                         result = KeyResult::CONSUMED;
                     } else {
                         result = KeyResult::PASS_THROUGH;
@@ -1081,6 +1084,12 @@ impl Composer {
             self.clear_buffer();
         }
         false
+    }
+
+    /// A literal space in the composition: a sentence boundary that stays until the composition is sent.
+    fn insert_space(&mut self) {
+        self.finish_buffer("", ' ', true, true);
+        self.insert(CompositionToken::Literal(" ".into()));
     }
 
     fn insert(&mut self, token: CompositionToken) {

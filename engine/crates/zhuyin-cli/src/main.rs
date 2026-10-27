@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput,
-    KeyResult, PunctuationKeys, TypoTolerance,
+    KeyResult, PunctuationKeys, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
@@ -27,7 +27,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -164,6 +164,17 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                         fail(&format!(
                             "--decoder needs one of: {}",
                             KeyDecoderMethod::ALL.map(KeyDecoderMethod::raw_value).join(", ")
+                        ))
+                    });
+            }
+            "--space" => {
+                // What Space does with no unfinished syllable (the app's 空白鍵 setting).
+                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+                s.options.space_action =
+                    SpaceAction::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
+                        fail(&format!(
+                            "--space needs one of: {}",
+                            SpaceAction::ALL.map(SpaceAction::raw_value).join(", ")
                         ))
                     });
             }

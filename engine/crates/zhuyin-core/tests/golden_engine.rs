@@ -643,6 +643,9 @@ fn composer_scripts(inputs: &Inputs, files: &[PathBuf]) -> Vec<(String, String)>
     }
     let targeted = [
         "18 q8 a8 <left><left><bs>18 <home><del><end><bs><S-,>18 ek4`<bs><enter>".to_owned(),
+        "18 q8 <space>a8 <space><enter>".to_owned(),
+        "18 <space><space><bs><bs><enter>".to_owned(),
+        "18 q8<space><space><left><left><down><enter><enter>".to_owned(),
         "18 q8 ``<enter>".to_owned(),
         "18 q8 `<esc>a8 <enter>".to_owned(),
         "18 q8`<esc> <enter>".to_owned(),
@@ -701,6 +704,7 @@ fn composer_configurations() -> Vec<(&'static str, ComposerOptions)> {
         ("legacy", legacy),
         ("other", other),
         ("commit", commit),
+        ("insert-space", ComposerOptions { space_action: SpaceAction::InsertSpace, ..ComposerOptions::default() }),
     ]
 }
 

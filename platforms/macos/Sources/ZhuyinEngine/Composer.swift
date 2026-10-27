@@ -130,7 +130,7 @@ public final class Composer {
     private static func withOptions<T>(_ options: ComposerOptions, _ body: (UnsafePointer<ZtComposerOptions>) -> T) -> T {
         var o = zt_composer_options_default()
         let spaces: [SpaceAction: Int32] = [.openCandidates: ZT_SPACE_OPEN_CANDIDATES, .commit: ZT_SPACE_COMMIT,
-                                            .commitAndSpace: ZT_SPACE_COMMIT_AND_SPACE]
+                                            .commitAndSpace: ZT_SPACE_COMMIT_AND_SPACE, .insertSpace: ZT_SPACE_INSERT_SPACE]
         let typos: [TypoTolerance: Int32] = [.off: ZT_TYPO_OFF, .standard: ZT_TYPO_STANDARD, .aggressive: ZT_TYPO_AGGRESSIVE]
         let decoders: [KeyDecoderMethod: Int32] = [.slots: ZT_DECODER_SLOTS, .boundaries: ZT_DECODER_BOUNDARIES,
                                                    .reorder: ZT_DECODER_REORDER, .timed: ZT_DECODER_TIMED]
