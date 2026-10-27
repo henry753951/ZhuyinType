@@ -388,3 +388,102 @@ struct FactRow: View {
         .font(.callout)
     }
 }
+
+// MARK: - The keys in use
+
+/// Every key the settings pages name, read from the current settings: the rebindable shortcuts, the selection keys,
+/// the Shift toggle.  Nothing on the pages spells a configurable key itself.
+struct CurrentKeys {
+    let shortcuts: [ShortcutCommand: Shortcut]
+    let pageKeys: [String]
+    let shiftToggle: ShiftToggle
+    let selectionKeySet: SelectionKeySet
+
+    init(_ preferences: Preferences) {
+        shortcuts = preferences.shortcuts
+        pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
+        shiftToggle = preferences.shiftToggle
+        selectionKeySet = preferences.selectionKeys
+    }
+
+    /// The command's keys as separate keycaps: ["⇧", "↑"].
+    func caps(_ command: ShortcutCommand) -> [String] { (shortcuts[command] ?? command.defaultShortcut).keycaps }
+    /// The command's keys in one piece: "⇧↑".
+    func text(_ command: ShortcutCommand) -> String { caps(command).joined() }
+
+    /// The keys that pick on a page: "1–9", or "A S D F G" for the home row.
+    var selection: String {
+        selectionKeySet == .digits ? "\(pageKeys.first ?? "1")–\(pageKeys.last ?? "9")" : pageKeys.joined(separator: " ")
+    }
+
+    /// The Shift that switches 中/英, or nil when Shift does not switch.
+    var shiftTap: String? {
+        switch shiftToggle {
+        case .both: return "Shift"
+        case .left: return "左 Shift"
+        case .right: return "右 Shift"
+        case .none: return nil
+        }
+    }
+}
+
+/// A keycap beside the text, as if the key had just been pressed: it settles in with a short press, and presses again
+/// whenever its keys change.  Under Reduce Motion it only appears.
+struct PressedKeycap: View {
+    let keys: [String]
+    /// Small text after the keys, such as "×3".
+    var note: String?
+    /// False for the UI previews, which draw it at rest (or at `frame`, a moment of the press).
+    var animated = true
+    var frame: PressFrame = .rest
+    @State private var pressed = false
+    @State private var shown = false
+
+    /// Moments of the press, for the UI previews.
+    enum PressFrame { case appearing, down, rest }
+    private var isPressed: Bool { animated ? pressed : frame == .down }
+    private var isShown: Bool { animated ? shown : frame != .appearing }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
+                Text(key)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 21, minHeight: 21)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(.primary.opacity(0.07)))
+                            .shadow(color: .black.opacity(isPressed ? 0.10 : 0.28), radius: isPressed ? 0.3 : 0.6,
+                                    y: isPressed ? 0.3 : 1.6)
+                    )
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.18), lineWidth: 0.5))
+                    .offset(y: isPressed ? 1.2 : 0)
+            }
+            if let note {
+                Text(note).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize()
+        .opacity(isShown ? 1 : (animated ? 0 : 0.45))
+        .scaleEffect(isShown || reduceMotion ? 1 : 0.9)
+        .onAppear(perform: press)
+        .onChange(of: keys) { _, _ in press() }
+        .accessibilityLabel(keys.joined(separator: " "))
+    }
+
+    private func press() {
+        guard animated else { return }
+        guard !reduceMotion else {
+            withAnimation(.easeOut(duration: 0.2)) { shown = true }
+            return
+        }
+        withAnimation(.easeOut(duration: 0.16)) { shown = true }
+        withAnimation(.easeIn(duration: 0.07).delay(0.12)) { pressed = true }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.62).delay(0.21)) { pressed = false }
+    }
+}

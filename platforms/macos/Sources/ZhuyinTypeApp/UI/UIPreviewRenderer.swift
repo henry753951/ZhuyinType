@@ -24,7 +24,7 @@ enum UIPreviewRenderer {
         }
         Preferences.shared = Preferences(defaults: defaults)
         SettingsWindowController.isPreview = true
-        DemoPinning.stage = 12
+        DemoPinning.still = true
         DemoPinning.context = 0
         DemoPinning.mini = 99
         do {
@@ -133,23 +133,40 @@ enum UIPreviewRenderer {
 
     private static func renderFrames(to directory: URL, suffix: String) throws {
         let preferences = Preferences.shared
-        let stageSteps = [0, 6, 11, 12, 13, 14, 16, 19, 20, 22]
         let variants: [(String, () -> Void)] = [
-            ("vertical", {}),
+            ("default", {}),
+            ("custom-keys", { customKeys(preferences) }),
             ("horizontal", { preferences.candidateLayout = .horizontal }),
             ("above-compact", { preferences.candidatePlacement = .above; preferences.candidateDensity = .compact
-                preferences.candidatesPerPage = 5 }),
+                preferences.candidatesPerPage = 5; preferences.candidateFontSize = 22 }),
+            ("minimal", { preferences.showsZhuyinHint = false; preferences.showsAnnotations = false
+                preferences.showsListSwitches = false; preferences.showModeToast = false; preferences.shiftToggle = .none }),
         ]
         for (name, apply) in variants {
             preferences.resetToDefaults()
             apply()
-            for step in stageSteps {
-                let view = CandidateStage(preferences: preferences, pinned: step)
-                    .padding(16)
-                    .background(Color(nsColor: .windowBackgroundColor))
-                try capture(swiftUI: view, width: 552, to: directory.appendingPathComponent(
-                    "stage-\(name)-step\(String(format: "%02d", step))-\(suffix).png"))
+            try capturePreview(preferences, highlighted: [], to: directory.appendingPathComponent("preview-\(name)-\(suffix).png"))
+        }
+        preferences.resetToDefaults()
+        // The keycap's press, frame by frame: appearing, pressed, at rest.
+        for (name, frame) in [("1-appearing", PressedKeycap.PressFrame.appearing), ("2-down", .down), ("3-rest", .rest)] {
+            let view = HStack(spacing: 7) {
+                DemoLine(segments: [DemoSegment("約了", .document), DemoSegment("王"), DemoSegment("曉明", .focus)],
+                         caretBlinks: false)
+                PressedKeycap(keys: CurrentKeys(preferences).caps(.correctionsList), animated: false, frame: frame)
             }
+            .padding(14)
+            .background(Color(nsColor: .textBackgroundColor))
+            try capture(swiftUI: view.scaleEffect(2, anchor: .topLeading).frame(width: 380, height: 110, alignment: .topLeading),
+                        width: 380, to: directory.appendingPathComponent("keycap-press-\(name)-\(suffix).png"))
+        }
+        let highlights: [(String, Set<PreviewPart>)] = [
+            ("zhuyin-row", [.part(.zhuyinRow)]), ("switches", [.part(.switches)]), ("annotations", [.part(.annotations)]),
+            ("key-column", [.part(.keyColumn), .part(.pages)]), ("rows", [.part(.rows)]), ("window", [.window, .badge]),
+        ]
+        for (name, parts) in highlights {
+            try capturePreview(preferences, highlighted: parts,
+                               to: directory.appendingPathComponent("preview-highlight-\(name)-\(suffix).png"))
         }
         preferences.resetToDefaults()
         for scene in 0..<4 {
@@ -169,6 +186,29 @@ enum UIPreviewRenderer {
         }
     }
 
+    private static func capturePreview(_ preferences: Preferences, highlighted: Set<PreviewPart>, to url: URL) throws {
+        let view = CandidatePreview(preferences: preferences, highlighted: highlighted, animated: false)
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        try capture(swiftUI: view, width: 552, to: url, settle: 0.3)
+    }
+
+    /// Non-default keys everywhere, to show the pages follow the settings: rebound shortcuts, home-row selection keys,
+    /// six to a page, right Shift, Space opening the list.
+    static func customKeys(_ preferences: Preferences) {
+        var shortcuts = preferences.shortcuts
+        shortcuts[.correctionsList] = Shortcut("U", control: true)
+        shortcuts[.singleCharacterList] = Shortcut("↓", option: true)
+        shortcuts[.typeZhuyin] = Shortcut("Z", control: true)
+        shortcuts[.selectLeft] = Shortcut("←", control: true, shift: true)
+        shortcuts[.nextPage] = Shortcut("]", control: true)
+        preferences.shortcuts = shortcuts
+        preferences.selectionKeys = .homeRow
+        preferences.candidatesPerPage = 6
+        preferences.shiftToggle = .right
+        preferences.spaceAction = .openCandidates
+    }
+
     // MARK: Settings window
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
@@ -184,7 +224,17 @@ enum UIPreviewRenderer {
             window.orderOut(nil)
         }
         // Whole pages, taller than a screen: the pane alone in a borderless window, which is not fitted to the screen.
-        let tall: [SettingsPane: CGFloat] = [.general: 1060, .keys: 1230, .candidates: 1370, .context: 740, .about: 620]
+        let tall: [SettingsPane: CGFloat] = [.general: 1060, .keys: 1420, .candidates: 1400, .context: 740, .about: 620]
+        try renderFull(settings, tall, to: directory, label: "full", suffix: suffix)
+        // The same pages with non-default keys: every key shown must follow.
+        customKeys(Preferences.shared)
+        try renderFull(settings, [.general: 1060, .keys: 1420, .candidates: 1400], to: directory, label: "custom-keys",
+                       suffix: suffix)
+        Preferences.shared.resetToDefaults()
+    }
+
+    private static func renderFull(_ settings: SettingsWindowController, _ tall: [SettingsPane: CGFloat], to directory: URL,
+                                   label: String, suffix: String) throws {
         for (pane, height) in tall.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             let hosting = NSHostingView(rootView: SettingsPaneView(pane: pane, model: settings.model))
             hosting.frame = NSRect(x: 0, y: 0, width: 570, height: height)
@@ -196,7 +246,7 @@ enum UIPreviewRenderer {
             window.alphaValue = 0
             window.orderFrontRegardless()
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
-            try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent("settings-\(pane.rawValue)-full-\(suffix).png"))
+            try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent("settings-\(pane.rawValue)-\(label)-\(suffix).png"))
             window.orderOut(nil)
             window.contentView = nil
             window.close()
@@ -227,10 +277,10 @@ enum UIPreviewRenderer {
         try write(view: frameView, rect: frameView.bounds, to: url)
     }
 
-    private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL) throws {
+    private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
         let hosting = NSHostingView(rootView: view.frame(width: width).fixedSize(horizontal: false, vertical: true))
         hosting.frame.size = NSSize(width: width, height: max(1, hosting.fittingSize.height))
-        try capture(view: hosting, to: url, settle: 0.15)
+        try capture(view: hosting, to: url, settle: settle)
     }
 
     private static func capture(view: NSView, to url: URL, settle: TimeInterval = 0) throws {

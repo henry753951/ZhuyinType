@@ -27,7 +27,8 @@ struct SettingsPaneView: View {
 
 /// Fixed frames for the demos, so the UI previews show a chosen moment.  Nil while the app runs.
 enum DemoPinning {
-    static var stage: Int?
+    /// Draw keycaps at rest, without their press.
+    static var still = false
     static var context: Int?
     static var mini: Int?
 }
@@ -177,7 +178,8 @@ private struct GeneralPane: View {
                     Text("不使用").tag(ShiftToggle.none)
                 }
                 Toggle(isOn: binding(preferences, \.showModeToast)) {
-                    RowLabel("中英提示", "切換時在游標旁顯示「中」或「英」")
+                    RowLabel("中英提示", CurrentKeys(preferences).shiftTap.map { "單按 \($0) 切換時，在游標旁顯示「中」或「英」" }
+                             ?? "按 Caps Lock 時，在游標旁顯示「中」或「英」")
                 }
                 Toggle("開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
             }
@@ -303,7 +305,9 @@ private struct KeysPane: View {
                 KeyRow("選字", [keys])
                 KeyRow("移動選取", vertical ? ["↑"] : ["←"], vertical ? ["↓"] : ["→"], joiner: "")
                 if vertical { KeyRow("改前一個或後一個字", ["←"], ["→"], joiner: "") }
-                KeyRow("翻頁", ["空白"], vertical ? [] : ["↑", "↓"], joiner: "")
+                KeyRow("下一頁", ["空白"], CurrentKeys(preferences).caps(.nextPage))
+                KeyRow("上一頁", CurrentKeys(preferences).caps(.previousPage))
+                if !vertical { KeyRow("上一頁、下一頁", ["↑"], ["↓"], joiner: "") }
                 KeyRow("關閉候選字", ["Esc"])
             } header: {
                 Text("改字")
@@ -334,6 +338,7 @@ private struct KeysPane: View {
                     KeyRow("中文標點：，。？！：『』——", ["⇧", "符號鍵"])
                     KeyRow("鍵上的符號：. / ; < >", ["⌥", "數字或符號鍵"])
                 }
+                KeyRow("恢復剛打出注音的字（緊接著按）", CurrentKeys(preferences).caps(.typeZhuyin), ["Esc"])
                 KeyRow("「 」 、", ["[", "]", "'"])
                 KeyRow("英文", ["Caps Lock"])
             }
@@ -439,22 +444,36 @@ private struct KeyRow: View {
 
 private struct CandidatesPane: View {
     @ObservedObject var preferences: Preferences
+    /// The parts of the preview the pointed-at setting changes.
+    @State private var hovered: Set<PreviewPart> = []
+    /// The parts a setting just changed, highlighted for a moment.
+    @State private var pulsed: Set<PreviewPart> = []
+    @State private var pulseGeneration = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private static let window: Set<PreviewPart> = [.window, .badge]
+
     var body: some View {
-        let labels = preferences.candidateKeyLabels
-        let pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
+        let keys = CurrentKeys(preferences)
+        let zhuyin = keys.text(.typeZhuyin)
+        let corrections = keys.text(.correctionsList)
+        let single = keys.text(.singleCharacterList)
+        let vertical = preferences.candidateLayout == .vertical
         Form {
             Section {
-                CandidateStage(preferences: preferences, pinned: DemoPinning.stage)
+                CandidatePreview(preferences: preferences, highlighted: hovered.union(pulsed),
+                                 animated: !DemoPinning.still)
                     .padding(.vertical, 6)
             }
             Section("版面") {
-                Picker("排列", selection: binding(preferences, \.candidateLayout)) {
+                Picker(selection: binding(preferences, \.candidateLayout)) {
                     Text("直式").tag(CandidateLayout.vertical)
                     Text("橫式").tag(CandidateLayout.horizontal)
+                } label: {
+                    RowLabel("排列", vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字" : "← → 移動反白，↑ ↓ 翻頁")
                 }
                 .pickerStyle(.segmented)
+                .pointsAt([.window], $hovered)
                 LabeledContent("字級") {
                     HStack(spacing: 8) {
                         Text("字").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -469,33 +488,40 @@ private struct CandidatesPane: View {
                             .frame(width: 40, alignment: .trailing)
                     }
                 }
+                .pointsAt([.part(.rows)], $hovered)
                 LabeledContent {
                     Stepper(value: binding(preferences, \.candidatesPerPage), in: 3...9) {
                         Text("\(preferences.candidatesPerPage) 個").monospacedDigit()
                     }
                 } label: {
-                    RowLabel("每頁的候選字", "用 \(pageKeys.first ?? "1") 到 \(pageKeys.last ?? "9") 選字")
+                    RowLabel("每頁的候選字", "用 \(keys.selection) 選字；空白或 \(keys.text(.nextPage)) 翻到下一頁")
                 }
+                .pointsAt([.part(.keyColumn), .part(.pages)], $hovered)
                 Picker("選字鍵", selection: binding(preferences, \.selectionKeys)) {
                     Text("1 2 3 4 5 6 7 8 9").tag(SelectionKeySet.digits)
                     Text("A S D F G H J K L").tag(SelectionKeySet.homeRow)
                 }
+                .pointsAt([.part(.keyColumn)], $hovered)
                 Picker("間距", selection: binding(preferences, \.candidateDensity)) {
                     Text("標準").tag(CandidateDensity.standard)
                     Text("緊湊").tag(CandidateDensity.compact)
                 }
                 .pickerStyle(.segmented)
+                .pointsAt([.part(.rows)], $hovered)
             }
             Section("內容") {
                 Toggle(isOn: binding(preferences, \.showsZhuyinHint)) {
-                    RowLabel("顯示注音", "列在候選字上方，點一下打出注音")
+                    RowLabel("顯示注音", "列在清單上方；點一下或按 \(zhuyin) 打出注音本身，緊接著再按一次或按 Esc 恢復")
                 }
+                .pointsAt([.part(.zhuyinRow)], $hovered)
                 Toggle(isOn: binding(preferences, \.showsAnnotations)) {
-                    RowLabel("標出修正的讀音", "修正過的字旁邊以灰字標出注音")
+                    RowLabel("標出修正的讀音", "修正過的字旁邊以灰字標出注音，例如 \(corrections) 列出的字")
                 }
+                .pointsAt([.part(.annotations)], $hovered)
                 Toggle(isOn: binding(preferences, \.showsListSwitches)) {
-                    RowLabel("單字與修正按鈕", "\(labels.single) 單字、\(labels.corrections) 修正；關閉時只在使用中顯示")
+                    RowLabel("單字與修正按鈕", "\(single) 只列一個字、\(corrections) 列出修正的字；關閉時只在使用中顯示")
                 }
+                .pointsAt([.part(.switches)], $hovered)
             }
             Section("位置與外觀") {
                 Picker(selection: binding(preferences, \.candidatePlacement)) {
@@ -504,16 +530,50 @@ private struct CandidatesPane: View {
                 } label: {
                     RowLabel("位置", "空間不足時換到另一邊，一律留在螢幕內")
                 }
-                Picker("外觀", selection: binding(preferences, \.panelAppearance)) {
+                .pointsAt(Self.window, $hovered)
+                Picker(selection: binding(preferences, \.panelAppearance)) {
                     Text("跟隨系統").tag(PanelAppearance.system)
                     Text("淺色").tag(PanelAppearance.light)
                     Text("深色").tag(PanelAppearance.dark)
+                } label: {
+                    RowLabel("外觀", "也套用到「中」「英」提示")
                 }
+                .pointsAt(Self.window, $hovered)
                 Toggle(isOn: binding(preferences, \.panelAnimation)) {
                     RowLabel("動畫", reduceMotion ? "候選字視窗淡入；已開啟「減少動態效果」，不滑動"
                                               : "候選字視窗淡入，「中」「英」提示淡出")
                 }
+                .pointsAt(Self.window, $hovered)
             }
+        }
+        .onChange(of: preferences.candidateLayout) { _, _ in pulse([.window]) }
+        .onChange(of: preferences.candidateFontSize) { _, _ in pulse([.part(.rows)]) }
+        .onChange(of: preferences.candidatesPerPage) { _, _ in pulse([.part(.keyColumn), .part(.pages)]) }
+        .onChange(of: preferences.selectionKeys) { _, _ in pulse([.part(.keyColumn)]) }
+        .onChange(of: preferences.candidateDensity) { _, _ in pulse([.part(.rows)]) }
+        .onChange(of: preferences.showsZhuyinHint) { _, _ in pulse([.part(.zhuyinRow)]) }
+        .onChange(of: preferences.showsAnnotations) { _, _ in pulse([.part(.annotations)]) }
+        .onChange(of: preferences.showsListSwitches) { _, _ in pulse([.part(.switches)]) }
+        .onChange(of: preferences.candidatePlacement) { _, _ in pulse(Self.window) }
+        .onChange(of: preferences.panelAppearance) { _, _ in pulse(Self.window) }
+    }
+
+    /// Highlights `parts` for a moment after their setting changed.
+    private func pulse(_ parts: Set<PreviewPart>) {
+        pulseGeneration += 1
+        let generation = pulseGeneration
+        pulsed = parts
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            if pulseGeneration == generation { pulsed = [] }
+        }
+    }
+}
+
+private extension View {
+    /// While the pointer is over this setting, the preview highlights `parts`.
+    func pointsAt(_ parts: Set<PreviewPart>, _ hovered: Binding<Set<PreviewPart>>) -> some View {
+        onHover { inside in
+            if inside { hovered.wrappedValue = parts } else if hovered.wrappedValue == parts { hovered.wrappedValue = [] }
         }
     }
 }

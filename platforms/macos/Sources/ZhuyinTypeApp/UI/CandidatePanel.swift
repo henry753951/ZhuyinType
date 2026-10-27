@@ -126,15 +126,28 @@ private final class CandidateRow: NSView {
         let keyHeight = (key as NSString).size(withAttributes: keyAttributes).height
         (key as NSString).draw(in: NSRect(x: keyInset, y: (bounds.height - keyHeight) / 2, width: textInset - keyInset - 4,
                                           height: keyHeight), withAttributes: keyAttributes)
-        let available = max(0, bounds.width - textInset - trailingPad)
-        let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width } ?? 0
-        let mainWidth = min((candidate.text as NSString).size(withAttributes: textAttributes).width, max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
+        let (available, mainWidth) = textWidths()
         (candidate.text as NSString).draw(in: NSRect(x: textInset, y: (bounds.height - textHeight) / 2, width: mainWidth, height: textHeight), withAttributes: textAttributes)
         if let annotation = candidate.annotation {
             let height = (annotation as NSString).size(withAttributes: annotationAttributes).height
             (annotation as NSString).draw(in: NSRect(x: textInset + mainWidth + 10, y: (bounds.height - height) / 2,
                                                      width: max(0, available - mainWidth - 10), height: height), withAttributes: annotationAttributes)
         }
+    }
+    /// The room for text after the key, and the width the candidate's own text gets.
+    private func textWidths() -> (available: CGFloat, main: CGFloat) {
+        let available = max(0, bounds.width - textInset - trailingPad)
+        let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width } ?? 0
+        let main = min((candidate.text as NSString).size(withAttributes: textAttributes).width,
+                       max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
+        return (available, main)
+    }
+    /// Where the grey corrected reading is drawn, in the row's coordinates; nil without one.
+    var annotationFrame: NSRect? {
+        guard let annotation = candidate.annotation else { return nil }
+        let (available, main) = textWidths()
+        let width = min((annotation as NSString).size(withAttributes: annotationAttributes).width, max(0, available - main - 10))
+        return NSRect(x: textInset + main + 10, y: 2, width: width, height: max(0, bounds.height - 4))
     }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -283,6 +296,11 @@ private final class KeycapToggle: NSButton {
     }
 }
 
+/// Parts of the candidate window, so the settings preview can point at the part a setting changes.
+enum CandidatePart: Hashable, CaseIterable {
+    case zhuyinRow, rows, keyColumn, annotations, switches, pages, notice
+}
+
 /// The settings that shape the candidate window, from the 候選字視窗 page.
 struct CandidateStyle: Equatable {
     var layout: CandidateLayout = .vertical
@@ -313,6 +331,8 @@ final class CandidateContentView: InputMaterialView {
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
     private(set) var candidateTextInset: CGFloat = 36
+    /// Where each part was laid out by the last `update`, in this view's (flipped) coordinates.
+    private(set) var partFrames: [CandidatePart: [NSRect]] = [:]
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -472,6 +492,23 @@ final class CandidateContentView: InputMaterialView {
             next.isEnabled = list.page + 1 < list.pageCount
             if layout == .vertical { y += footerHeight }
         }
+        var parts: [CandidatePart: [NSRect]] = [:]
+        if hasHint { parts[.zhuyinRow] = [NSRect(x: padding, y: hintY, width: width - padding * 2, height: hintHeight)] }
+        if listOpen {
+            let frames = activeRows.map(\.frame)
+            parts[.rows] = [frames.dropFirst().reduce(frames[0]) { $0.union($1) }]
+            parts[.keyColumn] = activeRows.map { NSRect(x: $0.frame.minX, y: $0.frame.minY, width: $0.textInset - 3, height: $0.frame.height) }
+            parts[.annotations] = activeRows.compactMap { row in
+                row.annotationFrame.map { $0.offsetBy(dx: row.frame.minX, dy: row.frame.minY) }
+            }
+        }
+        parts[.switches] = [singleButton, correctionButton].filter { !$0.isHidden }.map(\.frame)
+        if hasFooter { parts[.pages] = [previous.frame.union(next.frame)] }
+        if notice != nil {
+            parts[.notice] = [NSRect(x: noticeView.frame.minX - 4, y: noticeView.frame.minY,
+                                     width: min(noticeView.frame.width, noticeView.preferredWidth) + 8, height: noticeView.frame.height)]
+        }
+        partFrames = parts.filter { !$0.value.isEmpty }
         let size = NSSize(width: width, height: y + padding)
         if frame.size != size { setFrameSize(size) }
         return size
