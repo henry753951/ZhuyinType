@@ -369,17 +369,12 @@ enum PracticeSelfTest {
             try expect(paging.progress.isComplete, "選字與翻頁: picks \(paging.progress.outcome.picks) \(paging.progress.outcome.events)")
 
             let editing = field(try lesson("editing"))
-            // Picking 「再」 in 「我在家」 converts the rest again (「我再加」 with this lexicon), so 「家」 is typed after.
-            type("ji3y94", editing)
-            press("left", editing)
+            // 「你」 is the last character, so changing it to 「妳」 leaves 「謝謝」 as it is.
+            type("vu,4vu,7su3", editing)
             press("down", editing)
-            try pick("再", editing)
+            try pick("妳", editing)
             press("return", editing)
-            type("ru8 ", editing)
-            press("down", editing)
-            try pick("家", editing)
-            press("return", editing)
-            try expect(editing.progress.isComplete && editing.progress.outcome.corrected.contains("再"),
+            try expect(editing.progress.isComplete && editing.progress.outcome.corrected.contains("妳"),
                        "改字: \(editing.progress.outcome.text), picks \(editing.progress.outcome.picks)")
         }
 

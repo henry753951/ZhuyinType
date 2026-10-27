@@ -147,8 +147,8 @@ final class WizardModel: ObservableObject {
 /// The wizard's motion: a deliberate push between steps, a spring for success; crossfades under Reduce Motion.
 enum WizardMotion {
     static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-    static var step: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.34) }
-    static var success: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.62) }
+    static var step: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.32) }
+    static var success: Animation { reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.86) }
 }
 
 /// Which wizard versions the user has seen: the first install opens it once, an update with new lessons offers
