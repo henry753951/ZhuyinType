@@ -20,7 +20,7 @@ from conversion_eval import keys_for, load_lexicon, readings_for  # noqa: E402
 
 APP_ARGS = [("data/build/reranker", ["--reranker", "data/build/reranker", "--rerank-count", "16"]),
             ("data/build/v3", ["--v3", "data/build/v3", "--v3-weight", "0.5"]),
-            ("data/build/lm_chat", ["--chat-lm", "data/build/lm_chat", "--chat-prior", "0.5"])]
+            ("data/build/lm_chat", ["--chat-lm", "data/build/lm_chat", "--chat-prior", "0.3"])]
 
 
 def main():

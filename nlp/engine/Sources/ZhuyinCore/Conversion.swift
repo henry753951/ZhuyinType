@@ -25,6 +25,8 @@ struct FixedWord: Equatable {
     var annotation: String? = nil
     /// Internal words of a fixed phrase, retained for LM history even though it is displayed as one clause.
     var components: [ConvertedWord] = []
+    /// Kept as shown because the user picked another word in the composition (not a pick of its own).
+    var frozen = false
 }
 
 fileprivate final class PathNode {

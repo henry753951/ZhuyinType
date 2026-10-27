@@ -155,6 +155,10 @@ public final class NeuralReranker: @unchecked Sendable {
 
     /// How much better a corrected sentence must score than the best one matching the keys as typed to be shown.
     public var exactMargin = 4.0
+    /// τ: the model is consulted only when the engine's two best sentences are this close (∞: always).
+    public var gateMargin = Double.infinity
+    /// δ: the model's choice replaces the engine's first sentence only when it wins by at least this much.
+    public var switchMargin = 0.0
 
     /// The index of the sentence to display.  The keys as typed win unless a correction scores clearly better.
     /// The last texts scored for `choose`: a key that adds only an unfinished Zhuyin symbol leaves the sentences as
@@ -162,12 +166,15 @@ public final class NeuralReranker: @unchecked Sendable {
     private var lastChoice: (context: String, texts: [String], neural: [Double])?
 
     public func choose(_ sentences: [ScoredSentence], context: String) -> Int {
+        // The engine is sure (its two best are far apart): keep its choice without running the model.
+        if sentences.count > 1, sentences[0].score - sentences[1].score >= gateMargin { return 0 }
         let texts = sentences.map(\.text)
         let cached = lock.withLock { lastChoice.flatMap { $0.context == context && $0.texts == texts ? $0.neural : nil } }
         guard sentences.count > 1, let neural = cached ?? scores(context: context, candidates: texts) else { return 0 }
         if cached == nil { lock.withLock { lastChoice = (context, texts, neural) } }
         let totals = sentences.indices.map { sentences[$0].score + weight * neural[$0] }
-        let best = totals.indices.max { totals[$0] < totals[$1] }!
+        var best = totals.indices.max { totals[$0] < totals[$1] }!
+        if best != 0, totals[best] - totals[0] < switchMargin { best = 0 }
         guard sentences[best].corrected,
               let exact = totals.indices.filter({ !sentences[$0].corrected }).max(by: { totals[$0] < totals[$1] }),
               totals[best] - totals[exact] < exactMargin else { return best }

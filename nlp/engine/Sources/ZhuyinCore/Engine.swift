@@ -154,7 +154,7 @@ public final class Engine: @unchecked Sendable {
     /// How often the end of a composition is the end of a sentence (see `LanguageModel.endScore`).
     nonisolated(unsafe) public static var sentenceEndShare = 1.0
     /// The chat share with no text before the cursor, and how fast the text before it moves it (see `chatWeight`).
-    nonisolated(unsafe) public static var chatPrior = 0.5
+    nonisolated(unsafe) public static var chatPrior = 0.3
     nonisolated(unsafe) public static var domainEvidenceScale = 1.0
     nonisolated(unsafe) public static var domainEvidenceCentre = -2.5
 

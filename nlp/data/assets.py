@@ -29,13 +29,15 @@ COMPONENTS = {
     "lexicon": ["lexicon.tsv"],
     "lm": ["lm/unigram.tsv", "lm/bigram.tsv", "lm/backoff.tsv", "lm/NOTICE.md"],
     "lm_chat": ["lm_chat/unigram.tsv", "lm_chat/bigram.tsv", "lm_chat/backoff.tsv", "lm_chat/NOTICE.md",
-                "lm_chat/Taiwan-Tongues-LICENSE", "lm_chat/Qwen3-8B-LICENSE"],
+                "lm_chat/attribution.jsonl", "lm_chat/source-manifest.json"],
     "reranker": ["reranker/Reranker.mlmodelc", "reranker/RerankerTree.mlmodelc", "reranker/vocab.json",
                  "reranker/config.json"],
     "v3": ["v3/ContextEncoder.mlmodelc", "v3/SyllableEncoder.mlmodelc", "v3/chars.json", "v3/syllables.json",
            "v3/config.json"],
     "eval-sets": ["corpus/dev_colloquial.txt", "corpus/dev_wikipedia.txt", "corpus/test_colloquial.txt",
-                  "lm/test_sentences.txt", "lm_chat/dev_chat_tt.txt", "lm_chat/test_chat_tt.txt"],
+                  "lm/test_sentences.txt", "lm_chat/dev_chat_tt.txt", "lm_chat/test_chat_tt.txt",
+                  # The Taiwan Tongues sets are derived data: their terms travel with them.
+                  "lm_chat/Taiwan-Tongues-LICENSE", "lm_chat/Taiwan-Tongues-README.md"],
     "checkpoints": ["reranker/charlm.pt", "v3/context.pt", "v3/syllable.pt", "v3/test_vectors.json"],
 }
 APP = ["lexicon", "lm", "lm_chat", "reranker", "v3"]

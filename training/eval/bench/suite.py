@@ -29,7 +29,7 @@ SETS = {
     "chat_tt": "data/build/lm_chat/test_chat_tt.txt",
 }
 APP = ["--reranker", "data/build/reranker", "--rerank-count", "16", "--v3", "data/build/v3", "--v3-weight", "0.5",
-       "--chat-lm", "data/build/lm_chat", "--chat-prior", "0.5"]
+       "--chat-lm", "data/build/lm_chat", "--chat-prior", "0.3"]
 CONFIGS = {"app": APP, "engine": []}
 
 
@@ -79,6 +79,16 @@ def candidates(output):
     return rows
 
 
+def repicks(output):
+    rows = {}
+    for match in re.finditer(r"\[([^\]]+)\] (\d+) runs: right with 0 picks ([\d.]+)%, ≤1 ([\d.]+)%, ≤2 ([\d.]+)%, "
+                             r"≤3 ([\d.]+)%; mean picks ([\d.]+); picks that broke a right character in ([\d.]+)%", output):
+        name, runs, p0, p1, p2, p3, mean, broke = match.groups()
+        rows[name] = {"runs": int(runs), "picks0": float(p0), "picks1": float(p1), "picks2": float(p2),
+                      "picks3": float(p3), "mean_picks": float(mean), "broke": float(broke)}
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", required=True)
@@ -106,6 +116,7 @@ def main():
     results["habits/app"] = habits(run("error_analysis", ["-n", n, "--test", SETS["colloquial"], SETS["wikipedia"]],
                                        APP, args.jobs, args.cli))
     results["candidates/app"] = candidates(run("candidate_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
+    results["repick/app"] = repicks(run("repick_eval", ["-n", n, "--test", *tests], APP, args.jobs, args.cli))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(record, f, ensure_ascii=False, indent=1)

@@ -54,6 +54,13 @@ def page(record, mac):
         row = r.get("candidates/app", {}).get(file)
         if row:
             lines.append(f"| {label} | {pct(row['first'])} | {pct(row['first_page'])} | {row['mean_rank']:.2f} |")
+    lines += ["", "## 免選字（模擬使用者：錯了就到第一個錯字選正確的候選）", "",
+              "| 測試集 | 不用選字 | 最多選 1 次 | 最多選 2 次 | 平均選字次數 | 選字改壞其他字 |", "|---|---|---|---|---|---|"]
+    for _, file, label in SETS:
+        row = r.get("repick/app", {}).get(file)
+        if row:
+            lines.append(f"| {label} | {pct(row['picks0'])} | {pct(row['picks1'])} | {pct(row['picks2'])} | "
+                         f"{row['mean_picks']:.2f} | {pct(row['broke'])} |")
     if mac:
         m = mac["median"]
         lines += ["", "## 速度、能耗、記憶體（macOS，app 設定，固定 10 句的中位數）", "",

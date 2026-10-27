@@ -7,10 +7,10 @@
       "size": 509144323
     },
     "eval-sets": {
-      "file": "zhuyintype-eval-sets-659ac3fce677.tar.gz",
-      "release": "data-1",
-      "sha256": "659ac3fce677be19d6401dc7405899ab066969f3911534f246a260f7274047a3",
-      "size": 493761
+      "file": "zhuyintype-eval-sets-e0612940c268.tar.gz",
+      "release": "data-2",
+      "sha256": "e0612940c268fc21b1634aa600cd490cafbf18a569469617b3654a536c58cf8d",
+      "size": 499702
     },
     "lexicon": {
       "file": "zhuyintype-lexicon-cf7a43f94758.tar.gz",
@@ -25,10 +25,10 @@
       "size": 36499353
     },
     "lm_chat": {
-      "file": "zhuyintype-lm_chat-8877f36505b0.tar.gz",
-      "release": "data-1",
-      "sha256": "8877f36505b0da1ab1b9a0fc42d96b162ab281ad48883860d0988476a8071441",
-      "size": 11192147
+      "file": "zhuyintype-lm_chat-a93f6891b879.tar.gz",
+      "release": "data-2",
+      "sha256": "a93f6891b879e2f4c0d3127fde848feafaafbfdcdcead8c81d68c0210f976d32",
+      "size": 5210068
     },
     "reranker": {
       "file": "zhuyintype-reranker-81400bfe8638.tar.gz",

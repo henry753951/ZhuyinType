@@ -26,6 +26,9 @@ var v3Boundaries = true
 var v3InList = true
 /// Batch mode: print the open candidate list (tab-separated) instead of what was committed.
 var reportList = false
+var rerankGate = Double.infinity
+var rerankSwitch = 0.0
+var freezeOnPick = true
 var nbest = 0
 var context = ""
 /// Text committed so far by the line being typed (batch mode) or by the keys (single run).
@@ -119,6 +122,14 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--v3":
         guard arguments.count >= 2 else { fail(usage) }
         v3Path = arguments[1]
+        arguments.removeFirst(2)
+    case "--rerank-gate", "--rerank-switch", "--freeze-on-pick":
+        // τ and δ of NeuralReranker; freezing the other words after a pick (on/off).
+        guard arguments.count >= 2 else { fail("\(arguments[0]) needs a value") }
+        if arguments[0] == "--freeze-on-pick" { freezeOnPick = arguments[1] != "off" }
+        else if let value = Double(arguments[1]) {
+            if arguments[0] == "--rerank-gate" { rerankGate = value } else { rerankSwitch = value }
+        } else { fail("\(arguments[0]) needs a number") }
         arguments.removeFirst(2)
     case "--report-list":
         reportList = true
@@ -285,6 +296,7 @@ do {
         #endif
     }
     func attach(_ composer: Composer) {
+        composer.freezesOnPick = freezeOnPick
         if let characterModel {
             composer.characterWeight = v3Weight
             composer.characterScoresInList = v3InList
@@ -297,6 +309,8 @@ do {
         guard let reranker else { return }
         composer.rerankingCount = rerankCount
         if let exactMargin { reranker.exactMargin = exactMargin }
+        reranker.gateMargin = rerankGate
+        reranker.switchMargin = rerankSwitch
         func timed<T>(_ label: String, _ body: () -> T) -> T {
             let start = DispatchTime.now().uptimeNanoseconds
             defer {

@@ -97,6 +97,8 @@ def main():
                         help="type each run after the text before it on its line (earlier clauses of the sentence), "
                         "as text already in the document")
     parser.add_argument("--jobs", type=int, default=1, help="CLI processes to run in parallel")
+    parser.add_argument("--dump", metavar="PREFIX", help="write PREFIX<set>.tsv: reference and output per run, for "
+                        "paired comparisons (training/eval/stats.py)")
     parser.add_argument("--test", nargs="*", default=None)
     args = parser.parse_args()
     if args.lm_dir and not os.path.isdir(args.lm_dir):
@@ -171,6 +173,10 @@ def evaluate(test, args, lexicon, lexicon_path):
     outputs = [line for out, _ in results for line in out.splitlines()]
     if len(outputs) != len(selected):
         raise RuntimeError(f"zhuyin-cli returned {len(outputs)} lines for {len(selected)} inputs")
+    if args.dump:
+        with open(f"{args.dump}{os.path.basename(test)}.tsv", "w", encoding="utf-8") as dump:
+            for run, got in zip(selected, outputs):
+                dump.write(f"{run}\t{got.strip()}\n")
     for run, got in zip(selected, outputs):
         got = got.strip()
         tested += 1

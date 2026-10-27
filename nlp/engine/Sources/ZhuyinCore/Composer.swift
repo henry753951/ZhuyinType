@@ -65,6 +65,8 @@ public final class Composer {
         didSet { conversionDirty = true; refresh() }
     }
     public var characterWeight = 1.0
+    /// After a pick from the candidate list, keep every other shown word as it is.
+    public var freezesOnPick = true
     /// Learning paused for now (secure input: a password field may be focused); the setting itself is unchanged.
     public var learningSuspended = false
     private var learns: Bool { options.learningEnabled && !learningSuspended }
@@ -304,6 +306,15 @@ public final class Composer {
                 }
             }
             fix(choice)
+            if freezesOnPick {
+                // The rest of what is shown stays as it is: picking one word must not change words the user has
+                // already read (as the system's own Zhuyin input does).
+                for word in conversion where !word.reading.isEmpty && !word.range.overlaps(choice.range)
+                    && !fixed.contains(where: { $0.range.overlaps(word.range) }) {
+                    fixed.append(FixedWord(range: word.range, text: word.text, reading: word.reading,
+                                           wordID: word.wordID, frozen: true))
+                }
+            }
         }
         conversionDirty = true
         closeCandidates()
@@ -328,7 +339,7 @@ public final class Composer {
         if learns, !text.isEmpty {
             var committed = conversion.map { word in
                 CommittedWord(range: word.range, text: word.text, reading: word.reading, wordID: word.wordID,
-                              picked: fixed.contains { $0.range == word.range && $0.text == word.text })
+                              picked: fixed.contains { $0.range == word.range && $0.text == word.text && !$0.frozen })
             }
             let corrected = correctedPrefix()
             if corrected > 0 {
