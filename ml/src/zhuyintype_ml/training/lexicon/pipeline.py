@@ -7,12 +7,15 @@
 Options (--option KEY=VALUE):
     wiki       directory of Wikipedia training sentences (default: lm/work/sentences in the data directory)
     workers    counting processes (default: 16)
-    packs      packs merged into lexicon.tsv (default: wiki,chat,registry,places)
+    packs      packs: the lm step re-counts with them (default: wiki,chat,registry,places); merge puts them
+               into lexicon.tsv only when given (default: none, as data-4)
     offset     extra cost of the candidate's reading rows (default: 2)
     standard   0: keep CC-CEDICT's readings as the words' readings (default 1: strong Taiwan readings are the
                standard, and misread-dev and every text dev set are typed with them)
     expanded   1: every reading class expanded into rows (the A/B baseline for the engine's reading channel)
     max_cost   lowest log P(typed | word) of an expanded misreading variant (default: 8)
+    char_classes  channel classes whose single-character readings become rows (default: taiwan,word)
+    min_taiwan    lowest strength of a Taiwan reading carried into words (default: 0.5)
     exclude    extra directory of evaluation rows kept out of the mining corpora (every *.txt in it)
     wiki_work  a finished `zt train lm` work directory (default: lm/work), for the lm step
     dump       the Wikipedia dump that work directory came from (default: data/raw/lm/...)
@@ -132,7 +135,9 @@ def count(ctx: Context) -> None:
 
 
 def merge(ctx: Context) -> None:
-    packs = [p for p in str(ctx.options.get("packs", ",".join(CORPORA))).split(",") if p]
+    # data-4 has no packs: with the re-counted models they change nothing measurable and cost p95 per key
+    # (docs/research/log.md 2026-10-28); --option packs=wiki,chat,registry,places builds that candidate.
+    packs = [p for p in str(ctx.options.get("packs", "")).split(",") if p]
     ctx.python(
         "zhuyintype_ml.training.lexicon.merge",
         "--base",
@@ -156,6 +161,12 @@ def merge(ctx: Context) -> None:
 # CC-CEDICT's readings as the words' readings.
 CANDIDATE_CLASSES = ("char", "taiwan", "mcbopomofo", "variants")
 CANDIDATE_OFFSET = 2.0
+# Each single-character row is matched at every syllable: CNS11643's and Wiktionary's other character readings
+# (3,700 rows) cost 8% CPU per key on the Mac with no change on any set, so only the readings Taiwan's sources and
+# dictionary words give a character stay rows (蚵 ㄎㄜ); the rest are the engine's.  Taiwan readings weaker than 0.5
+# carried into every word with the character (17,000 rows) change nothing either.
+CANDIDATE_CHARACTERS = "taiwan,word"
+CANDIDATE_MIN_TAIWAN = 0.5
 
 
 def standard(ctx: Context) -> bool:
@@ -172,6 +183,10 @@ def variant_options(ctx: Context) -> list[str]:
         "--mechanisms",
         ",".join(classes),
         *[arg for c in CANDIDATE_CLASSES for arg in ("--offset", f"{c}={offset}")],
+        "--char-classes",
+        str(ctx.options.get("char_classes", CANDIDATE_CHARACTERS)),
+        "--min-taiwan",
+        str(ctx.options.get("min_taiwan", CANDIDATE_MIN_TAIWAN)),
     ]
 
 

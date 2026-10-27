@@ -63,10 +63,17 @@ ENGINE_CLASSES = ("neutral", "sandhi", "loan", "misread")
 ENGINE_CHARACTER_MECHANISMS = ("series", "interjection")
 TIE = 0.01  # a variant never ties with the word's best reading, even when a source gives it the whole share
 HEADER = (
-    "# ZhuyinType lexicon with reading variants and vocabulary packs. Sources: CC-CEDICT (CC BY-SA 4.0), "
-    "Unicode Unihan (Unicode License v3), wordfreq (CC BY-SA 4.0), English Wiktionary via Wiktextract "
-    "(CC BY-SA 4.0), BabelStone IDS{packs}. See resources/SOURCES.md.\n"
+    "# ZhuyinType lexicon with Taiwan readings and reading variants. Sources: CC-CEDICT "
+    "(CC BY-SA 4.0), Unicode Unihan (Unicode License v3), wordfreq (CC BY-SA 4.0), English Wiktionary via "
+    "Wiktextract (CC BY-SA 4.0), CNS11643 全字庫 (Open Government Data License v1, 國家發展委員會), McBopomofo "
+    "data.txt readings (MIT), BabelStone IDS{packs}. See resources/SOURCES.md.\n"
 )
+PACKS = {
+    "wiki": "words found in Chinese Wikipedia (CC BY-SA 4.0)",
+    "chat": "words found in the chat model's corpora (see lm_chat/NOTICE.md)",
+    "registry": "names from 全國營業(稅籍)登記資料集 (Open Government Data License v1, 財政部財政資訊中心)",
+    "places": "addresses from 全國營業(稅籍)登記資料集 (Open Government Data License v1, 財政部財政資訊中心)",
+}
 
 
 class Builder:
@@ -78,8 +85,12 @@ class Builder:
         mechanisms: Iterable[str] = MECHANISMS,
         offsets: dict[str, float] | None = None,
         mcbopomofo: dict[str, dict[str, float]] | None = None,
+        min_taiwan: float = 0.0,
+        char_classes: Iterable[str] | None = None,
     ) -> None:
         self.mcbopomofo = mcbopomofo or {}
+        self.min_taiwan = min_taiwan
+        self.char_classes = set(char_classes) if char_classes is not None else None
         self.engine_character: tuple[str, ...] = ()
         self.channel = channel
         self.max_cost = max_cost
@@ -148,7 +159,9 @@ class Builder:
                 continue
             for r, p in shares.items():
                 official = not self.engine_character or "cns" in self.channel.evidence.get((char, r), "")
-                if p < top and self.channel.mechanism.get((char, r)) not in self.engine_character and official:
+                kind = self.channel.mechanism.get((char, r))
+                wanted = self.char_classes is None or kind in self.char_classes
+                if p < top and kind not in self.engine_character and official and wanted:
                     self.put(r, char, logp + self.cost("char", math.log(p / top)), "char")
 
     def word(
@@ -170,7 +183,7 @@ class Builder:
             changes = [
                 (i, *self.channel.taiwan[(c, s)])
                 for i, (c, s) in enumerate(zip(word, syls))
-                if (c, s) in self.channel.taiwan
+                if (c, s) in self.channel.taiwan and self.channel.taiwan[(c, s)][1] >= self.min_taiwan
             ]
             for size in range(1, len(changes) + 1):
                 for subset in itertools.combinations(changes, size):
@@ -257,7 +270,7 @@ class Builder:
     def write(self, out: Path, packs: list[str]) -> dict[str, int]:
         rows = sorted(((r, w, p) for (r, w), p in self.rows.items()), key=lambda x: (x[0], -x[2], x[1]))
         out.parent.mkdir(parents=True, exist_ok=True)
-        names = "".join(f", {name}" for name in packs)
+        names = "".join(f", {PACKS.get(name, name)}" for name in packs)
         with open(out, "w", encoding="utf-8") as handle:
             handle.write(HEADER.format(packs=names))
             for reading, word, logp in rows:
@@ -311,6 +324,18 @@ def main(argv: list[str] | None = None) -> int:
         "character rows only for readings CNS11643 lists (Taiwan's official readings); the rest of the character "
         "table goes to the engine's reading channel",
     )
+    parser.add_argument(
+        "--min-taiwan",
+        type=float,
+        default=0.0,
+        help="lowest strength of a Taiwan reading carried into words (taiwan class); weaker ones are left to the "
+        "engine's reading channel",
+    )
+    parser.add_argument(
+        "--char-classes",
+        help="channel.tsv classes whose single-character readings become rows (default: all); a row per character "
+        "reading is matched at every syllable, so each one costs time per key",
+    )
     parser.add_argument("--mcbopomofo", type=Path, help="McBopomofo's data.txt (default: data/raw/lexicon)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -319,7 +344,10 @@ def main(argv: list[str] | None = None) -> int:
         mechanisms = [m for m in mechanisms if m not in ENGINE_CLASSES]
     offsets = parse_offsets(args.offset)
     mcb = read_mcbopomofo(args.mcbopomofo or sources.path("mcbpmf-data.txt"))
-    builder = Builder(read_rows(args.base), load(args.channel), args.max_cost, mechanisms, offsets, mcb)
+    char_classes = args.char_classes.split(",") if args.char_classes is not None else None
+    builder = Builder(
+        read_rows(args.base), load(args.channel), args.max_cost, mechanisms, offsets, mcb, args.min_taiwan, char_classes
+    )
     if args.data_only:
         builder.engine_character = ENGINE_CHARACTER_MECHANISMS
     standardized = builder.standardize()
@@ -336,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
         "offsets": offsets,
         "standardized_words": standardized,
         "data_only": args.data_only,
+        "min_taiwan": args.min_taiwan,
+        "char_classes": char_classes,
     }
     args.out.with_suffix(".json").write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n")
     print(json.dumps(summary, ensure_ascii=False))

@@ -139,6 +139,19 @@ class Merge(unittest.TestCase):
         builder.words([])
         self.assertAlmostEqual(builder.rows[("ㄑㄧˊ ㄓㄨㄥ", "期中")], -14.0 + math.log(0.9) - merge.TIE)
 
+    def test_min_taiwan_and_character_classes(self):
+        c = toy_channel()
+        c.share["中"] = {"ㄓㄨㄥ": 1.0}
+        c.taiwan[("期", "ㄑㄧ")] = ("ㄑㄧˊ", 0.3)
+        builder = merge.Builder([("ㄑㄧ ㄓㄨㄥ", "期中", -12.0)], c, min_taiwan=0.5)
+        builder.words([])
+        self.assertNotIn(("ㄑㄧˊ ㄓㄨㄥ", "期中"), builder.rows)  # a weak Taiwan reading is left to the engine
+        c.mechanism[("蚵", "ㄎㄜ")] = "word"
+        for classes, present in ((["taiwan"], False), (["taiwan", "word"], True)):
+            builder = merge.Builder(self.base, c, char_classes=classes)
+            builder.characters()
+            self.assertEqual(("ㄎㄜ", "蚵") in builder.rows, present)
+
     def test_third_tone_sandhi_and_mcbopomofo(self):
         base = [("ㄋㄧˇ ㄏㄠˇ", "你好", -9.0), ("ㄨㄟ ㄒㄧㄢˇ", "危險", -10.0)]
         mcb = {"危險": {"ㄨㄟˊ ㄒㄧㄢˇ": 1.0}}

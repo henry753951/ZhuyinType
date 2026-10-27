@@ -98,6 +98,31 @@ def chat(seed_path: Path, data: Path, out: Path, workers: int) -> None:
         shutil.copy(mirror / "no_generated" / name, target / name)
 
 
+RESEGMENTED = (
+    "\n\nRe-segmentation (ZhuyinType lexicon coverage, ml/src/zhuyintype_ml/training/lexicon): the seed vocabulary is "
+    "the base lexicon plus mined vocabulary packs: words found in Chinese Wikipedia (CC BY-SA 4.0), in the chat "
+    "corpora of the chat model, and in the business registration dataset 全國營業(稅籍)登記資料集 "
+    "(https://data.gov.tw/dataset/9400, Open Government Data License v1: "
+    "本資料由財政部財政資訊中心提供，依政府資料開放授權條款"
+    "進行公眾釋出).  Text, holdouts, smoothing and pruning are the shipped model's.\n"
+)
+
+
+def notices(out: Path, shipped_lm: Path, shipped_chat: Path) -> None:
+    """The shipped models' notices and attribution files, with the re-segmentation added to each NOTICE.md."""
+    for model, shipped, extra in (
+        ("lm", shipped_lm, ()),
+        ("lm_chat", shipped_chat, ("attribution.jsonl", "source-manifest.json")),
+    ):
+        target = out / model
+        if not target.exists():
+            continue
+        notice = (shipped / "NOTICE.md").read_text(encoding="utf-8").rstrip("\n")
+        (target / "NOTICE.md").write_text(notice + RESEGMENTED, encoding="utf-8")
+        for name in extra:
+            shutil.copy(shipped / name, target / name)
+
+
 def run(module: str, *args: str, env: dict[str, str] | None = None) -> None:
     command = paths.python_command(module, *args, groups=("train",))
     subprocess.run(command, check=True, env=env or dict(paths.python_env(), OMP_NUM_THREADS="1"))
@@ -113,14 +138,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shipped", type=Path, default=paths.data("lm"), help="the shipped lm/ (test sentences)")
     parser.add_argument("--chat-data", type=Path, required=True, help="data directory with lm_chat2/")
     parser.add_argument("--workers", type=int, default=16)
-    parser.add_argument("--only", choices=("wiki", "chat"))
+    parser.add_argument("--only", choices=("wiki", "chat", "notices"))
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
+    shipped_chat = args.chat_data / "lm_chat"
+    if args.only == "notices":
+        notices(args.out, args.shipped, shipped_chat)
+        return 0
     seed_path = seed(args.base, args.pack, args.out / "seed.tsv")
     if args.only != "chat":
         wiki(seed_path, args.wiki_work, args.dump, args.out, args.shipped, args.workers)
     if args.only != "wiki":
         chat(seed_path, args.chat_data, args.out, args.workers)
+    notices(args.out, args.shipped, shipped_chat)
     summary = {"seed_rows": sum(1 for _ in open(seed_path, encoding="utf-8")) - 1, "packs": [str(p) for p in args.pack]}
     (args.out / "lm.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n")
     print(json.dumps(summary, ensure_ascii=False))

@@ -34,6 +34,19 @@ struct IntroPane: View {
                 SummaryRow(title: "中英切換", value: CurrentKeys(preferences).modeKey.map { "按 \($0)" } ?? "不使用",
                            place: SettingsPlace(.typing, row: SettingsRow.shiftTap))
             }
+            SettingsSection("設定嚮導") {
+                SettingLinkRow(title: "開始設定嚮導", subtitle: "選擇習慣的打法，並在嚮導中試打") {
+                    WizardWindowController.shared.show(.quick)
+                }
+                if WizardProgress.hasNewLessons {
+                    SettingLinkRow(title: "新功能導覽", subtitle: "只介紹這一版新增的功能") {
+                        WizardWindowController.shared.show(.newSince(WizardProgress.seenVersion ?? "0"))
+                    }
+                }
+                SettingLinkRow(title: "你會用到的按鍵", subtitle: "依目前的設定列出按鍵") {
+                    WizardWindowController.shared.show(.keysOnly)
+                }
+            }
             SettingsSection("功能", card: false) {
                 FeatureGrid(features: IntroFeature.all(CurrentKeys(preferences), preferences: preferences))
             }

@@ -170,8 +170,8 @@ struct KeysPane: View {
         }
         .alert("要還原所有按鍵與功能嗎？", isPresented: $confirmingReset) {
             Button("全部還原", role: .destructive) {
-                preferences.resetShortcuts()
-                preferences.disabledKeyFeatures = []
+                // Every key and key feature back to its default, through the registry.
+                preferences.restoreDefaults(SettingsRegistry.keyAndFeatureIDs)
                 preferences.shiftToggle = .both
             }
             Button("取消", role: .cancel) {}

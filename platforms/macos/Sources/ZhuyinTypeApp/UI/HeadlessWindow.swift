@@ -8,8 +8,12 @@ enum Headless {
     static let flags: Set<String> = ["--render-ui", "--render-ui-preview", "--self-test", "--install", "--register",
                                      "--enable", "--select", "--disable", "--unregister", "--status"]
 
+    /// This process runs a headless mode: it must not touch the user's settings either.
+    private(set) static var isActive = false
+
     /// Makes this process unable to become active, before any window or view exists.
     static func begin() {
+        isActive = true
         NSApplication.shared.setActivationPolicy(.prohibited)
     }
 
