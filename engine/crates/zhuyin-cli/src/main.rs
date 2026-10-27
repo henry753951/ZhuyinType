@@ -2,26 +2,30 @@
 //! `engine/swift/Sources/zhuyin-cli/main.swift` with the same flags, messages, key syntax, output and `--batch`
 //! protocol.
 //!
-//! The neural models (`--reranker`, `--v3`, `--model-server`, `--check-v3`, and `--models` when its directory has
-//! them) come in phase 4: those flags are parsed and validated as in Swift, then refused with a message.
+//! The neural models (`--reranker`, `--v3`, `--check-v3`, and `--models` when its directory has them) run with
+//! ONNX Runtime in a build with the `onnx` feature, or through `--model-server` in any build; the Core ML models the
+//! Swift CLI runs on macOS are not available here (the app supplies them through `zhuyin-ffi`).
 
+#[cfg(unix)]
+mod model_server;
 mod usage;
 
 use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use zhuyin_core::api::{
-    CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput, KeyResult,
-    PunctuationKeys, TypoTolerance,
+    CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput,
+    KeyResult, PunctuationKeys, TypoTolerance,
 };
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
 use zhuyin_core::key_decoder::Costs;
 use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
+use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
 const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
@@ -40,9 +44,16 @@ struct Settings {
     keep_memory: bool,
     reranker: Option<String>,
     model_server: Option<String>,
+    rerank_weight: f64,
     rerank_count: usize,
+    exact_margin: Option<f64>,
+    rerank_gate: Option<f64>,
+    rerank_switch: Option<f64>,
     report_nbest: usize,
     v3: Option<String>,
+    v3_weight: f64,
+    v3_boundaries: bool,
+    v3_in_list: bool,
     report_list: bool,
     freeze_on_pick: bool,
     nbest: usize,
@@ -86,9 +97,16 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         keep_memory: false,
         reranker: None,
         model_server: None,
+        rerank_weight: 0.5,
         rerank_count: 8,
+        exact_margin: None,
+        rerank_gate: None,
+        rerank_switch: None,
         report_nbest: 0,
         v3: None,
+        v3_weight: 0.5,
+        v3_boundaries: true,
+        v3_in_list: true,
         report_list: false,
         freeze_on_pick: true,
         nbest: 0,
@@ -169,8 +187,8 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 s.costs.skip_apart = values[7];
             }
             "--check-v3" => {
-                next_value(&arguments);
-                fail("zhuyin-cli (Rust): --check-v3 is not supported yet; the neural models come in phase 4");
+                // Compares the v3 models with ml/src/zhuyintype_ml/training/v3's golden outputs, then exits.
+                check_v3(Path::new(next_value(&arguments)), s.model_server.as_deref());
             }
             "--v3" => s.v3 = Some(next_value(&arguments).to_owned()),
             "--rerank-gate" | "--rerank-switch" | "--freeze-on-pick" => {
@@ -180,7 +198,13 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 }
                 if option == "--freeze-on-pick" {
                     s.freeze_on_pick = arguments[1] != "off";
-                } else if parse_double(&arguments[1]).is_none() {
+                } else if let Some(value) = parse_double(&arguments[1]) {
+                    if option == "--rerank-gate" {
+                        s.rerank_gate = Some(if value.is_finite() { value } else { f64::INFINITY });
+                    } else {
+                        s.rerank_switch = Some(value);
+                    }
+                } else {
                     fail(&format!("{option} needs a number"));
                 }
             }
@@ -193,6 +217,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 if arguments.len() < 2 || !matches!(value, "on" | "off") {
                     fail("--v3-list needs on or off");
                 }
+                s.v3_in_list = value == "on";
             }
             "--v3-boundaries" => {
                 // Whether the character model is told which syllables ended without a tone key or Space.
@@ -200,13 +225,16 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 if arguments.len() < 2 || !matches!(value, "on" | "off") {
                     fail("--v3-boundaries needs on or off");
                 }
+                s.v3_boundaries = value == "on";
             }
             "--v3-weight" | "--domain-scale" | "--domain-centre" | "--exact-margin" | "--rerank-weight" => {
                 let value = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
                 match option.as_str() {
                     "--domain-scale" => s.config.domain_evidence_scale = value,
                     "--domain-centre" => s.config.domain_evidence_centre = value,
-                    _ => {}
+                    "--v3-weight" => s.v3_weight = value,
+                    "--exact-margin" => s.exact_margin = Some(value),
+                    _ => s.rerank_weight = value,
                 }
             }
             "--chat-lm" => s.config.chat_model_directory = Some(PathBuf::from(next_value(&arguments))),
@@ -280,13 +308,23 @@ fn apply_models(s: &mut Settings) {
     if let Some(reranker) = &s.reranker
         && let Ok(data) = std::fs::read(Path::new(reranker).join("config.json"))
         && let Ok(serde_json::Value::Object(config)) = serde_json::from_slice::<serde_json::Value>(&data)
-        && !s.given.contains("--rerank-count")
-        && let Some(count) = config.get("count").and_then(serde_json::Value::as_u64).filter(|&c| c > 0)
     {
-        s.rerank_count = usize::try_from(count).unwrap_or(usize::MAX);
+        if !s.given.contains("--rerank-weight")
+            && let Some(weight) = config.get("weight").and_then(serde_json::Value::as_f64)
+        {
+            s.rerank_weight = weight;
+        }
+        if !s.given.contains("--rerank-count")
+            && let Some(count) = config.get("count").and_then(serde_json::Value::as_u64).filter(|&c| c > 0)
+        {
+            s.rerank_count = usize::try_from(count).unwrap_or(usize::MAX);
+        }
     }
     if !s.given.contains("--v3") && has("v3", "chars.json") {
         s.v3 = Some(root.join("v3").to_string_lossy().into_owned());
+    }
+    if !s.given.contains("--v3-weight") {
+        s.v3_weight = zhuyin_models::APP_SYLLABLE_WEIGHT;
     }
 }
 
@@ -472,21 +510,177 @@ fn print_step(label: &str, result: &KeyResult, composer: &Composer, committed: &
     }
 }
 
-fn refuse_models(s: &Settings) {
-    let unsupported =
-        [("--model-server", s.model_server.is_some()), ("--reranker", s.reranker.is_some()), ("--v3", s.v3.is_some())];
-    for (flag, used) in unsupported {
-        if used {
-            let source = if s.given.contains(flag) { flag.to_owned() } else { format!("--models (which sets {flag})") };
-            fail(&format!("zhuyin-cli (Rust): {source} is not supported yet; the neural models come in phase 4"));
+/// Where the numeric models run: `--model-server`, otherwise ONNX Runtime (feature `onnx`).
+struct Backends {
+    #[cfg(unix)]
+    server: Option<Arc<Mutex<model_server::ModelServer>>>,
+}
+
+impl Backends {
+    fn new(model_server: Option<&str>) -> Result<Self, String> {
+        #[cfg(unix)]
+        {
+            let server = model_server.map(model_server::ModelServer::connect).transpose()?;
+            Ok(Backends { server })
+        }
+        #[cfg(not(unix))]
+        {
+            if model_server.is_some() {
+                return Err("--model-server needs a Unix socket".to_owned());
+            }
+            Ok(Backends {})
+        }
+    }
+
+    fn reranker(&self, directory: &Path) -> Result<Box<dyn RerankerModel>, String> {
+        #[cfg(unix)]
+        if let Some(server) = &self.server {
+            return Ok(Box::new(model_server::ServerReranker(server.clone())));
+        }
+        #[cfg(feature = "onnx")]
+        {
+            Ok(Box::new(zhuyin_models::onnx::OnnxReranker::new(directory).map_err(|e| e.to_string())?))
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            let _ = directory;
+            Err(NO_BACKEND.to_owned())
+        }
+    }
+
+    fn syllable(&self, directory: &Path) -> Result<Box<dyn SyllableModel>, String> {
+        #[cfg(unix)]
+        if let Some(server) = &self.server {
+            return Ok(Box::new(model_server::ServerSyllableModel(server.clone())));
+        }
+        #[cfg(feature = "onnx")]
+        {
+            Ok(Box::new(zhuyin_models::onnx::OnnxSyllableModel::new(directory).map_err(|e| e.to_string())?))
+        }
+        #[cfg(not(feature = "onnx"))]
+        {
+            let _ = directory;
+            Err(NO_BACKEND.to_owned())
         }
     }
 }
 
+#[cfg(not(feature = "onnx"))]
+const NO_BACKEND: &str = "zhuyin-cli (Rust): the neural models need --model-server or a build with the onnx feature \
+                          (the Swift CLI's Core ML models are not available here)";
+
+/// `--check-v3 DIR`: the v3 models against `DIR/test_vectors.json`; exits.
+fn check_v3(directory: &Path, model_server: Option<&str>) -> ! {
+    let result = Backends::new(model_server)
+        .and_then(|backends| backends.syllable(directory))
+        .and_then(|model| SyllableScorer::new(directory, model).map_err(|e| e.to_string()))
+        .and_then(|scorer| check_vectors(&scorer, directory).map_err(|e| e.to_string()));
+    match result {
+        Ok(check) => {
+            println!(
+                "v3 test vectors: {}/{} within tolerance; largest difference {}",
+                check.passed,
+                check.total,
+                format_double(check.worst)
+            );
+            std::process::exit(i32::from(check.passed != check.total));
+        }
+        Err(error) => fail(&error),
+    }
+}
+
+/// The loaded models.
+struct Models {
+    reranker: Option<Arc<NeuralReranker>>,
+    character: Option<Arc<SyllableScorer>>,
+}
+
+fn load_models(s: &Settings) -> Result<Models, String> {
+    if s.reranker.is_none() && s.v3.is_none() {
+        // As in Swift, a given model server is connected even when no model uses it.
+        Backends::new(s.model_server.as_deref())?;
+        return Ok(Models { reranker: None, character: None });
+    }
+    let backends = Backends::new(s.model_server.as_deref())?;
+    let reranker = s
+        .reranker
+        .as_deref()
+        .map(|path| -> Result<Arc<NeuralReranker>, String> {
+            let directory = Path::new(path);
+            let mut reranker = NeuralReranker::new(directory, s.rerank_weight, backends.reranker(directory)?)
+                .map_err(|e| e.to_string())?;
+            if let Some(margin) = s.exact_margin {
+                reranker.exact_margin = margin;
+            }
+            if let Some(gate) = s.rerank_gate {
+                reranker.gate_margin = gate;
+            }
+            if let Some(switch) = s.rerank_switch {
+                reranker.switch_margin = switch;
+            }
+            Ok(Arc::new(reranker))
+        })
+        .transpose()?;
+    let character =
+        s.v3.as_deref()
+            .map(|path| -> Result<Arc<SyllableScorer>, String> {
+                let directory = Path::new(path);
+                Ok(Arc::new(SyllableScorer::new(directory, backends.syllable(directory)?).map_err(|e| e.to_string())?))
+            })
+            .transpose()?;
+    Ok(Models { reranker, character })
+}
+
+/// With `--timing`, how long each model call took, printed as Swift prints it.
+fn timed<T>(timing: bool, label: &str, body: impl FnOnce() -> T) -> T {
+    let start = Instant::now();
+    let result = body();
+    if timing {
+        println!("  [{label} {:.1} ms]", start.elapsed().as_secs_f64() * 1000.0);
+    }
+    result
+}
+
+/// Gives the composer the models; they read the text before the composition from `context` (the context plus what
+/// the keys have committed so far).
+fn attach(composer: &mut Composer, models: &Models, s: &Settings, context: &Arc<Mutex<String>>) {
+    composer.freezes_on_pick = s.freeze_on_pick;
+    if let Some(model) = &models.character {
+        composer.character_weight = s.v3_weight;
+        composer.character_scores_in_list = s.v3_in_list;
+        let (model, context, boundaries) = (model.clone(), context.clone(), s.v3_boundaries);
+        composer.set_character_scorer(Some(Box::new(move |syllables, candidates| {
+            let syllables: Vec<CharacterModelSyllable> = syllables
+                .iter()
+                .map(|x| CharacterModelSyllable { implicit: boundaries && x.implicit, ..x.clone() })
+                .collect();
+            let context = context.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+            model.scores(&context, &syllables, candidates)
+        })));
+    }
+    let Some(reranker) = &models.reranker else { return };
+    composer.set_reranking_count(s.rerank_count);
+    let timing = s.timing;
+    let (chooser, choose_context) = (reranker.clone(), context.clone());
+    composer.set_reranker(Some(Box::new(move |sentences| {
+        let context = choose_context.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        Some(timed(timing, &format!("rerank {}", sentences.len()), || chooser.choose(sentences, &context)))
+    })));
+    let (scorer, score_context) = (reranker.clone(), context.clone());
+    composer.candidate_scorer = Some(Box::new(move |before, candidates| {
+        let context = score_context.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone() + before;
+        timed(timing, &format!("candidates {}", candidates.len()), || scorer.candidate_scores(&context, candidates))
+    }));
+}
+
+fn set(shared: &Arc<Mutex<String>>, text: &str) {
+    text.clone_into(&mut shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+}
+
+#[allow(clippy::too_many_lines)]
 fn main() {
     let (mut s, rest) = parse_arguments(std::env::args().skip(1).collect());
     apply_models(&mut s);
-    refuse_models(&s);
     let engine_start = Instant::now();
     let engine = Engine::open(Path::new(&s.lexicon), None, s.config.clone()).unwrap_or_else(|e| fail(&e.to_string()));
     if s.timing {
@@ -494,18 +688,20 @@ fn main() {
     }
     engine.set_fuzzy_sounds(s.fuzzy);
     let engine = Arc::new(engine);
+    let models = load_models(&s).unwrap_or_else(|e| fail(&e));
+    // The text before the composition as the models see it: the context and what the keys have committed.  In batch
+    // mode Swift's `committed` is assigned after each line, so the models see the line's context alone.
+    let model_context = Arc::new(Mutex::new(s.context.clone()));
     let mut composer = Composer::new(engine.clone(), s.options.clone());
-    composer.freezes_on_pick = s.freeze_on_pick;
+    attach(&mut composer, &models, &s, &model_context);
     composer.decoder_costs = s.costs;
     let mut typist = Typist { clock: 1000.0, timing: s.timing, key_times: vec![] };
-    let stdout = std::io::stdout();
     if s.batch {
         // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line
         // "TEXT<tab>KEYS" types KEYS after TEXT, as if TEXT were in the document before the insertion point.
         let base_context = s.context.clone();
         let usage_start = usage::Usage::now();
         let wall_start = Instant::now();
-        let mut out = std::io::BufWriter::new(stdout.lock());
         for line in std::io::stdin().lock().split(b'\n') {
             let Ok(line) = line else { break };
             let mut line = String::from_utf8_lossy(&line).into_owned();
@@ -521,11 +717,9 @@ fn main() {
                 Some((context, keys)) => (context.to_owned(), keys.to_owned()),
                 None => (base_context.clone(), line.clone()),
             };
+            set(&model_context, &context);
             composer.set_preceding_text(&context);
-            let parsed = parse_keys(&keys).unwrap_or_else(|e| {
-                let _ = out.flush();
-                fail(&e)
-            });
+            let parsed = parse_keys(&keys).unwrap_or_else(|e| fail(&e));
             let committed = typist.typed(&parsed, &mut composer, |_, _, _| {});
             let printed = if s.report_list {
                 let text = composer
@@ -548,9 +742,9 @@ fn main() {
             } else {
                 committed
             };
-            let _ = writeln!(out, "{printed}");
+            println!("{printed}");
         }
-        let _ = out.flush();
+        let _ = std::io::stdout().flush();
         // On standard error, so batch output stays one line per input.
         if s.timing {
             let summary = usage::summary(
@@ -568,15 +762,22 @@ fn main() {
     let wall_start = Instant::now();
     let keys = parse_keys(&rest[0]).unwrap_or_else(|e| fail(&e));
     let mut committed = String::new();
-    typist.typed(&keys, &mut composer, |label, result, composer| print_step(label, result, composer, &mut committed));
-    for (index, sentence) in composer.n_best(s.nbest).iter().enumerate() {
+    typist.typed(&keys, &mut composer, |label, result, composer| {
+        print_step(label, result, composer, &mut committed);
+        set(&model_context, &(s.context.clone() + &committed));
+    });
+    let sentences = composer.n_best(s.nbest);
+    let texts: Vec<String> = sentences.iter().map(zhuyin_core::api::ScoredSentence::text).collect();
+    let neural = models.reranker.as_ref().and_then(|r| r.scores(&s.context, &texts));
+    for (index, sentence) in sentences.iter().enumerate() {
         let words: Vec<String> =
             sentence.words.iter().map(|w| format!("{}:{}..<{}", w.text, w.range.start, w.range.end)).collect();
+        let rerank = neural.as_ref().map(|n| format!(" neural {:.3}", n[index])).unwrap_or_default();
         println!(
-            "  nbest {}: {:.6} {}{} [{}]",
+            "  nbest {}: {:.6}{rerank} {}{} [{}]",
             index + 1,
             sentence.score,
-            sentence.text(),
+            texts[index],
             if sentence.corrected() { "*" } else { "" },
             words.join(", ")
         );

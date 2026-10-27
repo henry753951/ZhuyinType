@@ -35,8 +35,8 @@ final class BackendTests: XCTestCase {
         func sentence(_ text: String, _ score: Double, corrected: Bool) -> ScoredSentence {
             ScoredSentence(words: [SentenceWord(range: 0..<1, text: text, reading: "", corrected: corrected)], score: score)
         }
-        XCTAssertEqual(model.choose([sentence("甲", 0, corrected: false), sentence("乙", 3.9, corrected: true)], context: ""), 0)
-        XCTAssertEqual(model.choose([sentence("甲", 0, corrected: false), sentence("乙", 4, corrected: true)], context: ""), 1)
+        XCTAssertEqual(model.choose([sentence("甲", 0, corrected: false), sentence("乙", 7.9, corrected: true)], context: ""), 0)
+        XCTAssertEqual(model.choose([sentence("甲", 0, corrected: false), sentence("乙", 8, corrected: true)], context: ""), 1)
         XCTAssertNil(model.scores(context: "", candidates: [String(repeating: "甲", count: 64)]))
     }
 
