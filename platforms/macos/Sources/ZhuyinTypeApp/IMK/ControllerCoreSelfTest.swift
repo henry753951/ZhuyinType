@@ -1222,6 +1222,68 @@ enum ControllerCoreSelfTest {
         // The setup wizard's practice field (UI/Wizard/Practice).
         PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
 
+        test("live: the 視窗與提示 preview plays — moments and states change over time, and the 中英 badge appears") {
+            _ = NSApplication.shared
+            let saved = (Preferences.shared, PreviewDirector.step)
+            defer { Preferences.shared = saved.0; PreviewDirector.step = saved.1 }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            PreviewDirector.step = 0.12
+            let director = PreviewDirector()
+            let hosting = NSHostingView(rootView: UnifiedPreview(preferences: Preferences.shared, director: director).frame(width: 560))
+            let window = HeadlessWindow(size: NSSize(width: 600, height: 420))
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            var states: Set<PreviewState> = [director.state]
+            let until = Date().addingTimeInterval(2.5)
+            while Date() < until {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                states.insert(director.state)
+            }
+            try expect(director.ticks >= 6, "the preview did not play: \(director.ticks) moments")
+            try expect(states.count >= 3, "the preview stayed on \(states)")
+            director.show(.mode, last: false)
+            var badge = false
+            let modeUntil = Date().addingTimeInterval(1.5)
+            while Date() < modeUntil, !badge {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+                func find(_ view: NSView) -> Bool { view is ModeBadgeView || view.subviews.contains(where: find) }
+                badge = find(hosting)
+            }
+            try expect(badge, "the 中英 badge never appeared in the preview")
+        }
+
+        test("live: the wizard's parts arrive, and closing it leaves the settings window open") {
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            let before = WizardEntrance.played
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            let hosting = NSHostingView(rootView: WizardView(model: model).frame(width: 760, height: 600))
+            let window = HeadlessWindow(size: NSSize(width: 760, height: 600))
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+            model.next()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+            window.orderOut(nil); window.contentView = nil; window.close()
+            try expect(WizardEntrance.played >= before + 2, "the steps' entrances did not play: \(WizardEntrance.played - before)")
+
+            let settings = SettingsWindowController.shared.makeWindow(pane: .intro)
+            settings.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+            settings.alphaValue = 0
+            settings.orderFrontRegardless()
+            WizardWindowController.shared.show(.quick)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            try expect(WizardWindowController.shared.isOpen, "the wizard did not open")
+            WizardWindowController.shared.model?.skipAll()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            try expect(!WizardWindowController.shared.isOpen, "全部跳過 did not close the wizard")
+            try expect(settings.isVisible, "closing the wizard closed the settings window")
+            settings.orderOut(nil)
+        }
+
         test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
             try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
             let problems = focus.check()
