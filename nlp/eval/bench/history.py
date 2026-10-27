@@ -52,7 +52,9 @@ def page(record, mac):
     lines += ["", "## 候選字清單（轉錯的字，正確答案的位置）", "", "| 測試集 | 第一個 | 第一頁 | 平均名次 |", "|---|---|---|---|"]
     for _, file, label in SETS:
         row = r.get("candidates/app", {}).get(file)
-        if row:
+        if row and row.get("wrong") == 0:
+            lines.append(f"| {label} | — | — | —（沒有轉錯的字） |")
+        elif row:
             lines.append(f"| {label} | {pct(row['first'])} | {pct(row['first_page'])} | {row['mean_rank']:.2f} |")
     external = r.get("external/app", {})
     if external:
@@ -69,9 +71,12 @@ def page(record, mac):
                          f"{row['mean_picks']:.2f} | {pct(row['broke'])} |")
     if mac:
         m = mac["median"]
+        # The release runner has no powermetrics, so it reports zero energy.
+        energy = f"{m['energy_mj_per_key']} mJ" if m.get("energy_mj_per_key") else "量不到"
         lines += ["", "## 速度、能耗、記憶體（macOS，app 設定，固定 10 句的中位數）", "",
                   f"每鍵 p50 {m['p50_ms']} ms、p95 {m['p95_ms']} ms；每鍵 CPU {m['cpu_ms_per_key']} ms、"
-                  f"能耗 {m['energy_mj_per_key']} mJ；記憶體 {m['memory_mb']} MB（{mac.get('machine')}，macOS {mac.get('macos')}）。"]
+                  f"能耗{energy if energy == '量不到' else ' ' + energy}；記憶體 {m['memory_mb']} MB（{mac.get('machine')}，macOS {mac.get('macos')}）。",
+                  "", "這是發布流程在 GitHub Actions 的 macOS 虛擬機上量的，只適合版本之間互相比較，比實機慢。"]
     return "\n".join(lines) + "\n"
 
 
