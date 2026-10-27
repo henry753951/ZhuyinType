@@ -62,9 +62,11 @@ final class Preferences: ObservableObject {
     static var shared = Preferences()
     static let didChange = Notification.Name("ZhuyinTypePreferencesDidChange")
 
-    private let defaults: UserDefaults
+    private let defaults: SettingsStorage
 
-    init(defaults: UserDefaults = .standard) {
+    /// `defaults`: where the values live; `UserDefaults` for the app, `MemorySettingsStorage` for the wizard's sandbox,
+    /// the previews and the self-tests.
+    init(defaults: SettingsStorage = UserDefaults.standard) {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.candidateLayout: CandidateLayout.vertical.rawValue,

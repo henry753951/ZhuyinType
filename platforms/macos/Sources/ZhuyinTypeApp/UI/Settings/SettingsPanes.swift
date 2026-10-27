@@ -109,10 +109,7 @@ struct AdvancedPane: View {
     var body: some View {
         SettingsForm {
             SettingsSection("改字記錄") {
-                SettingRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字",
-                           accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences))))) {
-                    RowSwitch(title: "記錄改字", isOn: binding(preferences, \.recordsCorrections))
-                }
+                RegistryRow("recordsCorrections", preferences, accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences)))))
                 SettingRow(title: "一併記錄游標前的文字", subtitle: "重播記錄時使用同樣的前文", indent: true,
                            dimmed: !preferences.recordsCorrections) {
                     RowSwitch(title: "一併記錄游標前的文字", isOn: binding(preferences, \.recordsCorrectionContext))

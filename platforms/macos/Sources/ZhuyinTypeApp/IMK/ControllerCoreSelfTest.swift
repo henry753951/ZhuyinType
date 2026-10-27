@@ -1122,6 +1122,79 @@ enum ControllerCoreSelfTest {
             try expect(stored().isEmpty, "restored commands are still stored: \(stored().keys)")
         }
 
+        test("settings registry: every setting reads and writes each of its values in a sandbox") {
+            let original = Preferences(defaults: scratchDefaults())
+            let sandbox = original.sandbox()
+            for setting in SettingsRegistry.all {
+                var values: [SettingValue] = []
+                switch setting.kind {
+                case .toggle: values = [.bool(true), .bool(false)]
+                case .choice(let options): values = options.map(\.value)
+                case .number(let range, _, _): values = [.number(range.lowerBound), .number(range.upperBound)]
+                case .flags(let flags): values = [.number(Double(flags.reduce(0) { $0 | $1.bit })), .number(0)]
+                case .keys(let command): values = [.keys([Shortcut("F", control: true, option: true)]), .keys(command.defaultBindings)]
+                }
+                for value in values {
+                    setting.write(sandbox, value)
+                    try expect(setting.read(sandbox) == value, "\(setting.id): wrote \(value), read \(setting.read(sandbox))")
+                    try expect(!setting.label(value).isEmpty && setting.label(value) != "—", "\(setting.id): no label for \(value)")
+                }
+            }
+            try expect(SettingsSnapshot(original) == SettingsRegistry.defaults, "the sandbox wrote through to the original")
+        }
+
+        test("settings registry: defaults, and 原本 → 改成 changes apply and revert") {
+            let defaults = SettingsRegistry.defaults
+            let fresh = Preferences(defaults: MemorySettingsStorage())
+            let options = fresh.composerOptions
+            try expect(options.spaceAction == .commitAndSpace && options.punctuationKeys == .windows && options.typoTolerance == .standard
+                       && options.verticalList && options.pageAtListEdge && options.escapeClearsComposition && options.learningEnabled,
+                       "app defaults changed: \(options)")
+            try expect(defaults.values["spaceAction"] == .text(SpaceAction.commitAndSpace.rawValue), "registry default of 空白鍵")
+            let base = Preferences(defaults: MemorySettingsStorage())
+            let edited = base.sandbox()
+            edited.spaceAction = .openCandidates
+            edited.typoTolerance = .aggressive
+            edited.candidatesPerPage = 6
+            edited.setEnabled(.deleteWord, false)
+            _ = edited.unbind(.nextPage, at: 1)
+            let changes = SettingsSnapshot(base).changes(to: SettingsSnapshot(edited))
+            try expect(Set(changes.map(\.id)) == ["spaceAction", "typoTolerance", "candidatesPerPage", "feature.deleteWord", "keys.nextPage"],
+                       "changes \(changes.map(\.id))")
+            try expect(changes.first { $0.id == "typoTolerance" }.map { $0.oldLabel == "標準" && $0.newLabel == "積極" } == true, "labels")
+            let target = base.sandbox()
+            changes.apply(to: target)
+            try expect(SettingsSnapshot(target) == SettingsSnapshot(edited), "apply did not reach the edited settings")
+            changes.revert(in: target)
+            try expect(SettingsSnapshot(target) == SettingsSnapshot(base), "revert did not return to the original")
+        }
+
+        test("presets and lessons: every preset applies as changes; every style turns itself on") {
+            for preset in SettingsPreset.all {
+                let sandbox = Preferences(defaults: MemorySettingsStorage())
+                let changes = preset.changes(from: sandbox)
+                changes.apply(to: sandbox)
+                for (id, value) in preset.values {
+                    try expect(SettingsRegistry.setting(id)?.read(sandbox) == value, "\(preset.id): \(id) not set")
+                }
+            }
+            try expect(SettingsPreset.custom.changes(from: Preferences(defaults: MemorySettingsStorage())).isEmpty, "自訂 changed settings")
+            try expect(Lesson.all.filter { $0.level == .basic }.map(\.id) == ["typing", "punctuation", "modeSwitch", "paging", "editing"],
+                       "basic lessons")
+            for group in Lesson.all.flatMap(\.groups) {
+                for style in group.styles {
+                    let sandbox = Preferences(defaults: MemorySettingsStorage())
+                    if style.isActive(sandbox), !group.exclusive { style.set(sandbox, false) }
+                    style.set(sandbox, true)
+                    try expect(style.isActive(sandbox), "\(group.id): \(style.id) did not turn on")
+                    if !group.exclusive {
+                        style.set(sandbox, false)
+                        try expect(!style.isActive(sandbox), "\(group.id): \(style.id) did not turn off")
+                    }
+                }
+            }
+        }
+
         test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
             try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
             let problems = focus.check()

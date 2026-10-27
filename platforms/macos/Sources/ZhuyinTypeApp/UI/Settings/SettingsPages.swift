@@ -351,37 +351,16 @@ private struct TypingPane: View {
         let punctuationOff = [KeyFeature.controlPunctuation, .optionSymbols].filter { !preferences.isEnabled($0) }.count
         SettingsForm {
             SettingsSection("空白與 Esc") {
-                SettingRow(title: "空白鍵", subtitle: OptionDemos.spaceSubtitle(preferences.spaceAction),
-                           accessory: .info(title: "空白鍵", content: AnyView(SpaceInfo(current: preferences.spaceAction))),
-                           anchor: SettingsRow.space) {
-                    RowPicker(title: "空白鍵", selection: binding(preferences, \.spaceAction),
-                              options: Preferences.spaceActions.map { (OptionDemos.spaceLabel($0), $0) })
-                }
-                SettingRow(title: "Esc", subtitle: preferences.escapeClearsComposition
-                           ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音",
-                           accessory: .info(title: "Esc", content: AnyView(EscapeInfo(clears: preferences.escapeClearsComposition))),
-                           anchor: SettingsRow.escape) {
-                    RowPicker(title: "Esc", selection: binding(preferences, \.escapeClearsComposition),
-                              options: [("清除整段組字", true), ("只清除注音", false)])
-                }
+                RegistryRow("spaceAction", preferences, accessory: .info(title: "空白鍵", content: AnyView(SpaceInfo(current: preferences.spaceAction))))
+                RegistryRow("escape", preferences, accessory: .info(title: "Esc", content: AnyView(EscapeInfo(clears: preferences.escapeClearsComposition))))
             }
             SettingsSection("標點") {
-                SettingRow(title: "標點按法", subtitle: preferences.punctuationKeys == .windows
-                           ? "⇧ 加符號鍵打出鍵上的符號，例如 <" : "⇧ 加符號鍵打出中文標點，例如 ，",
-                           accessory: .info(title: "標點按法", content: AnyView(PunctuationTable(current: preferences.punctuationKeys))),
-                           anchor: SettingsRow.punctuationKeys) {
-                    RowPicker(title: "標點按法", selection: binding(preferences, \.punctuationKeys),
-                              options: [("Windows", PunctuationKeys.windows), ("macOS", .mac)])
-                }
+                RegistryRow("punctuationKeys", preferences, accessory: .info(title: "標點按法", content: AnyView(PunctuationTable(current: preferences.punctuationKeys))))
                 DrillRow(model: model, title: "標點與符號", subtitle: "⌃ 加符號鍵打中文標點、⌥ 加符號鍵打鍵上的符號",
                          value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
             }
             SettingsSection("中英切換") {
-                SettingRow(title: "單按 Shift 切換中英",
-                           subtitle: preferences.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "關閉時，Shift 只當作 Shift",
-                           anchor: SettingsRow.shiftTap) {
-                    RowSwitch(title: "單按 Shift 切換中英", isOn: binding(preferences, \.shiftSwitchEnabled))
-                }
+                RegistryRow("shiftSwitch", preferences)
                 if preferences.shiftSwitchEnabled {
                     SettingRow(title: "使用的 Shift", indent: true) {
                         RowPicker(title: "使用的 Shift", selection: Binding(
@@ -396,9 +375,7 @@ private struct TypingPane: View {
                                value: preferences.showModeToast ? "顯示" : "不顯示") {
                     SettingsWindowController.shared.open(SettingsPlace(.candidates, row: SettingsRow.modeToast))
                 }
-                SettingRow(title: "開始輸入時使用英文") {
-                    RowSwitch(title: "開始輸入時使用英文", isOn: binding(preferences, \.startInEnglish))
-                }
+                RegistryRow("startInEnglish", preferences)
             }
             SettingsSection("編輯組字") {
                 FeatureRow(preferences: preferences, title: "送出並換行", subtitle: "送出組字，App 再換行",
@@ -493,24 +470,12 @@ private struct ChoosingPane: View {
         let fuzzy = [FuzzySounds.zZh, .cCh, .sSh, .enEng, .anAng].filter { preferences.fuzzySounds.contains($0) }.count
         SettingsForm {
             SettingsSection("轉換") {
-                SettingRow(title: "游標在句中時改", subtitle: "要改的字以底線標出",
-                           accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor)))) {
-                    RowPicker(title: "游標在句中時改", selection: binding(preferences, \.candidateAnchor),
-                              options: [("游標右邊的字", AnchorSetting.after), ("游標左邊的字", .before)])
-                }
-                SettingRow(title: "台／臺", subtitle: "顯示與送出的寫法") {
-                    RowPicker(title: "台／臺", selection: binding(preferences, \.characterForms),
-                              options: [("台", CharacterForms.common), ("臺", .standard)], segmented: true)
-                }
+                RegistryRow("candidateAnchor", preferences, accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor))))
+                RegistryRow("characterForms", preferences, segmented: true)
             }
             SettingsSection("按錯鍵") {
-                SettingRow(title: "按錯鍵修正", subtitle: OptionDemos.typoSubtitle(preferences.typoTolerance),
-                           accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
-                            current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList)))),
-                           anchor: SettingsRow.typo) {
-                    RowPicker(title: "按錯鍵修正", selection: binding(preferences, \.typoTolerance),
-                              options: [("關閉", TypoSetting.off), ("標準", .standard), ("積極", .aggressive)])
-                }
+                RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
+                    current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList)))))
                 FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
                            feature: .correctionsList, commands: [.correctionsList], anchor: SettingsRow.corrections)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
@@ -594,12 +559,7 @@ struct CandidatesPane: View {
                     })
             }
             SettingsSection("候選字清單") {
-                SettingRow(title: "排列", subtitle: vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
-                           : "← → 移動反白，↑ ↓ 翻頁" + (keys.text(.previousCharacter).map { "，\($0) 改前一個字" } ?? ""),
-                           anchor: SettingsRow.layout) {
-                    RowPicker(title: "排列", selection: binding(preferences, \.candidateLayout),
-                              options: [("直式", CandidateLayout.vertical), ("橫式", .horizontal)], segmented: true)
-                }
+                RegistryRow("candidateLayout", preferences, segmented: true)
                 CommandKeyRows(preferences: preferences, commands: [.previousCharacter, .nextCharacter])
                 SettingRow(title: "字級", value: "\(Int(preferences.candidateFontSize)) pt") {
                     Slider(value: Binding(get: { preferences.candidateFontSize },
@@ -614,36 +574,19 @@ struct CandidatesPane: View {
                     .frame(minWidth: 120, maxWidth: 200)
                     .accessibilityValue("\(Int(preferences.candidateFontSize)) pt")
                 }
-                SettingRow(title: "間距") {
-                    RowPicker(title: "間距", selection: binding(preferences, \.candidateDensity),
-                              options: [("標準", CandidateDensity.standard), ("緊湊", .compact)], segmented: true)
-                }
-                SettingRow(title: "每頁的候選字", subtitle: "用 \(keys.selection) 選字；Return 選取反白的字",
-                           value: "\(preferences.candidatesPerPage) 個", anchor: SettingsRow.selection) {
-                    Stepper("每頁的候選字", value: binding(preferences, \.candidatesPerPage), in: 3...9).labelsHidden()
-                }
-                SettingRow(title: "選字鍵") {
-                    RowPicker(title: "選字鍵", selection: binding(preferences, \.selectionKeys),
-                              options: [("1 2 3 4 5 6 7 8 9", SelectionKeySet.digits), ("A S D F G H J K L", .homeRow)])
-                }
+                RegistryRow("candidateDensity", preferences, segmented: true)
+                RegistryRow("candidatesPerPage", preferences)
+                RegistryRow("selectionKeys", preferences)
                 FeatureRow(preferences: preferences, title: "翻頁", subtitle: "空白也翻到下一頁",
                            feature: .pageKeys, commands: [.nextPage, .previousPage], anchor: SettingsRow.pageKeys)
-                SettingRow(title: "到頁底時 ↓ 翻到下一頁", subtitle: preferences.pageAtListEdge
-                           ? "在一頁的最後一個字按 ↓ 到下一頁，到清單結尾停住" : "↓ 停在一頁的最後一個字；用翻頁鍵翻頁") {
-                    RowSwitch(title: "到頁底時 ↓ 翻到下一頁", isOn: binding(preferences, \.pageAtListEdge))
-                }
+                RegistryRow("pageAtListEdge", preferences)
             }
             SettingsSection("清單的內容") {
-                SettingRow(title: "顯示注音", subtitle: "要改的字的注音，列在清單上方", anchor: SettingsRow.showsZhuyin) {
-                    RowSwitch(title: "顯示注音", isOn: binding(preferences, \.showsZhuyinHint))
-                }
+                RegistryRow("showsZhuyinHint", preferences)
                 FeatureRow(preferences: preferences, title: "點注音列打出注音",
                            subtitle: zhuyin.map { "和按 \($0) 相同；緊接著再按一次或按 Esc 恢復" } ?? "打出注音本身",
                            feature: .zhuyinRowClick, anchor: SettingsRow.zhuyinRow)
-                SettingRow(title: "標出修正的讀音", subtitle: corrections.map { "修正過的字旁邊以灰字標出注音，例如 \($0) 列出的字" }
-                           ?? "修正過的字旁邊以灰字標出注音") {
-                    RowSwitch(title: "標出修正的讀音", isOn: binding(preferences, \.showsAnnotations))
-                }
+                RegistryRow("showsAnnotations", preferences)
                 FeatureRow(preferences: preferences, title: "只列一個字", subtitle: "清單只列游標處的一個字；再按一次還原",
                            feature: .singleCharacterList, commands: [.singleCharacterList], anchor: SettingsRow.single)
                 SettingRow(title: "單字與修正按鈕", subtitle: switches.isEmpty ? "兩種清單都已關閉"
@@ -652,28 +595,16 @@ struct CandidatesPane: View {
                 }
             }
             SettingsSection("位置") {
-                SettingRow(title: "位置", subtitle: "空間不足時換到另一邊，一律留在螢幕內", anchor: SettingsRow.placement) {
-                    RowPicker(title: "位置", selection: binding(preferences, \.candidatePlacement),
-                              options: [("游標下方", CandidatePlacement.below), ("游標上方", .above)])
-                }
+                RegistryRow("candidatePlacement", preferences)
             }
             SettingsSection("外觀") {
-                SettingRow(title: "外觀", subtitle: "也套用到加入自訂詞的提示與「中」「英」提示", anchor: SettingsRow.appearance) {
-                    RowPicker(title: "外觀", selection: binding(preferences, \.panelAppearance),
-                              options: [("跟隨系統", PanelAppearance.system), ("淺色", .light), ("深色", .dark)])
-                }
+                RegistryRow("panelAppearance", preferences)
             }
             SettingsSection("動畫") {
-                SettingRow(title: "動畫", subtitle: reduceMotion ? "淡入淡出；已開啟「減少動態效果」，不滑動"
-                           : "候選字視窗出現、翻頁與「中」「英」提示的動態", anchor: SettingsRow.motion) {
-                    RowSwitch(title: "動畫", isOn: binding(preferences, \.panelAnimation))
-                }
+                RegistryRow("panelAnimation", preferences)
             }
             SettingsSection("提示") {
-                SettingRow(title: "中英提示", subtitle: keys.modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" }
-                           ?? "切換時在游標旁顯示「中」或「英」", anchor: SettingsRow.modeToast) {
-                    RowSwitch(title: "中英提示", isOn: binding(preferences, \.showModeToast))
-                }
+                RegistryRow("showModeToast", preferences)
             } footer: {
                 KeysOverviewLink()
             }
@@ -759,10 +690,7 @@ private struct WordsPane: View {
         let keys = CurrentKeys(preferences)
         SettingsForm {
             SettingsSection {
-                SettingRow(title: "記住選過的字詞", subtitle: "下次打同樣的讀音時排在前面；只存在這台 Mac",
-                           accessory: .info(title: "記住的字詞", content: AnyView(LearnedInfo()))) {
-                    RowSwitch(title: "記住選過的字詞", isOn: binding(preferences, \.learningEnabled))
-                }
+                RegistryRow("learningEnabled", preferences, accessory: .info(title: "記住的字詞", content: AnyView(LearnedInfo())))
                 DrillRow(model: model, title: "記住的字詞", subtitle: "檢視、移除、匯出或匯入",
                          value: counts.map { "\($0.learned.formatted()) 個" } ?? "", subpage: .learnedWords)
             }
