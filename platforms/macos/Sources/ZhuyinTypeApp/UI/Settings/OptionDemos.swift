@@ -15,9 +15,7 @@ enum OptionDemos {
         case .openCandidates:
             last = DemoFrame(keys: ["空白"], line: [start, DemoSegment("今天", .focus)], list: ["今天", "金田", "今"],
                              caption: "再按一次：開啟候選字視窗", hold: 2.0)
-        case .commit:
-            last = DemoFrame(keys: ["空白"], line: [DemoSegment("早安，今天", .document)], caption: "再按一次：送出", hold: 2.0)
-        case .commitAndSpace:
+        case .commit, .commitAndSpace:
             last = DemoFrame(keys: ["空白"], line: [DemoSegment("早安，今天 ", .document)], caption: "再按一次：送出並輸入空白",
                              hold: 2.0)
         }
@@ -32,8 +30,7 @@ enum OptionDemos {
     static func spaceSubtitle(_ action: SpaceAction) -> String {
         switch action {
         case .openCandidates: return "打完注音後，再按空白開啟候選字視窗"
-        case .commit: return "打完注音後，再按空白送出組字"
-        case .commitAndSpace: return "打完注音後，再按空白送出組字並輸入空白"
+        case .commit, .commitAndSpace: return "打完注音後，再按空白送出組字並輸入空白"
         }
     }
 
@@ -67,14 +64,18 @@ enum OptionDemos {
 
     // MARK: Typing corrections
 
-    static func typo(correctionsKey: String) -> [DemoFrame] {
-        [
+    /// `correctionsKey`: nil when the corrections list is turned off, and the demo ends at the correction.
+    static func typo(correctionsKey: String?) -> [DemoFrame] {
+        var frames = [
             DemoFrame(keys: ["ㄍ"], line: [start, DemoSegment("ㄍ")], caption: "想打 ㄐ，按到旁邊的 ㄍ", hold: 1.2),
             DemoFrame(keys: ["ㄣ"], line: [start, DemoSegment("ㄍㄧㄣ")], caption: "想打 ㄐ，按到旁邊的 ㄍ", hold: 0.9),
             DemoFrame(keys: ["空白"], line: [start, DemoSegment("今")], caption: "自動改成「今」", hold: 1.4),
-            DemoFrame(keys: [correctionsKey], line: [start, DemoSegment("今", .focus)],
-                      list: ["今 ㄐㄧㄣ", "金 ㄐㄧㄣ", "斤 ㄐㄧㄣ"], caption: "列出修正的字", hold: 2.0),
         ]
+        if let correctionsKey {
+            frames.append(DemoFrame(keys: [correctionsKey], line: [start, DemoSegment("今", .focus)],
+                                    list: ["今 ㄐㄧㄣ", "金 ㄐㄧㄣ", "斤 ㄐㄧㄣ"], caption: "列出修正的字", hold: 2.0))
+        }
+        return frames
     }
 
     static func typoSubtitle(_ setting: TypoSetting) -> String {

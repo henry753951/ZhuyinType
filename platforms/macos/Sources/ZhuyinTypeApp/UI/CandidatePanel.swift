@@ -142,13 +142,6 @@ private final class CandidateRow: NSView {
                        max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
         return (available, main)
     }
-    /// Where the grey corrected reading is drawn, in the row's coordinates; nil without one.
-    var annotationFrame: NSRect? {
-        guard let annotation = candidate.annotation else { return nil }
-        let (available, main) = textWidths()
-        let width = min((annotation as NSString).size(withAttributes: annotationAttributes).width, max(0, available - main - 10))
-        return NSRect(x: textInset + main + 10, y: 2, width: width, height: max(0, bounds.height - 4))
-    }
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
@@ -169,14 +162,19 @@ private final class ZhuyinHintButton: NSButton {
     /// The key that types the reading as Zhuyin.
     var key = "`"
     private let hintFont = NSFont.systemFont(ofSize: 12)
-    private var keycapWidth: CGFloat { max(19, ceil((key as NSString).size(withAttributes: [.font: hintFont]).width) + 9) }
+    /// No keycap when typing the Zhuyin itself is turned off.
+    private var keycapWidth: CGFloat {
+        key.isEmpty ? -8.5 : max(19, ceil((key as NSString).size(withAttributes: [.font: hintFont]).width) + 9)
+    }
     var preferredWidth: CGFloat { keycapWidth + 9 + (hint as NSString).size(withAttributes: [.font: hintFont]).width }
     override func draw(_ dirtyRect: NSRect) {
         let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: keycapWidth, height: 19)
-        let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
-        border.lineWidth = 1
-        NSColor.quaternaryLabelColor.setStroke()
-        border.stroke()
+        if !key.isEmpty {
+            let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
+            border.lineWidth = 1
+            NSColor.quaternaryLabelColor.setStroke()
+            border.stroke()
+        }
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
         let attributes: [NSAttributedString.Key: Any] = [.font: hintFont, .foregroundColor: NSColor.secondaryLabelColor,
@@ -296,11 +294,6 @@ private final class KeycapToggle: NSButton {
     }
 }
 
-/// Parts of the candidate window, so the settings preview can point at the part a setting changes.
-enum CandidatePart: Hashable, CaseIterable {
-    case zhuyinRow, rows, keyColumn, annotations, switches, pages, notice
-}
-
 /// The settings that shape the candidate window, from the 候選字視窗 page.
 struct CandidateStyle: Equatable {
     var layout: CandidateLayout = .vertical
@@ -331,8 +324,6 @@ final class CandidateContentView: InputMaterialView {
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
     private(set) var candidateTextInset: CGFloat = 36
-    /// Where each part was laid out by the last `update`, in this view's (flipped) coordinates.
-    private(set) var partFrames: [CandidatePart: [NSRect]] = [:]
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -401,11 +392,15 @@ final class CandidateContentView: InputMaterialView {
         // switch still shows while it is on, so the list in use is always visible.
         let readable = !(zhuyinHint ?? "").isEmpty && listOpen
         let hasHint = readable && style.showsZhuyinHint
-        let hasToggle = list?.tolerant != nil && listOpen && (style.showsListSwitches || list?.tolerant == true)
-        let hasSingle = readable && (style.showsListSwitches || list?.singleCharacter == true)
+        // A switch whose list is turned off on the 快捷鍵 page has no key and is not shown.
+        let hasToggle = list?.tolerant != nil && listOpen && !style.keyLabels.corrections.isEmpty
+            && (style.showsListSwitches || list?.tolerant == true)
+        let hasSingle = readable && !style.keyLabels.single.isEmpty
+            && (style.showsListSwitches || list?.singleCharacter == true)
         let hasFooter = hasPages || hasToggle || hasSingle
         let pageWidth: CGFloat = hasFooter ? 90 : 0
         zhuyinButton.hint = zhuyinHint ?? ""
+        zhuyinButton.isEnabled = keyLabels.zhuyinClickable
         zhuyinButton.key = keyLabels.zhuyin
         singleButton.key = keyLabels.single
         correctionButton.key = keyLabels.corrections
@@ -492,23 +487,6 @@ final class CandidateContentView: InputMaterialView {
             next.isEnabled = list.page + 1 < list.pageCount
             if layout == .vertical { y += footerHeight }
         }
-        var parts: [CandidatePart: [NSRect]] = [:]
-        if hasHint { parts[.zhuyinRow] = [NSRect(x: padding, y: hintY, width: width - padding * 2, height: hintHeight)] }
-        if listOpen {
-            let frames = activeRows.map(\.frame)
-            parts[.rows] = [frames.dropFirst().reduce(frames[0]) { $0.union($1) }]
-            parts[.keyColumn] = activeRows.map { NSRect(x: $0.frame.minX, y: $0.frame.minY, width: $0.textInset - 3, height: $0.frame.height) }
-            parts[.annotations] = activeRows.compactMap { row in
-                row.annotationFrame.map { $0.offsetBy(dx: row.frame.minX, dy: row.frame.minY) }
-            }
-        }
-        parts[.switches] = [singleButton, correctionButton].filter { !$0.isHidden }.map(\.frame)
-        if hasFooter { parts[.pages] = [previous.frame.union(next.frame)] }
-        if notice != nil {
-            parts[.notice] = [NSRect(x: noticeView.frame.minX - 4, y: noticeView.frame.minY,
-                                     width: min(noticeView.frame.width, noticeView.preferredWidth) + 8, height: noticeView.frame.height)]
-        }
-        partFrames = parts.filter { !$0.value.isEmpty }
         let size = NSSize(width: width, height: y + padding)
         if frame.size != size { setFrameSize(size) }
         return size

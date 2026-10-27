@@ -23,9 +23,11 @@ enum UIPreviewRenderer {
             try? FileManager.default.removeItem(at: file)
         }
         Preferences.shared = Preferences(defaults: defaults)
+        UsageStatsStore.shared = sampleStats()
         SettingsWindowController.isPreview = true
         DemoPinning.still = true
         DemoPinning.context = 0
+        DemoPinning.intro = 12
         DemoPinning.mini = 99
         do {
             for sub in ["panels", "settings", "popovers", "frames"] {
@@ -111,7 +113,7 @@ enum UIPreviewRenderer {
 
     private static func renderPopovers(to directory: URL, suffix: String) throws {
         let cards: [(String, AnyView)] = [
-            ("space", AnyView(InfoCard(title: "空白鍵") { SpaceInfo(current: .commit) })),
+            ("space", AnyView(InfoCard(title: "空白鍵") { SpaceInfo(current: .commitAndSpace) })),
             ("escape", AnyView(InfoCard(title: "Esc") {
                 ChoiceDemo(title: "清除整段組字", selected: true, frames: OptionDemos.escape(clearsComposition: true), pinned: 99)
             })),
@@ -144,37 +146,35 @@ enum UIPreviewRenderer {
         let variants: [(String, () -> Void)] = [
             ("default", {}),
             ("custom-keys", { customKeys(preferences) }),
+            ("features-off", { featuresOff(preferences) }),
             ("horizontal", { preferences.candidateLayout = .horizontal }),
             ("above-compact", { preferences.candidatePlacement = .above; preferences.candidateDensity = .compact
                 preferences.candidatesPerPage = 5; preferences.candidateFontSize = 22 }),
-            ("minimal", { preferences.showsZhuyinHint = false; preferences.showsAnnotations = false
-                preferences.showsListSwitches = false; preferences.showModeToast = false; preferences.shiftToggle = .none }),
         ]
         for (name, apply) in variants {
             preferences.resetToDefaults()
             apply()
-            try capturePreview(preferences, highlighted: [], to: directory.appendingPathComponent("preview-\(name)-\(suffix).png"))
+            try capturePreview(preferences, to: directory.appendingPathComponent("preview-\(name)-\(suffix).png"))
         }
         preferences.resetToDefaults()
+        // The intro story, frame by frame (keycap at rest).
+        let introSteps = IntroScript(preferences: preferences).steps.count
+        for step in [0, 6, 11, 12, 14, 16, 19, 20, 21, introSteps - 2] {
+            let view = IntroStage(preferences: preferences, pinned: step).padding(16).background(Color(nsColor: .windowBackgroundColor))
+            try capture(swiftUI: view, width: 552, to: directory.appendingPathComponent(
+                "intro-step\(String(format: "%02d", step))-\(suffix).png"), settle: 0.3)
+        }
         // The keycap's press, frame by frame: appearing, pressed, at rest.
         for (name, frame) in [("1-appearing", PressedKeycap.PressFrame.appearing), ("2-down", .down), ("3-rest", .rest)] {
             let view = HStack(spacing: 7) {
                 DemoLine(segments: [DemoSegment("約了", .document), DemoSegment("王"), DemoSegment("曉明", .focus)],
                          caretBlinks: false)
-                PressedKeycap(keys: CurrentKeys(preferences).caps(.correctionsList), animated: false, frame: frame)
+                PressedKeycap(keys: CurrentKeys(preferences).assigned(.correctionsList), animated: false, frame: frame)
             }
             .padding(14)
             .background(Color(nsColor: .textBackgroundColor))
             try capture(swiftUI: view.scaleEffect(2, anchor: .topLeading).frame(width: 380, height: 110, alignment: .topLeading),
                         width: 380, to: directory.appendingPathComponent("keycap-press-\(name)-\(suffix).png"))
-        }
-        let highlights: [(String, Set<PreviewPart>)] = [
-            ("zhuyin-row", [.part(.zhuyinRow)]), ("switches", [.part(.switches)]), ("annotations", [.part(.annotations)]),
-            ("key-column", [.part(.keyColumn), .part(.pages)]), ("rows", [.part(.rows)]), ("window", [.window, .badge]),
-        ]
-        for (name, parts) in highlights {
-            try capturePreview(preferences, highlighted: parts,
-                               to: directory.appendingPathComponent("preview-highlight-\(name)-\(suffix).png"))
         }
         preferences.resetToDefaults()
         for scene in 0..<4 {
@@ -182,7 +182,7 @@ enum UIPreviewRenderer {
             try capture(swiftUI: view, width: 552, to: directory.appendingPathComponent("context-scene\(scene)-\(suffix).png"))
         }
         let demos: [(String, [DemoFrame])] = [
-            ("space-open", OptionDemos.space(.openCandidates)), ("space-commit", OptionDemos.space(.commit)),
+            ("space-open", OptionDemos.space(.openCandidates)),
             ("space-commit-space", OptionDemos.space(.commitAndSpace)), ("anchor-after", OptionDemos.anchor(.after)),
             ("typo", OptionDemos.typo(correctionsKey: "⇧↑")),
         ]
@@ -194,23 +194,80 @@ enum UIPreviewRenderer {
         }
     }
 
-    private static func capturePreview(_ preferences: Preferences, highlighted: Set<PreviewPart>, to url: URL) throws {
-        let view = CandidatePreview(preferences: preferences, highlighted: highlighted, animated: false)
+    private static func capturePreview(_ preferences: Preferences, to url: URL) throws {
+        let view = CandidatePreview(preferences: preferences, animated: false)
             .padding(16)
             .background(Color(nsColor: .windowBackgroundColor))
         try capture(swiftUI: view, width: 552, to: url, settle: 0.3)
     }
 
+    /// Several optional features off: the corrections list, phrase selection, ⌃ punctuation, Caps Lock, Shift.
+    static func featuresOff(_ preferences: Preferences) {
+        preferences.disabledKeyFeatures = [.correctionsList, .selectPhrase, .controlPunctuation, .typeZhuyin]
+        preferences.shiftSwitchEnabled = false
+    }
+
+    /// Sample statistics for the 分析 page: 30 days of typing with a few days off.
+    static func sampleStats() -> UsageStatsStore {
+        let store = UsageStatsStore(directory: nil)
+        let calendar = Calendar.current
+        var data = UsageData(since: calendar.date(byAdding: .day, value: -45, to: Date())!)
+        var generator = SystemRandomNumberGenerator()
+        for back in 0..<45 where ![3, 4, 11, 18, 25].contains(back % 30) {
+            let date = calendar.date(byAdding: .day, value: -back, to: Date())!
+            var day = UsageCounters()
+            day.characters = Int.random(in: 300...2400, using: &generator)
+            day.compositions = day.characters / 9
+            day.keys = day.characters * 3
+            day.picksNormal = day.characters / 60
+            day.picksCorrections = day.characters / 400
+            day.picksSingle = day.characters / 500
+            day.picksPunctuation = day.characters / 700
+            day.backspaces = day.characters / 45
+            day.escapes = day.characters / 300
+            day.deleteAfterCommit = day.characters / 600
+            day.literalZhuyin = day.characters / 1500
+            day.undoLiteral = day.characters / 4000
+            day.correctedShown = day.compositions / 25
+            day.correctedCommitted = day.compositions / 30
+            day.phrasesAdded = back % 9 == 0 ? 1 : 0
+            day.cleanCompositions = day.compositions * 82 / 100
+            day.typingMilliseconds = day.characters * 60_000 / Int.random(in: 38...52, using: &generator)
+            day.thinkingMilliseconds = day.typingMilliseconds * Int.random(in: 35...70, using: &generator) / 100
+            data.days[store.dayKey(date)] = day
+            data.totals = data.totals + day
+        }
+        for _ in 0..<8000 {
+            let ms = max(0.4, (-log(Double.random(in: 0.0001...1, using: &generator))) * 3.2)
+            data.latency.add(milliseconds: ms)
+        }
+        data.latency.add(milliseconds: 87)
+        for _ in 0..<6000 { data.rhythm.intervals.add(0.08 + Double.random(in: 0...0.35, using: &generator)) }
+        for _ in 0..<900 { data.rhythm.pauses.add(2 + (-log(Double.random(in: 0.001...1, using: &generator))) * 5) }
+        data.rhythm.longestRun = 186
+        data.rhythm.longestCleanRun = 74
+        for day in 0..<7 {
+            for hour in 0..<24 {
+                let work = (9...12).contains(hour) || (14...18).contains(hour)
+                let evening = (20...23).contains(hour)
+                let weekend = day == 0 || day == 6
+                let base = work ? (weekend ? 40 : 420) : evening ? 260 : hour < 7 ? 0 : 60
+                data.rhythm.hours[day * 24 + hour] = base == 0 ? 0 : base + Int.random(in: 0...base / 2, using: &generator)
+            }
+        }
+        return UsageStatsStore(directory: nil, data: data)
+    }
+
     /// Non-default keys everywhere, to show the pages follow the settings: rebound shortcuts, home-row selection keys,
     /// six to a page, right Shift, Space opening the list.
     static func customKeys(_ preferences: Preferences) {
-        var shortcuts = preferences.shortcuts
-        shortcuts[.correctionsList] = Shortcut("U", control: true)
-        shortcuts[.singleCharacterList] = Shortcut("↓", option: true)
-        shortcuts[.typeZhuyin] = Shortcut("Z", control: true)
-        shortcuts[.selectLeft] = Shortcut("←", control: true, shift: true)
-        shortcuts[.nextPage] = Shortcut("]", control: true)
-        preferences.shortcuts = shortcuts
+        var bindings = preferences.bindings
+        bindings[.correctionsList] = [Shortcut("u", control: true), Shortcut("↑", shift: true)]
+        bindings[.singleCharacterList] = [Shortcut("↓", option: true)]
+        bindings[.typeZhuyin] = [Shortcut("z", control: true)]
+        bindings[.selectLeft] = [Shortcut("←", control: true, shift: true)]
+        bindings[.nextPage] = [Shortcut("]", control: true), Shortcut("Tab"), Shortcut("PageDown", control: true, option: true)]
+        preferences.bindings = bindings
         preferences.selectionKeys = .homeRow
         preferences.candidatesPerPage = 6
         preferences.shiftToggle = .right
@@ -219,51 +276,92 @@ enum UIPreviewRenderer {
 
     // MARK: Settings window
 
+    /// Every page and sub-page, and how tall it is drawn (wide); narrow pages get more room for wrapping.
+    private static let pages: [(SettingsPane, SettingsSubpage?, CGFloat)] = [
+        (.intro, nil, 1320), (.typing, nil, 1260), (.choosing, nil, 1180), (.candidates, nil, 1720), (.words, nil, 440),
+        (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
+        (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
+        (.candidates, .placement, 1300), (.words, .learnedWords, 620), (.words, .phrases, 620),
+        (.analytics, .performance, 760), (.advanced, .apps, 460),
+    ]
+
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
         Preferences.shared.resetToDefaults()
-        for pane in SettingsPane.allCases {
-            let window = settings.makeWindow(pane: pane)
-            window.setFrame(NSRect(x: -30000, y: -30000, width: 760, height: 600), display: false)
-            window.alphaValue = 0
-            window.orderFrontRegardless()
-            settings.model.reloadLists()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
-            try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)-\(suffix).png"))
-            window.orderOut(nil)
+        settings.model.subpage = nil
+        // The window, with its sidebar, at its usual size, at the minimum size and large.
+        for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (640, 440, "-min"), (1280, 900, "-large")] {
+            for pane in SettingsPane.allCases {
+                let window = settings.makeWindow(pane: pane)
+                window.setContentSize(NSSize(width: width, height: height))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.5))
+                try capture(window: window, to: directory.appendingPathComponent("settings-\(pane.rawValue)\(label)-\(suffix).png"))
+                window.orderOut(nil)
+            }
         }
-        // Whole pages, taller than a screen: the pane alone in a borderless window, which is not fitted to the screen.
-        let tall: [SettingsPane: CGFloat] = [.general: 1060, .keys: 1420, .candidates: 1400, .context: 740, .about: 620,
-                                             .advanced: 700]
-        try renderFull(settings, tall, to: directory, label: "full", suffix: suffix)
+        // Every page and sub-page whole, at the narrowest window (the page 440 pt wide) and a wide one (860 pt).
+        try renderPages(settings, pages, to: directory, label: "", suffix: suffix)
+        // 快捷鍵 with the fixed keys unfolded.
+        DemoPinning.showsFixedKeys = true
+        try renderPages(settings, [(.keys, nil, 2500)], to: directory, label: "-fixed-open", suffix: suffix)
+        DemoPinning.showsFixedKeys = false
         // 進階 with the correction log on.
         Preferences.shared.recordsCorrections = true
-        try renderFull(settings, [.advanced: 700], to: directory, label: "recording", suffix: suffix)
+        try renderPages(settings, [(.advanced, nil, 660)], to: directory, label: "-recording", suffix: suffix)
         Preferences.shared.resetToDefaults()
-        // The same pages with non-default keys: every key shown must follow.
+        // Non-default keys (two and three keys for some actions): every key shown must follow.
         customKeys(Preferences.shared)
-        try renderFull(settings, [.general: 1060, .keys: 1420, .candidates: 1400], to: directory, label: "custom-keys",
-                       suffix: suffix)
+        try renderPages(settings, pages.filter { [.typing, .choosing, .candidates, .keys, .intro].contains($0.0) && $0.1 == nil },
+                        to: directory, label: "-custom-keys", suffix: suffix)
         Preferences.shared.resetToDefaults()
+        // Features turned off, and a conflict between two actions.
+        featuresOff(Preferences.shared)
+        var bindings = Preferences.shared.bindings
+        bindings[.nextPage] = [Shortcut("Tab"), Shortcut("←", control: true, shift: true)]
+        bindings[.selectLeft] = [Shortcut("←", shift: true), Shortcut("←", control: true, shift: true)]
+        Preferences.shared.bindings = bindings
+        Preferences.shared.setEnabled(.selectPhrase, true)
+        try renderPages(settings, pages.filter { [.typing, .choosing, .candidates, .keys, .intro].contains($0.0) && $0.1 == nil }
+                        + [(.typing, .punctuation, 820)], to: directory, label: "-features-off", suffix: suffix)
+        // A key field while recording, accepted and refused.
+        Preferences.shared.resetToDefaults()
+        DemoPinning.fieldStates = [.singleCharacterList: .recording(index: 0, held: ["⌃", "⇧"]),
+                                   .correctionsList: .refused("已用於「打出注音本身」"), .typeZhuyin: .accepted(index: 0),
+                                   .deleteWord: .hover]
+        try renderPages(settings, [(.choosing, nil, 1180), (.candidates, nil, 1720), (.typing, nil, 1260)], to: directory,
+                        label: "-field-states", suffix: suffix)
+        DemoPinning.fieldStates = [:]
+        Preferences.shared.resetToDefaults()
+        settings.model.subpage = nil
     }
 
-    private static func renderFull(_ settings: SettingsWindowController, _ tall: [SettingsPane: CGFloat], to directory: URL,
-                                   label: String, suffix: String) throws {
-        for (pane, height) in tall.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let hosting = NSHostingView(rootView: SettingsPaneView(pane: pane, model: settings.model))
-            hosting.frame = NSRect(x: 0, y: 0, width: 570, height: height)
-            let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 570, height: height),
-                                  styleMask: [.borderless], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.backgroundColor = .windowBackgroundColor
-            window.contentView = hosting
-            window.alphaValue = 0
-            window.orderFrontRegardless()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
-            try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent("settings-\(pane.rawValue)-\(label)-\(suffix).png"))
-            window.orderOut(nil)
-            window.contentView = nil
-            window.close()
+    private static func renderPages(_ settings: SettingsWindowController, _ pages: [(SettingsPane, SettingsSubpage?, CGFloat)],
+                                    to directory: URL, label: String, suffix: String) throws {
+        for (pane, subpage, height) in pages {
+            settings.model.subpage = subpage
+            for (width, name) in [(CGFloat(440), "narrow"), (860, "wide")] {
+                let tall = width < 500 ? height * 1.3 : height
+                let hosting = NSHostingView(rootView: SettingsPaneView(pane: pane, model: settings.model))
+                hosting.frame = NSRect(x: 0, y: 0, width: width, height: tall)
+                let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: width, height: tall),
+                                      styleMask: [.borderless], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.backgroundColor = .windowBackgroundColor
+                window.contentView = hosting
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.45))
+                let file = "page-\(pane.rawValue)" + (subpage.map { "-" + $0.rawValue } ?? "") + "\(label)-\(name)-\(suffix).png"
+                try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent(file))
+                window.orderOut(nil)
+                window.contentView = nil
+                window.close()
+            }
         }
+        settings.model.subpage = nil
     }
 
     /// A correction log with three sample lines in a temporary folder, so the 進階 page never reads the user's.

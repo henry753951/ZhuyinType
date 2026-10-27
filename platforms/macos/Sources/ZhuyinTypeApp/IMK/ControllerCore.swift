@@ -29,6 +29,12 @@ final class ControllerCore {
     var modeChanged: ((Bool, NSRect) -> Void)?
     /// 「記錄改字」 when it is on: observes keys, clicks and commits, never changes what happens.
     var recorder: CorrectionRecorder?
+    /// 「記錄使用統計」 when it is on: counts keys, picks and corrections, and times each key.  Never changes anything.
+    var stats: UsageStatsObserver?
+    /// Optional key features turned off on the 快捷鍵 page; their keys go to the app.
+    var disabledFeatures: Set<KeyFeature> = []
+    /// The sentence shown has a typing correction (as last chosen by the reranker).
+    private(set) var shownCorrected = false
 
     private struct Mark: Equatable {
         var text: String
@@ -74,7 +80,12 @@ final class ControllerCore {
         }
         if let reranker {
             composer.rerankingCount = reranker.candidateCount
-            composer.reranker = { [weak self] in reranker.choose($0, context: self?.recentText ?? "") }
+            composer.reranker = { [weak self] sentences in
+                let index = reranker.choose(sentences, context: self?.recentText ?? "")
+                let shown = sentences.indices.contains(index) ? sentences[index] : sentences.first
+                self?.shownCorrected = shown?.corrected ?? false
+                return index
+            }
             composer.candidateScorer = { [weak self] before, candidates in
                 reranker.candidateScores(context: (self?.recentText ?? "") + before, candidates: candidates)
             }
@@ -97,6 +108,8 @@ final class ControllerCore {
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval? = nil) -> Bool {
         shiftTap = nil
         guard !rendering, !isEnglish else { return false }
+        // With 「Caps Lock 打英文」 off, Caps Lock does not change what the keys type.
+        let modifiers = disabledFeatures.contains(.capsLockEnglish) ? modifiers.subtracting(.capsLock) : modifiers
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
         if modifiers.contains(.capsLock) {
             commit()
@@ -108,7 +121,7 @@ final class ControllerCore {
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
-              !ShortcutCommand.commandInputs.contains(key) else {
+              !ShortcutCommand.commandInputs.contains(key), !turnedOff(key) else {
             commit()
             breakContext()
             return false
@@ -116,15 +129,29 @@ final class ControllerCore {
         return handle(key, time: time)
     }
 
+    /// ⌃ and ⌥ symbol keys whose feature is off go to the app.
+    private func turnedOff(_ key: KeyInput) -> Bool {
+        switch key {
+        case .controlChar: return disabledFeatures.contains(.controlPunctuation)
+        case .printed: return disabledFeatures.contains(.optionSymbols)
+        default: return false
+        }
+    }
+
     @discardableResult
     func handle(_ key: KeyInput, time: TimeInterval? = nil) -> Bool {
         guard !rendering else { return false }
         if !composer.isComposing, Self.startsComposition(key) { prepareContext() }
+        // With 「送出後刪掉重打」 off, ⌫ on sent text is an ordinary key for the app: the next composition starts a
+        // sentence and nothing is learned from retyping.
+        if key == .backspace, !composer.isComposing, disabledFeatures.contains(.deleteAfterCommit) { composer.breakContext() }
+        let started = stats == nil ? 0 : DispatchTime.now().uptimeNanoseconds
         let before = composer.presentation
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
-        observe(.key(key, time: time), before: before, commit: commit, handled: result.handled)
+        let latency = stats == nil ? nil : DispatchTime.now().uptimeNanoseconds - started
+        observe(.key(key, time: time), before: before, commit: commit, handled: result.handled, latency: latency)
         if !result.handled {
             // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)
             // may move it; the next composition reads the app again, or the remembered text ages out.
@@ -169,11 +196,15 @@ final class ControllerCore {
         recentTime = time
     }
 
-    private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool) {
-        guard let recorder else { return }
-        recorder.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
-                         options: composer.options, secure: composer.learningSuspended || secureInput(),
-                         context: recentText)
+    private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool,
+                         latency: UInt64? = nil) {
+        guard recorder != nil || stats != nil else { return }
+        let secure = composer.learningSuspended || secureInput()
+        recorder?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
+                          options: composer.options, secure: secure, context: recentText)
+        stats?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
+                       options: composer.options, secure: secure, corrected: shownCorrected, latency: latency)
+        if composer.presentation.isEmpty { shownCorrected = false }
     }
 
     /// Whether the system's secure event input is on; a closure so the self-test can switch it.
@@ -223,6 +254,8 @@ final class ControllerCore {
         guard !rendering else { return false }
         if keyCode == 57 {
             let on = modifiers.contains(.capsLock)
+            // With 「Caps Lock 打英文」 off, Caps Lock neither sends the composition nor shows the badge.
+            if disabledFeatures.contains(.capsLockEnglish) { capsLock = on; return false }
             if on != capsLock {
                 capsLock = on
                 commit()

@@ -43,15 +43,16 @@ struct RowLabel: View {
     }
 }
 
-/// Keys drawn as keycaps.
+/// Keys drawn as keycaps.  `tint` marks them (system red for a conflict).
 struct KeyCombo: View {
     let keys: [String]
     var size: CGFloat = 12
     var highlighted = false
+    var tint: Color?
     var body: some View {
         HStack(spacing: 3) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                Keycap(key: key, size: size, highlighted: highlighted)
+                Keycap(key: key, size: size, highlighted: highlighted, tint: tint)
             }
         }
     }
@@ -61,16 +62,34 @@ struct Keycap: View {
     let key: String
     var size: CGFloat = 12
     var highlighted = false
+    var tint: Color?
+
+    private var ink: AnyShapeStyle {
+        if highlighted { return AnyShapeStyle(Color.white) }
+        if let tint { return AnyShapeStyle(tint) }
+        return AnyShapeStyle(.secondary)
+    }
+    private var fill: AnyShapeStyle {
+        if highlighted { return AnyShapeStyle(Color.accentColor) }
+        if let tint { return AnyShapeStyle(tint.opacity(0.1)) }
+        return AnyShapeStyle(.quaternary.opacity(0.6))
+    }
+    private var edge: AnyShapeStyle {
+        if highlighted { return AnyShapeStyle(Color.clear) }
+        if let tint { return AnyShapeStyle(tint.opacity(0.8)) }
+        return AnyShapeStyle(.quaternary)
+    }
+
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.42)
         Text(key)
             .font(.system(size: size, weight: .medium))
-            .foregroundStyle(highlighted ? AnyShapeStyle(Color.white) : AnyShapeStyle(.secondary))
+            .foregroundStyle(ink)
+            .lineLimit(1)
             .padding(.horizontal, size * 0.5)
             .frame(minWidth: size * 1.85, minHeight: size * 1.7)
-            .background(RoundedRectangle(cornerRadius: size * 0.42)
-                .fill(highlighted ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary.opacity(0.6))))
-            .overlay(RoundedRectangle(cornerRadius: size * 0.42)
-                .strokeBorder(highlighted ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.quaternary), lineWidth: 0.5))
+            .background(shape.fill(fill))
+            .overlay(shape.strokeBorder(edge, lineWidth: tint == nil ? 0.5 : 1))
             .fixedSize()
     }
 }
@@ -391,25 +410,33 @@ struct FactRow: View {
 
 // MARK: - The keys in use
 
-/// Every key the settings pages name, read from the current settings: the rebindable shortcuts, the selection keys,
-/// the Shift toggle.  Nothing on the pages spells a configurable key itself.
+/// Every key the settings pages name, read from the current settings: the rebindable shortcuts, the features turned
+/// off, the selection keys, the Shift toggle.  Nothing on the pages spells a configurable key itself, and a key whose
+/// feature is off is not shown.
 struct CurrentKeys {
     let shortcuts: [ShortcutCommand: Shortcut]
+    let disabled: Set<KeyFeature>
     let pageKeys: [String]
     let shiftToggle: ShiftToggle
     let selectionKeySet: SelectionKeySet
 
     init(_ preferences: Preferences) {
         shortcuts = preferences.shortcuts
+        disabled = preferences.disabledKeyFeatures
         pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
         shiftToggle = preferences.shiftToggle
         selectionKeySet = preferences.selectionKeys
     }
 
-    /// The command's keys as separate keycaps: ["⇧", "↑"].
-    func caps(_ command: ShortcutCommand) -> [String] { (shortcuts[command] ?? command.defaultShortcut).keycaps }
-    /// The command's keys in one piece: "⇧↑".
-    func text(_ command: ShortcutCommand) -> String { caps(command).joined() }
+    func isOn(_ feature: KeyFeature) -> Bool { !disabled.contains(feature) }
+    func isOn(_ command: ShortcutCommand) -> Bool { command.feature.map(isOn) ?? true }
+
+    /// The command's keys as separate keycaps (["⇧", "↑"]), whether or not it is on.
+    func assigned(_ command: ShortcutCommand) -> [String] { (shortcuts[command] ?? command.defaultShortcut).keycaps }
+    /// The command's keycaps, or nil when it is turned off.
+    func caps(_ command: ShortcutCommand) -> [String]? { isOn(command) ? assigned(command) : nil }
+    /// The command's keys in one piece ("⇧↑"), or nil when it is turned off.
+    func text(_ command: ShortcutCommand) -> String? { caps(command)?.joined() }
 
     /// The keys that pick on a page: "1–9", or "A S D F G" for the home row.
     var selection: String {
@@ -425,6 +452,9 @@ struct CurrentKeys {
         case .none: return nil
         }
     }
+
+    /// The key that shows the 中/英 badge: the Shift tap, or Caps Lock; nil when neither is on.
+    var modeKey: String? { shiftTap ?? (isOn(.capsLockEnglish) ? "Caps Lock" : nil) }
 }
 
 /// A keycap beside the text, as if the key had just been pressed: it settles in with a short press, and presses again
@@ -436,6 +466,8 @@ struct PressedKeycap: View {
     /// False for the UI previews, which draw it at rest (or at `frame`, a moment of the press).
     var animated = true
     var frame: PressFrame = .rest
+    /// Changes when the same keys are pressed again (a scene of a story), to press once more.
+    var trigger = 0
     @State private var pressed = false
     @State private var shown = false
 
@@ -473,6 +505,7 @@ struct PressedKeycap: View {
         .scaleEffect(isShown || reduceMotion ? 1 : 0.9)
         .onAppear(perform: press)
         .onChange(of: keys) { _, _ in press() }
+        .onChange(of: trigger) { _, _ in press() }
         .accessibilityLabel(keys.joined(separator: " "))
     }
 
