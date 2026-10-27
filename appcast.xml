@@ -1,8 +1,24 @@
-<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+<?xml version="1.0" standalone="yes"?>
+<!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+-->
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>ZhuyinType</title>
+        <item>
+            <title>0.4.1</title>
+            <pubDate>Tue, 27 Oct 2026 14:16:42 +0000</pubDate>
+            <link>https://github.com/henry753951/ZhuyinType/releases/tag/v0.4.1</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/henry753951/ZhuyinType/blob/main/docs/releases/v0.4.1.md</sparkle:fullReleaseNotesLink>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>0.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.1/ZhuyinType-0.4.1.zip" length="268384031" type="application/octet-stream" sparkle:edSignature="CzEHaI0ka4aHYPE5Aj5QYWTUr6O1eIWaocewZapUYQTt9V+g140SU/7cjYzL39Um5Et2FdtIts8MJmejhoigCg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.1/ZhuyinType15-14.delta" sparkle:deltaFrom="14" length="447798" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="941872" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="jNFV0ep1gAqUGYsMWjBHWH34WChZRwpVm1rZCi1RK7hEkBYrbj6WPDZBXRFZvKXg5/ptPcOQtREg2ohNR5rYDg=="/>
+            </sparkle:deltas>
+        </item>
         <item>
             <title>0.4.0</title>
             <pubDate>Tue, 27 Oct 2026 07:38:53 +0000</pubDate>
@@ -12,10 +28,11 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <sparkle:shortVersionString>0.4.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.0/ZhuyinType-0.4.0.zip" length="268140326" type="application/octet-stream" sparkle:edSignature="y9ayXhqjGis10YZIjhAx5/De8VoHkX8v6Ay2Mm1FcPPn2p1f+rDi4uzaU5XrojeoLPwP3IF6uPsIh7TCEXdkCg=="></enclosure>
+            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.1/ZhuyinType-0.4.0.zip" length="268140326" type="application/octet-stream" sparkle:edSignature="y9ayXhqjGis10YZIjhAx5/De8VoHkX8v6Ay2Mm1FcPPn2p1f+rDi4uzaU5XrojeoLPwP3IF6uPsIh7TCEXdkCg=="/>
         </item>
     </channel>
-</rss><!-- sparkle-signatures:
-edSignature: ESiKmOMn3kjs2t+a/TsCgBg33wTinohPgilI6MnqbST2Cp9Q7lUIEmt39UEHaTSp7Mq62LBVZ4GsHWrTwVCLCA==
-length: 1368
+</rss>
+<!-- sparkle-signatures:
+edSignature: +uudfZKbFW07chskmfuv6rKmzePND1tPy+ixX5e8Jfi9FbstSMF1BSy/bUw+YEJKewa1jmO3aNGn1cnPIykrBg==
+length: 2754
 -->
