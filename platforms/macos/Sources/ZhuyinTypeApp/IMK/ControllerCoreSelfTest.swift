@@ -1215,6 +1215,9 @@ enum ControllerCoreSelfTest {
             try expect(original.spaceAction == .openCandidates && original.typoTolerance == .standard, "套用 did not write the changes")
         }
 
+        // The setup wizard's practice field (UI/Wizard/Practice).
+        PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
+
         test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
             try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
             let problems = focus.check()

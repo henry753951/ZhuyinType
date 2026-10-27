@@ -183,6 +183,15 @@ struct PracticeOutcome {
     var events: [String] = []
     /// Candidates picked from a list, in order.
     var picks: [String] = []
+    // Filled in by the practice field (UI/Wizard/Practice) for the goals of PracticeGoal.
+    /// The sent text only, without the composition.
+    var sent: String = ""
+    /// Candidates picked in place of different text (a character changed through the list).
+    var corrected: [String] = []
+    /// How many candidates were picked from the corrections list.
+    var correctionPicks = 0
+    /// User phrases added while practising.
+    var phrases: [String] = []
 }
 
 struct PracticeTask {

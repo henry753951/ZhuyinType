@@ -393,6 +393,10 @@ final class CandidateContentView: InputMaterialView {
     var onSingleCharacter: (() -> Void)?
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
+    /// Whether pages move and the end of the list bounces: the 動畫 setting unless set (the wizard's practice field
+    /// follows its own draft settings).
+    var animatesOverride: Bool?
+    private var animates: Bool { animatesOverride ?? PanelMotion.animates }
     private(set) var candidateTextInset: CGFloat = 36
 
     override init(frame: NSRect) {
@@ -583,7 +587,7 @@ final class CandidateContentView: InputMaterialView {
         }
         if hasFooter, let list {
             let pageText = "\(list.page + 1) / \(list.pageCount)"
-            if direction != 0, pageText != pageLabel.stringValue, PanelMotion.animates, window?.isVisible == true {
+            if direction != 0, pageText != pageLabel.stringValue, animates, window?.isVisible == true {
                 let fade = CATransition()
                 fade.type = .fade
                 fade.duration = PageMotion.duration
@@ -694,7 +698,7 @@ final class CandidateContentView: InputMaterialView {
             pinMotion(pinned, incoming: incoming, outgoing: outgoing)
             return
         }
-        guard direction != 0, PanelMotion.animates, window?.isVisible == true else {
+        guard direction != 0, animates, window?.isVisible == true else {
             if direction != 0 || outgoing.isHidden == false { stopMotion() }
             return
         }
@@ -736,7 +740,7 @@ final class CandidateContentView: InputMaterialView {
     /// Paging stopped at the first or last page: the page nudges a few points that way and settles back (a short dip
     /// in opacity under Reduce Motion).
     func bounce(direction: Int) {
-        guard PanelMotion.animates, window?.isVisible == true, !rowClip.isHidden else { return }
+        guard animates, window?.isVisible == true, !rowClip.isHidden else { return }
         stopMotion()
         let page = pageViews[front]
         let generation = transitionGeneration

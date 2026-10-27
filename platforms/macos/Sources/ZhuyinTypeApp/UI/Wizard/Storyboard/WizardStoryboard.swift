@@ -137,7 +137,7 @@ struct WizardStoryboard: View {
             }
             .pickerStyle(.segmented).labelsHidden()
             Task(text: "打出「好，謝謝。」", progress: "1 / 2")
-            PracticeField(segments: [DemoSegment("好", .document), DemoSegment("，", .marked)], hint: ["⌃", ","])
+            StoryboardPracticeField(segments: [DemoSegment("好", .document), DemoSegment("，", .marked)], hint: ["⌃", ","])
             Text("⌃ 加 , 打出「，」；⇧ 加 , 打出鍵上的「<」。").font(.callout).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 40)
@@ -162,12 +162,12 @@ struct WizardStoryboard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Task(text: "打 ㄇㄧㄥˊ，翻到下一頁，選第 12 個字「暝」", progress: done ? "完成" : "第 2 頁")
                     if done {
-                        PracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .document)], done: true)
+                        StoryboardPracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .document)], done: true)
                         Label("完成", systemImage: "checkmark.circle.fill")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(Color(nsColor: .systemGreen))
                     } else {
-                        PracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .focus)], hint: ["fn", "↓"])
+                        StoryboardPracticeField(segments: [DemoSegment("約了王", .document), DemoSegment("暝", .focus)], hint: ["fn", "↓"])
                         PanelSnapshot(list: list, zhuyinHint: "ㄇㄧㄥˊ", preferences: preferences).padding(.leading, 64)
                     }
                 }
@@ -297,7 +297,7 @@ private struct Task: View {
     }
 }
 
-private struct PracticeField: View {
+private struct StoryboardPracticeField: View {
     let segments: [DemoSegment]
     var hint: [String] = []
     var done = false

@@ -63,6 +63,10 @@ enum UIPreviewRenderer {
                     }
                 }
             }
+            if only == "practice" {
+                // The setup wizard's practice field, driven by synthetic keys (UI/Wizard/Practice).
+                try PracticeRender.render(to: directory.appendingPathComponent("practice"))
+            }
             if let only, let pane = SettingsPane(rawValue: only) {
                 NSApp.appearance = NSAppearance(named: .aqua)
                 try renderPanels(to: directory.appendingPathComponent("panels"), suffix: "light")
@@ -690,7 +694,7 @@ enum UIPreviewRenderer {
         return nil
     }
 
-    private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
+    static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
         let hosting = NSHostingView(rootView: view.frame(width: width).fixedSize(horizontal: false, vertical: true))
         hosting.frame.size = NSSize(width: width, height: max(1, hosting.fittingSize.height))
         try capture(view: hosting, to: url, settle: settle)
