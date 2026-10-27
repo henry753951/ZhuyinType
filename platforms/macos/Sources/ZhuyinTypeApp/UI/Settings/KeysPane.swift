@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 // 快捷鍵, in the manner of System Settings → Keyboard → Keyboard Shortcuts: every key grouped by feature, in the words
 // of what it does.  Rebindable commands have a key recorder and a restore button; optional features have a checkbox

@@ -1,5 +1,5 @@
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 // What each option of the 一般 page does, as short looping demos for its ⓘ popover.  The texts are what the option
 // really does (docs/product/DESIGN.md §2); keep them in step with the code.

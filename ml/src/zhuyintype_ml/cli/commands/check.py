@@ -1,6 +1,6 @@
 """zt check: engine behaviour, the app, the Python tools, lint, types and privacy.
 
-zt check engine                   # ZhuyinCoreChecks (ZHUYIN_CHECKS_TIMING=warn on slow or busy machines)
+zt check engine                   # the engine's tests, release (ZHUYIN_CHECKS_TIMING=warn on slow or busy machines)
 zt check app                      # the built app's self-test and packaging check (after `zt build app`)
 zt check python                   # unittest over ml/src/**/test_*.py
 zt check python --group train     # with PyTorch, for the training tests
@@ -29,7 +29,9 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     )
     kinds = parser.add_subparsers(dest="kind", metavar="KIND")
 
-    kinds.add_parser("engine", help="engine behaviour and latency checks (ZhuyinCoreChecks)").set_defaults(func=engine)
+    kinds.add_parser("engine", help="engine behaviour and latency checks (cargo test, release)").set_defaults(
+        func=engine
+    )
     kinds.add_parser("app", help="self-test and packaging check of dist/ZhuyinType.app").set_defaults(func=app)
 
     python = kinds.add_parser("python", help="unittest over ml/src/**/test_*.py")
@@ -65,8 +67,10 @@ def run(command: list[str]) -> int:
 
 
 def engine(_args: argparse.Namespace) -> int:
-    command = paths.swift_command("run", "-c", "release") + ["ZhuyinCoreChecks"]
-    return subprocess.run(command, env=paths.engine_env()).returncode
+    """The Rust workspace's tests in release: behaviour (the former ZhuyinCoreChecks), golden digests and the latency
+    targets on the real data in data/build."""
+    command = paths.cargo_command("test", "--release", "--locked", "--workspace")
+    return subprocess.run(command, env=paths.engine_env(), cwd=paths.ENGINE).returncode
 
 
 def app(_args: argparse.Namespace) -> int:

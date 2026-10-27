@@ -1,5 +1,5 @@
 import AppKit
-import ZhuyinCore
+import ZhuyinEngine
 
 /// Input UI must never take focus away from the document being edited.
 final class InputPanel: NSPanel {

@@ -3,7 +3,7 @@
 // turns a matching key into the command's own input before the composer sees it.  A command's default key that is no
 // longer bound to it goes to the app.
 import AppKit
-import ZhuyinCore
+import ZhuyinEngine
 
 /// A key with modifiers on the US layout: a printable character, or one of `Shortcut.namedKeys`.
 struct Shortcut: Codable, Hashable {

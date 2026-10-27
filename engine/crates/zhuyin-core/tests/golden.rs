@@ -1,12 +1,13 @@
-//! Golden tests against the Swift engine on the real data: every sweep builds the same queries, in the same order, as
-//! `parity/Sources/SwiftParity/main.swift`, and its digest (FNV-1a over the result lines, floats as bit patterns)
-//! must equal the one the Swift code produced (`parity/golden/digests.tsv`).  Equal digests mean bit-identical
-//! results.
+//! Golden tests on the real data: every sweep builds the same queries, in the same order, as the Swift engine's
+//! measurement tool did (removed with the Swift engine in phase 5; in git history as `engine/parity/Sources`), and its
+//! digest (FNV-1a over the result lines, floats as bit patterns) must equal the one the Swift engine produced
+//! (`parity/golden/digests.tsv`, made on macOS).  Equal digests mean results bit-identical to the Swift engine's; a
+//! change of behaviour shows up here, and records new digests only on purpose.
 //!
 //! Inputs: `ZHUYIN_DATA` (lexicon.bin, lexicon.tsv, lm/, `lm_chat`/), `ZHUYIN_PARITY_TEXT` (sentences for the
 //! language-model sweeps), `ZHUYIN_TRIGRAM_LM` (a trigram model directory).  A sweep whose inputs are missing, or
 //! whose input files differ in size from the ones the digests were made with, is skipped with a message.  On a
-//! mismatch, the first differing line is shown when the Swift dump is in `parity/out/` (`parity/golden.sh`).
+//! mismatch, the first differing line is shown when a dump of the expected lines is in `parity/out/`.
 
 mod common;
 

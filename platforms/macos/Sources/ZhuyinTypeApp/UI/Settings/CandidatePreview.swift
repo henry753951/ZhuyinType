@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The 候選字視窗 page's preview: still scenes side by side, each a line of a document with the key just pressed
 /// beside it and the real candidate window (or 中/英 badge) under it.  Every setting on the page redraws every scene at

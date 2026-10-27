@@ -469,16 +469,16 @@ App 圖示採用 Icon Composer 格式（`platforms/macos/Resources/AppIcon.icon`
 
 ```
 ZhuyinType/
-├── engine/
-│   └── swift/                引擎（Swift package；之後換成 Rust workspace）
-│       └── Sources/
-│           ├── ZhuyinCore/       鍵盤、組字、按鍵解碼、容錯、轉換、語言模型與個人模型
-│           ├── ZhuyinML/         整句重排（v2b）與音節對字模型（v3）：macOS 用 Core ML
-│           ├── ONNXBridge/       在 Linux 上以 ONNX Runtime 執行模型
-│           ├── ZhuyinCoreChecks/ 引擎檢查
-│           └── zhuyin-cli/       命令列介面，所有評測都經由它執行
+├── engine/                   引擎（Rust workspace）
+│   └── crates/
+│       ├── zhuyin-core/      鍵盤、組字、按鍵解碼、容錯、轉換、語言模型與個人模型
+│       ├── zhuyin-models/    整句重排（v2b）與音節對字模型（v3）的判斷邏輯；Linux 以 ONNX Runtime 執行
+│       ├── zhuyin-ffi/       C 介面，App 經由它使用引擎
+│       └── zhuyin-cli/       命令列介面，所有評測都經由它執行
 ├── platforms/
 │   └── macos/                macOS 輸入法（Swift package）
+│       ├── Sources/ZhuyinEngine/ 引擎的 Swift 包裝，以 Core ML 執行模型
+│       ├── Sources/EngineBench/  不含 App 的引擎路徑，量延遲用
 │       ├── Sources/ZhuyinTypeApp/
 │       │   ├── IMK/          輸入控制器、按鍵對應、引擎載入與文字客戶端整合
 │       │   ├── UI/           候選字視窗、中英切換提示與設定視窗

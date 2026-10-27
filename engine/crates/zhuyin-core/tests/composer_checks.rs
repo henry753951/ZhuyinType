@@ -449,6 +449,8 @@ fn literals_and_punctuation_keys() {
 }
 
 #[test]
+// One block per Swift check group, kept together.
+#[allow(clippy::too_many_lines)]
 fn commit_modes_escape_and_limits() {
     let tiny = engine(TINY);
     for shifted in [false, true] {
@@ -506,6 +508,21 @@ fn commit_modes_escape_and_limits() {
                 assert!(
                     result == KeyResult::new(false, Some("八趴".into())) && !typing.is_composing(),
                     "commitAndSpace: space commits and goes on to the app"
+                );
+            }
+            SpaceAction::InsertSpace => {
+                assert!(
+                    result == KeyResult::CONSUMED
+                        && typing.is_composing()
+                        && text(&typing) == "八趴 "
+                        && typing.presentation().candidates.is_none(),
+                    "insertSpace: space goes into the composition, nothing is sent"
+                );
+                type_keys("18 ", &mut typing);
+                assert_eq!(
+                    typing.handle(KeyInput::Enter),
+                    KeyResult::new(true, Some("八趴 八".into())),
+                    "insertSpace: Enter sends the text with its space"
                 );
             }
         }
@@ -1095,4 +1112,75 @@ fn recall_budget_backtick_and_hints() {
         Some("ㄒㄧㄝˋ ˙ㄒㄧㄝ"),
         "multi-syllable neutral hint"
     );
+}
+
+#[test]
+fn backtick_undo() {
+    let tiny = engine(TINY);
+    // A ` pressed by mistake: ` again or Esc right after puts the syllables back; any other key keeps the literal.
+    let mut undo_again = composer(&tiny, "18 q8 ");
+    undo_again.handle(KeyInput::Char('`'));
+    assert_eq!(text(&undo_again), "八ㄆㄚ", "backtick before undo");
+    undo_again.handle(KeyInput::Char('`'));
+    assert!(
+        text(&undo_again) == "八趴" && undo_again.presentation().cursor == 2,
+        "second backtick restores the syllable"
+    );
+    undo_again.handle(KeyInput::Char('`'));
+    assert_eq!(text(&undo_again), "八ㄆㄚ", "a third backtick converts again");
+    let mut undo_escape = composer(&tiny, "18 q8 ");
+    undo_escape.handle(KeyInput::Char('`'));
+    undo_escape.handle(KeyInput::Escape);
+    assert!(
+        text(&undo_escape) == "八趴" && undo_escape.is_composing(),
+        "Esc right after a backtick restores instead of clearing"
+    );
+    let mut undo_buffer = composer(&tiny, "18 q8");
+    undo_buffer.handle(KeyInput::Char('`'));
+    undo_buffer.handle(KeyInput::Escape);
+    type_keys(" ", &mut undo_buffer);
+    assert_eq!(text(&undo_buffer), "八趴", "restored unfinished syllable completes as typed");
+    let mut undo_list = composer(&tiny, "18 q8 ");
+    undo_list.handle(KeyInput::Down);
+    undo_list.handle(KeyInput::Char('`'));
+    let list_literal = text(&undo_list).to_owned();
+    undo_list.handle(KeyInput::Char('`'));
+    assert!(list_literal != "八趴" && text(&undo_list) == "八趴", "backtick from the candidate list is undone too");
+    let mut undo_gone = composer(&tiny, "18 q8 ");
+    undo_gone.handle(KeyInput::Char('`'));
+    type_keys("a8 ", &mut undo_gone);
+    undo_gone.handle(KeyInput::Escape);
+    assert!(!undo_gone.is_composing(), "after another key, Esc clears as usual");
+}
+
+#[test]
+fn page_at_list_edge_off() {
+    let tiny = engine(TINY);
+    let list = |c: &Composer| c.presentation().candidates.clone().unwrap();
+    let options = ComposerOptions { selection_keys: vec!['1', '2'], page_at_list_edge: false, ..legacy() };
+    let mut stay = composer_with(&tiny, "18 ", options.clone());
+    stay.handle(KeyInput::Down);
+    stay.handle(KeyInput::Down);
+    assert_eq!(list(&stay).selection, 1, "↓ moves within the page");
+    stay.handle(KeyInput::Down);
+    assert!(list(&stay).selection == 1 && list(&stay).page() == 0, "↓ at the page's last candidate stays");
+    stay.handle(KeyInput::Tab);
+    assert_eq!(list(&stay).selection, 2, "the page keys still turn pages");
+    stay.handle(KeyInput::Up);
+    assert_eq!(list(&stay).selection, 2, "↑ at the page's first candidate stays");
+    let horizontal = ComposerOptions { vertical_list: false, ..options };
+    let mut sideways = composer_with(&tiny, "18 ", horizontal);
+    sideways.handle(KeyInput::Down);
+    sideways.handle(KeyInput::Right);
+    sideways.handle(KeyInput::Right);
+    assert_eq!(list(&sideways).selection, 1, "horizontal → at the page's edge stays");
+    sideways.handle(KeyInput::Down);
+    assert_eq!(list(&sideways).page(), 1, "horizontal ↓ still turns the page");
+    sideways.handle(KeyInput::Left);
+    assert_eq!(list(&sideways).selection, 2, "horizontal ← at the page's first candidate stays");
+    let mut across = composer_with(&tiny, "18 ", ComposerOptions { selection_keys: vec!['1', '2'], ..legacy() });
+    across.handle(KeyInput::Down);
+    across.handle(KeyInput::Down);
+    across.handle(KeyInput::Down);
+    assert!(list(&across).selection == 2 && list(&across).page() == 1, "on (the default): ↓ crosses the page");
 }

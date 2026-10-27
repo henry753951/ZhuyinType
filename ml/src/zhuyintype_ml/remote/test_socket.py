@@ -18,7 +18,7 @@ from typing import Any
 
 from zhuyintype_ml.core import paths
 
-CLI = paths.scratch() / "release" / "zhuyin-cli"
+CLI = paths.engine_target() / "release" / "zhuyin-cli"
 
 
 @unittest.skipUnless(sys.platform == "linux", "the model server socket path is tested on Linux (the GPU host)")

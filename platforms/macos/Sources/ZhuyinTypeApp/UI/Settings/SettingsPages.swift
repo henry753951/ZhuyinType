@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 // The pages of the settings window as docs/product/SETTINGS_IA.md lays them out: a few pages in the sidebar, the
 // common settings on each, details one level down (rows ending in ›), and each feature's switch, keys and

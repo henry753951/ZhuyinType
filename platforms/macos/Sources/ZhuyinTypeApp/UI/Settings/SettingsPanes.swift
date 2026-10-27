@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// Fixed frames for the demos, so the UI previews show a chosen moment.  Nil while the app runs.
 enum DemoPinning {

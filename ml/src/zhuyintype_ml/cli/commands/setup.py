@@ -1,6 +1,6 @@
 """zt setup: check this machine's tools and prepare the Python environment (ml/src/zhuyintype_ml/core/environment.py).
 
-zt setup                          # check uv, Swift, Xcode (macOS) or ONNX Runtime (Linux); uv sync
+zt setup                          # check uv, cargo, Swift and Xcode (macOS) or ONNX Runtime (Linux); uv sync
 zt setup --group export           # also the ONNX export packages (PyTorch, onnx, onnxruntime)
 zt setup --group train --group dev
 zt setup --install-onnxruntime    # Linux: ONNX Runtime C SDK into ~/opt (or ONNXRUNTIME_ROOT)

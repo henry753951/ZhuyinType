@@ -1,0 +1,1424 @@
+{
+ "inputs": {
+  "colloquial": 400,
+  "wikipedia": 400,
+  "chat": 400,
+  "context": 400,
+  "shanjie-dev302": 266,
+  "shanjie-probe": 71,
+  "shanjie-typing76": 49,
+  "shanjie-fw": 159,
+  "shanjie-user-reported": 77
+ },
+ "configurations": [
+  {
+   "configuration": "default",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "default",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "typo-off",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "typo-aggressive",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-slots",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-boundaries",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "decoder-reorder",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "fuzzy-all",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "chat-mixture",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "sentence-boundaries-off",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "end-share",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "hotspot",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "punctuation-mac",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "forms-common",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "nbest-16",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "list-home",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "list-before",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "list-corrections",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "list-single",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "pick-second",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "pick-and-learn",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "delete-and-retype",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "app",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "app-nbest-16",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-home",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "app-list-corrections",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "colloquial",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "wikipedia",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "chat",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "context",
+   "lines": 400,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "shanjie-dev302",
+   "lines": 266,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "shanjie-probe",
+   "lines": 71,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "shanjie-typing76",
+   "lines": 49,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "shanjie-fw",
+   "lines": 159,
+   "different": 0
+  },
+  {
+   "configuration": "app-pick-second",
+   "set": "shanjie-user-reported",
+   "lines": 77,
+   "different": 0
+  }
+ ],
+ "differences": [],
+ "total": {
+  "lines": 57772,
+  "different": 0
+ }
+}

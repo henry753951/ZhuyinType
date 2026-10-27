@@ -4,6 +4,8 @@ cd "$(dirname "$0")/../../.."
 configuration=${1:-release}
 case "$configuration" in debug|release) ;; *) echo '用法：platforms/macos/scripts/build-app.sh [debug|release]' >&2; exit 2 ;; esac
 scratch=${SWIFT_SCRATCH_PATH:-.build}
+# The engine (Rust): its C ABI as a static library, linked into the app by Package.swift.
+(cd engine && cargo build --release --locked -p zhuyin-ffi)
 # SwiftUI's macros ship with Xcode, not with the Command Line Tools.
 if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p)" == /Library/Developer/CommandLineTools* && -d /Applications/Xcode.app ]]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer

@@ -1,5 +1,4 @@
-//! Data-layer benchmarks on the real data, the twins of `parity/Sources/SwiftParity/main.swift bench` (same queries,
-//! same batches): lexicon lookups, language-model scoring, the keyboard channel and key-run decoding of 10, 25 and
+//! Data-layer benchmarks on the real data (the queries and batches the Swift engine was measured with, DESIGN.md §8.3): lexicon lookups, language-model scoring, the keyboard channel and key-run decoding of 10, 25 and
 //! 40 syllables.  Needs `ZHUYIN_DATA` and `ZHUYIN_PARITY_TEXT` (see `tests/golden.rs`); `ZHUYIN_TRIGRAM_LM` adds the
 //! trigram model.
 

@@ -439,6 +439,17 @@ pub enum LexiconSource<'a> {
     Text(&'a str),
 }
 
+/// `values` in an allocation of exactly their size, for the caches that keep them for the session (growing a vector
+/// leaves up to half of it spare, and shrinking in place may not return it).
+fn exact<T>(values: Vec<T>) -> Vec<T> {
+    if values.capacity() == values.len() {
+        return values;
+    }
+    let mut result = Vec::with_capacity(values.len());
+    result.extend(values);
+    result
+}
+
 /// The shared engine.
 pub struct Engine {
     config: EngineConfig,
@@ -783,7 +794,7 @@ impl Engine {
             state.entry_cache.clear();
             state.match_cache.clear();
         }
-        let result = Arc::new(result);
+        let result = Arc::new(exact(result));
         state.entry_cache.insert(reading.to_owned(), result.clone());
         result
     }
@@ -849,12 +860,13 @@ impl Engine {
             }
         }
         let syllables = &state.syllables;
-        let result = Arc::new(key_channel::alternatives(
+        let result = key_channel::alternatives(
             keys,
             self.config.hotspot,
             |typed, intended| discounts.get(&(typed, intended)).copied().unwrap_or(0.0),
             |code| syllables.valid_reading(code),
-        ));
+        );
+        let result = Arc::new(exact(result));
         if state.alternative_cache.len() >= 4096 {
             state.alternative_cache.clear();
         }
@@ -882,7 +894,7 @@ impl Engine {
         let matches = if let Some(cached) = cached {
             cached
         } else {
-            let built = Arc::new(self.build_matches(&span, typo, fuzzy));
+            let built = Arc::new(exact(self.build_matches(&span, typo, fuzzy)));
             let mut state = self.lock();
             if revision == state.revision {
                 if state.match_cache.len() >= 4096 {
@@ -947,7 +959,8 @@ impl Engine {
             }
             best.insert(key, (m, value));
         }
-        let mut matches: Vec<Match> = order_seen.into_iter().filter_map(|k| best.remove(&k).map(|b| b.0)).collect();
+        let mut matches: Vec<Match> = Vec::with_capacity(order_seen.len());
+        matches.extend(order_seen.into_iter().filter_map(|k| best.remove(&k).map(|b| b.0)));
         // A word is kept once per span and recall kind, so these keys order every match.
         matches.sort_by(|a, b| {
             a.range
@@ -996,10 +1009,21 @@ impl Engine {
             let total = cost + option.cost * typo.cost_multiplier();
             if count <= if index < 3 { 1 } else { 2 } {
                 let typed_reading: Arc<str> = typed[..=index].join(" ").into();
+                // Entries come grouped by the reading they were found under: one annotation per reading, shared.
+                let mut shared: Option<(String, Arc<str>)> = None;
                 for entry in self.entries(&next).iter() {
                     let mut entry = entry.clone();
-                    let annotation = (total > 0.0)
-                        .then(|| Arc::from(keyboard::plain(entry.reading.as_deref().unwrap_or(&next)).as_str()));
+                    let annotation = (total > 0.0).then(|| {
+                        let source = entry.reading.as_deref().unwrap_or(&next);
+                        match &shared {
+                            Some((reading, annotation)) if reading == source => annotation.clone(),
+                            _ => {
+                                let annotation: Arc<str> = Arc::from(keyboard::plain(source).as_str());
+                                shared = Some((source.to_owned(), annotation.clone()));
+                                annotation
+                            }
+                        }
+                    });
                     entry.recalled = entry.recalled && *typed_reading == *next;
                     entry.penalty += total;
                     result.push(Match { range: 0..index + 1, typed_reading: typed_reading.clone(), entry, annotation });
