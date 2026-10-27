@@ -1,13 +1,14 @@
-"""zt build: the engine command line and the macOS app (engine/swift, platforms/macos/scripts).
+"""zt build: the engine command line and the macOS app (engine/, platforms/macos/scripts).
 
-    zt build cli                      # zhuyin-cli and the engine checks, release (.build/release/)
+    zt build cli                      # zhuyin-cli, release (engine/target/release/; with ONNX Runtime on Linux)
     zt build cli --debug
+    zt build bench                    # EngineBench: the app's engine path with Core ML (macOS)
     zt build app                      # dist/ZhuyinType.app (macOS, needs Xcode)
     zt build install                  # build and install into ~/Library/Input Methods
     zt build pkg                      # dist/ZhuyinType-<version>.pkg
 
-SWIFT_SCRATCH_PATH moves the SwiftPM build directory (default .build); on Linux ONNXRUNTIME_ROOT names the ONNX
-Runtime SDK (default ~/opt/onnxruntime).
+CARGO_TARGET_DIR moves the engine's build directory (default engine/target), SWIFT_SCRATCH_PATH the app's (default
+.build); on Linux ONNXRUNTIME_ROOT names the ONNX Runtime SDK zhuyin-cli links (default ~/opt/onnxruntime).
 """
 
 from __future__ import annotations
@@ -31,10 +32,12 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     )
     targets = parser.add_subparsers(dest="target", metavar="TARGET")
 
-    cli = targets.add_parser("cli", help="zhuyin-cli and the engine checks (engine/swift)")
+    cli = targets.add_parser("cli", help="zhuyin-cli (engine/crates/zhuyin-cli)")
     cli.add_argument("--debug", action="store_true", help="debug build (default: release)")
-    cli.add_argument("--product", help="one product only, e.g. zhuyin-cli")
     cli.set_defaults(func=build_cli)
+
+    bench = targets.add_parser("bench", help="EngineBench, the app's engine path (macOS)")
+    bench.set_defaults(func=build_bench)
 
     app = targets.add_parser("app", help="dist/ZhuyinType.app (macOS)")
     app.add_argument("--debug", action="store_true", help="debug build (default: release)")
@@ -51,10 +54,21 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
 
 
 def build_cli(args: argparse.Namespace) -> int:
-    command = paths.swift_command(
-        "build", "-c", "debug" if args.debug else "release", *(["--product", args.product] if args.product else [])
-    )
-    return subprocess.run(command, env=paths.engine_env()).returncode
+    try:
+        print(paths.build_cli(debug=args.debug))
+    except subprocess.CalledProcessError as error:
+        return error.returncode
+    return 0
+
+
+def build_bench(_args: argparse.Namespace) -> int:
+    if sys.platform != "darwin":
+        raise SystemExit("zt: EngineBench builds on macOS only")
+    try:
+        print(paths.build_bench())
+    except subprocess.CalledProcessError as error:
+        return error.returncode
+    return 0
 
 
 def script(name: str, *args: str) -> int:

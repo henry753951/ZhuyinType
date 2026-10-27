@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 private final class FakeTextClient: TextClient {
     var bundleIdentifier = "org.zhuyintype.self-test"

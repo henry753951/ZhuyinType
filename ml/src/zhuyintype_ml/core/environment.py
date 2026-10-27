@@ -51,15 +51,23 @@ def check_uv() -> Check:
     )
 
 
+def check_cargo() -> Check:
+    """The engine is Rust; engine/rust-toolchain.toml pins the toolchain rustup installs."""
+    found = paths.find_cargo()
+    version = _version([found, "--version"]) if found else ""
+    return Check(
+        "cargo",
+        bool(version),
+        f"{version} ({found})" if version else "not found",
+        hint="install Rust with rustup: https://rustup.rs (user space; the engine pins its toolchain)",
+    )
+
+
 def check_swift() -> Check:
+    """Swift builds the macOS app."""
     found = paths.find_swift()
     version = _version([found, "--version"]) if found else ""
-    hint = (
-        "install Xcode from the App Store (Swift 6 ships with it)"
-        if sys.platform == "darwin"
-        else "install a Swift 6 toolchain from https://www.swift.org/install/linux/ into ~/opt/swift "
-        "(or put swift on PATH, or set ZT_SWIFT)"
-    )
+    hint = "install Xcode from the App Store (Swift 6 ships with it)"
     return Check("swift", bool(version), f"{version} ({found})" if version else "not found", hint=hint)
 
 
@@ -72,7 +80,7 @@ def check_xcode() -> Check:
         has_xcode,
         selected or "not found",
         required=False,
-        hint="install Xcode (needed for `zt build app`; the engine builds with the Command Line Tools)",
+        hint="install Xcode (needed for `zt build app`)",
     )
 
 
@@ -96,9 +104,9 @@ def check_tool(name: str, hint: str) -> Check:
 
 def checks() -> list[Check]:
     """Everything this platform needs, then optional tools."""
-    result = [check_uv(), check_swift(), check_tool("git", "install git")]
+    result = [check_uv(), check_cargo(), check_tool("git", "install git")]
     if sys.platform == "darwin":
-        result.append(check_xcode())
+        result += [check_swift(), check_xcode()]
     elif sys.platform == "linux":
         result.append(check_onnxruntime())
     result += [

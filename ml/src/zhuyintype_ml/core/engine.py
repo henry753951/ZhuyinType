@@ -8,9 +8,8 @@ A configuration is named, so results say what they measured:
 Extra zhuyin-cli options vary one setting against these.  Batch lines are independent (the CLI resets the composer
 and its learning per line unless --keep-memory), so a batch is split over parallel processes, one core each.
 
-Every process gets the same Swift hash seed (SWIFT_DETERMINISTIC_HASHING): the engine breaks some score ties in hash
-order, which is otherwise random per process, so the same keys could convert differently from run to run.  With a
-fixed seed, a result depends only on the input line, never on the process or the order of the lines.
+The engine breaks every score tie in a fixed order (engine/DESIGN.md §4), so a result depends only on the input line,
+never on the process or the order of the lines.
 """
 
 from __future__ import annotations
@@ -26,8 +25,8 @@ from typing import Any
 from . import paths
 
 CONFIGURATIONS = ("app", "engine")
-# One core per process (the pool provides the parallelism) and a fixed hash seed (see above).
-ENVIRONMENT = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "SWIFT_DETERMINISTIC_HASHING": "1"}
+# One core per process (the pool provides the parallelism).
+ENVIRONMENT = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
 
 
 @dataclass

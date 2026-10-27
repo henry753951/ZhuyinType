@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// `ZhuyinType --render-ui <dir>`: PNGs of the floating panels, every settings pane, the ⓘ cards and frames of each
 /// demo, light and dark, for reviewing the look without typing.  Everything is drawn offscreen into windows the user

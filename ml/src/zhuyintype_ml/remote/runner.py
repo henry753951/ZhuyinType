@@ -267,7 +267,7 @@ class RemoteRunner(Runner):
         for step in steps(argv, options):
             lines.append(f"echo {shlex.quote('[zt] zt ' + shlex.join(step))}")
             if step[:1] == ["setup"] and step != argv:
-                # A missing tool matters only to the commands that need it (Swift for evaluations, not for training).
+                # A missing tool matters only to the commands that need it (cargo for evaluations, not for training).
                 lines.append(f"tools/zt {shlex.join(step)} || echo '[zt] setup found missing tools (above)'")
             else:
                 lines.append(f"tools/zt {shlex.join(step)}")

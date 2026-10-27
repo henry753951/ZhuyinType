@@ -1,4 +1,5 @@
-# The macOS input method: engine checks on macOS, the app build, its self-test and packaging check.
+# The macOS input method: the engine's tests on macOS, the app build (with the Rust engine), its self-test and
+# packaging check.
 name: macOS
 
 on:
@@ -32,11 +33,14 @@ jobs:
           key: assets-app-${{ hashFiles('resources/assets.json') }}
       - run: tools/zt setup
       - run: tools/zt data fetch
-      - name: SwiftPM build cache
+      - name: Build caches (SwiftPM, cargo)
         uses: actions/cache@v6
         with:
-          path: .build
-          key: macos-${{ hashFiles('engine/swift/Package.swift', 'platforms/macos/Package.resolved', 'engine/swift/Sources/**', 'platforms/macos/Sources/**') }}
+          path: |
+            .build
+            ~/.cargo/registry
+            engine/target
+          key: macos-${{ hashFiles('engine/Cargo.lock', 'engine/rust-toolchain.toml', 'platforms/macos/Package.resolved', 'platforms/macos/Sources/**') }}
           restore-keys: macos-
       - run: tools/zt build cli
       - run: tools/zt check engine
