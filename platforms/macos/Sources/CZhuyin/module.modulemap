@@ -1,0 +1,5 @@
+// The Rust engine's C ABI (engine/crates/zhuyin-ffi).  The static library is linked by Package.swift.
+module CZhuyin [system] {
+    header "../../../../engine/crates/zhuyin-ffi/include/zhuyin.h"
+    export *
+}

@@ -29,4 +29,4 @@ lint:               ## ruff
 types:              ## mypy
 	tools/zt check types
 clean:
-	rm -rf dist .build .build-pkg
+	rm -rf dist .build .build-rust .build-pkg

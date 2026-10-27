@@ -3,7 +3,13 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 configuration=${1:-release}
 case "$configuration" in debug|release) ;; *) echo '用法：platforms/macos/scripts/build-app.sh [debug|release]' >&2; exit 2 ;; esac
-scratch=${SWIFT_SCRATCH_PATH:-.build}
+# ZHUYIN_ENGINE=rust: the app on the Rust engine (Package.swift), in its own build directory.
+if [[ "${ZHUYIN_ENGINE:-}" == rust ]]; then
+    scratch=${SWIFT_SCRATCH_PATH:-.build-rust}
+    cargo build --release --manifest-path engine/Cargo.toml -p zhuyin-ffi
+else
+    scratch=${SWIFT_SCRATCH_PATH:-.build}
+fi
 # SwiftUI's macros ship with Xcode, not with the Command Line Tools.
 if [[ -z "${DEVELOPER_DIR:-}" && "$(xcode-select -p)" == /Library/Developer/CommandLineTools* && -d /Applications/Xcode.app ]]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
