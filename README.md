@@ -112,21 +112,25 @@
 
 ## 從原始碼建置
 
-需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 make。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。
+需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
 
 ```sh
-python3 nlp/data/assets.py fetch   # 下載詞庫、語言模型與神經模型（依 nlp/data/assets.json 驗證雜湊）
-make app           # dist/ZhuyinType.app
-make install       # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
-make checks        # 引擎檢查
-make pkg           # dist/ZhuyinType-<版本>.pkg
+tools/zt setup           # 檢查並準備開發環境
+tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 nlp/data/assets.json 驗證雜湊）
+tools/zt build app       # dist/ZhuyinType.app
+tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
+tools/zt check engine    # 引擎檢查
+tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 ```
 
 | 目錄 | 內容 |
 |---|---|
+| `tools/` | `zt` 指令列，說明見 [tools/README.md](tools/README.md) |
 | `nlp/engine/` | 跨平台的引擎（Swift package）：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
-| `nlp/data/` | 詞庫工具、資料編譯、資料與模型的版本清單 |
-| `nlp/training/` | 每個模型與資料的訓練流程，`nlp/eval/` 是評測工具與每版評測 |
+| `nlp/common/`、`nlp/cli/` | 工具共用的核心模組與指令 |
+| `nlp/eval/` | 評測，見 [docs/EVALUATION.md](docs/EVALUATION.md) |
+| `nlp/training/` | 每個模型與資料的訓練流程（`tools/zt train list`） |
+| `nlp/data/`、`nlp/remote/` | 資料與模型的版本、詞庫建置；在 GPU 主機上執行 |
 | `clients/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
 | `docs/` | 設計、架構、模型、評測、規劃、研究、每版成績、發布說明 |
 
