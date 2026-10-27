@@ -1,4 +1,5 @@
-"""Compile the shipped data for mmap: lexicon.tsv → lexicon.bin (ZTLX/1), lm/ and lm_chat/ TSVs → lm.bin (ZTLM/1).
+"""Compile the shipped data for mmap: lexicon.tsv → lexicon.bin (ZTLX/1), lm/ and lm_chat/ TSVs → lm.bin (ZTLM/1),
+and the reading channel's channel.tsv and taiwan.tsv → channel.bin (ZTCB/1).
 
 Deterministic and offline: the same inputs give byte-identical binaries and JSON on the Mac and on Linux.  Reads
 SOURCE/lexicon.tsv, SOURCE/lm/{unigram,bigram,backoff}.tsv and the same three in SOURCE/lm_chat/; writes
@@ -27,6 +28,10 @@ from zhuyintype_ml.core import paths
 SPECIAL = ["</s>", "<s>", "<unk>"]
 LM_HEADER = struct.Struct("<4s5I5Q")
 LEX_HEADER = struct.Struct("<4s7I12Q")
+CHANNEL_HEADER = struct.Struct("<4s7I2d6Q")
+# channel.tsv's classes, in the order ZTCB/1 numbers them (resources/formats/reading-channel.md).
+CHANNEL_CLASSES = ("lexicon", "taiwan", "word", "attested", "cns", "unihan", "series", "interjection")
+CHANNEL_SOURCES = ("channel.tsv", "taiwan.tsv", "familiar.txt", "channel.json")
 
 
 def rows(path: Path, fields: int, spaces: bool = False) -> Iterator[tuple[Any, ...]]:
@@ -218,6 +223,74 @@ def compile_lexicon(source: Path, target: Path) -> None:
             "readings": len(readings),
             "entries": len(entries),
             "source_hashes": {"lexicon.tsv": digest(source)},
+        },
+    )
+
+
+def compile_channel(source: Path, target: Path) -> None:
+    """channel.tsv, taiwan.tsv, familiar.txt and channel.json's rates (`source`, `zt train lexicon channel`'s output)
+    as channel.bin (ZTCB/1).  Rows keep channel.tsv's order within a character: the engine sums them in it."""
+    by_char: dict[str, list[tuple[str, int, float]]] = {}
+    for line in (source / "channel.tsv").read_text(encoding="utf-8").split("\n"):
+        if not line or line.startswith("#"):
+            continue
+        char, reading, kind, logp, *_ = line.split("\t")
+        by_char.setdefault(char, []).append((reading, CHANNEL_CLASSES.index(kind), float(logp)))
+    taiwan = []
+    for line in (source / "taiwan.tsv").read_text(encoding="utf-8").split("\n"):
+        if line and not line.startswith("#"):
+            char, word_reading, taiwan_reading, strength, standard = line.split("\t")
+            taiwan.append((char, word_reading, taiwan_reading, float(strength), standard == "1"))
+    familiar = set((source / "familiar.txt").read_text(encoding="utf-8").strip())
+    rates = json.loads((source / "channel.json").read_text(encoding="utf-8"))
+    syllables = sorted(
+        {r for rows in by_char.values() for r, _, _ in rows} | {r for t in taiwan for r in t[1:3]}, key=str.encode
+    )
+    sid = {r: i for i, r in enumerate(syllables)}
+    blob = bytearray()
+    syllable_records = []
+    for r in syllables:
+        b = r.encode()
+        syllable_records.append((len(blob), len(b)))
+        blob.extend(b)
+    characters, rows = [], []
+    for char in sorted(by_char, key=str.encode):
+        characters.append((ord(char), len(rows), len(by_char[char]), int(char in familiar)))
+        rows.extend((logp, sid[r], kind) for r, kind, logp in by_char[char])
+    taiwan.sort(key=lambda t: (t[0].encode(), t[1].encode()))
+    taiwan_records = [(ord(c), sid[a], sid[b], int(standard), strength) for c, a, b, strength, standard in taiwan]
+    data = bytearray(CHANNEL_HEADER.size)
+    sections = [
+        section(data, pack_array("2I", syllable_records)),
+        section(data, pack_array("4I", characters)),
+        section(data, pack_array("d2I", rows)),
+        section(data, pack_array("4Id", taiwan_records)),
+        section(data, blob),
+    ]
+    data.extend(bytes(-len(data) % 8))
+    data[: CHANNEL_HEADER.size] = CHANNEL_HEADER.pack(
+        b"ZTCB",
+        1,
+        len(syllables),
+        len(characters),
+        len(rows),
+        len(taiwan_records),
+        0,
+        0,
+        rates["misread"],
+        rates["neutral_full_tone"],
+        *sections,
+        len(data),
+    )
+    publish(
+        target / "channel.bin",
+        data,
+        {
+            "format": "ZTCB/1",
+            "characters": len(characters),
+            "rows": len(rows),
+            "taiwan": len(taiwan_records),
+            "source_hashes": {name: digest(source / name) for name in CHANNEL_SOURCES},
         },
     )
 
