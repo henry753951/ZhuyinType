@@ -1,0 +1,128 @@
+{
+ "machine": "arm64",
+ "macos": "27.0.1",
+ "configuration": [
+  "--reranker",
+  "dist/ZhuyinType.app/Contents/Resources/reranker",
+  "--rerank-count",
+  "16",
+  "--v3",
+  "dist/ZhuyinType.app/Contents/Resources/v3",
+  "--v3-weight",
+  "0.5",
+  "--chat-lm",
+  "dist/ZhuyinType.app/Contents/Resources/lm_chat",
+  "--chat-prior",
+  "0.3"
+ ],
+ "median": {
+  "p50_ms": 24.2,
+  "p95_ms": 56.2,
+  "max_ms": 63.45,
+  "cpu_ms_per_key": 24.25,
+  "energy_mj_per_key": 0.0,
+  "memory_mb": 15.5
+ },
+ "sentences": [
+  {
+   "sentence": "今天晚上要不要一起吃飯",
+   "syllables": 11,
+   "p50_ms": 30.5,
+   "p95_ms": 62.8,
+   "max_ms": 214.5,
+   "cpu_ms_per_key": 26.5,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 74.0
+  },
+  {
+   "sentence": "我再一次跟你說",
+   "syllables": 7,
+   "p50_ms": 22.1,
+   "p95_ms": 55.5,
+   "max_ms": 64.3,
+   "cpu_ms_per_key": 22.7,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 12.0
+  },
+  {
+   "sentence": "你在哪裡",
+   "syllables": 4,
+   "p50_ms": 7.1,
+   "p95_ms": 18.3,
+   "max_ms": 18.3,
+   "cpu_ms_per_key": 7.6,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 10.0
+  },
+  {
+   "sentence": "明天下午三點開會",
+   "syllables": 8,
+   "p50_ms": 10.9,
+   "p95_ms": 26.5,
+   "max_ms": 30.8,
+   "cpu_ms_per_key": 12.2,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 12.0
+  },
+  {
+   "sentence": "這個問題我們晚點再討論",
+   "syllables": 11,
+   "p50_ms": 19.7,
+   "p95_ms": 40.1,
+   "max_ms": 40.3,
+   "cpu_ms_per_key": 19.0,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 15.0
+  },
+  {
+   "sentence": "我們明天下午三點在公司門口集合然後一起去吃晚餐好嗎",
+   "syllables": 25,
+   "p50_ms": 28.0,
+   "p95_ms": 70.7,
+   "max_ms": 89.6,
+   "cpu_ms_per_key": 32.2,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 21.0
+  },
+  {
+   "sentence": "根據氣象局的預報這個週末北部地區會有短暫陣雨",
+   "syllables": 22,
+   "p50_ms": 41.1,
+   "p95_ms": 76.9,
+   "max_ms": 93.7,
+   "cpu_ms_per_key": 40.5,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 22.0
+  },
+  {
+   "sentence": "請把上週的會議紀錄寄給我",
+   "syllables": 12,
+   "p50_ms": 25.1,
+   "p95_ms": 58.2,
+   "max_ms": 59.9,
+   "cpu_ms_per_key": 24.8,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 16.0
+  },
+  {
+   "sentence": "台北市政府今天宣布新的交通政策",
+   "syllables": 15,
+   "p50_ms": 26.6,
+   "p95_ms": 56.9,
+   "max_ms": 68.8,
+   "cpu_ms_per_key": 27.7,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 16.0
+  },
+  {
+   "sentence": "他說他已經到了正在找停車位",
+   "syllables": 13,
+   "p50_ms": 23.3,
+   "p95_ms": 54.1,
+   "max_ms": 62.6,
+   "cpu_ms_per_key": 23.7,
+   "energy_mj_per_key": 0.0,
+   "memory_mb": 14.0
+  }
+ ]
+}
