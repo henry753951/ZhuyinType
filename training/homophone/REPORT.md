@@ -1,3 +1,358 @@
+# Compatible continuation — 2026-10-27
+
+**Recommendation: do not adopt.** The licensed continuation improves aggregate
+在／再 accuracy but still outputs 在試試看 for 再試試看 and introduces
+我再吃一碗麵 for the previously correct 我在吃一碗麵. These are explicit development
+acceptance failures, regardless of aggregate significance. The targeted retry and
+one parameter-midpoint attempt do not preserve both eating examples either.
+The no-adoption decision was sealed before this run's test scoring; test only tracks.
+
+The delivered experimental bundle is `data/build/v3_homophone2/`, selected training
+step **500**, with both fp16 packages/compiled models, original vocabularies,
+configuration, vectors, PyTorch checkpoints, source notices and attribution.
+It is license-clean and interface-validated, **not a completed production fix**.
+The app, engine, release assets and original `data/build/v3` remain unchanged by this task.
+
+Checkpoint SHA256: `67955335d9d4b16fbc8faa329d12d71f87917eadec59690e268b0775af8ba51e`. Original starting checkpoint: `03c27edd7632e6fa650b656691219dd4dc3a7cc7e52a3fc1d7efb38905ffd133`; never the TRAIL-trained checkpoint.
+
+## Sources and exclusions
+
+No Taiwan Tongues source text enters either fine-tune stream. TT remains evaluation
+only. Reuse immutable Wikipedia/colloquial shards and cached chat2 real sources;
+no new generated pilot text or downloaded resampling. All paths below are relative
+to the repository; remote access uses `$ZHUYIN_REMOTE_HOST` / `$ZHUYIN_REMOTE_KEY`.
+
+| Eligible source pool | Candidates / input | Retained | License |
+| --- | --- | --- | --- |
+| Wikipedia + deduplicated legacy colloquial shards | 16,950,352 indexed examples | 5,407,644 | Wikipedia CC BY-SA 4.0; legacy Qwen3-8B / Common Voice lineage |
+| Legislative Yuan gazettes | 690,984 | 148,939 | OGDL v1; OpenFun LYAPI CC BY 4.0 |
+| Wikipedia talk | 17,474 | 6,916 | CC BY-SA 4.0 |
+| Common Voice sentence collector | 8,882 | 6,114 | CC0 1.0 |
+| Taiwan Tongues | Evaluation only | 0 training | Not a model source |
+
+Reject **11,542,708** indexed examples by whole-document exclusion. The
+supplement has **161,969 internally deduplicated clauses** (not an additional
+unique count across the legacy CV-containing shards). Independent rescan:
+**3,777,130 retained documents**, 5,407,644 indexed examples and 161,969
+supplemental clauses, **0 violations**. Filtering took 118.04 s.
+
+All 38 frozen evaluation files block heldout eight-character substrings and short
+actual sentences, including context/target joins, homophone dev/test, old TT
+holdouts, chat2 dialogue dev/test, smoke and every imported shanjie text. Check
+original, 台/臺-folded and encoded-UNK forms. Short context alone contributes
+only eight-grams. This is continuation exclusion; original pretraining may already
+contain later-created holdouts. Evaluation files remain byte-identical.
+
+Legacy colloquial/Common Voice source hashes match the compatible chat2 manifest.
+Agent reading of 24 deterministic initial 在/再 samples found no evident primary
+label error; one awkward inherited Wiki phrase was noted. This is not independent
+human annotation. Initial sampling also includes fixed words such as 再生能源.
+See `inputs.json`, `source-integrity.json`, `source-review.json`, `filtered.json`
+and `leakage-audit.json` under `data/build/homophone2/`.
+
+Licenses/attribution: [model NOTICE](../../data/build/v3_homophone2/NOTICE.md),
+`articles.tsv.gz`, `attribution.jsonl`, `source-manifest.json`, Qwen3-8B Apache-2.0
+license and the existing lexicon/Unicode/wordfreq notices are retained in the bundle.
+
+## Training and rejected follow-ups
+
+Original recipe: frozen context, AdamW 2e-5 (100-step warmup), batch 64,
+30% focused batches, half explicitly balanced primary 在/再, 3x confusion-position
+loss, unchanged augmentation and 30% context dropout. Four data workers.
+The compatible run replaces the old TT supplement with a 25% real-source draw in
+normal and explicitly primary-focused batches. Half the latter focus on initial
+characters. Check every 500 steps; select lowest primary dev NLL only if all eight
+original general-dev conditions lose at most 0.2 percentage points; stop after
+four non-improving checks. A 10,000-step cap was never reached.
+
+| Step | Primary dev NLL | Conditional primary accuracy | General gate | Selected |
+| --- | --- | --- | --- | --- |
+| 500 | 0.185696 | 92.89% | True | yes |
+| 1000 | 0.340019 | 87.37% | True |  |
+| 1500 | 0.204008 | 92.51% | True |  |
+| 2000 | 0.219059 | 91.45% | True |  |
+| 2500 | 0.310261 | 88.86% | True |  |
+
+Stop at 2,500; selected 500; training time 201.41 s. Baseline NLL 0.514428; conditional primary accuracy 82.56% → 92.89%. These model-only unions inject gold and are not decoder recall.
+
+| General model-only condition | Positions | Original | Continued | Delta pp |
+| --- | --- | --- | --- | --- |
+| colloquial-False-0.0 | 15837 | 95.05% | 95.43% | +0.38 |
+| colloquial-False-0.05 | 15837 | 94.85% | 95.20% | +0.35 |
+| colloquial-True-0.0 | 15837 | 94.86% | 95.19% | +0.33 |
+| colloquial-True-0.05 | 15837 | 94.65% | 94.98% | +0.33 |
+| wikipedia-False-0.0 | 60462 | 94.95% | 95.01% | +0.06 |
+| wikipedia-False-0.05 | 60462 | 94.76% | 94.82% | +0.06 |
+| wikipedia-True-0.0 | 60462 | 95.02% | 95.10% | +0.09 |
+| wikipedia-True-0.05 | 60462 | 94.84% | 94.92% | +0.09 |
+
+The targeted retry reuses exactly these allowed data, focusing on initial 再
+before verbs (109 shard + 187 real examples) and subject + 在 + verb
+(750 + 76). A prefix-only preparation (49 + 28 for 在) was
+archived before training; allowing preceding clause text corrected that coverage.
+Three known requested examples are model-only development gates, excluded from
+gradient training and not unseen confirmation evidence.
+Retry stop: 3,000; selected 1,000; 249.25 s.
+
+| Retry step | NLL | General + guard admissible | 再試 / 我再吃 / 我在吃麵 guards |
+| --- | --- | --- | --- |
+| 500 | 0.252763 | False | True / True / False |
+| 1000 | 0.346597 | True | True / True / True |
+| 1500 | 0.251791 | False | True / True / False |
+| 2000 | 0.197358 | False | True / True / False |
+| 2500 | 0.210847 | False | True / True / False |
+| 3000 | 0.328445 | False | True / True / False |
+
+The midpoint uses original/continued decoder parameters equally, identical frozen
+context and vocabularies, no additional gradient training and no coefficient sweep.
+All eight original general gates pass; conditional primary accuracy
+89.29%, NLL 0.292398.
+Its full dev primary accuracy is 88.38% / 92.80% without/with context, versus
+85.69% / 91.07% baseline, but it retains the same protected eating regression.
+Neither follow-up opens the homophone test sets.
+
+A fast-probe mistake is retained explicitly: `conversion_eval --reranker` injects
+reranker weight 1, whereas today's frozen CLI default is 0.5. Early fast probes
+are **not app-configuration evidence**. Corrected probes pin 0.5 and reproduce the
+failures below. All full matrices used 0.5 throughout; the adapter now pins it.
+
+| Known dev target | Current v3 | Full continuation | Targeted retry (corrected) | Midpoint (corrected) |
+| --- | --- | --- | --- | --- |
+| 再試試看 | 在試試看 | 在試試看 | 在試試看 | 在試試看 |
+| 我再吃一碗 | exact | exact | 我在吃一碗 | exact |
+| 我在吃一碗麵 | exact | 我再吃一碗麵 | exact | 我再吃一碗麵 |
+
+The two short three-character rows are absent from the 16-run conversion probes;
+the formal homophone smoke includes all 18 rows / 19 primary positions.
+Full-continuation smoke: 18/19 → 17/19 primary positions; 16/18 → 15/18 whole sentences.
+在啦幹 → 在拉幹 remains a non-primary spelling error. A model-only correct 再試試看
+is not end-to-end success: it survives as n-best #2, raw scores -21.401834 (在)
+versus -22.013088 (再), neural scores -21.117 versus -20.917; the fixed app stack
+still commits 在. No engine/reranker/chat-prior change is made to hide this failure.
+
+## Current-app paired evaluation
+
+Same frozen engine and data throughout: reranker count 16, **reranker weight 0.5**,
+v3 weight 0.5, chat LM `data/build/lm_chat` at prior 0.3, default gate τ=8,
+standard keyboard/typo handling. Linux ONNX CPU via a temporary copy of
+`training/remote_eval/run.sh`, `REMOTE_DIR=zhuyintype/work/onnx-eval-homophone3`.
+JOBS=24 for baseline dev, 40 for candidate/full final rows, never above 40.
+No selected checkpoint changes after the dev decision. Do not compare these
+numbers directly with historical experiment 1's different engine/configuration.
+
+Paired statistics use `training/eval/stats.py`: exact McNemar, 10,000 paired
+bootstrap samples, seed 7; homophone bootstrap clusters by source/line,
+other sets by row. Category tests are exploratory; McNemar itself is unclustered.
+Position scoring uses edit alignment (deletion wrong); whole-sentence accuracy is exact.
+Category priority remains fixed word > subject > initial > verb > place/time > other.
+
+### Primary dev
+
+| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| --- | --- | --- | --- | --- | --- |
+| All | 1041 | 85.69% | 90.68% | 91.07% | 94.33% |
+| Non-fixed | 842 | 82.90% | 89.07% | 89.55% | 93.47% |
+| 在 | 536 | 100.00% | 100.00% | 100.00% | 100.00% |
+| 再 | 505 | 70.50% | 80.79% | 81.58% | 88.32% |
+| Fixed word | 199 | 97.49% | 97.49% | 97.49% | 97.99% |
+| After subject | 158 | 94.30% | 94.94% | 94.94% | 94.94% |
+| Initial | 163 | 62.58% | 79.14% | 85.28% | 93.87% |
+| Before verb | 156 | 91.03% | 93.59% | 94.23% | 94.87% |
+| Before place/time | 157 | 94.90% | 95.54% | 94.90% | 96.18% |
+| Other | 208 | 75.00% | 84.13% | 81.25% | 88.94% |
+| Whole sentence | 1000 | 67.10% | 71.30% | 74.20% | 76.70% |
+
+| Context | Subset | N | Old → new | Fixed/broken | Delta pp | 95% CI pp | p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | all | 1041 | 85.69% → 90.68% | 52/0 | +5.00 | [+3.71, +6.36] | 4.441e-16 |
+| 0 | char_category:再:initial | 118 | 48.31% → 71.19% | 27/0 | +22.88 | [+15.38, +30.77] | 1.49e-08 |
+| 0 | char_category:在:after_subject | 145 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
+| 1 | all | 1041 | 91.07% → 94.33% | 34/0 | +3.27 | [+2.21, +4.41] | 1.164e-10 |
+| 1 | char_category:再:initial | 118 | 79.66% → 91.53% | 14/0 | +11.86 | [+5.98, +17.95] | 0.0001221 |
+| 1 | char_category:在:after_subject | 145 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
+
+### Primary test
+
+| Subset | N | Old 0 | New 0 | Old 1 | New 1 |
+| --- | --- | --- | --- | --- | --- |
+| All | 1051 | 87.44% | 91.53% | 92.20% | 94.67% |
+| Non-fixed | 851 | 85.08% | 90.01% | 90.83% | 93.89% |
+| 在 | 543 | 99.82% | 99.82% | 99.82% | 99.82% |
+| 再 | 508 | 74.21% | 82.68% | 84.06% | 89.17% |
+| Fixed word | 200 | 97.50% | 98.00% | 98.00% | 98.00% |
+| After subject | 157 | 94.90% | 94.90% | 95.54% | 95.54% |
+| Initial | 165 | 63.03% | 78.79% | 83.03% | 90.30% |
+| Before verb | 154 | 93.51% | 95.45% | 92.86% | 96.10% |
+| Before place/time | 159 | 96.23% | 97.48% | 97.48% | 98.74% |
+| Other | 216 | 80.56% | 85.65% | 87.04% | 90.28% |
+| Whole sentence | 1000 | 68.30% | 71.50% | 74.80% | 77.00% |
+
+| Context | Subset | N | Old → new | Fixed/broken | Delta pp | 95% CI pp | p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | all | 1051 | 87.44% → 91.53% | 43/0 | +4.09 | [+2.92, +5.35] | 2.274e-13 |
+| 0 | char_category:再:initial | 118 | 48.31% → 70.34% | 26/0 | +22.03 | [+14.41, +29.66] | 2.98e-08 |
+| 0 | char_category:在:after_subject | 144 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
+| 1 | all | 1051 | 92.20% → 94.67% | 26/0 | +2.47 | [+1.54, +3.45] | 2.98e-08 |
+| 1 | char_category:再:initial | 118 | 76.27% → 86.44% | 12/0 | +10.17 | [+5.08, +16.10] | 0.0004883 |
+| 1 | char_category:在:after_subject | 144 | 100.00% → 100.00% | 0/0 | +0.00 | [+0.00, +0.00] | 1 |
+
+### General dev and external rows
+
+| Set | N | Exact | Variants | Fixed/broken exact | Exact delta CI pp | p |
+| --- | --- | --- | --- | --- | --- | --- |
+| colloquial | 400 | 87.00% → 87.00% | 87.00% → 87.00% | 4/4 | [-1.25, +1.50] | 1 |
+| wikipedia | 400 | 83.75% → 84.00% | 83.75% → 84.00% | 4/3 | [-1.00, +1.50] | 1 |
+| chat_tt | 400 | 71.25% → 70.75% | 85.50% → 85.00% | 0/2 | [-1.25, +0.00] | 0.5 |
+| colloquial_smoke | 68 | 100.00% → 100.00% | 100.00% → 100.00% | 0/0 | [+0.00, +0.00] | 1 |
+| dev302 | 266 | 81.58% → 81.20% | 84.21% → 83.83% | 2/3 | [-2.26, +1.13] | 1 |
+| typing76 | 49 | 83.67% → 85.71% | 83.67% → 85.71% | 1/0 | [+0.00, +6.12] | 1 |
+
+Shanjie common-character normalization, dev302: 86.09% → 85.71%. Shanjie common-character normalization, typing76: 95.92% → 95.92%. No external full variants dictionary is supplied. Clean rows contain 266/49 examples, not the original 302/76. Wiki uses line context; each large general set uses 400 runs, seed 7; colloquial smoke has 68 runs. No significant general improvement or noninferiority claim follows from these small samples.
+
+### Secondary groups
+
+| Split | Group | Positions | Old 0 | New 0 | Old 1 | New 1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| dev | 做作 | 243 | 83.95% | 84.36% | 85.19% | 84.77% |
+| dev | 已以 | 263 | 92.02% | 92.78% | 93.54% | 93.92% |
+| dev | 他她它 | 307 | 65.80% | 65.15% | 72.64% | 71.34% |
+| dev | 像向象項 | 176 | 89.20% | 88.64% | 90.91% | 90.34% |
+| dev | 須需 | 130 | 74.62% | 73.85% | 74.62% | 72.31% |
+| dev | 帳賬 | 115 | 48.70% | 49.57% | 51.30% | 48.70% |
+| dev | 份分 | 128 | 67.19% | 67.97% | 67.97% | 67.19% |
+| dev | 的得 | 1029 | 96.21% | 96.40% | 96.60% | 96.60% |
+| dev | 吧巴 | 133 | 94.74% | 93.98% | 96.99% | 96.24% |
+| dev | 嗎嘛 | 110 | 92.73% | 92.73% | 92.73% | 92.73% |
+| dev | 那哪 | 105 | 99.05% | 99.05% | 99.05% | 99.05% |
+| dev | 到道 | 231 | 97.84% | 97.40% | 97.84% | 97.40% |
+| dev | 是事 | 386 | 94.30% | 95.08% | 94.30% | 95.34% |
+| dev | 時實 | 296 | 90.88% | 90.54% | 90.88% | 91.55% |
+| dev | 試式 | 176 | 75.00% | 75.00% | 77.27% | 77.84% |
+| dev | 受授 | 127 | 96.06% | 96.85% | 95.28% | 96.85% |
+| dev | 權全 | 169 | 95.27% | 95.27% | 95.27% | 95.27% |
+| dev | 利力 | 218 | 91.74% | 91.28% | 88.99% | 88.99% |
+| dev | 治制 | 156 | 86.54% | 86.54% | 87.82% | 88.46% |
+| dev | 記紀 | 123 | 79.67% | 77.24% | 82.93% | 82.93% |
+| dev | 竟競 | 51 | 92.16% | 92.16% | 92.16% | 92.16% |
+| dev | 帶戴 | 122 | 89.34% | 90.16% | 90.16% | 89.34% |
+| dev | 副付 | 105 | 88.57% | 88.57% | 91.43% | 90.48% |
+| dev | 坐座 | 98 | 87.76% | 88.78% | 88.78% | 89.80% |
+| dev | 候後 | 187 | 98.93% | 98.93% | 98.93% | 98.93% |
+| dev | 里裡 | 157 | 85.35% | 87.90% | 86.62% | 89.81% |
+| dev | ALL | 5341 | 88.50% | 88.62% | 89.48% | 89.48% |
+| dev | NON-FIXED | 3475 | 85.27% | 85.32% | 86.59% | 86.71% |
+| test | 做作 | 245 | 84.49% | 84.49% | 85.31% | 85.31% |
+| test | 已以 | 253 | 93.28% | 92.89% | 93.28% | 93.68% |
+| test | 他她它 | 308 | 65.58% | 66.23% | 72.08% | 72.08% |
+| test | 像向象項 | 192 | 91.15% | 91.67% | 92.71% | 93.23% |
+| test | 須需 | 140 | 75.71% | 78.57% | 77.14% | 77.14% |
+| test | 帳賬 | 111 | 49.55% | 53.15% | 54.05% | 57.66% |
+| test | 份分 | 123 | 69.11% | 66.67% | 67.48% | 66.67% |
+| test | 的得 | 1026 | 95.61% | 95.61% | 95.81% | 95.91% |
+| test | 吧巴 | 138 | 98.55% | 98.55% | 98.55% | 98.55% |
+| test | 嗎嘛 | 110 | 96.36% | 95.45% | 96.36% | 96.36% |
+| test | 那哪 | 108 | 98.15% | 98.15% | 98.15% | 98.15% |
+| test | 到道 | 258 | 96.12% | 96.12% | 97.67% | 97.67% |
+| test | 是事 | 395 | 92.41% | 92.91% | 93.16% | 93.42% |
+| test | 時實 | 295 | 91.53% | 92.54% | 93.90% | 94.58% |
+| test | 試式 | 176 | 79.55% | 80.11% | 82.39% | 82.95% |
+| test | 受授 | 135 | 95.56% | 95.56% | 97.04% | 97.04% |
+| test | 權全 | 181 | 92.27% | 92.27% | 94.48% | 95.03% |
+| test | 利力 | 196 | 86.22% | 86.73% | 87.76% | 88.27% |
+| test | 治制 | 151 | 85.43% | 87.42% | 88.74% | 88.74% |
+| test | 記紀 | 131 | 81.68% | 81.68% | 83.21% | 83.21% |
+| test | 竟競 | 57 | 91.23% | 91.23% | 89.47% | 89.47% |
+| test | 帶戴 | 129 | 88.37% | 87.60% | 86.82% | 88.37% |
+| test | 副付 | 110 | 91.82% | 90.91% | 93.64% | 92.73% |
+| test | 坐座 | 100 | 93.00% | 94.00% | 95.00% | 95.00% |
+| test | 候後 | 195 | 98.97% | 98.97% | 98.97% | 98.97% |
+| test | 里裡 | 180 | 85.00% | 85.00% | 86.67% | 86.67% |
+| test | ALL | 5443 | 88.65% | 88.92% | 89.95% | 90.19% |
+| test | NON-FIXED | 3553 | 85.39% | 85.70% | 87.22% | 87.50% |
+
+
+| Secondary split | Context | Fixed/broken | Delta pp | 95% CI pp | p |
+| --- | --- | --- | --- | --- | --- |
+| dev | 0 | 27/21 | +0.11 | [-0.13, +0.37] | 0.4709 |
+| dev | 1 | 25/25 | +0.00 | [-0.26, +0.26] | 1 |
+| test | 0 | 31/16 | +0.28 | [+0.04, +0.53] | 0.03999 |
+| test | 1 | 23/10 | +0.24 | [+0.04, +0.44] | 0.03508 |
+
+Full group/category counts and ordered predictions are retained in `results/*.json`; paired category/character intervals in `paired-*.positions.json`, whole-sentence/variant/CER statistics in `paired-*.json`. Secondary changes include both gains and regressions.
+
+## Core ML and real-output parity
+
+| Model | Max logprob error | Max memory error | Max probability error | Synthetic argmax flips |
+| --- | --- | --- | --- | --- |
+| Original | 0.072990417 | 0.089843750 | 0.013366759 | 2/504 |
+| Delivered continuation | 0.082813263 | 0.093750000 | 0.010225266 | 5/504 |
+| Rejected midpoint | 0.073307037 | 0.093750000 | 0.007131398 | 4/504 |
+
+Same upstream fp16 exporter, macOS 14 target, Xcode coremlcompiler via
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`. The original 20 vector
+inputs are unchanged; expected outputs come from each Core ML package. Swift
+`--check-v3`: **20/20**, largest difference **4.33680869e-19**. This is an interface
+check, not an independent PyTorch numerical check. The saved-output audits above
+are independent and use the original v3 as calibration; all delivered cases also
+meet the historical 0.1 numerical bound. ONNX/PyTorch: 20 cases, max difference
+**0.0000181198**, shape/padding/finite/normalization checks pass.
+
+The single-use real-output check uses 397 frozen Wiki inputs plus the three known
+critical smoke inputs (400 total), all with saved Linux ONNX outputs. The original
+control uses the full 400 Wiki inputs: **396/400 (99.00%)** identical. Delivered
+candidate: **395/400 (98.75%)**. On the 397 shared Wiki inputs, original is
+**393/397 (98.99%)**, candidate **392/397 (98.74%)**. Only one divergence overlaps;
+three old ones disappear and four new ones appear. Wiki exact-correct counts:
+original **332 Linux / 332 Mac**, candidate **333 Linux / 329 Mac**. Thus four
+Linux-correct Wiki decisions become Mac-wrong for this candidate. All **53**
+primary target positions in shared Wiki runs and the **3** critical outputs agree
+across platforms; the critical outputs still include both known errors. Parity
+is not accuracy approval. Full-stack comparison includes the unchanged reranker's
+fp16/fp32 differences too; do not attribute every difference to v3 alone.
+
+Artifacts: `mac-*-parity.json`, `mac-parity-summary.json`, `coreml-*-audit.json`,
+`onnx-chosen-audit.json`, `check-v3.log`, `export-manifest.json`. Binary lexicon and
+both LMs were rebuilt in an experiment-only Mac directory; all three hashes match
+Linux. No Mac corpus selection/training, app installation/UI or latency test.
+
+## Execution and integrity
+
+Baseline test SSH closed after its first completed row; the remote driver continued
+through three complete raw prediction rows, then stopped while reporting progress.
+No last-row start log existed. Audited recovery verified the sealed manifest,
+CLI/model/input hashes and raw commands, retained the three predictions, rebuilt
+missing sidecars and decoded only the never-started final row. No sealed decode
+was replayed. The compatible dispatcher now uses nohup, a new session, PID receipt
+and logs in `~/zhuyintype/logs/`; recovery refuses an already-started incomplete row.
+Both final completion seals are retained. Final `/proc` inspection finds no owned
+evaluator/model-server processes in the isolated workspace (`final-process-audit.json`).
+No model/test retuning follows.
+
+Sampled host MemAvailable stayed at least 63 GiB; this is not a continuous peak
+measurement. No owned OOM or broad process-name kill. Initial slow sync was stopped
+by verified local rsync PID before evaluation; hash-identical remote weights seeded
+the workspace. Initial regression-test failures were missing old-layout remote
+helper files; syncing the current evaluator dependencies fixed them.
+
+Remote: Python 3.12.15, Torch 2.13.0+cu130, ONNX Runtime 1.24.4, Swift 6.4.1,
+uv 0.13.5. Mac: Python 3.12.14, Torch 2.7.0, coremltools 9.0, NumPy 2.3.5,
+Swift 6.4. The new isolated venv reuses existing site-packages read-only; no
+package/tool installs or lockfile/global-default changes. Nine inherited and
+four focused regression checks pass, including source routing, paired identity,
+cluster bootstrap, test guards, nohup dispatch and incomplete-row replay refusal.
+
+Code changes are confined to `training/homophone/`; no engine/client/docs/release
+workflow/asset-manifest edits, app deployment, Git commit/push/stash/reset/checkout
+by this task. Other workspace changes are preserved. Reproduction: [README.md](README.md).
+
+The observed gains support further research, not promotion of this checkpoint:
+keep the current v3 until the protected conversational regression and the remaining
+initial 再 failure are resolved under the same exact app configuration.
+
+---
+
+# Historical experiment 1
+
 # Homophone continuation report
 
 Dev-selected candidate: **unchanged v2b + continued v3, weight 1, rerank count 16**.

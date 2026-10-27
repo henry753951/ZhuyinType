@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import os
 
 from common import OUT, ROOT, digest, save
 
@@ -13,6 +14,21 @@ NEW = {'v3-new': (None,'v3_homophone'), 'v2b-v3-new': ('reranker','v3_homophone'
 
 
 def main():
+    if 'compatible' in sys.argv[1:]:
+        sys.argv.remove('compatible')
+        directory=Path.home()/'zhuyintype/logs'
+        directory.mkdir(parents=True,exist_ok=True)
+        (ROOT/'data/build/remote_eval').mkdir(parents=True,exist_ok=True)
+        log=directory/f'homophone-compatible-{os.getpid()}.log'
+        with log.open('x') as output:
+            child=subprocess.Popen(['nohup',sys.executable,'-u',str(Path(__file__).with_name('ship_eval.py')),
+                                    *sys.argv[1:]],stdin=subprocess.DEVNULL,stdout=output,
+                                   stderr=subprocess.STDOUT,start_new_session=True)
+            (ROOT/'data/build/remote_eval/compatible-evaluation.pid').write_text(str(child.pid)+'\n')
+            print(f'nohup evaluation PID {child.pid}; log {log}',flush=True)
+            status=child.wait()
+        if status: raise SystemExit(status)
+        return
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('phase',choices=['baseline','new','reranker','final'])
     p.add_argument('--cli', type=Path, required=True)

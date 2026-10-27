@@ -1,5 +1,129 @@
 # Homophone continuation
 
+## Compatible rerun (v3_homophone2)
+
+The delivered `v3_homophone2` is the original-recipe 500-step compatible candidate.
+**Do not adopt it:** the current app stack still regresses 我在吃一碗麵 and does not
+fix 再試試看. It starts from original `data/build/v3`, never the TRAIL-trained
+checkpoint. Alternative targeted and midpoint attempts are rejected on dev.
+Results and the shipping recommendation are in REPORT.md. Historical
+instructions below describe experiment 1 only; do not reuse its TT sampler or
+60-worker setting for the compatible rerun.
+
+On the GPU host, using the existing environments (no dependency installation):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 .venv-gen/bin/python training/homophone/compatible.py test
+PYTHONDONTWRITEBYTECODE=1 .venv-gen/bin/python training/homophone/compatible.py prepare --workers 4
+PYTHONDONTWRITEBYTECODE=1 .venv-gen/bin/python training/homophone/test_compatible.py
+nohup env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+  .venv-gen/bin/python -u training/homophone/train_v3.py --compatible \
+  --out data/build/homophone2 --model data/build/v3_homophone2 --steps 10000 \
+  > logs/homophone2-train.log 2>&1 < /dev/null &
+```
+
+`compatible.py prepare` refuses an existing output directory. It filters immutable
+Wikipedia/colloquial shards, reserves chat2 documents, labels complete real-source
+clauses, and independently rescans retained documents and context-target joins.
+It records input and holdout hashes. Evaluation-only TT and all imported shanjie
+texts block training. Short context alone contributes eight-grams, not substrings.
+Normal batches also draw 25% real-source examples. Half the primary-focused batches
+target sentence-initial characters, balanced between 在 and 再; the other sampling,
+loss, augmentation, frozen context and dev-plateau rules remain unchanged.
+
+On the Mac, `run_compatible.py baseline dev` then `chosen dev` invoke a temporary
+copy of the current shared runner with `REMOTE_DIR=zhuyintype/work/onnx-eval-homophone3`,
+`V3_MODEL=v3|v3_homophone2`, ONNX CPU, JOBS=24 by default (environment override up to 40), and the frozen current engine snapshot
+in `data/build/homophone2_snapshot`. The isolated environment reuses the existing
+portable and Torch site-packages read-only. Each evaluation phase is single-use;
+inspect any partial result before an explicitly audited recovery. Never overlap
+runner invocations in this workspace. The compatible dispatcher uses nohup in a
+new session with logs under ~/zhuyintype/logs and a PID receipt under
+remote_eval/compatible-evaluation.pid. A dropped SSH client does not authorize
+replaying sealed rows: inspect completion seals and the owned process first.
+After certifying that no evaluator remains, `RECOVER_TEST=1` permits only exact
+manifest/cache reuse and rows with no start log; a started row lacking complete
+raw predictions is never replayed. Derived sidecars can be rebuilt without decoding. Match the current app: reranker count 16 and weight 0.5,
+v3 weight 0.5, chat prior 0.3, default reranker gate 8. Each evaluation row waits
+for at least 48 GiB available host RAM. Baseline and chosen ordered outputs feed
+`training/eval/stats.py` (paired bootstrap and exact McNemar; source-line clusters
+for homophone intervals). `choice2.json` locks the checkpoint; both dev completion
+seals and `dev-decision.json` are required before
+`baseline test` and `chosen test`, once per role/context. The old test sets remain
+byte-identical; they never drive checkpoint selection.
+
+After the dev choice, `export_v3.py --compatible` uses the unchanged upstream fp16
+exporter and Xcode compiler, preserves attribution/component licenses, and emits
+the original 20 interface cases. `check_onnx.py --coreml-vectors ... --diagnostic`
+records the original and new models' saved Core ML versus PyTorch differences
+without applying the historical fixed 0.1 bound. This diagnostic does not assert
+numerical equivalence: compare its magnitudes and argmax flips against original
+v3, then check the same saved 400 real dev inputs on the Mac CLI as the authorized
+one-off parity check. Keep `--check-v3` and independent numerical/real-output
+checks distinct. This task does not modify release assets or install the app.
+
+## Controlled follow-ups
+
+The first compatible checkpoint improves primary dev but repeats the known
+aspect/repetition regression. `compatible.py target` creates `homophone2b` by
+reusing the same allowed indexes/real clauses and adding focused subsets:
+sentence-initial 再 before verbs, and subject + 在 + verb anywhere in a clause.
+No new training text is generated. The midpoint also retains the same
+我在吃一碗麵 regression at reranker weight 0.5 and is rejected. The initial prefix-only subset was archived
+before training because it omitted clauses with preceding conjunctions.
+
+```sh
+# GPU host, after the compatible preparation above:
+.venv-gen/bin/python training/homophone/compatible.py target
+nohup env PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+  .venv-gen/bin/python -u training/homophone/train_v3.py --compatible --targeted \
+  --out data/build/homophone2b --model data/build/v3_homophone2b --steps 10000 \
+  > logs/homophone2b-train.log 2>&1 < /dev/null &
+.venv-gen/bin/python training/homophone/stabilize.py
+```
+
+The targeted retry additionally gates selection on model-only primary decisions
+for the three known requested examples: 再試試看, 我再吃一碗, 我在吃一碗麵. These are
+explicit development guards, excluded from gradient training; they are not unseen
+confirmation evidence. Model-only success does not establish app success: the
+retry regresses 我再吃一碗 at the current app weight 0.5 and is rejected. Early
+fast probes accidentally used conversion_eval's reranker default 1; they are
+archived separately and excluded from the app-configuration comparison. All
+formal matrices used the CLI default 0.5; the adapter now pins it explicitly.
+
+`stabilize.py` checks exactly one parameter midpoint between original v3 and the
+first licensed continuation. It asserts identical vocabularies, tensor shapes and
+frozen context, finite output weights, parent-selection identity, then measures
+all eight original general-dev conditions on the GPU host. It changes no app
+scoring flag. `stabilization.json` identifies both parents and the 0.5 coefficient.
+The app still uses v3 weight 0.5. This is an additional stabilization step, not the
+unchanged historical recipe or a coefficient sweep.
+
+For `homophone2_stable`, reuse certified baseline results only after matching the
+CLI, model, lexicon/LM and evaluation hashes; keep them in that run's `results/`
+with `baseline-dev-complete.json`. From the Mac:
+
+```sh
+JOBS=40 data/build/v3/.venv/bin/python training/homophone/run_compatible.py chosen dev homophone2_stable
+# The midpoint is rejected on dev; neither alternative opens test.
+# Freeze the default homophone2 dev decision, then score each role once:
+JOBS=40 data/build/v3/.venv/bin/python training/homophone/run_compatible.py baseline test
+JOBS=40 data/build/v3/.venv/bin/python training/homophone/run_compatible.py chosen test
+# Mac export/check and single-use parity for the delivered default candidate:
+data/build/v3/.venv/bin/python training/homophone/export_v3.py --compatible
+.build-codex5/release/zhuyin-cli --check-v3 data/build/v3_homophone2
+data/build/v3/.venv/bin/python training/homophone/mac_parity.py chosen
+```
+
+The parity command is single-use, runs 400 saved Linux inputs: the first 397 frozen Wikipedia runs
+with line context plus the three known critical smoke inputs, and asserts that the delivered checkpoint matches the
+selected run. Its temporary lexicon/LM binaries are rebuilt under `homophone2/`
+and hash-match the Linux binaries. The original-v3 control retains all 400 Wiki inputs (397 shared with the final check).
+Never run Mac corpus evaluation for checkpoint selection. 再試試看 remains a known
+failure in the midpoint probe; see REPORT.md for the final measured recommendation.
+
+## Historical experiment 1
+
 Dev-selected candidate: unchanged v2b + `data/build/v3_homophone`, v3 weight 1,
 rerank count 16. `data/build/homophone/choice.json` is immutable. See REPORT.md for
 measurements, rejected attempts and limitations. Do not repeat sealed test runs.

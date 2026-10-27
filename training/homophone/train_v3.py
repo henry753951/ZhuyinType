@@ -6,44 +6,64 @@ import time
 import argparse
 import shutil
 import sys
+from pathlib import Path
+import re
 
 import numpy as np
 import torch
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, IterableDataset
 
-from common import BASE, OUT, ROOT, jsonl, save, v3
+from common import BASE, OUT, ROOT, VERBS, jsonl, save, v3
+
+
+def target_text(text, char):
+    if char=='再':
+        return len(text)>1 and text.startswith('再') and text[1] in VERBS
+    return bool(re.search(r'(?:我|我們|你|妳|你們|他|她|他們|她們|大家)在[吃喝說講做玩睡洗讀寫聽看唱跳]',text))
 
 
 class Batches(IterableDataset):
-    def __init__(self, batch):
-        self.batch = batch
+    def __init__(self, batch, directory=OUT, compatible=False, targeted=False):
+        self.batch, self.directory, self.compatible, self.targeted = batch, directory, compatible, targeted
 
     def __iter__(self):
         from dataset import Builder, Shard, collate
         worker = torch.utils.data.get_worker_info()
         rng = random.Random(812 + (worker.id if worker else 0))
         builder = Builder()
-        manifest = json.loads((OUT/'filtered.json').read_text())['shards']
-        groups = json.loads((OUT/'inventory.json').read_text())['kept']
-        tt = list(jsonl(OUT/'tt-train.jsonl'))
+        directory = self.directory
+        manifest = json.loads((directory/'filtered.json').read_text())['shards']
+        groups = json.loads((directory/'inventory.json').read_text())['kept']
+        tt = list(jsonl(directory/('real-train.jsonl' if self.compatible else 'tt-train.jsonl')))
         tt_by_char = {c:[r for r in tt if c in r['text']] for c in '在再'}
+        initial = {c:[r for r in tt if r['text'].startswith(c)] for c in '在再'}
+        targeted = {c:[r for r in tt if target_text(r['text'],c)] for c in '在再'} if self.targeted else {}
         load = lru_cache(maxsize=8)(Shard)
         @lru_cache(maxsize=512)
         def index(name, group):
-            return np.load(OUT/'filtered'/f'{name}.{group}.npy', mmap_mode='r')
+            return np.load(directory/'filtered'/f'{name}.{group}.npy', mmap_mode='r')
         while True:
             group = 'normal'
             if rng.random() < .3:
                 group = 'primary-'+rng.choice('在再') if rng.random() < .5 else rng.choice(groups)['chars']
+                if self.compatible and group.startswith('primary-') and rng.random()<.5:
+                    group = ('target-' if self.targeted else 'initial-')+group[-1]
             weights = [(r['allowed'] if group=='normal' else r['groups'][group]) *
                        (2 if r['name'].startswith('colloquial') else 1) for r in manifest]
             examples = []
             for _ in range(self.batch):
-                tt_pool = tt_by_char[group[-1]] if group.startswith('primary-') else []
+                if group.startswith('target-'):
+                    tt_pool = targeted[group[-1]]
+                elif group.startswith('initial-'):
+                    tt_pool = initial[group[-1]]
+                elif group.startswith('primary-'):
+                    tt_pool = tt_by_char[group[-1]]
+                else:
+                    tt_pool = tt if self.compatible and group=='normal' else []
                 if tt_pool and rng.random()<.25:
                     row = rng.choice(tt_pool)
-                    examples.append(builder.example(row['text'],[tuple(r) for r in row['readings']], '', rng))
+                    examples.append(builder.example(row['text'],[tuple(r) for r in row['readings']], row.get('context',''), rng))
                     continue
                 row = rng.choices(manifest, weights)[0]
                 shard = load(row['name'])
@@ -65,15 +85,21 @@ def predict(context, model, builder, batch):
     return scores, candidates, target
 
 
-def homophone_cases(builder):
+def homophone_cases(builder, directory=OUT, guards=False):
     from readings import load_poly
     poly, labels = load_poly()
     cases = []
-    for i,row in enumerate(jsonl(OUT/'dev_zai.jsonl')):
+    for i,row in enumerate(jsonl(directory/'dev_zai.jsonl')):
         readings,_ = builder.lex.label(row['text'],poly,builder.chars,labels)
         for enabled in [False,True]:
             e = builder.example(row['text'],readings,row['context'] if enabled else '', random.Random(i),rate=0,augment=False)
             e['focus'] = [p['index'] for p in row['positions'] if p['group']=='在再']
+            cases.append(e)
+    if guards:
+        for text in ['再試試看','我再吃一碗','我在吃一碗麵']:
+            readings,_ = builder.lex.label(text,poly,builder.chars,labels)
+            e=builder.example(text,readings,'',random.Random(29),rate=0,augment=False)
+            e.update(focus=[i for i,c in enumerate(text) if c in '在再'],guard=text)
             cases.append(e)
     return cases
 
@@ -82,15 +108,20 @@ def homophone_cases(builder):
 def score(context, model, builder, focused, general):
     model.eval()
     nll,total,correct = 0.,0,0
+    guards = {}
     for offset in range(0,len(focused),16):
         batch = focused[offset:offset+16]
         scores,candidates,target = predict(context,model,builder,batch)
         for i,e in enumerate(batch):
+            if 'guard' in e:
+                guards[e['guard']]=all(scores[i,j].argmax().item()==target[i,j].item() for j in e['focus'])
+                continue
             for j in e['focus']:
                 nll -= scores[i,j,target[i,j]].item()
                 correct += scores[i,j].argmax().item() == target[i,j].item()
                 total += 1
     result = dict(zai_nll=nll/total, zai_accuracy=correct/total, general={})
+    if guards: result['guards']=guards
     for key,cases in general.items():
         hits,n = 0,0
         for offset in range(0,len(cases),16):
@@ -107,11 +138,17 @@ def score(context, model, builder, focused, general):
 
 
 def main():
+    global OUT
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--steps',type=int,default=6000)
     p.add_argument('--batch',type=int,default=64)
     p.add_argument('--eval-every',type=int,default=500)
+    p.add_argument('--out',type=Path,default=OUT)
+    p.add_argument('--model',type=Path,default=ROOT/'data/build/v3_homophone')
+    p.add_argument('--compatible',action='store_true',help='Use only real-train supplement and balanced sentence-initial batches.')
+    p.add_argument('--targeted',action='store_true',help='Focus initial 再 before verbs and subject + 在 + verb; require protected dev decisions.')
     args = p.parse_args()
+    OUT = args.out.resolve()
     assert sys.platform == 'linux', 'Training and model evaluation run remotely.'
     assert not (OUT/'v3-training.json').exists(), 'Inspect existing training before explicitly resuming.'
     v3()
@@ -123,20 +160,21 @@ def main():
     context,model = load_models(BASE/'syllable.pt','cuda')
     context.requires_grad_(False).eval()
     builder = Builder()
-    focused = homophone_cases(builder)
+    assert not args.targeted or args.compatible
+    focused = homophone_cases(builder,OUT,args.targeted)
     general = {f'{domain}-{ctx}-{noise}': list(cases(builder,domain,ctx,noise))
                for domain in ['colloquial','wikipedia'] for ctx in [False,True] for noise in [0.,.05]}
     baseline = score(context,model,builder,focused,general)
     save(OUT/'v3-baseline.json',baseline)
     print('baseline',json.dumps(baseline),flush=True)
     optimizer = torch.optim.AdamW(model.parameters(),lr=2e-5,weight_decay=.1,betas=(.9,.95),fused=True)
-    stream = iter(DataLoader(Batches(args.batch),batch_size=None,num_workers=6,pin_memory=True,prefetch_factor=2))
+    stream = iter(DataLoader(Batches(args.batch,OUT,args.compatible,args.targeted),batch_size=None,num_workers=4,pin_memory=True,prefetch_factor=2))
     inventory = json.loads((OUT/'inventory.json').read_text())['kept']
     focus_ids = torch.tensor([builder.chars[c] for g in inventory for c in g['chars']],device='cuda')
     history,best,stale,best_step = [],baseline['zai_nll'],0,0
     started = time.monotonic()
-    destination = ROOT/'data/build/v3_homophone'
-    destination.mkdir(exist_ok=True)
+    destination = args.model
+    destination.mkdir(exist_ok=False)
     for name in ['context.pt','chars.json','syllables.json','config.json']:
         shutil.copy2(BASE/name,destination/name)
     for step in range(1,args.steps+1):
@@ -164,6 +202,7 @@ def main():
         if step%args.eval_every==0:
             metrics = score(context,model,builder,focused,general)
             admissible = all(metrics['general'][k]['accuracy'] >= baseline['general'][k]['accuracy']-.002 for k in general)
+            admissible = admissible and all(metrics.get('guards',{}).values())
             improved = admissible and metrics['zai_nll'] < best-.001
             if improved:
                 best,stale,best_step = metrics['zai_nll'],0,step

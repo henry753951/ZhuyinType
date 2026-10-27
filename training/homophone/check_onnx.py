@@ -18,6 +18,7 @@ def main():
     p.add_argument('--v3',type=Path,required=True)
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--coreml-vectors',type=Path,help='Check saved Mac export outputs; execute no Core ML here.')
+    p.add_argument('--diagnostic',action='store_true',help='Record fp16 differences for baseline calibration without applying the inherited 0.1 bound.')
     args=p.parse_args()
     assert sys.platform=='linux'
     v3()
@@ -78,7 +79,7 @@ def main():
                        positions=int(actual.shape[1]),within_reference_tolerance=delta<=.1 and memory_delta<=.1)
         rows.append(row)
     save(args.output,dict(cases=rows,maximum=max(r['max_abs_error'] for r in rows)))
-    if args.coreml_vectors:
+    if args.coreml_vectors and not args.diagnostic:
         assert all(r['within_reference_tolerance'] for r in rows), f'Core ML fp16 exceeds reference fp32 tolerance; full audit saved to {args.output}'
 
 
