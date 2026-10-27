@@ -191,7 +191,7 @@ struct KeysPane: View {
             return [
                 KeyItem(id: "zhuyin", title: "拼注音", subtitle: "固定：注音鍵的位置依標準注音鍵盤", keys: .fixed(["注音鍵"])),
                 KeyItem(id: "tones", title: "聲調：二聲、三聲、四聲、輕聲", subtitle: "固定", keys: .fixed(["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"])),
-                KeyItem(id: "space", title: "空白", subtitle: (space == .openCandidates ? "打完注音後開啟候選字視窗" : "打完注音後送出並輸入空白")
+                KeyItem(id: "space", title: "空白", subtitle: OptionDemos.spaceSubtitle(space).replacingOccurrences(of: "，再按空白", with: "")
                         + "；打注音時是一聲", keys: .fixed(["空白"]), link: ("在「打字」設定", SettingsPlace(.typing, row: SettingsRow.space))),
                 KeyItem(id: "commit", title: "送出", subtitle: "固定", keys: .fixed(["Return"])),
                 KeyItem(id: "newline", title: "送出並換行", keys: .command(.commitWithNewline)),
