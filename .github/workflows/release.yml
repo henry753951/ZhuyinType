@@ -69,7 +69,7 @@ jobs:
       - name: Speed, energy and memory on this Mac
         run: |
           swift build -c release --package-path nlp/engine --scratch-path .build --product zhuyin-cli
-          python3 training/eval/mac_metrics.py --cli .build/release/zhuyin-cli \
+          python3 nlp/eval/mac_metrics.py --cli .build/release/zhuyin-cli \
             --engine-data dist/ZhuyinType.app/Contents/Resources --out dist/release/metrics-mac.json
       - name: Publish
         run: |

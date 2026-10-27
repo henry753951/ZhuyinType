@@ -1,4 +1,4 @@
-# ZhuyinType: the shared engine (nlp/engine), its data and evaluation (nlp/, training/), and the macOS client
+# ZhuyinType: the shared engine (nlp/engine), its data, training and evaluation (nlp/), and the macOS client
 # (clients/macos).  Every target runs from the repository root.
 .PHONY: lexicon data app debug-app install pkg checks cli clean
 

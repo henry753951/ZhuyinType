@@ -6,7 +6,7 @@ import Foundation
 /// The v3 character model: a causal context encoder run once per composition, and a bidirectional syllable encoder
 /// that, for every syllable of the composition, gives log P(character | all syllables, the text before) over the
 /// characters it may be.  The engine adds these scores to its word lattice.  Model files and vocabularies come from
-/// training/v3 (data/build/v3/config.json).
+/// nlp/training/v3 (data/build/v3/config.json).
 public final class SyllableScorer: @unchecked Sendable {
     /// One syllable of the composition as the model reads it.
     public struct Syllable: Equatable {
@@ -163,7 +163,7 @@ public final class SyllableScorer: @unchecked Sendable {
         #endif
     }
 
-    /// Runs the model on raw ids (for checking against training/v3 test vectors).
+    /// Runs the model on raw ids (for checking against nlp/training/v3 test vectors).
     public func rawScores(contextIDs: [Int32], syllableIDs: [Int32], tones: [Int32], costs: [Int32], boundaries: [Int32],
                           candidates: [[Int32]]) throws -> [[Double]] {
         if let remotePrediction {

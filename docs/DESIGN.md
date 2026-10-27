@@ -154,7 +154,7 @@ macos-ZhuyinType/
 ├── Resources/            App 資訊、圖示、在地化、授權與安裝頁面
 ├── scripts/              建置、安裝、移除、pkg 腳本與封裝檢查
 ├── data/                 詞庫來源、建置資料與轉換工具
-├── training/             模型訓練、匯出與評測（見 training/README.md）
+├── nlp/training/             模型訓練、匯出與評測（見 nlp/training/README.md）
 └── docs/                 設計、架構、模型、評測、規劃與文案文件
 ```
 

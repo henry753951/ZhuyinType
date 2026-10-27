@@ -111,8 +111,8 @@ flowchart LR
 
 | 內容 | 位置（app bundle `Contents/Resources/`） | 載入 |
 |---|---|---|
-| 詞庫 `lexicon.bin` | 根目錄 | mmap，不解析（格式見 `training/lm/LEXICON_FORMAT.md`） |
-| 百科語言模型 | `lm/lm.bin` | mmap（ZTLM/1，`training/lm/FORMAT.md`） |
+| 詞庫 `lexicon.bin` | 根目錄 | mmap，不解析（格式見 `nlp/training/lm/LEXICON_FORMAT.md`） |
+| 百科語言模型 | `lm/lm.bin` | mmap（ZTLM/1，`nlp/training/lm/FORMAT.md`） |
 | 聊天語言模型 | `lm_chat/lm.bin` | mmap；有這個目錄時和百科模型混合 |
 | v2b 整句重排 | `reranker/Reranker.mlmodelc`、`vocab.json`、`config.json` | Core ML，只用 CPU |
 | v3 字模型 | `v3/{ContextEncoder,SyllableEncoder}.mlmodelc`、`chars.json`、`syllables.json` | Core ML，只用 CPU；前文編碼結果依前文快取 |
@@ -132,10 +132,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    D["語料<br/>維基百科、台灣口語、Taiwan Tongues"] --> T["training/*<br/>H100 訓練"]
+    D["語料<br/>維基百科、台灣口語、Taiwan Tongues"] --> T["nlp/training/*<br/>H100 訓練"]
     T --> B["data/build/*<br/>TSV、Core ML"]
     B --> CLI["zhuyin-cli<br/>與 app 同一份引擎"]
-    CLI --> E["training/eval/*<br/>開發集調參數"]
+    CLI --> E["nlp/eval/*<br/>開發集調參數"]
     E --> X["測試集驗收一次"]
     X --> APP["clients/macos/scripts/release.sh<br/>pkg、Sparkle"]
 ```

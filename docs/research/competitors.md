@@ -53,4 +53,4 @@
 - 善解自己的開發集上差 1.7 分，但不顯著（p = 0.44）；其餘不是打平就是顯著領先。真人打錯的句子領先 24 分，來自按錯鍵修正。
 - 善解的原生評測有 69 段找不到解碼路徑（讀音不在它的詞庫），計為錯誤；報告另附可解碼子集的比較。
 - 只用引擎時我們在善解的集合上明顯較弱（dev302 66.6% 對善解 89.1%），再次指向統計底子（[program.md](program.md) A1）。
-- 引進的評測集（CC0 為主，已排除和我們訓練資料重疊的列）在 `training/eval/sets/external/shanjie/`，以 `training/eval/rows_eval.py` 執行，成對比較用 `training/eval/stats.py`。
+- 引進的評測集（CC0 為主，已排除和我們訓練資料重疊的列）在 `nlp/eval/sets/external/shanjie/`，以 `nlp/eval/rows_eval.py` 執行，成對比較用 `nlp/eval/stats.py`。

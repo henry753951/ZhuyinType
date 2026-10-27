@@ -19,16 +19,16 @@ __pycache__/
 *.pyc
 
 # Data: downloads and everything generated from them (lexicon, corpora, language models, Core ML and ONNX models,
-# checkpoints, evaluation outputs). Each training/ directory documents how to rebuild its outputs.
+# checkpoints, evaluation outputs). Each nlp/training/ directory documents how to rebuild its outputs.
 data/raw/
 data/build/
 
 # Training, inference and evaluation outputs written next to the code
-training/**/results/
-training/**/work/
-training/**/logs/
-training/**/outputs/
-training/**/checkpoints/
+nlp/**/results/
+nlp/**/work/
+nlp/**/logs/
+nlp/**/outputs/
+nlp/**/checkpoints/
 *.log
 
 # Model files, wherever they end up
@@ -46,7 +46,7 @@ training/**/checkpoints/
 
 # Agent run logs
 .codex-logs/
-training/remote_eval/run.*-snapshot.sh
+nlp/remote/run.*-snapshot.sh
 
 # Downloaded build tools (Sparkle CLI)
 .tools/

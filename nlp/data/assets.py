@@ -33,12 +33,14 @@ COMPONENTS = {
     "reranker": ["reranker/Reranker.mlmodelc", "reranker/RerankerTree.mlmodelc", "reranker/vocab.json",
                  "reranker/config.json"],
     "v3": ["v3/ContextEncoder.mlmodelc", "v3/SyllableEncoder.mlmodelc", "v3/chars.json", "v3/syllables.json",
-           "v3/config.json"],
+           "v3/config.json", "v3/NOTICE.md", "v3/attribution.jsonl", "v3/source-manifest.json", "v3/Licenses"],
     "eval-sets": ["corpus/dev_colloquial.txt", "corpus/dev_wikipedia.txt", "corpus/test_colloquial.txt",
                   "lm/test_sentences.txt", "lm_chat/dev_chat_tt.txt", "lm_chat/test_chat_tt.txt",
                   # The Taiwan Tongues sets are derived data: their terms travel with them.
                   "lm_chat/Taiwan-Tongues-LICENSE", "lm_chat/Taiwan-Tongues-README.md"],
-    "checkpoints": ["reranker/charlm.pt", "v3/context.pt", "v3/syllable.pt", "v3/test_vectors.json"],
+    "checkpoints": ["reranker/charlm.pt", "v3/context.pt", "v3/syllable.pt", "v3/test_vectors.json",
+                    # The Wikipedia article list the v3 training text came from (its attribution).
+                    "v3/articles.tsv.gz"],
 }
 APP = ["lexicon", "lm", "lm_chat", "reranker", "v3"]
 

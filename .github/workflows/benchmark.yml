@@ -37,12 +37,12 @@ jobs:
           ref: ${{ inputs.ref || inputs.version }}
           clean: false
       - name: ZhuyinBench
-        run: training/eval/bench/run.sh "$VERSION" ${{ inputs.quick && '--quick' || '' }}
+        run: nlp/eval/bench/run.sh "$VERSION" ${{ inputs.quick && '--quick' || '' }}
       - name: Mac metrics from the release
         run: |
           gh release download "$VERSION" --pattern metrics-mac.json --output "docs/benchmarks/$VERSION-mac.json" --clobber \
             || echo "No metrics-mac.json on the release"
-          python3 training/eval/bench/history.py
+          python3 nlp/eval/bench/history.py
       - name: Publish results
         if: startsWith(inputs.version, 'v') && !inputs.quick
         run: |

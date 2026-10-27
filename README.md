@@ -60,7 +60,7 @@ make pkg           # dist/ZhuyinType-<版本>.pkg
 |---|---|
 | `nlp/engine/` | 跨平台的引擎（Swift package）：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
 | `nlp/data/` | 詞庫工具、資料編譯、資料與模型的版本清單 |
-| `training/` | 每個模型與資料的訓練流程，`training/eval/` 是評測工具與每版評測 |
+| `nlp/training/` | 每個模型與資料的訓練流程，`nlp/eval/` 是評測工具與每版評測 |
 | `clients/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
 | `docs/` | 設計、架構、模型、評測、規劃、研究、每版成績、發布說明 |
 
@@ -84,7 +84,7 @@ make pkg           # dist/ZhuyinType-<版本>.pkg
 | [規劃](docs/ROADMAP.md) | 開發階段、下一步與待決事項 |
 | [研究](docs/research/) | 研究紀錄、與其他注音輸入法的對打、超越計畫 |
 | [每版成績](docs/benchmarks/) | 每個版本在同一套評測（ZhuyinBench）上的結果 |
-| [訓練](training/README.md) | 各模型的訓練流程與產物 |
+| [訓練](nlp/training/README.md) | 各模型的訓練流程與產物 |
 | [文案準則](docs/WRITING.md) | 介面與文件用語 |
 
 ## 資料與授權

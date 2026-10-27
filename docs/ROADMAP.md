@@ -48,7 +48,7 @@
 
 ### 2.2 同音字：在／再
 - **為什麼**：在、再都念 ㄗㄞˋ，選錯很刺眼。目前整句重排已經能處理大部分，句首（「再試試看」）與「在／再 + 動詞」（我在吃／我再吃一碗）仍會錯。
-- **怎麼做**（`training/homophone/`）：
+- **怎麼做**（`nlp/training/homophone/`）：
   1. 從維基百科、口語語料與 Taiwan Tongues 挖出含在、再的句子，依位置分類（詞內、代名詞後、句首、動詞前、地點時間前、其他）。
   2. 開發與測試集各約 1,000 句，在／再大致各半，每個標籤由規則與語言模型雙重確認，人工抽查 100 句。
   3. 同一套方法延伸到其他常見同音字（做／作、已／以、他／她／它、像／向／象……）。
@@ -66,9 +66,9 @@
 | Linux | ZhuyinCore（Swift for Linux） | ONNX Runtime（CPU；需要時 CUDA／OpenVINO） | fcitx5 或 IBus，經由 C ABI 呼叫引擎 |
 | Windows | ZhuyinCore（Swift for Windows） | ONNX Runtime（DirectML 或 CPU） | TSF，經由 C ABI 呼叫引擎 |
 
-- **怎麼做**：ZhuyinCore 與 zhuyin-cli 在 Linux 編譯；模型另外匯出 ONNX，Swift 透過 ONNX Runtime C API 呼叫，模型呼叫的介面保持精簡，讓每個平台分別調校；所有評測工具與參數掃描在遠端以全部核心執行；引擎的 C ABI 與各平台打包方式寫成計畫（`training/remote_eval/PORTING.md`）。
+- **怎麼做**：ZhuyinCore 與 zhuyin-cli 在 Linux 編譯；模型另外匯出 ONNX，Swift 透過 ONNX Runtime C API 呼叫，模型呼叫的介面保持精簡，讓每個平台分別調校；所有評測工具與參數掃描在遠端以全部核心執行；引擎的 C ABI 與各平台打包方式寫成計畫（`nlp/remote/PORTING.md`）。
 - **完成標準**：同一組評測在 Mac 與遠端的輸出不同的行數不超過 1%；macOS 的建置、行為與速度不變；整組參數掃描比 Mac 明顯快。
-- **狀態**：遠端評測完成（`training/remote_eval/`）：Swift 6.4.1 與 ONNX Runtime 1.24.4 裝在 GPU 主機上，四種評測工具與參數掃描都能用全部核心執行；驗證時 Mac 1,174 秒、遠端 CPU 610 秒、遠端 GPU 393 秒，輸出差異 10／6,000 行。引擎的 C ABI 與 Linux／Windows 輸入法介面還沒開始，計畫在 `training/remote_eval/PORTING.md`。
+- **狀態**：遠端評測完成（`nlp/remote/`）：Swift 6.4.1 與 ONNX Runtime 1.24.4 裝在 GPU 主機上，四種評測工具與參數掃描都能用全部核心執行；驗證時 Mac 1,174 秒、遠端 CPU 610 秒、遠端 GPU 393 秒，輸出差異 10／6,000 行。引擎的 C ABI 與 Linux／Windows 輸入法介面還沒開始，計畫在 `nlp/remote/PORTING.md`。
 
 ## 3. 0.5–0.7 規劃：免選字、補標點、補全
 

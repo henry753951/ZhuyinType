@@ -38,7 +38,7 @@ cp -X nlp/data/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
 if [[ -f data/build/reranker/vocab.json && -d data/build/reranker/Reranker.mlmodelc ]]; then
     mkdir -p "$contents/Resources/reranker"
     cp -R -X data/build/reranker/Reranker.mlmodelc "$contents/Resources/reranker/"
-    # The same weights scoring the candidates as one prefix tree (used when present; see training/reranker/REPORT_tree.md).
+    # The same weights scoring the candidates as one prefix tree (used when present; see nlp/training/reranker/REPORT_tree.md).
     [[ -d data/build/reranker/RerankerTree.mlmodelc ]] && cp -R -X data/build/reranker/RerankerTree.mlmodelc "$contents/Resources/reranker/"
     cp -X data/build/reranker/vocab.json data/build/reranker/config.json "$contents/Resources/reranker/"
 fi
@@ -62,6 +62,10 @@ if [[ -d data/build/v3/ContextEncoder.mlmodelc && -d data/build/v3/SyllableEncod
     mkdir -p "$contents/Resources/v3"
     cp -R -X data/build/v3/ContextEncoder.mlmodelc data/build/v3/SyllableEncoder.mlmodelc "$contents/Resources/v3/"
     cp -X data/build/v3/{chars,syllables,config}.json "$contents/Resources/v3/"
+    # Attribution for the training text (the article list itself is in the checkpoints asset).
+    for notice in NOTICE.md attribution.jsonl source-manifest.json Licenses; do
+        [[ -e data/build/v3/$notice ]] && cp -R -X data/build/v3/$notice "$contents/Resources/v3/"
+    done
 fi
 # What this build ships: version and the SHA-256 of every data and model file, so an installed copy can be checked and
 # updates can be told apart from the running one.

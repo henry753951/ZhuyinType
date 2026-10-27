@@ -85,7 +85,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         KeyDecoder.costs.swapApart = values[6]; KeyDecoder.costs.skipApart = values[7]
         arguments.removeFirst(2)
     case "--check-v3":
-        // Compares the v3 Core ML models with training/v3's golden outputs, then exits.
+        // Compares the v3 Core ML models with nlp/training/v3's golden outputs, then exits.
         guard arguments.count >= 2 else { fail(usage) }
         let directory = URL(fileURLWithPath: arguments[1])
         do {

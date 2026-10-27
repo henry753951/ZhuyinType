@@ -19,8 +19,8 @@ On top of the lattice, a 14M-parameter character-LM reranker ("會意") rescores
 
 **Status column** (ZhuyinType): **have**, **have better**, **lack**, **n/a**, or **verify** (I could not confirm from our docs or code). I checked several claims against our code:
 - `nlp/engine/Sources/ZhuyinCore/Conversion.swift` decodes with an LM-history state and includes the end score when ranking.
-- `training/eval/stats.py` already does exact McNemar, paired bootstrap, a Poisson break bound, MDE and clusters.
-- `training/eval/rows_eval.py` reports oracle@16 and CER, and applies Shanjie-style variant folds.
+- `nlp/eval/stats.py` already does exact McNemar, paired bootstrap, a Poisson break bound, MDE and clusters.
+- `nlp/eval/rows_eval.py` reports oracle@16 and CER, and applies Shanjie-style variant folds.
 - The pkg installs to `/Library/Input Methods`.
 - `RecallKind` has four kinds: whole, span, typo and phrase.
 
@@ -86,7 +86,7 @@ Paths in the "Files" column are relative to `references/shanjie/`. Dates are 202
 | B8 | 10-13 | Recombine by (string, last word) | The decoder had kept one path per surface string (夏來分析). | lytune and discordtune better in 4/4 cells (p ≤ 0.017); n-best has fewer distinct strings. | `docs/contracts/dec-recombine.md` | have (Conversion state = LM history; ranks include `endScore`) | we already do this |
 | B9 | S2c | Pinned-word gaps | Decode each gap between pinned words with the left pin as history and the transition into the right pin as the end term. | Shipped with a must-fail test. | `core/src/engine.rs` | verify (FixedWord path) | adopt as a test |
 | B10 | 10-11 | P1a: 在/再 confusion classifier | Sparse linear classifier added as s+μf. | 再>在 errors 11→10 (needed halving); +0.05 pp. Bugs: ln vs log10 (μ 2.30× too big) and a class-capped prior. | `docs/contracts/p1a-confusion.md` | n/a | skip; adopt the checklist: same log base, remove the training prior |
-| B11 | 10-13 | Function-character homophone set (fw) | 在/再, 作/做, 以/已, 是/試 across 6 sets. 作說明 is acceptable formal usage. | Reranker vs n-gram 30/1, but fw still 23/94 wrong (margin below δ). | fw set | partial (`training/homophone/`) | adopt: score legitimate alternatives as correct |
+| B11 | 10-13 | Function-character homophone set (fw) | 在/再, 作/做, 以/已, 是/試 across 6 sets. 作說明 is acceptable formal usage. | Reranker vs n-gram 30/1, but fw still 23/94 wrong (margin below δ). | fw set | partial (`nlp/training/homophone/`) | adopt: score legitimate alternatives as correct |
 | B12 | 10-14 | Fuzzy input with three gates | G0 only when nothing parses; G1 after the exact top-5; G2 in the lattice with δ. δ chosen with clean-input breaks ≤0.5%. | Fuzzy-sound top-1 91–95%. Tone 62–67%. Adjacent key broke 4/76 clean sentences (5.3%). | `docs/contracts/fuzzy-research.md` | have better (KeyDecoder, KeyChannel, exact-first margin) | we lead; adopt the split into legal-reading vs illegal-reading errors |
 | B13 | 10-15 / 10-10 | Initials-only abbreviation | E3 whole-sentence initials-only; V3 optional finals. | Top-1 ratio 0.789/0.808 (<0.9); oracle@64 289/300; 148 ms/row. Device test: keys got stuck, so hidden. | `docs/contracts/v3-engine.md` §12 | lack | skip |
 | B14 | 10-18 | E-C: joint retune of decoder weights and fusion | λ, KN β, trigram floor, α/τ/δ tuned together. | Best cell only +5; other cells swap rows (UB 0.67–2.67%). | `experiments/e-c/` | have (tuned) | note: retuning rarely pays |
@@ -177,7 +177,7 @@ Paths in the "Files" column are relative to `references/shanjie/`. Dates are 202
 
 | # | Date | Name | What they did | Result | Files | ZT status | Verdict |
 |---|---|---|---|---|---|---|---|
-| H1 | 10-03/08 | Paired per-row statistics | `--rowstats`; exact McNemar; CER; paired bootstrap CIs. Resolution table (dev302 needs 2.3 pp). | Standard since 10-08. | `tools/evalstats.py` | have (`training/eval/stats.py`, `rows_eval.py`) | we have it |
+| H1 | 10-03/08 | Paired per-row statistics | `--rowstats`; exact McNemar; CER; paired bootstrap CIs. Resolution table (dev302 needs 2.3 pp). | Standard since 10-08. | `tools/evalstats.py` | have (`nlp/eval/stats.py`, `rows_eval.py`) | we have it |
 | H2 | 10-03 | Lenient variants (MOE 也作/亦作) | 2,072 same-reading variants plus 8 folds (她→他 etc.), fixed from the dictionary, not chosen from eval errors. | Shanjie 83.4 / macOS 88.2 / McBopomofo 76.6 / 自然 72.2 (Discord 845). | `eval/variants.tsv` | have (`--shanjie-variants`) | have; beware it hid a 它/他 error |
 | H3 | 10-03 | Head-to-head vs other IMEs | Typed the same keys into Apple, McBopomofo and 自然. Apple learned 847 of its 2,647 learned phrases from the tests themselves. | macOS built-in was best. | `tools/imetype.swift`, `docs/typing-test.md` | lack | adopt: clean VM account each minor release |
 | H4 | 10-05 | Challenge sets mislead | dev302 (LLM- and project-written) vs real chat. | Apple judge dev302 +27 vs discordtune −81; Qwen3 +35 vs −17. | `docs/methodology.md` §2 | have (dev/test) | adopt the rule: decide on real-register sets |
