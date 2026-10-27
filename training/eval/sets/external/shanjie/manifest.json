@@ -1,0 +1,216 @@
+{
+  "commit": "bd3b6095e170012e5675b15b9443786a04103790",
+  "files": [
+    {
+      "file": "eval/bench/suite-v1/dev302.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/dev302.txt",
+      "sha256": "603850e444efee38b8c121e3d666d6c540acd3a27d5a6a5070a78a962dd98456",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/bench/suite-v1/dev302.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/dev302.txt",
+      "sha256": "d68d7996eecf834d30cd3219ae10285b7615202567cec4b4fc9208566389dc6c",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 302,
+      "dropped_rows": 36,
+      "kept_rows": 266
+    },
+    {
+      "file": "eval/bench/suite-v1/typing76.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/typing76.txt",
+      "sha256": "c061f66dfade21996803137320aa986a81a3e72e3e4e1dd559abd5dc04b68d08",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/bench/suite-v1/typing76.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/typing76.txt",
+      "sha256": "4b82c95fe7955c44f47c62ffff2d50a7f8d6cb4d28f6913044730c561efdbc7f",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 76,
+      "dropped_rows": 27,
+      "kept_rows": 49
+    },
+    {
+      "file": "eval/bench/suite-v1/probe.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/probe.txt",
+      "sha256": "75aac33877ddd7907cdd6789c6da6a0f3b7c775c8c6dfa6c752a5f3e87ab6801",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/bench/suite-v1/probe.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v1/probe.txt",
+      "sha256": "06cdc0e9f77d05ece3279ad1232a45ef79c645d579b53484e09f6274dacf00c9",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 83,
+      "dropped_rows": 12,
+      "kept_rows": 71
+    },
+    {
+      "file": "eval/bench/suite-v2/user-reported.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v2/user-reported.txt",
+      "sha256": "9fd08e50f13eccea94a76faf5260e7edcf49826bd3dcf7ba4e2cf6de17bcce9a",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/bench/suite-v2/user-reported.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v2/user-reported.txt",
+      "sha256": "00b972fd2e41fe2755c993642eb093003f9c96e9ae966c52e87992bfdef95ab0",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 80,
+      "dropped_rows": 3,
+      "kept_rows": 77
+    },
+    {
+      "file": "eval/bench/suite-v2/fw.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v2/fw.txt",
+      "sha256": "6b853a329aee569ad51c731d6f188541b9670e9617838725f45a26d57845d18d",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/bench/suite-v2/fw.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/bench/suite-v2/fw.txt",
+      "sha256": "dc1501ed53b02970789340f44910e9de989033eff399d5283108ee1c8305ece6",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 186,
+      "dropped_rows": 27,
+      "kept_rows": 159
+    },
+    {
+      "file": "eval/dev/user-reported.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/dev/user-reported.txt",
+      "sha256": "2f3047150abcaf8115fb6b0adf44b4f5620f6bdca853a478bd063b29e30a8bd0",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/dev/user-reported.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/dev/user-reported.txt",
+      "sha256": "3a5f0a9c54b13ab916a54093e22efdfa3fd0d18e083c3635be40f686912776a8",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 164,
+      "dropped_rows": 5,
+      "kept_rows": 159
+    },
+    {
+      "file": "eval/sets/trap.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/sets/trap.txt",
+      "sha256": "9657119f08c4e3550b247ac082324cde0a1cd916adbf7e7eb17523045e69702c",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/sets/trap.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/sets/trap.txt",
+      "sha256": "0fff433a922069af7aa5b0d3afb0a515d6d7ed3b128d2904a6203634d4b09fce",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 64,
+      "dropped_rows": 8,
+      "kept_rows": 56
+    },
+    {
+      "file": "eval/sets/daily.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/sets/daily.txt",
+      "sha256": "ccdbb649a51f3a5d5b8916b020782c3d9aba46ebdb275cb7c7f0656b756cc7d7",
+      "license": "CC0-1.0",
+      "modified": false
+    },
+    {
+      "file": "eval/sets/daily.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/sets/daily.txt",
+      "sha256": "dc47dc84994962826e42d008b53e1e6c0ead6223403c445f5595abd68cd44933",
+      "license": "CC0-1.0",
+      "modified": true,
+      "original_rows": 45,
+      "dropped_rows": 13,
+      "kept_rows": 32
+    },
+    {
+      "file": "eval/holdout/next/shard-2/news.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-2/news.txt",
+      "sha256": "1c9c928c307e54d29768450f1f936f16ea426c8758cedf2fc430bf1812d8eca4",
+      "license": "Mixed redistributable: government releases/OGDL-1.0, CC BY 4.0 Wikinews, CC BY 3.0 TW PeoPo (per-row sources.tsv)",
+      "modified": false
+    },
+    {
+      "file": "eval/holdout/next/shard-2/news.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-2/news.txt",
+      "sha256": "824170f94910e4362da028c0455f5aa34c7775ed04db9aae6959389ea8c1ca16",
+      "license": "Mixed redistributable: government releases/OGDL-1.0, CC BY 4.0 Wikinews, CC BY 3.0 TW PeoPo (per-row sources.tsv)",
+      "modified": true,
+      "original_rows": 150,
+      "dropped_rows": 48,
+      "kept_rows": 102
+    },
+    {
+      "file": "eval/holdout/next/shard-2/talk.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-2/talk.txt",
+      "sha256": "71f8a5e1a422c00a37598d237744ff49a229ce04dc3f37a1170ea98fe8b6e67e",
+      "license": "CC BY-SA 4.0 (Wikipedia, vTaiwan/Computational Democracy, NDC; per-row sources.tsv)",
+      "modified": false
+    },
+    {
+      "file": "eval/holdout/next/shard-2/talk.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-2/talk.txt",
+      "sha256": "b5103c1744578a22e59fef28c43e9a92e2242d7bc7f370246884408ef56e8cad",
+      "license": "CC BY-SA 4.0 (Wikipedia, vTaiwan/Computational Democracy, NDC; per-row sources.tsv)",
+      "modified": true,
+      "original_rows": 150,
+      "dropped_rows": 15,
+      "kept_rows": 135
+    },
+    {
+      "file": "eval/holdout/next/shard-3/news.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-3/news.txt",
+      "sha256": "fc1477681a6f97aaef83b4df388de3f0bc066eb3ef3b936677fcd94ade14e1b4",
+      "license": "Mixed redistributable: government releases/OGDL-1.0, CC BY 4.0 Wikinews, CC BY 3.0 TW PeoPo (per-row sources.tsv)",
+      "modified": false
+    },
+    {
+      "file": "eval/holdout/next/shard-3/news.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-3/news.txt",
+      "sha256": "6be77fd08d2375274dbe18263c0cac1f0e1c8fe657b54f797e5d0699ec4dfd57",
+      "license": "Mixed redistributable: government releases/OGDL-1.0, CC BY 4.0 Wikinews, CC BY 3.0 TW PeoPo (per-row sources.tsv)",
+      "modified": true,
+      "original_rows": 150,
+      "dropped_rows": 36,
+      "kept_rows": 114
+    },
+    {
+      "file": "eval/holdout/next/shard-3/talk.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-3/talk.txt",
+      "sha256": "743d3687f74e43c9a0d5ea40f7c6b463cb360b0e60bd7bd5b11265f291d984d3",
+      "license": "CC BY-SA 4.0 (Wikipedia, vTaiwan/Computational Democracy, NDC; per-row sources.tsv)",
+      "modified": false
+    },
+    {
+      "file": "eval/holdout/next/shard-3/talk.clean.rows.txt",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/shard-3/talk.txt",
+      "sha256": "0fbc29d3f9e4f10787328c26f8bf0de5e4782e7193af3e9a1df435c578b65db4",
+      "license": "CC BY-SA 4.0 (Wikipedia, vTaiwan/Computational Democracy, NDC; per-row sources.tsv)",
+      "modified": true,
+      "original_rows": 150,
+      "dropped_rows": 11,
+      "kept_rows": 139
+    },
+    {
+      "file": "eval/holdout/next/sources.tsv",
+      "source": "https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval/holdout/next/sources.tsv",
+      "sha256": "f58939d776d6c5132004878a3ed2a700fc9d4f8f044b175f6d704448d599eb5d",
+      "license": "CC0-1.0",
+      "modified": false
+    }
+  ]
+}

@@ -1,0 +1,901 @@
+shard	file	row	source	unit	license
+1	news	1	agency-44954	44954:559865cef554:2026-10-05	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	2	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=de11814d4f82430e8242fa0303b29cb4:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	3	wikinews	周俊勳獲得LG盃世界棋王戰冠軍 台灣首位|rev108702	CC BY 4.0（維基新聞）
+1	news	4	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263266:2026-10-12	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	5	agency-95226	95226:https://web.customs.gov.tw/singlehtml/2222?cntId=35d1e92dc037402d92eee21300b15700:2026-10-13	政府資料開放授權條款（data.gov.tw/95226：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	6	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263381:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	7	moda	https://moda.gov.tw/press/press-releases/21078.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+1	news	8	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123194:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	9	agency-25848	25848:c21e4c20c749:2026-10-08	政府資料開放授權條款（data.gov.tw/25848：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	10	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123197:2026-10-07	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	11	agency-44954	44954:d33a08f45546:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	12	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=621e83cc-3d82-406d-b14a-79647a372da0:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	13	wikinews	全球首例，華航A330機型降落時電腦全部失靈|rev168774	CC BY 4.0（維基新聞）
+1	news	14	wikinews	台灣太陽能產業：各國產業未來走向 須仰賴政策、經濟 與能源取得|rev50934	CC BY 4.0（維基新聞）
+1	news	15	wikinews	台灣北高市長市議員選舉舉行|rev109755	CC BY 4.0（維基新聞）
+1	news	16	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=5a015b2568174cbb8a11f42be11917bd:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	17	wikinews	台北市電器公會 用影音展見證公會60年歲月與全球影音發展史|rev41202	CC BY 4.0（維基新聞）
+1	news	18	agency-44954	44954:73184b773b6f:2026-10-14	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	19	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=a567eceb91b34e228bd9e89a71616d18:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	20	agency-46112	46112:https://www.president.gov.tw/NEWS/40425:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	21	agency-44954	44954:b2ba300f5b5b:2026-10-13	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	22	agency-6420	6420:65eeffa09f1a:2026-10-14	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	23	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263140:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	24	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263260:2026-10-12	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	25	wikinews	2008台北101國際登高賽 結合時事話題 核心聚焦公益|rev35837	CC BY 4.0（維基新聞）
+1	news	26	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=34543d219741439483a70ad70aece96a:2026-10-06	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	27	agency-6298	6298:947ce26df55d:2026-10-14	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	28	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262586:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	29	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=538f88e21aca46359e4ced28c7d8ce2e:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	30	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=803e9ff598bf46f78fceca5a9ffd3cb9:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	31	agency-7505	7505:9d0a1995f0ed:2026-10-06	政府資料開放授權條款（data.gov.tw/7505：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	32	govnews	2.16.886.101.90028.20002.20070	著作權法第9條（公文新聞稿）
+1	news	33	agency-6420	6420:c65a6310935e:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	34	agency-22927	22927:https://www.ndc.gov.tw/News_Content.aspx?n=114AAE178CD95D4C&s=D032471766DC5AB2:2026-10-07	政府資料開放授權條款（data.gov.tw/22927：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	35	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263411:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	36	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262572:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	37	agency-22927	22927:https://www.ndc.gov.tw/News_Content.aspx?n=114AAE178CD95D4C&s=A23640431B3DEE67:2026-10-07	政府資料開放授權條款（data.gov.tw/22927：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	38	agency-95226	95226:https://web.customs.gov.tw/singlehtml/2222?cntId=35d1e92dc037402d92eee21300b15700:2026-10-13	政府資料開放授權條款（data.gov.tw/95226：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	39	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262596:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	40	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262558:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	41	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123214:2026-10-10	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	42	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262954:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	43	wikinews	台灣首發消費券 業者、會展搭順風車 搶占消費券商機|rev52068	CC BY 4.0（維基新聞）
+1	news	44	agency-68551	68551:https://www.tfrin.gov.tw/theme_data.php?theme=news&sub_theme=news&id=76225:2026-10-07	政府資料開放授權條款（data.gov.tw/68551：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	45	agency-44954	44954:4095624a5dd1:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	46	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=dc735eefab3b4d559168cbee92b8ba46:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	47	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262895:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	48	agency-44954	44954:c4c61bd3f0e6:2026-10-09	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	49	agency-44954	44954:f8e768cf43d4:2026-10-09	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	50	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130002&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	51	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=803e9ff598bf46f78fceca5a9ffd3cb9:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	52	wikinews	民盟宣示倒扁，發生街頭衝突|rev108103	CC BY 4.0（維基新聞）
+1	news	53	peopo	https://www.peopo.org/news/860405	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+1	news	54	peopo	https://www.peopo.org/news/860410	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+1	news	55	wikinews	馬英九：希望關愛之家愛滋病患「只出不進」|rev13327	CC BY 4.0（維基新聞）
+1	news	56	wikinews	台卡拉OK發生槍擊事件|rev108653	CC BY 4.0（維基新聞）
+1	news	57	wikinews	美軍與解放軍接連進入台灣空域|rev166842	CC BY 4.0（維基新聞）
+1	news	58	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060003&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	59	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123231:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	60	agency-6298	6298:2a55a1324e97:2026-10-13	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	61	wikinews	台灣立法院三讀通過國民法官法|rev200608	CC BY 4.0（維基新聞）
+1	news	62	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263082:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	63	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=f01f273e2d744d38b890c4447996bdc1:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	64	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123214:2026-10-10	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	65	wikinews	蔡英文出席「交通大學致遠樓落成啟用典禮暨產學共創聯盟成立大會」|rev173801	CC BY 4.0（維基新聞）
+1	news	66	wikinews	台灣成功鎮農會辦營養午餐蝕本經營|rev110596	CC BY 4.0（維基新聞）
+1	news	67	agency-95057	95057:https://www.moa.gov.tw/theme_data.php?theme=news&sub_theme=agri&id=10305:2026-10-14	政府資料開放授權條款（data.gov.tw/95057：政府資料開放授權條款-第1版）
+1	news	68	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=4d3d9087-6c05-4ea8-b011-3baf41214de6:2026-10-09	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	69	agency-6298	6298:14d9a7c29bcd:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	70	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=de11814d4f82430e8242fa0303b29cb4:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	71	wikinews	農業、文化、應用三合一 2007台北國際花卉展 台北世貿絢爛登場|rev108164	CC BY 4.0（維基新聞）
+1	news	72	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263361:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	73	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123239:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	74	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=fb149687-4b63-4cca-9624-d532396da8b8:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	75	wikinews	2010年金手指網路獎 網路技術演進 帶動評審水準|rev67198	CC BY 4.0（維基新聞）
+1	news	76	agency-6298	6298:4a2d8d2b6006:2026-10-08	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	77	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=cf8409b1b64e44b6be781cfcc6c74c67:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	78	agency-6298	6298:9c83a1c9d934:2026-10-11	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	79	peopo	https://www.peopo.org/news/860419	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+1	news	80	wikinews	趕場差點出車禍 黃春明怒批宜大|rev71214	CC BY 4.0（維基新聞）
+1	news	81	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123213:2026-10-09	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	82	agency-44954	44954:bf42f404201c:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	83	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263381:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	84	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=c8afd48c616c4a5ca5b5cd7ca49660b1:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	85	moda	https://moda.gov.tw/press/press-releases/21078.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+1	news	86	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18501:2026-10-07	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	87	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060001&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	88	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=83a0f3c4-7720-4419-9dac-6e8472aed981:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	89	wikinews	中華台北隊已抵達北京準備參加奧運|rev108811	CC BY 4.0（維基新聞）
+1	news	90	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18506:2026-10-14	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	91	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263258:2026-10-09	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	92	wikinews	2010年台北舒跑盃路跑賽 打造健康快樂形象|rev65882	CC BY 4.0（維基新聞）
+1	news	93	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123231:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	94	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123209:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	95	moda	https://moda.gov.tw/press/press-releases/20954.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+1	news	96	agency-6420	6420:c65a6310935e:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	97	wikinews	台北101新董座可能換人 公、民股角力戰一觸即發|rev110401	CC BY 4.0（維基新聞）
+1	news	98	agency-25848	25848:f98e6534f14a:2026-10-06	政府資料開放授權條款（data.gov.tw/25848：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	99	agency-6298	6298:a699cf61837b:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	100	wikinews	兩岸政治立場不同 2008北京奧運聖火確定不到台灣|rev109915	CC BY 4.0（維基新聞）
+1	news	101	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=bf398b4e01584c239e4ee7a9604055b9:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	102	wikinews	蔡英文總統出席「科技部新海洋研究船命名交船典禮」|rev170761	CC BY 4.0（維基新聞）
+1	news	103	agency-44954	44954:bf42f404201c:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	104	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262910:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	105	fda	fda-news:2026/10/06:食藥署持續把關輸入馬鈴薯  不合格產品邊	著作權法第9條；政府資料開放授權第1版（data.gov.tw/11060）
+1	news	106	moda	https://moda.gov.tw/press/press-releases/20954.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+1	news	107	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=83a0f3c4-7720-4419-9dac-6e8472aed981:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	108	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=dd42db6dba8a49e891748b020da5f40a:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	109	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262582:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	110	agency-95226	95226:https://web.customs.gov.tw/singlehtml/2222?cntId=46974a0e10bb4b85b142fbd8a7379eb7:2026-10-13	政府資料開放授權條款（data.gov.tw/95226：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	111	agency-44954	44954:c11b25324c8f:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	112	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123210:2026-10-09	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	113	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=fb149687-4b63-4cca-9624-d532396da8b8:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	114	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263411:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	115	agency-6420	6420:58034d96f529:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	116	agency-48659	48659:https://eysc.ey.gov.tw/Page/DAB11F5DBDC11168/aa15a92e-33f4-4723-8998-6990c66d8b69:2026-10-06	政府資料開放授權條款（data.gov.tw/48659：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	117	wikinews	臺中市舉辦五人制棒球實地推廣研習會|rev220352	CC BY 4.0（維基新聞）
+1	news	118	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262596:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	119	agency-6298	6298:0c5721675523:2026-10-09	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	120	wikinews	Windows 7 上市有譜 硬體業者看好前景|rev110356	CC BY 4.0（維基新聞）
+1	news	121	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263416:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	122	agency-11205	11205:https://www.wda.gov.tw/News_Content.aspx?n=31&s=19454:2026-10-12	政府資料開放授權條款（data.gov.tw/11205：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	123	wikinews	2月6日起口罩採實名制，可自「供需諮詢平台」查詢|rev160276	CC BY 4.0（維基新聞）
+1	news	124	agency-6420	6420:d88656e2732e:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	125	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060003&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	126	agency-6298	6298:2a55a1324e97:2026-10-13	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	127	peopo	https://www.peopo.org/news/860419	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+1	news	128	agency-44954	44954:559865cef554:2026-10-05	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	129	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610080001&amp;toolsflag=Y&amp;dtable=News:2026-10-08	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	130	agency-6298	6298:839f77c302cb:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	131	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=f01f273e2d744d38b890c4447996bdc1:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	132	agency-46112	46112:https://www.president.gov.tw/NEWS/40428:2026-10-15	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	133	wikinews	蔡依林與愛犬親親感染細菌|rev109539	CC BY 4.0（維基新聞）
+1	news	134	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262910:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	135	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123240:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	136	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123203:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	137	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=775d540bcaf341729f06fe6c8f2638f8:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	138	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=365f9a5ca75e4363bbd8b938374ecca3:2026-10-12	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	139	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060001&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	140	agency-6420	6420:2373c435323e:2026-10-12	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	141	wikinews	程翔間諜罪成 妻子準備上訴|rev108846	CC BY 4.0（維基新聞）
+1	news	142	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=892ae53784654e59a767a0f166391dc6:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	143	wikinews	劉曉波病亡 國民黨前主席讚中共|rev246538	CC BY 4.0（維基新聞）
+1	news	144	agency-44954	44954:e6a1650c7cbd:2026-10-08	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	145	agency-46112	46112:https://www.president.gov.tw/NEWS/40423:2026-10-13	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	146	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130003&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	147	agency-6298	6298:534d41ab99f0:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+1	news	148	wikinews	台灣鐵路莒光號列車出軌滑落邊坡駁崁|rev107668	CC BY 4.0（維基新聞）
+1	news	149	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263406:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+1	news	150	wikinews	前台東縣長黃健庭退出監察院副院長提名|rev200630	CC BY 4.0（維基新聞）
+1	talk	1	ideas	https://join.gov.tw/idea/detail/551c5e77-5ad4-404c-8bb1-7ec455797907	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	2	wikitalk	User talk:Jackroyliu|rev94775754	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	3	ideas	https://join.gov.tw/idea/detail/c140f9ad-36b2-4236-be74-906a195c4a45	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	4	ideas	https://join.gov.tw/idea/detail/9a1fb9a2-ec55-4dc3-941d-51a752876246	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	5	ideas	https://join.gov.tw/idea/detail/1fe9ab9d-c353-4e87-94b1-81149552ce90	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	6	wikitalk	User talk:七把叉|rev94870382	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	7	wikitalk	Talk:財團法人台灣棋院文化基金會|rev94968300	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	8	vtaiwan	vtaiwan.uberx:comment-68	CC BY 4.0（The Computational Democracy Project）
+1	talk	9	wikitalk	Talk:埃隆·马斯克|rev94971608	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	10	wikitalk	User talk:CowboyRyuji|rev94870139	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	11	vtaiwan	vtaiwan.uberx:comment-50	CC BY 4.0（The Computational Democracy Project）
+1	talk	12	wikitalk	User talk:GhostJp|rev94843532	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	13	ideas	https://join.gov.tw/idea/detail/5b13e1fe-345d-4995-8e4d-0b9d4e51795c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	14	wikitalk	Talk:江𤒹生|rev94984392	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	15	wikitalk	Talk:太陽發電機|rev94938709	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	16	ideas	https://join.gov.tw/idea/detail/810e3173-4c73-4d8f-820e-3f6a45550d7b	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	17	vtaiwan	vtaiwan.uberx:comment-135	CC BY 4.0（The Computational Democracy Project）
+1	talk	18	wikitalk	User talk:断岸千尺|rev94844307	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	19	vtaiwan	vtaiwan.uberx:comment-40	CC BY 4.0（The Computational Democracy Project）
+1	talk	20	ideas	https://join.gov.tw/idea/detail/bcefb4e2-b9cb-40e9-86c2-2a1826ae2341	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	21	ideas	https://join.gov.tw/idea/detail/cc708dbb-a2bb-4aa5-860e-9b7780789c56	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	22	wikitalk	Talk:馬仕釗|rev94915516	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	23	ideas	https://join.gov.tw/idea/detail/971689b7-5e36-4c45-b5c5-5817173ac6a1	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	24	wikitalk	Talk:金秀炫 (啦啦隊員)|rev94773697	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	25	ideas	https://join.gov.tw/idea/detail/6191409a-eefd-4bd5-9973-f6aa81e09207	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	26	ideas	https://join.gov.tw/idea/detail/f90bf087-bd11-4506-9589-406468152ac7	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	27	wikitalk	User talk:Ji3g4wiki|rev94990505	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	28	wikitalk	User talk:Ch.Andrew|rev94911634	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	29	vtaiwan	vtaiwan.uberx:comment-128	CC BY 4.0（The Computational Democracy Project）
+1	talk	30	wikitalk	Talk:燒賣|rev94741821	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	31	vtaiwan	vtaiwan.uberx:comment-187	CC BY 4.0（The Computational Democracy Project）
+1	talk	32	wikitalk	Talk:迷你樂一通 (2020年動畫)|rev94747319	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	33	wikitalk	Talk:芬蘭化|rev94859790	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	34	wikitalk	User talk:MayGlory123|rev94931048	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	35	ideas	https://join.gov.tw/idea/detail/29bd5eca-5903-45ea-8bfd-80622535a667	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	36	ideas	https://join.gov.tw/idea/detail/ee1d2efb-b42e-4164-acb6-5f157ab7d3d8	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	37	ideas	https://join.gov.tw/idea/detail/4f7d176e-c4d5-4a04-a14a-96bee49239ee	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	38	wikitalk	Talk:廣府民系|rev94782912	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	39	wikitalk	User talk:肉松飯糰|rev94793714	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	40	wikitalk	User talk:静魔魔女|rev95004117	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	41	wikitalk	User talk:小老虎2026|rev94741046	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	42	ideas	https://join.gov.tw/idea/detail/80c7a522-8d5d-46e1-81c8-5f5635d72fb4	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	43	wikitalk	User talk:BanSpdRunOrMaybeNot|rev94843344	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	44	vtaiwan	vtaiwan.uberx:comment-104	CC BY 4.0（The Computational Democracy Project）
+1	talk	45	vtaiwan	vtaiwan.uberx:comment-154	CC BY 4.0（The Computational Democracy Project）
+1	talk	46	vtaiwan	vtaiwan.uberx:comment-189	CC BY 4.0（The Computational Democracy Project）
+1	talk	47	ideas	https://join.gov.tw/idea/detail/a419d3ee-deb9-4b7c-b8cb-b321618ce2ab	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	48	ideas	https://join.gov.tw/idea/detail/97958b46-6d1a-4c43-8dfd-2a6b85152817	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	49	ideas	https://join.gov.tw/idea/detail/d6a6e12c-3767-4aae-9ed0-7f069a37b941	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	50	wikitalk	User talk:就是一隻狐狸|rev94770898	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	51	wikitalk	Talk:我为喜剧狂 (第3季)|rev94884144	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	52	wikitalk	Talk:賴品妤|rev94731052	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	53	vtaiwan	vtaiwan.uberx:comment-172	CC BY 4.0（The Computational Democracy Project）
+1	talk	54	ideas	https://join.gov.tw/idea/detail/2fe3cc14-b6a8-41f1-8961-7f610610361c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	55	wikitalk	User talk:LimiEi|rev94864873	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	56	vtaiwan	vtaiwan.uberx:comment-183	CC BY 4.0（The Computational Democracy Project）
+1	talk	57	vtaiwan	vtaiwan.uberx:comment-186	CC BY 4.0（The Computational Democracy Project）
+1	talk	58	wikitalk	User talk:GhostJp|rev94843532	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	59	wikitalk	User talk:Wulan660612/沙盒|rev94784082	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	60	wikitalk	User talk:ElonMarxElkok|rev94728303	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	61	wikitalk	User talk:晨間寒霜|rev94754025	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	62	wikitalk	User talk:Jackyming|rev94749053	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	63	wikitalk	Talk:加买清真寺|rev94791863	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	64	ideas	https://join.gov.tw/idea/detail/84550200-aaab-48da-968b-4d900df84852	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	65	vtaiwan	vtaiwan.uberx:comment-122	CC BY 4.0（The Computational Democracy Project）
+1	talk	66	vtaiwan	vtaiwan.uberx:comment-153	CC BY 4.0（The Computational Democracy Project）
+1	talk	67	wikitalk	Talk:開戰原因|rev94757888	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	68	wikitalk	User talk:Samanthatai|rev94963779	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	69	ideas	https://join.gov.tw/idea/detail/19b9c20c-1517-4e3e-b390-c4884716f80c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	70	vtaiwan	vtaiwan.uberx:comment-46	CC BY 4.0（The Computational Democracy Project）
+1	talk	71	vtaiwan	vtaiwan.uberx:comment-121	CC BY 4.0（The Computational Democracy Project）
+1	talk	72	wikitalk	Talk:財團法人台灣棋院文化基金會|rev94968300	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	73	vtaiwan	vtaiwan.uberx:comment-170	CC BY 4.0（The Computational Democracy Project）
+1	talk	74	wikitalk	Talk:孟春黃苗祠|rev94911770	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	75	wikitalk	Talk:王恭廠大爆炸|rev94914891	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	76	wikitalk	User talk:Tennislove66|rev94885096	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	77	ideas	https://join.gov.tw/idea/detail/ab01e12e-d428-44ed-8ec2-83f33198247b	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	78	wikitalk	Talk:米蘭·博里揚|rev94962373	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	79	ideas	https://join.gov.tw/idea/detail/9c7da0c6-2fb9-4c59-a09a-c87adc312e7e	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	80	wikitalk	User talk:Ericliu1912|rev94858815	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	81	vtaiwan	vtaiwan.uberx:comment-143	CC BY 4.0（The Computational Democracy Project）
+1	talk	82	wikitalk	User talk:Ma.Zihao|rev94843271	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	83	wikitalk	Talk:何佩瑜|rev94909739	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	84	ideas	https://join.gov.tw/idea/detail/32508361-2cbb-42f2-a533-4b8dc60be102	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	85	ideas	https://join.gov.tw/idea/detail/2a42e718-dfd4-41d6-be2b-eff67ed389bc	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	86	ideas	https://join.gov.tw/idea/detail/0cf0ac67-d0f7-4b12-a70b-1624bcb7cb89	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	87	ideas	https://join.gov.tw/idea/detail/25555bdd-0b71-4099-8a35-aeea02bef7de	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	88	vtaiwan	vtaiwan.uberx:comment-120	CC BY 4.0（The Computational Democracy Project）
+1	talk	89	wikitalk	User talk:Manchiu|rev94884136	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	90	vtaiwan	vtaiwan.uberx:comment-140	CC BY 4.0（The Computational Democracy Project）
+1	talk	91	ideas	https://join.gov.tw/idea/detail/50104d7d-b1ef-4e95-82cf-9a476a3194ad	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	92	ideas	https://join.gov.tw/idea/detail/f7bd473b-b9d6-461a-9f83-c66907136474	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	93	wikitalk	User talk:Tianyuchen0214|rev94991756	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	94	wikitalk	User talk:Tianyuchen0214|rev94991821	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	95	ideas	https://join.gov.tw/idea/detail/51fe8ddb-0ca3-40a8-a64d-08277622f773	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	96	wikitalk	Talk:凯尔·贝克尔|rev94804834	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	97	vtaiwan	vtaiwan.uberx:comment-111	CC BY 4.0（The Computational Democracy Project）
+1	talk	98	wikitalk	User talk:Bluewhalie|rev94802810	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	99	wikitalk	Talk:莫伊茲·邦比托|rev95010178	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	100	wikitalk	Talk:正義戰爭|rev94735405	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	101	ideas	https://join.gov.tw/idea/detail/3b16ebbb-f0bd-4456-9e08-4c8d96509452	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	102	wikitalk	Talk:臺灣話|rev94965594	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	103	ideas	https://join.gov.tw/idea/detail/393249c1-aa7a-4aee-be57-3050c2679ec0	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	104	ideas	https://join.gov.tw/idea/detail/5ea02269-cbf2-4998-b971-3a8a2700203c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	105	ideas	https://join.gov.tw/idea/detail/5f7cabd0-94f6-4624-a85e-394333d88afd	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	106	vtaiwan	vtaiwan.uberx:comment-160	CC BY 4.0（The Computational Democracy Project）
+1	talk	107	wikitalk	Talk:何佩瑜|rev94909739	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	108	ideas	https://join.gov.tw/idea/detail/9a4e5d11-e7c6-45ef-8510-b7c8f35d064a	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	109	ideas	https://join.gov.tw/idea/detail/cc42bb4b-de48-437f-a9e9-4ceb94a1a137	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	110	ideas	https://join.gov.tw/idea/detail/fe37b136-3835-4dd6-a685-341b9fee7b54	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	111	wikitalk	Wikipedia:互助客栈/其他|rev94783223	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	112	wikitalk	User talk:~2026-51562-01|rev94878378	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	113	wikitalk	User talk:AmanojakuBot|rev94945570	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	114	wikitalk	Talk:乾淨世界|rev94900530	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	115	wikitalk	User talk:IrisChronomia|rev94815725	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	116	ideas	https://join.gov.tw/idea/detail/d8cd878b-c070-4964-8cf4-04acdf994e32	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	117	wikitalk	Talk:重力小丑 (馬)|rev94746968	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	118	ideas	https://join.gov.tw/idea/detail/4de2c6b4-c420-40eb-a363-ff16fb95ab80	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	119	ideas	https://join.gov.tw/idea/detail/6456e031-130d-4ca2-a9a7-1ab72697dcf6	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	120	wikitalk	User talk:Jacklamf1d14|rev94882842	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	121	vtaiwan	vtaiwan.uberx:comment-119	CC BY 4.0（The Computational Democracy Project）
+1	talk	122	wikitalk	User talk:Peterxy|rev94884920	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	123	vtaiwan	vtaiwan.uberx:comment-123	CC BY 4.0（The Computational Democracy Project）
+1	talk	124	ideas	https://join.gov.tw/idea/detail/24b7486a-862c-4152-b064-91a76a3684d5	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	125	wikitalk	User talk:Jacklamf1d14|rev94880315	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	126	wikitalk	Wikipedia:互助客栈/条目探讨|rev94909749	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	127	wikitalk	User talk:Paige881209/颜永祺/草稿2|rev94884904	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	128	vtaiwan	vtaiwan.uberx:comment-71	CC BY 4.0（The Computational Democracy Project）
+1	talk	129	ideas	https://join.gov.tw/idea/detail/9b3571b8-b84c-4dff-be81-de0655332796	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	130	ideas	https://join.gov.tw/idea/detail/8bf9e05b-cc81-4d6c-8f53-9db60a734ae9	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	131	vtaiwan	vtaiwan.uberx:comment-188	CC BY 4.0（The Computational Democracy Project）
+1	talk	132	vtaiwan	vtaiwan.uberx:comment-96	CC BY 4.0（The Computational Democracy Project）
+1	talk	133	wikitalk	User talk:~2026-44640-71|rev94811770	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	134	ideas	https://join.gov.tw/idea/detail/59b65cfe-61a1-4220-ad1e-70f97650353c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	135	wikitalk	User talk:Ghostingb|rev94930206	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	136	ideas	https://join.gov.tw/idea/detail/871f57fd-9f8f-4351-b443-8709daf75af5	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	137	vtaiwan	vtaiwan.uberx:comment-84	CC BY 4.0（The Computational Democracy Project）
+1	talk	138	vtaiwan	vtaiwan.uberx:comment-157	CC BY 4.0（The Computational Democracy Project）
+1	talk	139	wikitalk	User talk:Fanxdd|rev94978047	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	140	wikitalk	Talk:莫伊茲·邦比托|rev95010178	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	141	wikitalk	User talk:Jacklamf1d14|rev94882842	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	142	ideas	https://join.gov.tw/idea/detail/4d23678c-1d36-4847-bc0c-9b001950f670	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	143	vtaiwan	vtaiwan.uberx:comment-69	CC BY 4.0（The Computational Democracy Project）
+1	talk	144	ideas	https://join.gov.tw/idea/detail/d830ab13-e8be-48f6-bdc5-2ddaa0746c35	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	145	wikitalk	User talk:唯独淇|rev94814144	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	146	ideas	https://join.gov.tw/idea/detail/9821a408-a7be-47a4-8795-c6324e9ab36c	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	147	ideas	https://join.gov.tw/idea/detail/93583602-c2ed-43a1-86aa-dc54bb493f34	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	148	wikitalk	Talk:中華民國唐氏症基金會|rev94763393	CC BY-SA 4.0（Wikipedia contributors）
+1	talk	149	ideas	https://join.gov.tw/idea/detail/c81b3cac-898f-478e-b53b-ba6b3493d7ab	政府資料開放授權條款第1版（data.gov.tw/58036）
+1	talk	150	wikitalk	Talk:芬蘭化|rev94859790	CC BY-SA 4.0（Wikipedia contributors）
+2	news	1	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=5a015b2568174cbb8a11f42be11917bd:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	2	agency-94024	94024:https://www.sinica.edu.tw/News_Content/55/3987:2026-10-12	政府資料開放授權條款（data.gov.tw/94024：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	3	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123219:2026-10-12	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	4	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263078:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	5	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=fcc476529eb449989a808219cd6f6f54:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	6	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=681364f9c582448790c58f91943bf504:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	7	wikinews	人權聖火進入台灣 民主人士強烈抨擊中國人權打壓行徑|rev109130	CC BY 4.0（維基新聞）
+2	news	8	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262986:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	9	peopo	https://www.peopo.org/news/860404	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+2	news	10	wikinews	2008年Nike台北路跑 改制後新上路|rev35587	CC BY 4.0（維基新聞）
+2	news	11	agency-6298	6298:947ce26df55d:2026-10-14	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	12	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123210:2026-10-09	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	13	agency-6298	6298:01e5e5cd7587:2026-10-13	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	14	agency-6298	6298:d7b50fb0fe57:2026-10-06	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	15	agency-48659	48659:https://eysc.ey.gov.tw/Page/DAB11F5DBDC11168/af33f0ec-a21f-4097-b7da-4ce013d9bba7:2026-10-06	政府資料開放授權條款（data.gov.tw/48659：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	16	peopo	https://www.peopo.org/news/860404	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+2	news	17	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=538f88e21aca46359e4ced28c7d8ce2e:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	18	agency-46112	46112:https://www.president.gov.tw/NEWS/40420:2026-10-12	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	19	wikinews	蔡英文主持新任總統府秘書長、行政院政務人員、考試院第13屆院長、副院長及考試院政務人員宣誓典禮|rev176834	CC BY 4.0（維基新聞）
+2	news	20	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263140:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	21	agency-46112	46112:https://www.president.gov.tw/NEWS/40420:2026-10-12	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	22	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=24ce78d97a1a428b904c4f18ed218f33:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	23	wikinews	趙建銘妻陳幸妤產下一男嬰|rev107929	CC BY 4.0（維基新聞）
+2	news	24	wikinews	2008台北光電週、平面顯示器展 光電產業匯聚 為電子展暖身|rev41890	CC BY 4.0（維基新聞）
+2	news	25	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123193:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	26	wikinews	台灣副總統參加「2020亞洲生技大會」之「亞洲生技論壇」|rev170885	CC BY 4.0（維基新聞）
+2	news	27	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=74899297c6004eee8660f2b88aedd821:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	28	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123189:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	29	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263391:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	30	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263301:2026-10-13	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	31	wikinews	蓬佩奧：讓台灣參加11月世界衛生大會既合適且有用|rev167924	CC BY 4.0（維基新聞）
+2	news	32	wikinews	北京新光天地投資糾紛 台商投資危機浮現|rev110599	CC BY 4.0（維基新聞）
+2	news	33	agency-6420	6420:88e917e81a72:2026-10-06	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	34	agency-6298	6298:14274ea72eaf:2026-10-12	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	35	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123191:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	36	agency-6420	6420:2373c435323e:2026-10-12	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	37	agency-6298	6298:a699cf61837b:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	38	agency-44954	44954:b2ba300f5b5b:2026-10-13	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	39	agency-6298	6298:3c84de9880d2:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	40	wikinews	寶來集團總裁白文正，遺體於澎湖橫礁海邊尋獲|rev110595	CC BY 4.0（維基新聞）
+2	news	41	agency-6420	6420:80fddade1944:2026-10-14	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	42	wikinews	台灣漢翔成立F-16戰機後勤維修中心|rev176467	CC BY 4.0（維基新聞）
+2	news	43	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263311:2026-10-13	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	44	agency-46112	46112:https://www.president.gov.tw/NEWS/40422:2026-10-13	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	45	wikinews	2008年台北國際藝術博覽會 國際文藝精髓 匯聚台北世貿|rev51063	CC BY 4.0（維基新聞）
+2	news	46	agency-6298	6298:14d9a7c29bcd:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	47	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=779b28b8-f24c-49ac-a215-274b3a5df224:2026-10-10	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	48	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263443:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	49	fda	fda-news:2026/10/06:食藥署持續把關輸入馬鈴薯  不合格產品邊	著作權法第9條；政府資料開放授權第1版（data.gov.tw/11060）
+2	news	50	agency-44954	44954:1a0c3352327a:2026-10-12	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	51	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123222:2026-10-12	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	52	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=34543d219741439483a70ad70aece96a:2026-10-06	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	53	agency-44954	44954:e5cf6ddae91d:2026-10-08	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	54	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18506:2026-10-14	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	55	peopo	https://www.peopo.org/news/860410	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+2	news	56	wikinews	台北世貿南港館竣工 將影響會展產業發展|rev109447	CC BY 4.0（維基新聞）
+2	news	57	wikinews	中華職棒達成3000萬人次進場|rev200598	CC BY 4.0（維基新聞）
+2	news	58	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=6d174c9b-862f-408b-8790-aff5abeeddd2:2026-10-09	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	59	wikinews	台北圓山恢復平靜 音響展圓山館如期展出|rev49496	CC BY 4.0（維基新聞）
+2	news	60	agency-6420	6420:d88656e2732e:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	61	agency-6298	6298:9c83a1c9d934:2026-10-11	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	62	wikinews	台灣總統府發言人因性醜聞請辭獲准|rev235204	CC BY 4.0（維基新聞）
+2	news	63	agency-6298	6298:d3e6081bb749:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	64	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=8da3f306-737d-482c-b170-b5e2608c4bd5:2026-10-10	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	65	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=cf8409b1b64e44b6be781cfcc6c74c67:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	66	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130001&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	67	agency-46112	46112:https://www.president.gov.tw/NEWS/40427:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	68	agency-7505	7505:9d0a1995f0ed:2026-10-06	政府資料開放授權條款（data.gov.tw/7505：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	69	agency-46112	46112:https://www.president.gov.tw/NEWS/40425:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	70	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=be78b0e0-5ae3-4c98-9cf4-99c43ee0ef76:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	71	wikinews	施明德今「天下圍攻」 台北倒扁爆風潮|rev257292	CC BY 4.0（維基新聞）
+2	news	72	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262895:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	73	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18500:2026-10-07	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	74	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123191:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	75	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=24ce78d97a1a428b904c4f18ed218f33:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	76	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263416:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	77	wikinews	臺南知事官邸今日舉辦賽德克·巴萊劇照展|rev74075	CC BY 4.0（維基新聞）
+2	news	78	agency-46112	46112:https://www.president.gov.tw/NEWS/40426:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	79	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263258:2026-10-09	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	80	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=a160e1e82fd94e85957db0c05ce1d09e:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	81	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=ae30f3b2312f46368f4995c104aa1dfc:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	82	wikinews	苗栗古蹟文昌祠險遭祝融之災|rev110566	CC BY 4.0（維基新聞）
+2	news	83	agency-94024	94024:https://www.sinica.edu.tw/News_Content/55/3986:2026-10-08	政府資料開放授權條款（data.gov.tw/94024：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	84	agency-25848	25848:c21e4c20c749:2026-10-08	政府資料開放授權條款（data.gov.tw/25848：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	85	agency-94024	94024:https://www.sinica.edu.tw/News_Content/55/3980:2026-10-08	政府資料開放授權條款（data.gov.tw/94024：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	86	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263361:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	87	moda	https://moda.gov.tw/press/press-releases/21064.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+2	news	88	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123211:2026-10-09	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	89	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123240:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	90	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123189:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	91	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=b45bafa3dc1748a585f26f9a1af2a7db:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	92	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263266:2026-10-12	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	93	agency-44954	44954:4095624a5dd1:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	94	agency-44954	44954:1a0c3352327a:2026-10-12	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	95	agency-44954	44954:371da74fd343:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	96	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18500:2026-10-07	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	97	wikinews	2007台灣品牌趨勢論壇 品牌專家建議政商界重視「微笑曲線」理論|rev108721	CC BY 4.0（維基新聞）
+2	news	98	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=b45bafa3dc1748a585f26f9a1af2a7db:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	99	agency-6420	6420:e068c1fe9b49:2026-10-15	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	100	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262834:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	101	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123202:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	102	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=be78b0e0-5ae3-4c98-9cf4-99c43ee0ef76:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	103	agency-46112	46112:https://www.president.gov.tw/NEWS/40429:2026-10-15	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	104	agency-44954	44954:73184b773b6f:2026-10-14	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	105	wikinews	臺南鐵路地下化座談會 自救會鬧場|rev108215	CC BY 4.0（維基新聞）
+2	news	106	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=a160e1e82fd94e85957db0c05ce1d09e:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	107	wikinews	第24屆新光登高 台灣香蕉將成主題|rev26496	CC BY 4.0（維基新聞）
+2	news	108	agency-7505	7505:749fc64d85df:2026-10-11	政府資料開放授權條款（data.gov.tw/7505：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	109	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262845:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	110	agency-25848	25848:f98e6534f14a:2026-10-06	政府資料開放授權條款（data.gov.tw/25848：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	111	agency-48659	48659:https://eysc.ey.gov.tw/Page/DAB11F5DBDC11168/40292b59-d7ca-47ba-91e3-c95513324054:2026-10-14	政府資料開放授權條款（data.gov.tw/48659：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	112	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=08c2c3f4501a404aa82f131c5838d12a:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	113	wikinews	酷文話百科公佈十大網路金句 並展開次期目標|rev41194	CC BY 4.0（維基新聞）
+2	news	114	agency-7505	7505:749fc64d85df:2026-10-11	政府資料開放授權條款（data.gov.tw/7505：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	115	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=892ae53784654e59a767a0f166391dc6:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	116	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262792:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	117	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263380:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	118	agency-6298	6298:839f77c302cb:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	119	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=b71d79939d9c49e890fac209539ba543:2026-10-12	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	120	wikinews	溫布頓網球賽青少年男雙決賽台灣組合與澳洲選手決勝|rev108599	CC BY 4.0（維基新聞）
+2	news	121	agency-44954	44954:d33a08f45546:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	122	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130002&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	123	wikinews	蔡英文總統出席「科技部新海洋研究船命名交船典禮」|rev170761	CC BY 4.0（維基新聞）
+2	news	124	agency-95057	95057:https://www.moa.gov.tw/theme_data.php?theme=news&sub_theme=agri&id=10305:2026-10-14	政府資料開放授權條款（data.gov.tw/95057：政府資料開放授權條款-第1版）
+2	news	125	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263311:2026-10-13	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	126	agency-44954	44954:e5cf6ddae91d:2026-10-08	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	127	wikinews	台灣兒童青少年精神醫學會表態支持性別平權教育|rev139596	CC BY 4.0（維基新聞）
+2	news	128	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262582:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	129	agency-6298	6298:01e5e5cd7587:2026-10-13	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+2	news	130	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=71ec99dc73f84224b2a8185e714bc26e:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	131	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262586:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	132	wikinews	臺灣空軍幻象2000戰機臺東外海失事，飛行員成功跳傘獲救意識清醒|rev211150	CC BY 4.0（維基新聞）
+2	news	133	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262964:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	134	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263391:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	135	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262558:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	136	moda	https://moda.gov.tw/press/press-releases/21064.html	著作權法第9條；政府資料開放授權 CC0（data.gov.tw/163760）
+2	news	137	agency-95226	95226:https://web.customs.gov.tw/singlehtml/2222?cntId=46974a0e10bb4b85b142fbd8a7379eb7:2026-10-13	政府資料開放授權條款（data.gov.tw/95226：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	138	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262554:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	139	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=365f9a5ca75e4363bbd8b938374ecca3:2026-10-12	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	140	wikinews	文化產業新整合 禮品文具展與創意文化展 台北世貿聯合出擊|rev41173	CC BY 4.0（維基新聞）
+2	news	141	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=08c2c3f4501a404aa82f131c5838d12a:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	142	agency-6420	6420:0788b01bc6d4:2026-10-05	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	143	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262964:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	144	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263404:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	145	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123209:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	146	wikinews	2008年台北國際藝術博覽會 國際文藝精髓 匯聚台北世貿|rev51063	CC BY 4.0（維基新聞）
+2	news	147	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=4d3d9087-6c05-4ea8-b011-3baf41214de6:2026-10-09	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	news	148	wikinews	台北市電器公會 用影音展見證公會60年歲月與全球影音發展史|rev41202	CC BY 4.0（維基新聞）
+2	news	149	wikinews	第三屆亞洲之家泛亞電影節，台灣國片《一頁台北》為閉幕影片|rev109073	CC BY 4.0（維基新聞）
+2	news	150	agency-44954	44954:c11b25324c8f:2026-10-06	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+2	talk	1	wikitalk	User talk:Shizuoasavc7|rev94878268	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	2	ideas	https://join.gov.tw/idea/detail/13065ef0-984a-4082-a108-1f88627cf5f8	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	3	ideas	https://join.gov.tw/idea/detail/b4883297-015f-4e9f-8234-0974d3ca8077	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	4	wikitalk	Talk:乾淨世界|rev94900530	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	5	ideas	https://join.gov.tw/idea/detail/e63e07c3-111f-4a32-bf5f-c58a468bcfa1	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	6	vtaiwan	vtaiwan.uberx:comment-106	CC BY 4.0（The Computational Democracy Project）
+2	talk	7	ideas	https://join.gov.tw/idea/detail/63f39c2f-c6ae-4f8a-a4f1-904bac02aa15	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	8	vtaiwan	vtaiwan.uberx:comment-7	CC BY 4.0（The Computational Democracy Project）
+2	talk	9	vtaiwan	vtaiwan.uberx:comment-109	CC BY 4.0（The Computational Democracy Project）
+2	talk	10	vtaiwan	vtaiwan.uberx:comment-190	CC BY 4.0（The Computational Democracy Project）
+2	talk	11	ideas	https://join.gov.tw/idea/detail/04e4ce03-26e3-4a60-90ac-10f8a14a7646	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	12	wikitalk	User talk:Cannibal dog|rev94733505	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	13	wikitalk	User talk:張阿瓜|rev94761527	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	14	wikitalk	Wikipedia:互助客栈/条目探讨|rev94909749	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	15	wikitalk	User talk:HuangQQ|rev94859741	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	16	ideas	https://join.gov.tw/idea/detail/cbf13303-036e-405b-877b-b0bee7851e11	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	17	wikitalk	User talk:JOYININ|rev94843997	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	18	wikitalk	User talk:Jasy|rev95007281	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	19	ideas	https://join.gov.tw/idea/detail/a36a39ca-4b28-407f-b13f-208cf890e0ed	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	20	wikitalk	User talk:Saimmx|rev94773311	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	21	ideas	https://join.gov.tw/idea/detail/1906ec26-f3d2-46b8-87cf-46e73892508b	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	22	wikitalk	Talk:唐貝詩|rev94988749	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	23	ideas	https://join.gov.tw/idea/detail/21792753-eb60-49ed-a86a-d8bdf58781b0	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	24	wikitalk	User talk:黑虎18|rev94842040	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	25	vtaiwan	vtaiwan.uberx:comment-173	CC BY 4.0（The Computational Democracy Project）
+2	talk	26	wikitalk	Talk:原神|rev94766557	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	27	ideas	https://join.gov.tw/idea/detail/5745953e-37bb-4848-909b-73d217cdb43c	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	28	vtaiwan	vtaiwan.uberx:comment-48	CC BY 4.0（The Computational Democracy Project）
+2	talk	29	ideas	https://join.gov.tw/idea/detail/3df246d9-c41d-403c-adb7-ffc605c744f9	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	30	wikitalk	User talk:Kenny023|rev94893886	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	31	wikitalk	User talk:宋彥筠|rev95013695	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	32	wikitalk	User talk:SickManWP|rev94750179	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	33	ideas	https://join.gov.tw/idea/detail/76ec8f18-3fac-4864-800b-75beade6be31	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	34	ideas	https://join.gov.tw/idea/detail/cd4cb6d8-a19a-459f-83ce-50271a889396	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	35	ideas	https://join.gov.tw/idea/detail/9e0a5cdc-c6e7-4e94-a96c-0e0e60ab9046	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	36	wikitalk	Talk:日式咖喱|rev94827759	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	37	ideas	https://join.gov.tw/idea/detail/9cc55a09-643b-40ed-93c0-b229fab00534	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	38	ideas	https://join.gov.tw/idea/detail/ca5537b5-57b3-4dad-8b65-aaa5a6af11af	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	39	ideas	https://join.gov.tw/idea/detail/3e3e00f2-7848-4507-9bf5-0c7349d02ca8	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	40	ideas	https://join.gov.tw/idea/detail/f900f644-217f-4ee3-b6ac-1da0c25c60e7	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	41	wikitalk	User talk:Unchen0327|rev94942041	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	42	wikitalk	User talk:Samanthatai|rev94963825	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	43	wikitalk	Talk:日式咖喱|rev94827759	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	44	ideas	https://join.gov.tw/idea/detail/53226e2d-4a02-4f0c-9273-5ea0ee91604a	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	45	ideas	https://join.gov.tw/idea/detail/5e7d6140-f4ce-4535-931c-20c9fc1b328b	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	46	ideas	https://join.gov.tw/idea/detail/1f72f1d2-8c3e-4fec-817c-611a375f3e1d	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	47	ideas	https://join.gov.tw/idea/detail/3c2f30d6-612a-4ba2-b3a3-9764f09a30a1	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	48	wikitalk	Talk:恕道|rev94744037	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	49	wikitalk	Talk:執迷不悔|rev94945641	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	50	wikitalk	User talk:Tennislove66|rev94885096	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	51	vtaiwan	vtaiwan.uberx:comment-94	CC BY 4.0（The Computational Democracy Project）
+2	talk	52	wikitalk	Talk:米蘭·博里揚|rev94962373	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	53	wikitalk	User talk:Jimmy Chan23|rev94752732	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	54	vtaiwan	vtaiwan.uberx:comment-191	CC BY 4.0（The Computational Democracy Project）
+2	talk	55	wikitalk	Talk:生态廊道|rev94764263	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	56	wikitalk	Talk:喀爾巴茨凱|rev94765189	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	57	wikitalk	User talk:Bobo9341|rev94995878	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	58	wikitalk	User talk:Niu0820|rev94954946	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	59	wikitalk	User talk:SickManWP|rev94746964	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	60	wikitalk	Talk:凯尔·贝克尔|rev94804834	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	61	ideas	https://join.gov.tw/idea/detail/b7a318fe-c941-4480-96b7-e484a25bc502	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	62	ideas	https://join.gov.tw/idea/detail/1d685846-6e21-4b1e-927b-fcbc5dc18fce	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	63	ideas	https://join.gov.tw/idea/detail/f6d2d097-e907-44f6-a0c1-f7b1c9046bc0	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	64	wikitalk	Wikipedia:互助客栈/消息|rev95013363	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	65	wikitalk	Talk:足智彩|rev94835037	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	66	wikitalk	User talk:Niu0820|rev94954946	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	67	wikitalk	User talk:TuhansiaVuoria|rev94791324	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	68	ideas	https://join.gov.tw/idea/detail/0ca7a248-dcf0-43b0-a7a7-5ae0eb9a4845	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	69	ideas	https://join.gov.tw/idea/detail/535305a9-179c-4e32-9c5e-0b767271269f	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	70	ideas	https://join.gov.tw/idea/detail/dd562fd1-9a2b-4b1f-9239-b0291fe69384	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	71	ideas	https://join.gov.tw/idea/detail/3bd7ff1f-b44f-4e04-b2aa-f82738f78ff8	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	72	wikitalk	Talk:加买清真寺|rev94791863	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	73	ideas	https://join.gov.tw/idea/detail/e53026a1-6b1b-4f75-9ea3-7a23e064e518	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	74	wikitalk	User talk:~2026-49903-18|rev95013618	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	75	wikitalk	User talk:晨間寒霜|rev94754025	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	76	wikitalk	Talk:王恭廠大爆炸|rev94914891	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	77	vtaiwan	vtaiwan.uberx:comment-174	CC BY 4.0（The Computational Democracy Project）
+2	talk	78	vtaiwan	vtaiwan.uberx:comment-55	CC BY 4.0（The Computational Democracy Project）
+2	talk	79	wikitalk	Talk:馬克西姆·克雷浦|rev94809046	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	80	vtaiwan	vtaiwan.uberx:comment-65	CC BY 4.0（The Computational Democracy Project）
+2	talk	81	vtaiwan	vtaiwan.uberx:comment-12	CC BY 4.0（The Computational Democracy Project）
+2	talk	82	wikitalk	User talk:AmanojakuBot|rev94919078	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	83	wikitalk	Talk:和製漢語|rev94762908	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	84	vtaiwan	vtaiwan.uberx:comment-159	CC BY 4.0（The Computational Democracy Project）
+2	talk	85	vtaiwan	vtaiwan.uberx:comment-16	CC BY 4.0（The Computational Democracy Project）
+2	talk	86	ideas	https://join.gov.tw/idea/detail/b6ba49f1-9182-407f-8a8a-143cc1dae4c4	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	87	ideas	https://join.gov.tw/idea/detail/63208724-444e-4fd5-b415-c3f92d04f7f3	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	88	vtaiwan	vtaiwan.uberx:comment-181	CC BY 4.0（The Computational Democracy Project）
+2	talk	89	wikitalk	Talk:原神|rev94761839	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	90	wikitalk	User talk:Peterxy|rev94811153	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	91	ideas	https://join.gov.tw/idea/detail/c063200f-940e-4d68-81d0-a8e44d7affa0	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	92	ideas	https://join.gov.tw/idea/detail/708db013-d6cc-4c0c-8515-ace20df079d2	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	93	vtaiwan	vtaiwan.uberx:comment-137	CC BY 4.0（The Computational Democracy Project）
+2	talk	94	ideas	https://join.gov.tw/idea/detail/597369f4-37aa-4ed5-ba8b-880ac3c1b177	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	95	wikitalk	Talk:江𤒹生|rev94984392	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	96	vtaiwan	vtaiwan.uberx:comment-162	CC BY 4.0（The Computational Democracy Project）
+2	talk	97	ideas	https://join.gov.tw/idea/detail/3c1da43e-bd91-492a-8ac2-5a6f4636ccd2	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	98	wikitalk	Talk:朝鲜战争战俘遣返问题|rev94957663	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	99	vtaiwan	vtaiwan.uberx:comment-87	CC BY 4.0（The Computational Democracy Project）
+2	talk	100	ideas	https://join.gov.tw/idea/detail/6cd824b4-c960-47e4-9229-9c5e8793634b	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	101	wikitalk	User talk:Lemonaka|rev94986653	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	102	wikitalk	User talk:Huang2026903|rev94815383	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	103	wikitalk	Talk:朝鲜战争战俘遣返问题|rev94948688	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	104	wikitalk	User talk:Jnow0126|rev94820421	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	105	vtaiwan	vtaiwan.uberx:comment-67	CC BY 4.0（The Computational Democracy Project）
+2	talk	106	ideas	https://join.gov.tw/idea/detail/3ac95bd3-b346-4256-b006-4717cf4ab51d	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	107	vtaiwan	vtaiwan.uberx:comment-13	CC BY 4.0（The Computational Democracy Project）
+2	talk	108	wikitalk	User talk:ViewerSide|rev94957213	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	109	ideas	https://join.gov.tw/idea/detail/50bd5b92-5708-4fd3-9060-bea679bb170c	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	110	vtaiwan	vtaiwan.uberx:comment-164	CC BY 4.0（The Computational Democracy Project）
+2	talk	111	ideas	https://join.gov.tw/idea/detail/35affdc6-8901-4b9b-8879-f5a047daf62b	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	112	ideas	https://join.gov.tw/idea/detail/f51ac10a-e4e3-4447-b40b-a68bb078198c	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	113	vtaiwan	vtaiwan.uberx:comment-185	CC BY 4.0（The Computational Democracy Project）
+2	talk	114	ideas	https://join.gov.tw/idea/detail/77ce2047-a827-4a00-ac69-4373dc42e2b2	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	115	wikitalk	User talk:Ghostingb|rev94930206	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	116	wikitalk	User talk:Manchiu|rev94974957	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	117	wikitalk	Talk:凯尔·贝克尔|rev94809137	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	118	ideas	https://join.gov.tw/idea/detail/db7fda6d-3383-442e-87b4-f907f5066acc	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	119	wikitalk	Talk:孟春黃苗祠|rev94911770	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	120	wikitalk	User talk:EsCrenth|rev94767888	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	121	vtaiwan	vtaiwan.uberx:comment-63	CC BY 4.0（The Computational Democracy Project）
+2	talk	122	wikitalk	Talk:流形学习|rev94789830	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	123	wikitalk	User talk:Nato18273|rev94852085	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	124	wikitalk	Talk:重力小丑 (馬)|rev94746863	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	125	wikitalk	User talk:Kanashimi|rev94934786	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	126	wikitalk	Talk:概念分析|rev94735947	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	127	ideas	https://join.gov.tw/idea/detail/199298a3-0a5d-472e-91f0-80ab951b831b	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	128	vtaiwan	vtaiwan.uberx:comment-192	CC BY 4.0（The Computational Democracy Project）
+2	talk	129	vtaiwan	vtaiwan.uberx:comment-38	CC BY 4.0（The Computational Democracy Project）
+2	talk	130	vtaiwan	vtaiwan.uberx:comment-151	CC BY 4.0（The Computational Democracy Project）
+2	talk	131	wikitalk	Talk:和合圖人物列表|rev94755168	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	132	vtaiwan	vtaiwan.uberx:comment-133	CC BY 4.0（The Computational Democracy Project）
+2	talk	133	wikitalk	User talk:Coddlebean|rev94758346	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	134	ideas	https://join.gov.tw/idea/detail/f76b7f0d-537b-4c3e-b1e4-025b6f0beb44	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	135	wikitalk	User talk:Bigmorr|rev94971181	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	136	ideas	https://join.gov.tw/idea/detail/baa12095-5b50-4f87-8981-7f67ec9f4146	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	137	vtaiwan	vtaiwan.uberx:comment-32	CC BY 4.0（The Computational Democracy Project）
+2	talk	138	wikitalk	User talk:紅飛雲|rev94751393	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	139	ideas	https://join.gov.tw/idea/detail/a48ffd2b-6f8b-471b-a123-17fc69b08c4a	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	140	wikitalk	User talk:波西亚|rev94856237	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	141	wikitalk	Talk:國立臺北大學|rev95005341	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	142	ideas	https://join.gov.tw/idea/detail/43aedc5a-c5aa-4409-83f3-fd6b7f9bf4e0	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	143	wikitalk	Talk:臺中轉運站 (國光客運)|rev95007474	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	144	wikitalk	User talk:Waydwaid|rev94852143	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	145	wikitalk	Talk:日本國寶漢籍列表|rev94765840	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	146	wikitalk	User talk:Iokseng|rev94967465	CC BY-SA 4.0（Wikipedia contributors）
+2	talk	147	vtaiwan	vtaiwan.uberx:comment-15	CC BY 4.0（The Computational Democracy Project）
+2	talk	148	ideas	https://join.gov.tw/idea/detail/6ae330e0-e817-4d70-b1a7-cfff10e6bc7f	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	149	ideas	https://join.gov.tw/idea/detail/1098c61a-433e-4741-9803-22b801f962a7	政府資料開放授權條款第1版（data.gov.tw/58036）
+2	talk	150	wikitalk	User talk:Ch.Andrew|rev94911634	CC BY-SA 4.0（Wikipedia contributors）
+3	news	1	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123222:2026-10-12	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	2	wikinews	臺灣再爆共諜案 6人刑拘1人收押|rev106536	CC BY 4.0（維基新聞）
+3	news	3	wikinews	2008台灣觀光博覽會 力圖振興觀光業 以掃四川大地震陰霾|rev35841	CC BY 4.0（維基新聞）
+3	news	4	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263287:2026-10-12	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	5	agency-44954	44954:e1081469ef0a:2026-10-13	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	6	wikinews	台北世貿南港館 迎接2008國際展覽 交通規劃浮現危機|rev41168	CC BY 4.0（維基新聞）
+3	news	7	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262850:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	8	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263078:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	9	wikinews	苗栗古蹟文昌祠險遭祝融之災|rev110566	CC BY 4.0（維基新聞）
+3	news	10	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=bf398b4e01584c239e4ee7a9604055b9:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	11	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=4eeecca8-0c65-46b1-88f6-3ff14c6c78e5:2026-10-10	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	12	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=16631ccc3d29462bb78fd8b80f6f2f4e:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	13	wikinews	中華電信「電信應用大賽」 將與2010年台北花卉博覽會串聯|rev110048	CC BY 4.0（維基新聞）
+3	news	14	wikinews	林鄭：港府「無咩可做」出面沒好處 得悉陳同佳仍願意自首|rev180639	CC BY 4.0（維基新聞）
+3	news	15	agency-22927	22927:https://www.ndc.gov.tw/News_Content.aspx?n=114AAE178CD95D4C&s=A23640431B3DEE67:2026-10-07	政府資料開放授權條款（data.gov.tw/22927：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	16	wikinews	陳水扁周一將就被控誹謗出庭|rev110308	CC BY 4.0（維基新聞）
+3	news	17	agency-6420	6420:58034d96f529:2026-10-08	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	18	agency-11205	11205:https://www.wda.gov.tw/News_Content.aspx?n=31&s=19454:2026-10-12	政府資料開放授權條款（data.gov.tw/11205：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	19	wikinews	臺灣通過跨國同性婚姻：港澳及外國人士適用 唯中國除外|rev223025	CC BY 4.0（維基新聞）
+3	news	20	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=1df36ebe56ea499c9f1841cd4cccf36f:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	21	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060002&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	22	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262875:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	23	wikinews	《為什麼要民主？》紀錄片座談會 借鏡國際 檢視台灣民主成果|rev108346	CC BY 4.0（維基新聞）
+3	news	24	wikinews	熱帶風暴「鳳凰」變中颱台灣進入警戒|rev109184	CC BY 4.0（維基新聞）
+3	news	25	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262850:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	26	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263406:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	27	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=ae30f3b2312f46368f4995c104aa1dfc:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	28	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262839:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	29	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=a567eceb91b34e228bd9e89a71616d18:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	30	agency-46112	46112:https://www.president.gov.tw/NEWS/40426:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	31	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=4eeecca8-0c65-46b1-88f6-3ff14c6c78e5:2026-10-10	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	32	agency-44954	44954:371da74fd343:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	33	agency-171979	171979:https://www.ftc.gov.tw/internet/main/doc/docDetail.aspx?uid=126&docid=18501:2026-10-07	政府資料開放授權條款（data.gov.tw/171979：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	34	agency-6298	6298:534d41ab99f0:2026-10-07	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	35	agency-11205	11205:https://www.wda.gov.tw/News_Content.aspx?n=31&s=19452:2026-10-07	政府資料開放授權條款（data.gov.tw/11205：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	36	agency-46112	46112:https://www.president.gov.tw/NEWS/40423:2026-10-13	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	37	agency-46112	46112:https://www.president.gov.tw/NEWS/40424:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	38	agency-46112	46112:https://www.president.gov.tw/NEWS/40428:2026-10-15	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	39	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=b71d79939d9c49e890fac209539ba543:2026-10-12	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	40	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262972:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	41	agency-68551	68551:https://www.tfrin.gov.tw/theme_data.php?theme=news&sub_theme=news&id=76225:2026-10-07	政府資料開放授權條款（data.gov.tw/68551：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	42	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123203:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	43	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=24645ea1da7a4fcd821c8857ab643718:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	44	wikinews	中國熊貓不能來 台北市立動物園將提出申覆|rev180497	CC BY 4.0（維基新聞）
+3	news	45	wikinews	陳水扁出庭被踢屁股情況混亂|rev109419	CC BY 4.0（維基新聞）
+3	news	46	wikinews	世衛高層迴避台灣問題|rev180495	CC BY 4.0（維基新聞）
+3	news	47	wikinews	臺南林百貨將開放參觀，為期約兩個月|rev108532	CC BY 4.0（維基新聞）
+3	news	48	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=1fd348b6b12d4bd18c23f7b22901d4f8:2026-10-06	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	49	agency-6420	6420:6d58f8097f0a:2026-10-15	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	50	agency-44954	44954:c4c61bd3f0e6:2026-10-09	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	51	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262792:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	52	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123213:2026-10-09	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	53	agency-6298	6298:2890683dda3e:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	54	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262839:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	55	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=23a740dda35f494cab3f39074013cc59:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	56	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610060002&amp;toolsflag=Y&amp;dtable=News:2026-10-06	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	57	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=23a740dda35f494cab3f39074013cc59:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	58	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262845:2026-10-07	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	59	wikinews	2010年唯舞獨尊街機大賽 台北三重揭開序幕|rev65909	CC BY 4.0（維基新聞）
+3	news	60	agency-46112	46112:https://www.president.gov.tw/NEWS/40422:2026-10-13	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	61	agency-6420	6420:e068c1fe9b49:2026-10-15	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	62	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=dc735eefab3b4d559168cbee92b8ba46:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	63	agency-95057	95057:https://www.moa.gov.tw/theme_data.php?theme=news&sub_theme=agri&id=10300:2026-10-11	政府資料開放授權條款（data.gov.tw/95057：政府資料開放授權條款-第1版）
+3	news	64	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=24645ea1da7a4fcd821c8857ab643718:2026-10-13	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	65	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123198:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	66	wikinews	臺北捷運民權西路站有人跳軌|rev286385	CC BY 4.0（維基新聞）
+3	news	67	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=71ec99dc73f84224b2a8185e714bc26e:2026-10-07	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	68	agency-44954	44954:3cfb3de0fb20:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	69	wikinews	嵌入式系統內建於機器人系統 獲得機械科技產業關注|rev41841	CC BY 4.0（維基新聞）
+3	news	70	agency-94024	94024:https://www.sinica.edu.tw/News_Content/55/3987:2026-10-12	政府資料開放授權條款（data.gov.tw/94024：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	71	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262834:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	72	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123219:2026-10-12	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	73	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=825c0f0a64bb445d87696bd68a3abef7:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	74	wikinews	美軍與解放軍接連進入台灣空域|rev166842	CC BY 4.0（維基新聞）
+3	news	75	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610080002&amp;toolsflag=Y&amp;dtable=News:2026-10-08	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	76	agency-48504	48504:https://yctc.ey.gov.tw/Page/DCBE60C5EBB8EE00/45376f97-eb04-4759-93e8-b89b8f0e860f:2026-10-11	政府資料開放授權條款（data.gov.tw/48504：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	77	agency-95057	95057:https://www.moa.gov.tw/theme_data.php?theme=news&sub_theme=agri&id=10304:2026-10-12	政府資料開放授權條款（data.gov.tw/95057：政府資料開放授權條款-第1版）
+3	news	78	agency-44954	44954:e1081469ef0a:2026-10-13	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	79	agency-6420	6420:0788b01bc6d4:2026-10-05	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	80	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123217:2026-10-11	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	81	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262822:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	82	agency-46112	46112:https://www.president.gov.tw/NEWS/40424:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	83	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263443:2026-10-15	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	84	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130003&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	85	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262954:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	86	wikinews	臺灣國家太空中心改制行政法人，英文名稱變更為TASA|rev221107	CC BY 4.0（維基新聞）
+3	news	87	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=53328c51b3764fb1a2a649ec3d04dc71:2026-10-05	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	88	agency-46112	46112:https://www.president.gov.tw/NEWS/40421:2026-10-12	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	89	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123202:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	90	agency-46112	46112:https://www.president.gov.tw/NEWS/40427:2026-10-14	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	91	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=825c0f0a64bb445d87696bd68a3abef7:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	92	agency-6298	6298:d7b50fb0fe57:2026-10-06	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	93	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123194:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	94	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123198:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	95	agency-6420	6420:65eeffa09f1a:2026-10-14	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	96	agency-6298	6298:2890683dda3e:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	97	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=f8112fedce4941bdb3da5d810b3a1869:2026-10-08	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	98	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=1fd348b6b12d4bd18c23f7b22901d4f8:2026-10-06	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	99	wikinews	江啟臣：參加海峽論壇是交流不是求和|rev258732	CC BY 4.0（維基新聞）
+3	news	100	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123197:2026-10-07	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	101	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263260:2026-10-12	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	102	agency-44954	44954:f8e768cf43d4:2026-10-09	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	103	wikinews	錢櫃林森店大火案起訴練台生等7人|rev183855	CC BY 4.0（維基新聞）
+3	news	104	agency-6298	6298:14274ea72eaf:2026-10-12	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	105	wikinews	林鄭：港府「無咩可做」出面沒好處 得悉陳同佳仍願意自首|rev180639	CC BY 4.0（維基新聞）
+3	news	106	agency-94024	94024:https://www.sinica.edu.tw/News_Content/55/3986:2026-10-08	政府資料開放授權條款（data.gov.tw/94024：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	107	agency-6420	6420:88e917e81a72:2026-10-06	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	108	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=74899297c6004eee8660f2b88aedd821:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	109	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263301:2026-10-13	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	110	wikinews	劉兆玄追加第二波新內閣名單 「九萬兆」新政府團隊近乎拍板底定|rev109378	CC BY 4.0（維基新聞）
+3	news	111	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610080002&amp;toolsflag=Y&amp;dtable=News:2026-10-08	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	112	wikinews	台灣鐵路莒光號列車出軌滑落邊坡駁崁|rev107668	CC BY 4.0（維基新聞）
+3	news	113	peopo	https://www.peopo.org/news/860428	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+3	news	114	agency-44954	44954:758b5ee834f4:2026-10-08	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	115	wikinews	電玩分級制度惹爭議 2009年台北國際電玩展 將闢專區因應|rev109358	CC BY 4.0（維基新聞）
+3	news	116	agency-7308	7308:https://www.motc.gov.tw/ch/app/news_list/view?module=news&id=14&serno=621e83cc-3d82-406d-b14a-79647a372da0:2026-10-08	政府資料開放授權條款（data.gov.tw/7308：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	117	peopo	https://www.peopo.org/news/860428	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+3	news	118	peopo	https://www.peopo.org/news/860405	創用CC 姓名標示 3.0 台灣 (CC BY 3.0)
+3	news	119	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123193:2026-10-06	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	120	agency-44954	44954:e6a1650c7cbd:2026-10-08	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	121	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=c8afd48c616c4a5ca5b5cd7ca49660b1:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	122	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262986:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	123	wikinews	Wii台灣版機種7月中問世 相關話題將燃戰火|rev109502	CC BY 4.0（維基新聞）
+3	news	124	agency-11205	11205:https://www.wda.gov.tw/News_Content.aspx?n=31&s=19455:2026-10-13	政府資料開放授權條款（data.gov.tw/11205：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	125	agency-6420	6420:6d58f8097f0a:2026-10-15	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	126	agency-6420	6420:80fddade1944:2026-10-14	政府資料開放授權條款（data.gov.tw/6420：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	127	wikinews	街機音遊進入新格局 業者：創意決定生命週期|rev65883	CC BY 4.0（維基新聞）
+3	news	128	agency-95057	95057:https://www.moa.gov.tw/theme_data.php?theme=news&sub_theme=agri&id=10304:2026-10-12	政府資料開放授權條款（data.gov.tw/95057：政府資料開放授權條款-第1版）
+3	news	129	wikinews	台北海技調查學生愛滋感染狀況，校方表示將修正|rev70121	CC BY 4.0（維基新聞）
+3	news	130	agency-11205	11205:https://www.wda.gov.tw/News_Content.aspx?n=31&s=19455:2026-10-13	政府資料開放授權條款（data.gov.tw/11205：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	131	agency-6298	6298:d3e6081bb749:2026-10-05	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	132	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123208:2026-10-08	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	133	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263404:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	134	wikinews	登高賽與慢跑賽日益密集期間 慢跑專家建議應量力而為|rev41219	CC BY 4.0（維基新聞）
+3	news	135	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262822:2026-10-06	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	136	wikinews	2008台灣國際奈米週 展現國際產學研成果|rev41895	CC BY 4.0（維基新聞）
+3	news	137	agency-6298	6298:0c5721675523:2026-10-09	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	138	agency-46112	46112:https://www.president.gov.tw/NEWS/40429:2026-10-15	政府資料開放授權條款（data.gov.tw/46112：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	139	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263380:2026-10-14	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	140	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610130001&amp;toolsflag=Y&amp;dtable=News:2026-10-13	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	141	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=681364f9c582448790c58f91943bf504:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	142	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262572:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	143	agency-48659	48659:https://eysc.ey.gov.tw/Page/DAB11F5DBDC11168/aa15a92e-33f4-4723-8998-6990c66d8b69:2026-10-06	政府資料開放授權條款（data.gov.tw/48659：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	144	agency-30143	30143:https://www.mofa.gov.tw/News_Content.aspx?n=96&s=123239:2026-10-14	政府資料開放授權條款（data.gov.tw/30143：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	145	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=262554:2026-10-05	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	146	agency-6298	6298:4a2d8d2b6006:2026-10-08	政府資料開放授權條款（data.gov.tw/6298：政府資料開放授權條款-第1版）
+3	news	147	agency-8372	8372:https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=16631ccc3d29462bb78fd8b80f6f2f4e:2026-10-14	政府資料開放授權條款（data.gov.tw/8372：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	148	agency-44954	44954:3cfb3de0fb20:2026-10-07	政府資料開放授權條款（data.gov.tw/44954：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	149	agency-7404	7404:https://www.moc.gov.tw/News_Content.aspx?n=105&s=263082:2026-10-08	政府資料開放授權條款（data.gov.tw/7404：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	news	150	agency-6040	6040:https://www.fsc.gov.tw/ch/home.jsp?id=96&amp;parentpath=0,2&amp;mcustomize=news_view.jsp&amp;dataserno=202610080001&amp;toolsflag=Y&amp;dtable=News:2026-10-08	政府資料開放授權條款（data.gov.tw/6040：政府資料開放授權條款-第1版）；新聞稿另依著作權法第9條
+3	talk	1	wikitalk	User talk:紅飛雲|rev94778908	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	2	wikitalk	User talk:Saimmx|rev94758479	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	3	wikitalk	User talk:Nato18273|rev94852085	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	4	wikitalk	Talk:執迷不悔|rev94945641	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	5	ideas	https://join.gov.tw/idea/detail/2715661a-5aa3-49a9-b79c-48484df37356	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	6	vtaiwan	vtaiwan.uberx:comment-24	CC BY 4.0（The Computational Democracy Project）
+3	talk	7	ideas	https://join.gov.tw/idea/detail/6434b4cc-1d76-481d-b28d-53cc4ec27329	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	8	ideas	https://join.gov.tw/idea/detail/da6788f8-2560-483d-9eb0-7bafd84712ae	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	9	wikitalk	User talk:WhitePhosphorus|rev94912159	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	10	wikitalk	Talk:李元昊|rev94774763	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	11	vtaiwan	vtaiwan.uberx:comment-193	CC BY 4.0（The Computational Democracy Project）
+3	talk	12	wikitalk	User talk:Liedward390|rev94993983	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	13	vtaiwan	vtaiwan.uberx:comment-3	CC BY 4.0（The Computational Democracy Project）
+3	talk	14	wikitalk	User talk:Zyx20101210|rev94884996	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	15	vtaiwan	vtaiwan.uberx:comment-141	CC BY 4.0（The Computational Democracy Project）
+3	talk	16	ideas	https://join.gov.tw/idea/detail/3f7b051c-e42e-42e2-9544-f61af2f4f937	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	17	wikitalk	Talk:莫伊茲·邦比托|rev94839621	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	18	ideas	https://join.gov.tw/idea/detail/fc40f20e-0751-49bd-8e28-5910a0caa8d7	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	19	wikitalk	Talk:南京地铁|rev94908996	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	20	wikitalk	User talk:神奇洋芋片|rev94884473	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	21	ideas	https://join.gov.tw/idea/detail/9711d32b-f888-4573-ab11-fe41d0bae641	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	22	wikitalk	Talk:漢文訓讀|rev94843624	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	23	ideas	https://join.gov.tw/idea/detail/3112b4c9-c06f-496d-9279-8a6894af30c5	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	24	wikitalk	User talk:Heihaheihaha|rev94746839	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	25	vtaiwan	vtaiwan.uberx:comment-5	CC BY 4.0（The Computational Democracy Project）
+3	talk	26	ideas	https://join.gov.tw/idea/detail/8170e6ad-4853-4f01-b02c-98360c2ae852	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	27	ideas	https://join.gov.tw/idea/detail/fc8ac2cf-e459-4b9d-b247-84220533e702	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	28	wikitalk	Talk:地球冒险3|rev94946223	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	29	vtaiwan	vtaiwan.uberx:comment-59	CC BY 4.0（The Computational Democracy Project）
+3	talk	30	wikitalk	Talk:國立臺北大學|rev94991149	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	31	ideas	https://join.gov.tw/idea/detail/0ed4fde9-5bd5-4527-aac4-467cbf4005e4	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	32	wikitalk	User talk:HelloYu0910|rev94903598	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	33	wikitalk	User talk:~2026-53134-87|rev94806961	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	34	wikitalk	Talk:毅盛金融科技|rev94908154	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	35	wikitalk	Talk:紅石電路|rev94752781	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	36	wikitalk	User talk:XiaoFui|rev94965220	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	37	vtaiwan	vtaiwan.uberx:comment-72	CC BY 4.0（The Computational Democracy Project）
+3	talk	38	ideas	https://join.gov.tw/idea/detail/f9fb16d1-6851-41cf-92dd-009a810b8ffe	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	39	ideas	https://join.gov.tw/idea/detail/952db0f1-a7c2-4f6d-afa1-25029dc8148e	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	40	vtaiwan	vtaiwan.uberx:comment-90	CC BY 4.0（The Computational Democracy Project）
+3	talk	41	wikitalk	User talk:Coddlebean|rev94758845	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	42	ideas	https://join.gov.tw/idea/detail/126cbe69-09ce-4386-9ca2-9282ba544375	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	43	wikitalk	User talk:Waydwaid|rev94852364	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	44	wikitalk	Talk:馬克西姆·克雷浦|rev94736826	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	45	ideas	https://join.gov.tw/idea/detail/c4084b83-e138-42fb-a0f3-059983128800	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	46	ideas	https://join.gov.tw/idea/detail/07169927-3210-44a5-abfd-77776e7e2dbb	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	47	wikitalk	User talk:Samanthatai|rev94963779	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	48	ideas	https://join.gov.tw/idea/detail/b7574817-26d3-4a60-b311-4711d8a24054	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	49	wikitalk	User talk:肉松飯糰|rev94793714	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	50	vtaiwan	vtaiwan.uberx:comment-18	CC BY 4.0（The Computational Democracy Project）
+3	talk	51	vtaiwan	vtaiwan.uberx:comment-92	CC BY 4.0（The Computational Democracy Project）
+3	talk	52	wikitalk	Talk:生态廊道|rev94764263	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	53	vtaiwan	vtaiwan.uberx:comment-180	CC BY 4.0（The Computational Democracy Project）
+3	talk	54	wikitalk	User talk:~2026-54387-86|rev94883745	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	55	ideas	https://join.gov.tw/idea/detail/b570d6c9-fb48-479a-8057-3691b716f394	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	56	ideas	https://join.gov.tw/idea/detail/772d2c79-feea-4a3c-8b0b-5573d8bafb79	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	57	wikitalk	Talk:臺中轉運站 (國光客運)|rev95007474	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	58	wikitalk	User talk:Mosonnn music|rev94938319	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	59	wikitalk	Talk:薄扶林村舞火龍|rev94969872	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	60	vtaiwan	vtaiwan.uberx:comment-66	CC BY 4.0（The Computational Democracy Project）
+3	talk	61	vtaiwan	vtaiwan.uberx:comment-37	CC BY 4.0（The Computational Democracy Project）
+3	talk	62	ideas	https://join.gov.tw/idea/detail/1feeb509-53b3-471c-ad7c-e2eb365b3eaf	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	63	ideas	https://join.gov.tw/idea/detail/3d3c3902-0e69-427b-aa7c-d0e89a332653	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	64	wikitalk	Wikipedia:互助客栈/求助|rev94813314	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	65	wikitalk	Talk:沈伯洋|rev95002332	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	66	vtaiwan	vtaiwan.uberx:comment-30	CC BY 4.0（The Computational Democracy Project）
+3	talk	67	wikitalk	User talk:HelloYu0910|rev94903598	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	68	wikitalk	User talk:Akinohikarini|rev95005208	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	69	wikitalk	Talk:閣部|rev94766147	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	70	wikitalk	Wikipedia:互助客栈/求助|rev94856802	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	71	ideas	https://join.gov.tw/idea/detail/0c74f19a-505c-4f2d-81f6-29b7debc72d9	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	72	wikitalk	User talk:AllMagicNB|rev94844416	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	73	ideas	https://join.gov.tw/idea/detail/0839091d-d329-4775-8ac3-7b29cae8682f	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	74	ideas	https://join.gov.tw/idea/detail/14d9de8a-5d47-4aa5-8a6b-a7331656c2ce	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	75	wikitalk	User talk:XiaoFui|rev94965220	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	76	wikitalk	User talk:Kanshui0943|rev94853590	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	77	vtaiwan	vtaiwan.uberx:comment-179	CC BY 4.0（The Computational Democracy Project）
+3	talk	78	wikitalk	User talk:Zurik666|rev94807571	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	79	wikitalk	User talk:Herbal Lemon|rev94991674	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	80	vtaiwan	vtaiwan.uberx:comment-6	CC BY 4.0（The Computational Democracy Project）
+3	talk	81	vtaiwan	vtaiwan.uberx:comment-51	CC BY 4.0（The Computational Democracy Project）
+3	talk	82	wikitalk	User talk:Nostalgiacn|rev94872740	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	83	vtaiwan	vtaiwan.uberx:comment-100	CC BY 4.0（The Computational Democracy Project）
+3	talk	84	wikitalk	Talk:權力分立|rev94858515	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	85	wikitalk	User talk:Hamish|rev94889056	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	86	wikitalk	Talk:廣府民系|rev94782912	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	87	wikitalk	User talk:Benedit404|rev94850253	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	88	vtaiwan	vtaiwan.uberx:comment-19	CC BY 4.0（The Computational Democracy Project）
+3	talk	89	vtaiwan	vtaiwan.uberx:comment-78	CC BY 4.0（The Computational Democracy Project）
+3	talk	90	ideas	https://join.gov.tw/idea/detail/f5d5f12e-2b85-4596-8b75-0b118b8ada50	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	91	ideas	https://join.gov.tw/idea/detail/d3a8b4c1-476a-4c75-91ef-6b463a86dcb2	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	92	vtaiwan	vtaiwan.uberx:comment-61	CC BY 4.0（The Computational Democracy Project）
+3	talk	93	vtaiwan	vtaiwan.uberx:comment-139	CC BY 4.0（The Computational Democracy Project）
+3	talk	94	wikitalk	User talk:JOYININ|rev94843997	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	95	ideas	https://join.gov.tw/idea/detail/8414b681-4269-4af0-ab23-1f586395a050	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	96	ideas	https://join.gov.tw/idea/detail/48815443-7387-4619-a454-4b551654ea51	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	97	wikitalk	Talk:枯麻和八豆|rev94870560	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	98	vtaiwan	vtaiwan.uberx:comment-29	CC BY 4.0（The Computational Democracy Project）
+3	talk	99	ideas	https://join.gov.tw/idea/detail/34e2b4e3-9f23-4b42-ab15-c99ed514bc5d	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	100	wikitalk	Talk:意大利|rev94899157	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	101	ideas	https://join.gov.tw/idea/detail/373d080f-97dd-4919-82a1-e162e2701174	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	102	ideas	https://join.gov.tw/idea/detail/1b724e65-c762-4310-bc04-9e64fc27941b	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	103	ideas	https://join.gov.tw/idea/detail/08cfe898-9507-439a-8e38-cb5a8e2ecb6b	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	104	wikitalk	User talk:GhostJp|rev94775719	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	105	ideas	https://join.gov.tw/idea/detail/e9a0e62e-8c3b-429e-b5ee-76946710c773	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	106	ideas	https://join.gov.tw/idea/detail/f0ce8041-f6e0-4974-92b3-bd0ae6cb3969	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	107	wikitalk	User talk:Xiao69626|rev94903120	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	108	ideas	https://join.gov.tw/idea/detail/83c3da25-618a-4a17-b6ab-0e0e50fa4e64	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	109	wikitalk	User talk:291292Qe|rev94987341	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	110	wikitalk	User talk:AmanojakuBot|rev94772407	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	111	wikitalk	User talk:Kenny023|rev94893886	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	112	ideas	https://join.gov.tw/idea/detail/30f48636-5aa4-42e8-95f4-8da8531ba171	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	113	wikitalk	User talk:Ailisia|rev94978268	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	114	wikitalk	Talk:蔑視 (遊戲)|rev94999119	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	115	wikitalk	Talk:蔑視 (遊戲)|rev94999119	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	116	ideas	https://join.gov.tw/idea/detail/0fffc113-68bb-467b-9bc0-36580cec673c	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	117	wikitalk	Talk:沈伯洋|rev94897878	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	118	wikitalk	User talk:Jasonzhuocn/2016|rev94744808	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	119	ideas	https://join.gov.tw/idea/detail/c4037130-cfad-4f17-8fc9-bbeb7c881013	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	120	vtaiwan	vtaiwan.uberx:comment-145	CC BY 4.0（The Computational Democracy Project）
+3	talk	121	ideas	https://join.gov.tw/idea/detail/d78ee072-f2b7-43f6-ba66-00cb364f2801	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	122	wikitalk	User talk:Bluewhalie|rev94802810	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	123	ideas	https://join.gov.tw/idea/detail/b0097967-7068-4fc3-84c8-3563333b36ca	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	124	ideas	https://join.gov.tw/idea/detail/76cef24a-27a6-4941-8f3e-36e4a2cf7558	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	125	ideas	https://join.gov.tw/idea/detail/4e7fd47c-7f60-4355-8bad-e336ade9e279	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	126	ideas	https://join.gov.tw/idea/detail/534434ba-8612-4d95-99d4-2d235539b59f	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	127	wikitalk	User talk:Jason1993118e|rev94784506	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	128	wikitalk	Talk:戈爾洛夫卡|rev94996411	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	129	wikitalk	Talk:星冰樂|rev94786157	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	130	wikitalk	User talk:小紅書＠花落兒|rev94781522	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	131	wikitalk	Talk:閣部|rev94766147	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	132	ideas	https://join.gov.tw/idea/detail/5abded49-ab0d-4aa9-8693-52930f1a2ef2	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	133	wikitalk	User talk:ElonMarxElkok|rev94728303	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	134	ideas	https://join.gov.tw/idea/detail/11d8aed2-a720-4c2e-947d-820bcda18350	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	135	vtaiwan	vtaiwan.uberx:comment-161	CC BY 4.0（The Computational Democracy Project）
+3	talk	136	ideas	https://join.gov.tw/idea/detail/a9771d61-a23b-427c-b9ff-3e7b65d760d5	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	137	vtaiwan	vtaiwan.uberx:comment-4	CC BY 4.0（The Computational Democracy Project）
+3	talk	138	ideas	https://join.gov.tw/idea/detail/f3b611af-91f5-4308-b328-a3af736e66b0	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	139	wikitalk	User talk:Bndsijr|rev95015044	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	140	wikitalk	User talk:宋彥筠|rev95013695	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	141	vtaiwan	vtaiwan.uberx:comment-44	CC BY 4.0（The Computational Democracy Project）
+3	talk	142	wikitalk	User talk:~2026-54387-86|rev94883745	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	143	wikitalk	User talk:Unchen0327|rev94942041	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	144	ideas	https://join.gov.tw/idea/detail/0a464bd7-7529-48b3-9e78-851dab192c91	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	145	wikitalk	Talk:太陽發電機|rev94938709	CC BY-SA 4.0（Wikipedia contributors）
+3	talk	146	ideas	https://join.gov.tw/idea/detail/f6c66a83-0f98-444a-ac3e-a7024cd3eaac	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	147	vtaiwan	vtaiwan.uberx:comment-17	CC BY 4.0（The Computational Democracy Project）
+3	talk	148	ideas	https://join.gov.tw/idea/detail/861d52ea-139e-44c9-9a2b-c5c2e2c5b615	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	149	ideas	https://join.gov.tw/idea/detail/a72c22ba-534f-4a70-ad7f-21d8dd449bc1	政府資料開放授權條款第1版（data.gov.tw/58036）
+3	talk	150	vtaiwan	vtaiwan.uberx:comment-14	CC BY 4.0（The Computational Democracy Project）
