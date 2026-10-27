@@ -48,7 +48,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt data pack data-4 v3` | 把變更過的元件打包到 `dist/assets/`，並更新 `assets.json` |
 | `zt data publish data-4` | 用 gh 把打包好的檔案上傳成 GitHub release |
 | `zt data lexicon` | 沿用 `lexicon.tsv`；沒有時下載 CC-CEDICT 與 Unihan 再建置。`--rebuild` 重新建置 |
-| `zt data compile` | 把詞庫與語言模型編成 mmap 二進位，放在 TSV 旁邊；`zt data compile OUT` 輸出到 OUT |
+| `zt data compile` | 把詞庫與語言模型編成 mmap 二進位，放在 TSV 旁邊；來源與編譯程式沒變的略過，`--quiet` 只印出重編的；`zt data compile OUT` 輸出到 OUT |
 | `zt data corrections LOG --summary` | App 的改字記錄：改字的種類、最常見的「刪掉的鍵 → 重打的鍵」與「畫面上的字 → 改成的字」；`--rows OUT` 寫成 `前文\|答案\|注音` 的列 |
 
 ### 建置
@@ -90,7 +90,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt models export --reranker reranker_v2c --v3 v3_new` | 匯出資料目錄裡其他的模型目錄 |
 | `zt models parity --coreml` | Mac：產生 Core ML 的參考輸出 |
 | `zt models parity` | Linux：ONNX 對 PyTorch 與 Core ML 的一致性 |
-| `zt models serve --device cuda -- eval conversion` | 啟動 PyTorch 模型伺服器，讓指令裡所有 zhuyin-cli 行程經由它在 GPU 上計算 |
+| `zt models serve --device cuda -- eval conversion` | 啟動 PyTorch 模型伺服器，讓指令裡所有 zhuyin-cli 行程經由它在 GPU 上計算（`zt --remote eval` 預設就這樣執行）；`--workers N`、`--memory-gb G` |
 
 ### GPU 主機
 
@@ -98,7 +98,8 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 |---|---|
 | `zt --remote eval conversion --config engine -n 3 --set smoke` | 在主機上執行任何 zt 指令 |
 | `zt --remote --export eval conversion --json out.json` | 先匯出 ONNX（`--config app` 需要），`out.json` 自動取回 |
-| `zt --remote --backend cuda eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json` | 模型呼叫改由 GPU 上的 PyTorch 伺服器計算 |
+| `zt --remote eval sweep ml/src/zhuyintype_ml/eval/matrices/validation.json` | `zt eval` 的模型呼叫預設由 GPU 上的 PyTorch 伺服器計算（開發用） |
+| `zt --remote --backend cpu --export eval conversion --set dev` | 改用每個引擎行程裡的 ONNX Runtime，和 ZhuyinBench 相同（發布的數字用這個） |
 | `zt --remote --push data/build/v3_new --detach train v3` | 先傳送本機檔案，並在背景執行 |
 | `zt --remote --workdir onnx-eval-x --env ZT_BUILD_JOBS=16 ...` | 指定主機上的工作目錄；限制建置使用的核心數 |
 | `zt --remote --nice 10 --detach eval sweep ...` | 降低優先順序執行。沒有人在等結果的長時間掃描用這個，把 CPU 讓給別人在等的工作 |

@@ -110,14 +110,23 @@ class Typo(Evaluator):
             raise SystemExit(f"zt eval typo: {eval_set.name} has only {len(runs)} readable runs, need {args.n}")
         wanted = [run.text for run in runs]
         clean = [noisy_script(run.readings, 0, random.Random(args.seed)) for run in runs]
-        baseline = pool.run(clean, "--typo", "off")
+        modes = MODES if args.typo == "all" else [args.typo]
+        scripts_at: dict[float, list[str]] = {}
+        for rate in args.rates:
+            rng = random.Random(args.seed)
+            scripts_at[rate] = [noisy_script(run.readings, rate, rng) for run in runs]
+        # Every (rate, mode) at once over one pool, so no run waits for the slowest lines of the one before.
+        jobs = [(clean, ("--typo", "off"))] + [
+            (scripts_at[rate], ("--typo", mode)) for rate in args.rates for mode in modes if mode != "off" or rate
+        ]
+        results = iter(pool.run_many(jobs))
+        baseline = next(results)
         rows: list[dict[str, Any]] = []
         items: list[dict[str, Any]] = []
         for rate in args.rates:
-            rng = random.Random(args.seed)
-            scripts = [noisy_script(run.readings, rate, rng) for run in runs]
-            for mode in MODES if args.typo == "all" else [args.typo]:
-                outputs = baseline if mode == "off" and rate == 0 else pool.run(scripts, "--typo", mode)
+            scripts = scripts_at[rate]
+            for mode in modes:
+                outputs = baseline if mode == "off" and rate == 0 else next(results)
                 row: dict[str, Any] = {"rate": rate, "typo": mode, "runs": len(runs), **metrics(wanted, outputs)}
                 if rate == 0:
                     row["false_correction_rate"] = sum(

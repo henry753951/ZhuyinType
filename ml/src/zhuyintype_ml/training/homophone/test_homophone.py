@@ -113,7 +113,7 @@ class Scoring(unittest.TestCase):
             cli = root / "zhuyin-cli"
             cli.write_text(
                 f"#!{sys.executable}\nimport sys\nanswers = {answers!r}\n"
-                "for line in sys.stdin: print(answers[line.strip()])\n"
+                "for line in sys.stdin: print(answers[line.strip()], flush=True)\n"
             )
             cli.chmod(0o755)
             with patch.dict(os.environ, ZT_CLI=str(cli)):
