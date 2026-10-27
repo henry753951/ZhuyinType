@@ -1,8 +1,7 @@
 import Carbon
 import Foundation
 import os
-import ZhuyinCore
-import ZhuyinML
+import ZhuyinEngine
 
 /// Loads the engine and models, and keeps them current: models and data placed in the models folder are loaded in the
 /// background and swapped in between compositions; a new version of the app itself is picked up by restarting the
@@ -224,7 +223,23 @@ enum EngineHost {
         guard restartPending, !loading, !isComposing() else { return }
         prepareForExit()
         logger.info("Restarting for the new version")
+        launchNewBuildAfterExit()
         exit(0)
+    }
+
+    /// macOS starts an input method again on the next key only some of the time; after several updates in a row it
+    /// may not, and then no key types anything.  So the new build is started by a detached `open` a second after this
+    /// process ends (`open` does nothing if the system has already started it).
+    private static func launchNewBuildAfterExit() {
+        let launcher = Process()
+        launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        launcher.arguments = ["-c", "sleep 1; /usr/bin/open -g \"$0\"", Bundle.main.bundleURL.path]
+        launcher.standardInput = FileHandle.nullDevice
+        launcher.standardOutput = FileHandle.nullDevice
+        launcher.standardError = FileHandle.nullDevice
+        do { try launcher.run() } catch {
+            logger.error("Could not schedule the new build's launch: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Before the process ends for an update: write personal data and the correction log, and remember Chinese or

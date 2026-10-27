@@ -57,3 +57,5 @@ ml/**/checkpoints/
 
 # Downloaded asset archives
 .cache/
+# engine/parity/gate.sh results
+/gate-out/

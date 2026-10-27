@@ -1,4 +1,5 @@
-//! The golden-test harness: Swift digests (`parity/golden/digests.tsv`), the shared inputs, and line hashing.
+//! The golden-test harness: Swift digests (`parity/golden/digests.tsv`, or the file `ZHUYIN_GOLDEN` names), the shared
+//! inputs, and line hashing.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -31,21 +32,32 @@ pub(crate) fn parity_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../parity")
 }
 
-/// The digests and input sizes the Swift tool recorded.
+/// The digests and input sizes the Swift engine's tool recorded.
 pub(crate) struct Golden {
+    path: PathBuf,
     pub(crate) sizes: HashMap<String, u64>,
     pub(crate) digests: HashMap<String, (usize, String)>,
 }
 
 impl Golden {
     pub(crate) fn load() -> Option<Golden> {
-        let text = std::fs::read_to_string(parity_directory().join("golden/digests.tsv")).ok()?;
-        let mut golden = Golden { sizes: HashMap::new(), digests: HashMap::new() };
+        // ZHUYIN_GOLDEN: digests regenerated elsewhere (parity/gate.sh on another machine's data).
+        let path = std::env::var_os("ZHUYIN_GOLDEN")
+            .map_or_else(|| parity_directory().join("golden/digests.tsv"), PathBuf::from);
+        let text = std::fs::read_to_string(&path).ok()?;
+        let mut golden = Golden { path, sizes: HashMap::new(), digests: HashMap::new() };
         for line in text.lines() {
             let fields: Vec<&str> = line.split('\t').collect();
             match fields.as_slice() {
                 ["#size", name, size] => {
                     golden.sizes.insert((*name).to_owned(), size.parse().unwrap());
+                }
+                // The C libraries' math functions differ in the last bit between systems (glibc and Apple's libm
+                // round a few results of `log` and `exp` differently), so digests hold for the system they were made
+                // on; parity/gate.sh regenerates them on the Linux host.
+                ["#system", system] if *system != std::env::consts::OS => {
+                    eprintln!("skipped: the golden digests were made on {system}, this is {}", std::env::consts::OS);
+                    return None;
                 }
                 [name, count, digest] => {
                     golden.digests.insert((*name).to_owned(), (count.parse().unwrap(), (*digest).to_owned()));
@@ -77,10 +89,19 @@ impl Golden {
     }
 
     pub(crate) fn check(&self, name: &str, lines: &[String]) {
-        let (count, digest) = self.digests.get(name).unwrap_or_else(|| panic!("no Swift digest for {name}"));
         let actual = format!("{:016x}", fnv(lines));
+        // Behaviour the Swift engine never had (it was removed in phase 5) has digests recorded from the Rust engine:
+        // ZHUYIN_GOLDEN_RECORD=1 appends the missing ones to the digests file, to be reviewed and committed.
+        if !self.digests.contains_key(name) && std::env::var_os("ZHUYIN_GOLDEN_RECORD").is_some() {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new().append(true).open(&self.path).unwrap();
+            writeln!(file, "{name}\t{}\t{actual}", lines.len()).unwrap();
+            eprintln!("{name}: recorded {} lines from the Rust engine", lines.len());
+            return;
+        }
+        let (count, digest) = self.digests.get(name).unwrap_or_else(|| panic!("no digest for {name}"));
         if lines.len() == *count && actual == *digest {
-            eprintln!("{name}: {count} lines identical to Swift");
+            eprintln!("{name}: {count} lines identical to the digest");
             return;
         }
         let dump = parity_directory().join("out").join(format!("{name}.txt"));

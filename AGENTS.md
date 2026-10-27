@@ -9,7 +9,7 @@ platforms/*  ──C 介面──▶  engine/  ◀──命令列行程──  m
 platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──  ml/
 ```
 
-- `engine/` 是所有平台共用的輸入法引擎：Rust workspace（`engine/crates/`）。App 目前仍使用 Swift 版（`engine/swift/`），Rust 版完成模型與 C 介面（第 4 階段）後換上，再刪除 Swift 版。兩者的輸出逐位元相同。
+- `engine/` 是所有平台共用的輸入法引擎，以 Rust 寫成（`engine/crates/`）。App 經由 C 介面（`zhuyin-ffi`）使用它，評測工具經由 `zhuyin-cli`。原本的 Swift 引擎已移除（2026-10，第 5 階段），Rust 版和它的輸出逐位元相同（`engine/DESIGN.md`）。
 - `platforms/` 是各作業系統的輸入法前端，目前只有 macOS。前端只透過引擎的公開介面使用它。
 - `ml/` 是研發：資料、訓練、評測，以及在 GPU 主機上執行這些工作。它不隨 App 出貨，只透過 `zhuyin-cli` 使用引擎。
 - `resources/` 是兩邊之間的契約：資料與模型的版本、來源與授權、二進位格式。
@@ -20,9 +20,8 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 
 | 路徑 | 內容 | 文件 |
 |---|---|---|
-| `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型介面）、`zhuyin-cli`；`parity/` 是和 Swift 版的一致性比對 | `engine/README.md`、`engine/DESIGN.md` |
-| `engine/swift/` | 目前 App 使用的 Swift 引擎（參考實作，第 5 階段移除） | `docs/engine/ARCHITECTURE.md`、`docs/engine/MODEL.md` |
-| `platforms/macos/` | InputMethodKit 輸入法、設定介面、Sparkle 更新、建置與發布腳本 | `docs/product/DESIGN.md` |
+| `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型的判斷邏輯與 ONNX Runtime）、`zhuyin-ffi`（C 介面）、`zhuyin-cli`；`parity/` 是兩個建置之間的行為比對 | `engine/README.md`、`engine/DESIGN.md`、`docs/engine/ARCHITECTURE.md`、`docs/engine/MODEL.md` |
+| `platforms/macos/` | InputMethodKit 輸入法、設定介面、Sparkle 更新、建置與發布腳本；`ZhuyinEngine` 是引擎的 Swift 包裝（Core ML 在這裡執行），`EngineBench` 是不含 App 的引擎路徑 | `docs/product/DESIGN.md` |
 | `ml/` | Python 專案（uv）：`src/zhuyintype_ml/` 底下是 `core`（共用核心）、`cli`（`zt` 指令）、`eval`（評測、ZhuyinBench）、`training`（每個模型一個流程）、`data`（資料版本、詞庫建置）、`remote`（GPU 主機） | `ml/README.md`、`ml/CONVENTIONS.md`、`docs/ml/EVALUATION.md` |
 | `ml/eval-sets/` | 納入版本庫的評測集（善解 CC0、日常短句、延遲用句） | `ml/eval-sets/external/shanjie/README.md` |
 | `resources/` | `assets.json`（資料與模型的固定版本）、`SOURCES.md`（來源與授權）、`formats/`（詞庫與語言模型的二進位格式） | `resources/SOURCES.md` |
@@ -36,7 +35,7 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 所有工作都由 `tools/zt` 執行（`tools/zt help` 列出全部指令，說明見 [tools/README.md](tools/README.md)）。任何指令前加 `--remote`，就在 `.remote.env` 指定的 GPU 主機上執行同一個指令。
 
 ```sh
-tools/zt setup                              # 檢查並準備這台機器（uv、Swift、Xcode 或 ONNX Runtime）
+tools/zt setup                              # 檢查並準備這台機器（uv、Rust，Swift 與 Xcode 或 ONNX Runtime）
 tools/zt data fetch                         # 下載資料與模型到 data/build（版本由 resources/assets.json 固定）
 tools/zt build cli | app | install | pkg    # zhuyin-cli、dist/ZhuyinType.app、安裝到 ~/Library/Input Methods、pkg
 tools/zt check engine | app | python | lint | types | public | all
@@ -50,7 +49,7 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
 
 `make cli`、`make checks`、`make app`、`make install` 也可以用，它們會呼叫 `tools/zt`。程式與文件的寫法見 [ml/CONVENTIONS.md](ml/CONVENTIONS.md)。
 
-建置需要完整的 Xcode（SwiftUI macro）；`build-app.sh` 會自動把 `DEVELOPER_DIR` 切到 Xcode。
+建置需要 Rust（rustup；`engine/rust-toolchain.toml` 固定版本）與完整的 Xcode（SwiftUI macro）；`build-app.sh` 先以 cargo 建置引擎，並自動把 `DEVELOPER_DIR` 切到 Xcode。
 
 ## 規則
 
@@ -87,5 +86,5 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
   - 提到其他輸入法時視為相關工作：說明對方的貢獻、註明出處、寫出比較的條件與限制，不寫成要打敗的對象。
 - GPU 主機上的長時間工作用 `nohup`，記錄放在 `~/zhuyintype/logs/`。不要用模糊的名稱比對來終止程序。
 - Python 用 uv、ruff 與 mypy，`tools/zt check all` 必須通過。Rust 在 `engine/` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo deny check`，必須零警告。
-- 引擎的行為改變要同時改 Swift 與 Rust 兩版，並用 `engine/parity/` 確認輸出仍然相同，直到 Swift 版移除。
+- 引擎的改變用 `engine/parity/gate.sh` 和 main 的建置逐行比對（`engine/README.md`「比對」）：開發時每次修改跑快速比對（`--quick`，幾分鐘），合併前與合併 main 之後跑完整比對。不應改變行為的修改（重構、效能）必須 0 差異；有意改變行為的修改要說明差異的範圍，並附上評測。golden 摘要（`engine/parity/golden/digests.tsv`）記錄的是 Swift 引擎的結果，只在有意改變行為時重新記錄。比對在 GPU 主機上跑，優先於主機上其他工作，不加 `nice`；主機上另開一份 checkout 跑快速比對與 `cargo` 檢查，不和完整比對共用建置目錄。
 - 提交訊息結尾附上工作階段要求的署名行；不要對 `main` 強制推送。

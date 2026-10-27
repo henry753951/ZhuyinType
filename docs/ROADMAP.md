@@ -97,7 +97,7 @@
 
 之後要做 Linux 與 Windows 輸入法，共用同一個引擎與模型。評測也要搬到 GPU 主機（64 核心）上跑。
 
-原則是依平台各自優化。跨平台共用的只有引擎邏輯（ZhuyinCore，純 Swift）與訓練好的權重，每個平台用最適合的執行方式與介面。macOS 是主要平台，維持專門的優化，不經過任何跨平台層：
+原則是依平台各自優化。跨平台共用的只有引擎邏輯（Rust，`engine/`）與訓練好的權重，每個平台用最適合的執行方式與介面。macOS 是主要平台，維持專門的優化，不經過任何跨平台層：
 
 - Core ML（CPU／神經引擎，之後加上有狀態的前文模型與 int8 權重）
 - InputMethodKit
@@ -105,16 +105,16 @@
 
 | 平台 | 引擎 | 模型執行 | 輸入法介面 |
 |---|---|---|---|
-| macOS | ZhuyinCore | Core ML | InputMethodKit（現有 app） |
-| Linux | ZhuyinCore（Swift for Linux） | ONNX Runtime（CPU；需要時 CUDA／OpenVINO） | fcitx5 或 IBus，經由 C ABI 呼叫引擎 |
-| Windows | ZhuyinCore（Swift for Windows） | ONNX Runtime（DirectML 或 CPU） | TSF，經由 C ABI 呼叫引擎 |
+| macOS | Rust 引擎，經由 C ABI | Core ML（由 App 執行，引擎回呼） | InputMethodKit（現有 app） |
+| Linux | Rust 引擎 | ONNX Runtime（CPU；需要時 CUDA／OpenVINO） | fcitx5 或 IBus，經由 C ABI 呼叫引擎 |
+| Windows | Rust 引擎 | ONNX Runtime（DirectML 或 CPU） | TSF，經由 C ABI 呼叫引擎 |
 
 做法：
 
-- ZhuyinCore 與 zhuyin-cli 在 Linux 編譯。
-- 模型另外匯出 ONNX，Swift 透過 ONNX Runtime C API 呼叫。模型呼叫的介面保持精簡，讓每個平台分別調校。
+- 引擎移植到 Rust（2026-10 完成，和 Swift 版逐位元相同）：zhuyin-cli 在 Linux 上以 ONNX Runtime 執行模型，C ABI（`zhuyin-ffi`）供各平台的輸入法使用，macOS App 已改用它。
+- 模型另外匯出 ONNX，引擎透過 ONNX Runtime C API 呼叫。模型呼叫的介面保持精簡，讓每個平台分別調校。
 - 所有評測工具與參數掃描在遠端以全部核心執行。
-- 引擎的 C ABI 與各平台的打包方式寫成計畫（`ml/src/zhuyintype_ml/remote/PORTING.md`）。
+- 各平台的打包方式寫成計畫（`ml/src/zhuyintype_ml/remote/PORTING.md`）；引擎的 C ABI 見 `engine/DESIGN.md` §6。
 
 完成標準：
 
@@ -122,7 +122,7 @@
 - macOS 的建置、行為與速度不變。
 - 整組參數掃描比 Mac 明顯快。
 
-目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`）。Swift 6.4.1 與 ONNX Runtime 1.24.4 裝在 GPU 主機上，四種評測工具與參數掃描都能用全部核心執行。驗證時 Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行。引擎的 C ABI 與 Linux／Windows 輸入法介面還沒開始，計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
+目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`），四種評測工具與參數掃描都能用全部核心執行（當時以 Swift 引擎驗證：Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行）。引擎已移植到 Rust，GPU 主機以 Rust 的 zhuyin-cli 與 ONNX Runtime 1.24.4 評測；C ABI（`zhuyin-ffi`）已完成，macOS App 改用它。Linux／Windows 的輸入法介面還沒開始，計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
 
 ## 3. 0.5–0.7 規劃：免選字、補標點、補全
 

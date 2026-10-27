@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The settings window: a source-list sidebar and one pane at a time, like System Settings.
 final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDelegate, NSSearchFieldDelegate {
@@ -88,7 +88,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
 
     /// Shows the 快捷鍵 page scrolled to `section`.
     func showKeys(_ section: KeySection, command: ShortcutCommand? = nil) {
-        open(SettingsPlace(.keys, row: (command?.section ?? section).id))
+        open(SettingsPlace(.keys, row: RowSections.headerID((command?.section ?? section).title)))
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -165,6 +165,9 @@ final class SettingsModel: ObservableObject {
     @Published var subpage: SettingsSubpage?
     /// A row to scroll to, set by the links between pages; cleared once shown.
     @Published var scrollTarget: String?
+    /// The row a link just led to, and its section, highlighted for a moment.  A section alone: all its rows.
+    @Published var arrivedRow: String?
+    @Published var arrivedSection: String?
     private var correctionObserver: NSObjectProtocol?
 
     init() {

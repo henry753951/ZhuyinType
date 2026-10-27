@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/zhuyin-core", "crates/zhuyin-models", "crates/zhuyin-cli"]
+members = ["crates/zhuyin-core", "crates/zhuyin-models", "crates/zhuyin-cli", "crates/zhuyin-ffi"]
 
 [workspace.package]
 edition = "2024"
@@ -11,7 +11,9 @@ rust-version = "1.88"
 
 [workspace.dependencies]
 memmap2 = "0.9"
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+# The system ONNX Runtime (1.24, C API 24); never the crate's downloaded binaries.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "api-24"] }
 libc = "0.2"
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 

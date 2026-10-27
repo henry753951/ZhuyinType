@@ -10,7 +10,7 @@
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh    # 或 brew install uv；uv 會自動準備 Python 3.12
-tools/zt setup                                      # 檢查 Swift、Xcode（macOS）或 ONNX Runtime（Linux），建立 .venv
+tools/zt setup                                      # 檢查 cargo，Swift 與 Xcode（macOS）或 ONNX Runtime（Linux），建立 .venv
 tools/zt data fetch                                 # 下載資料與模型到 data/build
 ```
 
@@ -33,7 +33,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 指令 | 說明 |
 |---|---|
-| `zt setup` | 檢查 uv、Swift、git，macOS 另查 Xcode、Linux 另查 ONNX Runtime，再 `uv sync`；缺少的工具會附上安裝方式 |
+| `zt setup` | 檢查 uv、cargo、git，macOS 另查 Swift 與 Xcode、Linux 另查 ONNX Runtime，再 `uv sync`；缺少的工具會附上安裝方式 |
 | `zt setup --group export --group dev` | 一併安裝相依群組 |
 | `zt setup --install-onnxruntime` | Linux：把 ONNX Runtime 1.24.4 C SDK 下載到 `~/opt`（或 `ONNXRUNTIME_ROOT` 所在的目錄） |
 | `zt setup --quiet` | 只印出缺少的項目（`zt --remote` 在主機上每次都先執行） |
@@ -55,7 +55,8 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 指令 | 說明 |
 |---|---|
-| `zt build cli` | `engine/swift` 的 zhuyin-cli 與檢查程式（release，`.build/release/`）；`--debug`、`--product zhuyin-cli` |
+| `zt build cli` | Rust 引擎的 zhuyin-cli（release，`engine/target/release/`；Linux 上含 ONNX Runtime 的模型）；`--debug` |
+| `zt build bench` | `EngineBench`：App 的引擎路徑（Core ML，macOS），`zt eval latency` 在 Mac 上量它 |
 | `zt build app` | `dist/ZhuyinType.app`（macOS，需要 Xcode）；`--debug` |
 | `zt build install` | 建置並安裝到 `~/Library/Input Methods` |
 | `zt build pkg` | `dist/ZhuyinType-<版本>.pkg` |
@@ -64,7 +65,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 指令 | 說明 |
 |---|---|
-| `zt check engine` | 引擎行為與延遲檢查（ZhuyinCoreChecks）；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
+| `zt check engine` | 引擎的測試（`cargo test --release`）：行為、golden 摘要與真實資料上的延遲目標；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
 | `zt check app` | 已建置 App 的自我測試與封裝檢查 |
 | `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄（相對於 `ml/` 或版本庫根目錄都可以） |
 | `zt check lint` | ruff；`--fix` 自動修正，`--format` 一併檢查排版 |
@@ -118,11 +119,12 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | 變數 | 用途 | 預設 |
 |---|---|---|
 | `ZT_DATA` | 資料目錄 | `data/build` |
-| `ZT_CLI` | zhuyin-cli 執行檔 | `.build/release/zhuyin-cli`，第一次使用時建置 |
-| `SWIFT_SCRATCH_PATH` | SwiftPM 建置目錄 | `.build` |
-| `ZT_BUILD_JOBS` | swift build 的平行數 | 全部核心 |
-| `ZT_SWIFT` | swift 執行檔 | PATH，其次 `~/opt/swift/usr/bin/swift` |
-| `ONNXRUNTIME_ROOT` | Linux 的 ONNX Runtime C SDK | `~/opt/onnxruntime` |
+| `ZT_CLI` | zhuyin-cli 執行檔（Mac 上的 `zt eval latency` 是 `EngineBench`） | `engine/target/release/zhuyin-cli`，每次從目前的原始碼增量建置 |
+| `ZT_CARGO`、`CARGO_TARGET_DIR` | cargo 執行檔、引擎的建置目錄 | PATH，其次 `~/.cargo/bin/cargo`；`engine/target` |
+| `SWIFT_SCRATCH_PATH` | macOS App 的 SwiftPM 建置目錄 | `.build` |
+| `ZT_BUILD_JOBS` | cargo 與 swift build 的平行數 | 全部核心 |
+| `ZT_SWIFT` | swift 執行檔（macOS App） | PATH，其次 `~/opt/swift/usr/bin/swift` |
+| `ONNXRUNTIME_ROOT` | Linux 的 ONNX Runtime C SDK（zhuyin-cli 的 `onnx` feature 連結它） | `~/opt/onnxruntime` |
 | `ZT_UV` | uv 執行檔 | PATH，其次 `~/.local/bin/uv`、`~/.cargo/bin/uv` |
 | `ZHUYIN_ASSET_CACHE` | 下載的資料壓縮檔快取 | `.cache/assets` |
 | `ZHUYIN_REMOTE_HOST`、`ZHUYIN_REMOTE_KEY`、`ZHUYIN_REMOTE_BASE` | GPU 主機（見 `.remote.env.example`） | |

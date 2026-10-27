@@ -39,9 +39,16 @@ struct ShortcutField: View {
         let bindings = preferences.bindings[command] ?? []
         let conflicts = preferences.conflicts(of: command)
         let recordingIndex = recording ?? previewRecording
+        // Hover affordances are always laid out, so hover never changes the layout; only their opacity changes.
         let showsControls = (hovered || preview == .hover) && !disabled && recordingIndex == nil
         VStack(alignment: .trailing, spacing: 4) {
             TrailingFlow(spacing: 5, lineSpacing: 5) {
+                // ＋ comes first, so its reserved place is on the free side and the keycaps end on the row's right edge.
+                if bindings.count < Self.maximumBindings, !disabled {
+                    iconButton("plus", help: "加入另一個按鍵") { start(bindings.count) }
+                        .opacity(showsControls ? 1 : 0)
+                        .allowsHitTesting(showsControls)
+                }
                 ForEach(Array(bindings.enumerated()), id: \.offset) { index, shortcut in
                     if index > 0 { Text("或").font(.callout).foregroundStyle(.tertiary) }
                     if recordingIndex == index {
@@ -53,16 +60,6 @@ struct ShortcutField: View {
                 if let recordingIndex, recordingIndex >= bindings.count {
                     Text("或").font(.callout).foregroundStyle(.tertiary)
                     recorder
-                }
-                if showsControls {
-                    if bindings.count < Self.maximumBindings {
-                        iconButton("plus", help: "加入另一個按鍵") { start(bindings.count) }
-                    }
-                    if bindings != command.defaultBindings {
-                        iconButton("arrow.uturn.backward", help: "還原成 \(command.defaultShortcut.keycaps.joined())") {
-                            problem = preferences.resetBindings(command)
-                        }
-                    }
                 }
             }
             .offset(x: shake)
@@ -84,9 +81,9 @@ struct ShortcutField: View {
         .allowsHitTesting(!disabled)
         .onHover { hovered = $0 }
         .onDisappear(perform: stop)
-        .animation(reduceMotion ? .easeInOut(duration: 0.15) : .snappy(duration: 0.2), value: hovered)
+        .animation(.easeInOut(duration: 0.15), value: hovered)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(command.label)：" + bindings.map { $0.keycaps.joined() }.joined(separator: " 或 "))
+        .accessibilityLabel("\(command.label)：" + bindings.map(\.spoken).joined(separator: " 或 "))
     }
 
     private var previewRecording: Int? {
@@ -114,13 +111,13 @@ struct ShortcutField: View {
                 }
         }
         .buttonStyle(.plain)
-        .help(conflict.map { "也用於「\($0.label)」；點一下改按鍵" } ?? "點一下，再按下新的組合")
+        .help(shortcut.spoken + "：" + (conflict.map { "也用於「\($0.label)」；點一下改按鍵" } ?? "點一下，再按下新的組合"))
         .contextMenu {
             Button("改按鍵…") { start(index) }
             if count > 1 { Button("移除這個按鍵") { preferences.unbind(command, at: index) } }
             Button("全部還原成預設值") { problem = preferences.resetBindings(command) }
         }
-        .accessibilityLabel(shortcut.keycaps.joined(separator: " ") + (conflict.map { "，也用於「\($0.label)」" } ?? ""))
+        .accessibilityLabel(shortcut.spoken + (conflict.map { "，也用於「\($0.label)」" } ?? ""))
     }
 
     /// The binding being recorded: a gently pulsing outline, the modifiers held so far, or the prompt.
@@ -140,7 +137,7 @@ struct ShortcutField: View {
             }
         }
         .padding(.horizontal, 4)
-        .frame(minHeight: 22)
+        .frame(height: Keycap.height(12))
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.accentColor.opacity(0.08)))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -176,24 +173,34 @@ struct ShortcutField: View {
         held = []
         withAnimation(.easeOut(duration: 0.15)) { recording = index }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
-            if event.type == .flagsChanged {
-                held = Self.modifierCaps(event.modifierFlags)
-                return event
-            }
-            let flags = event.modifierFlags.intersection([.control, .option, .shift, .command])
-            if event.keyCode == 53 && flags.isEmpty { stop(); return nil }
-            guard let shortcut = Shortcut(keyCode: event.keyCode, modifiers: event.modifierFlags) else {
-                refuse("這個鍵不能用")
-                return nil
-            }
-            if let message = preferences.bind(command, at: index, to: shortcut) {
-                refuse(message)
-            } else {
-                stop()
-                accept(index)
+            switch Self.record(event, command: command, at: index, in: preferences) {
+            case .held(let keys): held = keys; return event
+            case .cancel: stop()
+            case .refuse(let message): refuse(message)
+            case .accept: stop(); accept(index)
             }
             return nil
         }
+    }
+
+    enum Recorded: Equatable {
+        /// Modifiers held so far.
+        case held([String])
+        case cancel
+        case refuse(String)
+        case accept
+    }
+
+    /// What a key event does while recording binding `index` of `command`: the recorder's logic, apart from the view
+    /// so the self-tests can feed it events.  fn is shown while held; fn with an arrow or ⌫ is Page Up / Down, Home /
+    /// End or ⌦ (the event's .function and .numericPad flags are not modifiers of the shortcut).
+    static func record(_ event: NSEvent, command: ShortcutCommand, at index: Int, in preferences: Preferences) -> Recorded {
+        if event.type == .flagsChanged { return .held(modifierCaps(event.modifierFlags)) }
+        let flags = event.modifierFlags.intersection([.control, .option, .shift, .command])
+        if event.keyCode == 53 && flags.isEmpty { return .cancel }
+        guard let shortcut = Shortcut(keyCode: event.keyCode, modifiers: event.modifierFlags) else { return .refuse("這個鍵不能用") }
+        if let message = preferences.bind(command, at: index, to: shortcut) { return .refuse(message) }
+        return .accept
     }
 
     private func stop() {
@@ -224,7 +231,7 @@ struct ShortcutField: View {
     }
 
     static func modifierCaps(_ flags: NSEvent.ModifierFlags) -> [String] {
-        [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
+        [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘"), (.function, "fn")]
             .filter { flags.contains($0.0) }.map(\.1)
     }
 }
@@ -331,7 +338,7 @@ extension ShortcutCommand {
     var section: KeySection {
         switch self {
         case .commitWithNewline, .deleteWord: return .composing
-        case .nextPage, .previousPage, .singleCharacterList, .correctionsList: return .list
+        case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
         case .typeZhuyin, .selectLeft, .selectRight: return .editing
         }
     }

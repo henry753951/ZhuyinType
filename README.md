@@ -33,7 +33,7 @@
 
 ### 候選字與改字
 
-- ↓ 開啟候選字清單，長詞在前、單字在後，同一長度依前文排序。空白鍵預設送出並輸入空白，也可改成開啟候選字視窗；清單開著時，空白翻頁。
+- ↓ 開啟候選字清單，長詞在前、單字在後，同一長度依前文排序。空白鍵預設送出並輸入空白，也可改成在組字中輸入空白（不送出）或開啟候選字視窗；清單開著時，空白翻頁。
 - ⇧↓ 只列單字，⇧↑ 列出按錯修正與模糊音的字。
 - 選字後，其他已顯示的字保持不變；選到詞中間的字時，同一個詞在它前面的字也不變。
 - 候選字視窗可調整排列（橫式、直式）、字級、每頁的候選字數、選字鍵、間距、位置（游標下方或上方）、外觀與動畫，設定頁的預覽會即時播放打字的過程。
@@ -114,20 +114,20 @@
 
 ## 從原始碼建置
 
-需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
+需要 [Rust](https://rustup.rs)（引擎；`engine/rust-toolchain.toml` 固定版本）、Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
 
 ```sh
 tools/zt setup           # 檢查並準備開發環境
 tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 resources/assets.json 驗證雜湊）
 tools/zt build app       # dist/ZhuyinType.app
 tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
-tools/zt check engine    # 引擎檢查
+tools/zt check engine    # 引擎的測試（cargo test --release）
 tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 ```
 
 | 目錄 | 內容 |
 |---|---|
-| `engine/` | 所有平台共用的輸入法引擎：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
+| `engine/` | 所有平台共用的輸入法引擎（Rust）：組字、按鍵解碼、容錯、語言模型、神經模型、C 介面、`zhuyin-cli` |
 | `platforms/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
 | `ml/` | 研發：資料、訓練、評測與 `zt` 指令（Python，見 [ml/README.md](ml/README.md)） |
 | `resources/` | 資料與模型的固定版本、來源與授權、二進位格式 |

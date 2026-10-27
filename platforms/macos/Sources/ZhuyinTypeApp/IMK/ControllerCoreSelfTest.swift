@@ -1,5 +1,6 @@
 import AppKit
-import ZhuyinCore
+import SwiftUI
+import ZhuyinEngine
 
 private final class FakeTextClient: TextClient {
     var bundleIdentifier = "org.zhuyintype.self-test"
@@ -225,8 +226,8 @@ enum ControllerCoreSelfTest {
             _ = core.flagsChanged(keyCode: 58, modifiers: [], physicallyDown: false, timestamp: 1.1)
             try expect(tolerant == false, "Option alone changed the list")
             let visible = core.composer.presentation.text
-            try expect(!core.keyDown(keyCode: 126, modifiers: .option), "Option-↑ was taken from the app")
-            try expect(client.inserts.last == visible, "Option-↑ did not commit before passing: \(client.inserts)")
+            try expect(!core.keyDown(keyCode: 126, modifiers: [.option, .control]), "⌃⌥↑ was taken from the app")
+            try expect(client.inserts.last == visible, "⌃⌥↑ did not commit before passing: \(client.inserts)")
             // ⇧↑ with no list open opens the corrections list directly.
             type("ji3ap7", into: core)
             try expect(core.keyDown(keyCode: 126, modifiers: .shift) && tolerant == true, "⇧↑ did not open the corrections list")
@@ -836,6 +837,141 @@ enum ControllerCoreSelfTest {
             }
             let defaults = scratchDefaults()
             try expect(Preferences(defaults: defaults).spaceAction == .commitAndSpace, "default")
+        }
+
+        // MARK: Settings
+
+        test("key field: hover and recording never change its height; a conflict adds its line") {
+            _ = NSApplication.shared
+            let preferences = Preferences(defaults: scratchDefaults())
+            func height(_ command: ShortcutCommand, _ state: ShortcutFieldPreview?, width: CGFloat = 300) -> CGFloat {
+                let view = NSHostingView(rootView: ShortcutField(preferences: preferences, command: command, preview: state)
+                    .frame(width: width))
+                view.layoutSubtreeIfNeeded()
+                return view.fittingSize.height
+            }
+            for command in [ShortcutCommand.deleteWord, .correctionsList, .singleCharacterList] {
+                let count = preferences.bindings[command]?.count ?? 0
+                let rest = height(command, nil)
+                try expect(rest >= Keycap.height(12), "\(command) measured \(rest) pt")
+                for state: ShortcutFieldPreview in [.hover, .recording(index: 0, held: []), .recording(index: 0, held: ["⌃", "⇧"]),
+                                                     .recording(index: count, held: []), .accepted(index: 0)] {
+                    let other = height(command, state)
+                    try expect(abs(other - rest) < 0.5, "\(command) \(state): \(other) pt, at rest \(rest) pt")
+                }
+            }
+            var bindings = preferences.bindings
+            bindings[.nextPage] = [Shortcut("Tab"), Shortcut("←", control: true, shift: true)]
+            bindings[.selectLeft] = [Shortcut("←", shift: true), Shortcut("←", control: true, shift: true)]
+            preferences.bindings = bindings
+            let conflicted = height(.nextPage, nil)
+            try expect(abs(height(.nextPage, .hover) - conflicted) < 0.5, "hover changed a conflicted field")
+            bindings[.selectLeft] = [Shortcut("←", shift: true)]
+            preferences.bindings = bindings
+            try expect(height(.nextPage, nil) < conflicted, "the conflict line was not added")
+        }
+
+        test("key recorder: fn with an arrow or ⌫ is picked up and reads as on a Mac keyboard") {
+            let preferences = Preferences(defaults: scratchDefaults())
+            func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = []) -> NSEvent {
+                NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags.union([.function, .numericPad]),
+                                 timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                                 isARepeat: false, keyCode: code)!
+            }
+            func record(_ event: NSEvent, _ command: ShortcutCommand, at index: Int = 1) -> ShortcutField.Recorded {
+                ShortcutField.record(event, command: command, at: index, in: preferences)
+            }
+            // fn ↓ / fn ↑ (Page Down / Page Up) become keys of 下一頁 / 上一頁.
+            var only = preferences.bindings
+            only[.nextPage] = [Shortcut("Tab")]
+            only[.previousPage] = [Shortcut("Tab", shift: true)]
+            preferences.bindings = only
+            try expect(record(key(121), .nextPage) == .accept, "fn ↓ for 下一頁: \(record(key(121), .nextPage))")
+            try expect(record(key(116), .previousPage) == .accept, "fn ↑ for 上一頁")
+            try expect(preferences.bindings[.nextPage]?.last == Shortcut("PageDown"), "fn ↓ not stored")
+            try expect(Shortcut("PageDown").keycaps == ["fn", "↓"] && Shortcut("PageDown").spoken == "fn ↓（Page Down）",
+                       "fn ↓ reads \(Shortcut("PageDown").keycaps)")
+            try expect(Shortcut("PageUp", option: true).keycaps == ["⌥", "fn", "↑"], "⌥ fn ↑")
+            // With a modifier any of them can be a key; alone, fn ← → ⌫ and the other page key say what they already do.
+            try expect(record(key(115, .option), .selectLeft) == .accept, "⌥ fn ← refused")
+            for (code, command, needle) in [(UInt16(119), ShortcutCommand.deleteWord, "fn →（End）"), (115, .deleteWord, "fn ←（Home）"),
+                                            (117, .deleteWord, "fn ⌫（向後刪除）"), (121, .previousPage, "fn ↓（Page Down）")] {
+                guard case .refuse(let message) = record(key(code), command) else {
+                    throw Failure(description: "key \(code) for \(command) was not refused")
+                }
+                try expect(message.contains(needle), "key \(code): \(message)")
+            }
+            // fn shows while held.
+            let fn = NSEvent.keyEvent(with: .flagsChanged, location: .zero, modifierFlags: [.function, .shift], timestamp: 0,
+                                      windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                                      isARepeat: false, keyCode: 63)!
+            try expect(record(fn, .nextPage) == .held(["⇧", "fn"]), "held \(record(fn, .nextPage))")
+            // The controller turns the key into the command.
+            try expect(Shortcut(keyCode: 121, modifiers: [.function, .numericPad]) == Shortcut("PageDown"), "fn ↓ event")
+        }
+
+        test("paging: Tab, fn ↓ and ⌥↓ by default; ⌥↑ ⌥↓ go to the app with nothing composed") {
+            try expect(ShortcutCommand.nextPage.defaultBindings == [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)],
+                       "下一頁 defaults")
+            try expect(ShortcutCommand.previousPage.defaultBindings == [Shortcut("Tab", shift: true), Shortcut("PageUp"),
+                                                                       Shortcut("↑", option: true)], "上一頁 defaults")
+            let (core, client) = session()
+            try expect(!core.keyDown(keyCode: 125, modifiers: .option) && !core.keyDown(keyCode: 126, modifiers: .option)
+                       && !core.keyDown(keyCode: 121, modifiers: .function) && client.operations.isEmpty, "idle ⌥↓ ⌥↑ fn ↓ were taken")
+            type("u4", into: core)
+            press("<down>", into: core)
+            let first = core.composer.presentation.candidates
+            try expect((first?.items.count ?? 0) > (first?.pageSize ?? 99), "the sample list has one page")
+            for (code, flags) in [(UInt16(125), NSEvent.ModifierFlags.option), (121, .function), (48, [])] {
+                press("<esc><down>", into: core)
+                try expect(core.keyDown(keyCode: code, modifiers: flags), "key \(code) not handled")
+                let list = core.composer.presentation.candidates
+                try expect(list.map { $0.selection == $0.pageSize } == true, "key \(code) did not turn the page: \(String(describing: list?.selection))")
+                try expect(core.keyDown(keyCode: code == 48 ? 48 : code == 125 ? 126 : 116, modifiers: code == 48 ? .shift : flags),
+                           "back key for \(code) not handled")
+                try expect(core.composer.presentation.candidates?.selection == 0, "key \(code): back did not return")
+            }
+            press("<esc><esc><esc>", into: core)
+        }
+
+        test("key defaults: stored keys of earlier versions read as the new defaults; a taken default stays with its user") {
+            let defaults = scratchDefaults()
+            var old = Dictionary(uniqueKeysWithValues: ShortcutCommand.allCases.map { ($0.rawValue, $0.legacyDefaultBindings) })
+            old[ShortcutCommand.deleteWord.rawValue] = [Shortcut("d", control: true)]
+            defaults.set(try JSONEncoder().encode(old), forKey: "keyBindings")
+            let preferences = Preferences(defaults: defaults)
+            try expect(preferences.bindings[.nextPage] == ShortcutCommand.nextPage.defaultBindings, "old [Tab] not upgraded")
+            try expect(preferences.bindings[.deleteWord] == [Shortcut("d", control: true)], "the user's key was lost")
+            var all = preferences.bindings
+            all[.singleCharacterList] = [Shortcut("↓", option: true)]
+            preferences.bindings = all
+            let stored = try JSONDecoder().decode([String: [Shortcut]].self, from: defaults.data(forKey: "keyBindings") ?? Data())
+            try expect(Set(stored.keys) == ["deleteWord", "singleCharacterList"], "stored more than the changes: \(stored.keys)")
+            try expect(preferences.bindings[.nextPage] == [Shortcut("Tab"), Shortcut("PageDown")], "⌥↓ stayed on 下一頁")
+            try expect(preferences.conflicts(of: .nextPage).isEmpty, "a default the user took shows as a conflict")
+            try expect(preferences.resetBindings(.singleCharacterList) == nil
+                       && preferences.bindings[.nextPage] == ShortcutCommand.nextPage.defaultBindings, "⌥↓ did not come back")
+        }
+
+        test("horizontal list: ⌥← ⌥→ list the neighbouring character; with no list they are ← →") {
+            let (core, _) = session()
+            var options = core.composer.options
+            options.verticalList = false
+            core.update(options: options, shiftToggle: .both, popupCompositionApps: [])
+            type("su3cl3", into: core)
+            press("<down>", into: core)
+            let target = core.composer.presentation.candidates?.items.first?.text
+            try expect(core.keyDown(keyCode: 123, modifiers: .option), "⌥← not handled")
+            let moved = core.composer.presentation.candidates?.items.first?.text
+            try expect(moved != nil && moved != target, "⌥← kept the list on \(String(describing: target))")
+            try expect(core.keyDown(keyCode: 124, modifiers: .option)
+                       && core.composer.presentation.candidates?.items.first?.text == target, "⌥→ did not come back")
+            press("<esc>", into: core)
+            let cursor = core.composer.presentation.cursor
+            try expect(core.keyDown(keyCode: 123, modifiers: .option) && core.composer.presentation.cursor == cursor - 1,
+                       "⌥← with no list did not move the cursor")
+            press("<esc><esc><esc>", into: core)
+            try expect(!core.keyDown(keyCode: 123, modifiers: .option), "idle ⌥← was taken")
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")

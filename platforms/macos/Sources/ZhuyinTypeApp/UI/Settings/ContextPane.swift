@@ -12,17 +12,16 @@ struct ContextPane: View {
 
     var body: some View {
         let on = preferences.usesPrecedingText
-        Form {
-            Section {
+        SettingsForm {
+            SettingsSection {
                 ContextIllustration(pinned: pinnedScene)
-                    .padding(.vertical, 6)
             }
-            Section {
-                Toggle(isOn: binding(preferences, \.usesPrecedingText)) {
-                    RowLabel("參考游標前的文字", "依前文選字，並調整成口語或書面的用語")
+            SettingsSection {
+                SettingRow(title: "參考游標前的文字", subtitle: "依前文選字，並調整成口語或書面的用語") {
+                    RowSwitch(title: "參考游標前的文字", isOn: binding(preferences, \.usesPrecedingText))
                 }
             }
-            Section("讀取與保留") {
+            SettingsSection("讀取與保留") {
                 FactLabel(symbol: "text.viewfinder", title: "讀取", value: on ? "游標前最多 \(Self.readLimit) 個字" : "不讀取")
                 FactLabel(symbol: "text.append", title: "送出的字",
                           value: on ? "接在前文後面，保留最近 \(Self.keptLimit) 個字" : "只接著這個輸入框剛送出的字")
@@ -37,21 +36,13 @@ struct ContextPane: View {
     }
 }
 
-/// A fact about the current setting: an icon and title on the leading side, the value on the trailing side.
+/// A fact about the current setting: its title on the leading side, the value on the trailing side.
 struct FactLabel: View {
     let symbol: String
     let title: String
     let value: String
     var body: some View {
-        LabeledContent {
-            Text(value).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
-        } label: {
-            Label {
-                Text(title)
-            } icon: {
-                Image(systemName: symbol).foregroundStyle(Color.accentColor)
-            }
-        }
+        SettingRow(title: title, value: value)
     }
 }
 

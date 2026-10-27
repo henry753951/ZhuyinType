@@ -10,9 +10,8 @@ and its learning per line unless --keep-memory), so a batch is spread over paral
 take the next line whenever they finish one.  This needs zhuyin-cli --batch to flush each answer line as it writes it
 (the Swift CLI calls fflush; Rust's stdout is line-buffered); a stand-in CLI must do the same (print(..., flush=True)).
 
-Every process gets the same Swift hash seed (SWIFT_DETERMINISTIC_HASHING): the engine breaks some score ties in hash
-order, which is otherwise random per process, so the same keys could convert differently from run to run.  With a
-fixed seed, a result depends only on the input line, never on the process or the order of the lines.
+The engine breaks every score tie in a fixed order (engine/DESIGN.md §4), so a result depends only on the input line,
+never on the process or the order of the lines.
 """
 
 from __future__ import annotations
@@ -30,8 +29,8 @@ from typing import Any
 from . import paths
 
 CONFIGURATIONS = ("app", "engine")
-# One core per process (the pool provides the parallelism) and a fixed hash seed (see above).
-ENVIRONMENT = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "SWIFT_DETERMINISTIC_HASHING": "1"}
+# One core per process (the pool provides the parallelism).
+ENVIRONMENT = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"}
 
 
 @dataclass

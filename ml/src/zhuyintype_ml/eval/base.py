@@ -56,6 +56,10 @@ class Evaluator(ABC):
         self.configure(parser)
         return parser.parse_args(argv)
 
+    def cli(self) -> Path:
+        """The engine command line this evaluation runs (zhuyin-cli, built from the current sources)."""
+        return paths.cli()
+
     def config(self, args: argparse.Namespace) -> EngineConfig:
         return EngineConfig(args.config, args.data, [a for text in args.cli_args for a in shlex.split(text)])
 
@@ -64,7 +68,7 @@ class Evaluator(ABC):
         options = {k: v for k, v in vars(args).items() if k not in NOT_OPTIONS and not callable(v)}
         report = Report(self.name, config.describe(), options)
         # One pool for every set: its processes load the models once and serve all of them.
-        with EnginePool(config, args.jobs) as pool:
+        with EnginePool(config, args.jobs, self.cli()) as pool:
             for eval_set in resolve(args.set, self.kind):
                 report.add(self.evaluate(eval_set, pool, args))
         if not quiet:

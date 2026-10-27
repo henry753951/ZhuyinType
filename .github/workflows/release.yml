@@ -43,11 +43,14 @@ jobs:
           key: assets-app-${{ hashFiles('resources/assets.json') }}
       - run: tools/zt setup
       - run: tools/zt data fetch
-      - name: SwiftPM build cache
+      - name: Build caches (SwiftPM, cargo)
         uses: actions/cache@v6
         with:
-          path: .build
-          key: macos-${{ hashFiles('engine/swift/Package.swift', 'platforms/macos/Package.resolved', 'engine/swift/Sources/**', 'platforms/macos/Sources/**') }}
+          path: |
+            .build
+            ~/.cargo/registry
+            engine/target
+          key: macos-${{ hashFiles('engine/Cargo.lock', 'engine/rust-toolchain.toml', 'platforms/macos/Package.resolved', 'platforms/macos/Sources/**') }}
           restore-keys: macos-
       - name: Sparkle tools
         uses: actions/cache@v6
@@ -68,7 +71,6 @@ jobs:
         run: tools/zt check app
       - name: Speed, energy and memory on this Mac
         run: |
-          tools/zt build cli --product zhuyin-cli
           tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources --json dist/release/metrics-mac.json
       - name: Publish
         run: |

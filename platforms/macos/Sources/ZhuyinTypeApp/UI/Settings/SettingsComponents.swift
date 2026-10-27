@@ -22,27 +22,6 @@ struct FooterText: View {
     }
 }
 
-/// A row's title with an optional one-line subtitle, as System Settings draws them.
-struct RowLabel: View {
-    let title: String
-    let subtitle: String?
-    init(_ title: String, _ subtitle: String? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
 /// Keys drawn as keycaps.  `tint` marks them (system red for a conflict).
 struct KeyCombo: View {
     let keys: [String]
@@ -59,6 +38,8 @@ struct KeyCombo: View {
 }
 
 struct Keycap: View {
+    /// The one height of keycaps of this text size.
+    static func height(_ size: CGFloat) -> CGFloat { ceil(size * 1.75) }
     let key: String
     var size: CGFloat = 12
     var highlighted = false
@@ -82,12 +63,14 @@ struct Keycap: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.42)
+        // One height for every keycap, symbols and words alike, with the text centred in it.
         Text(key)
             .font(.system(size: size, weight: .medium))
             .foregroundStyle(ink)
             .lineLimit(1)
             .padding(.horizontal, size * 0.5)
-            .frame(minWidth: size * 1.85, minHeight: size * 1.7)
+            .frame(minWidth: size * 1.85)
+            .frame(height: Self.height(size))
             .background(shape.fill(fill))
             .overlay(shape.strokeBorder(edge, lineWidth: tint == nil ? 0.5 : 1))
             .fixedSize()

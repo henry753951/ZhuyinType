@@ -6,10 +6,10 @@
 
 評測與訓練在 GPU 主機上執行，不佔用開發用的 Mac。`zt --remote <指令>` 把目前的工作目錄同步到主機上專屬的目錄，在那裡準備環境與資料，執行同一個 zt 指令，把輸出即時傳回，最後取回結果檔。程式裡不寫主機、使用者目錄或 SSH 金鑰；主機設定只放在不進 git 的 `.remote.env`，也可以放在環境變數。
 
-Mac 用 Core ML 執行模型。Linux 用同一套 Swift 引擎與計分程式，模型有兩種執行方式：
+Mac 用 Core ML 執行模型。Linux 用同一套 Rust 引擎與判斷邏輯，模型有兩種執行方式：
 
-- `cuda`：GPU 上的一個 PyTorch 模型伺服器替所有引擎行程計算，是 `zt --remote eval` 的預設，用在開發時的評測與設定掃描；
-- `cpu`：每個引擎行程透過 ONNX Runtime 的 C API 執行從檢查點匯出的 ONNX 模型，用在發布的數字（ZhuyinBench、與其他輸入法的比較），以 `--backend cpu` 指定。
+- `cuda`：GPU 上的一個 PyTorch 模型伺服器替所有引擎行程計算（`zhuyin-cli --model-server`），是 `zt --remote eval` 的預設，用在開發時的評測與設定掃描；
+- `cpu`：每個引擎行程透過 ONNX Runtime 執行從檢查點匯出的 ONNX 模型（`zhuyin-cli` 的 `onnx` feature），用在發布的數字（ZhuyinBench、與其他輸入法的比較），以 `--backend cpu` 指定。
 
 兩種方式的輸出在開發集上逐行相同；和 Mac 的一致性與耗時見下方「實測結果」與 [REPORT.md](REPORT.md)。
 
@@ -86,8 +86,8 @@ zt data compile --quiet                            # 詞庫與語言模型的 mm
 `zt setup` 檢查並說明缺少的工具，不安裝系統套件，也不需要 sudo：
 
 - uv：`curl -LsSf https://astral.sh/uv/install.sh | sh`（安裝到 `~/.local/bin`，`tools/zt` 會在那裡找到它）。Python 3.12 由 uv 提供。
-- Swift 6：官方的 Linux 工具鏈。放在 PATH 上，或解壓縮到 `~/opt/swift`，或以 `ZT_SWIFT` 指定。
-- ONNX Runtime 1.24.4 C SDK：`zt setup --install-onnxruntime` 下載官方發行版到 `~/opt` 並建立 `~/opt/onnxruntime` 連結；也可以用 `ONNXRUNTIME_ROOT` 指定其他位置（其下要有 `include/` 與 `lib/`）。`engine/swift/Package.swift` 只在 Linux 上連結 bridge，並為評測嵌入 SDK 的 lib 路徑。
+- Rust：rustup 或系統的 cargo（PATH 上，或 `~/.cargo/bin/cargo`，或以 `ZT_CARGO` 指定）。
+- ONNX Runtime 1.24.4 C SDK：`zt setup --install-onnxruntime` 下載官方發行版到 `~/opt` 並建立 `~/opt/onnxruntime` 連結；也可以用 `ONNXRUNTIME_ROOT` 指定其他位置（其下要有 `include/` 與 `lib/`）。`zt` 在 Linux 上以 `onnx` feature 建置 `zhuyin-cli`，連結 SDK 的 `lib/`（`ORT_LIB_PATH`）並嵌入它的路徑。
 - PyTorch、onnx、onnxruntime（Python）：`export` 相依群組，第一次執行 `zt models export` 時由 uv 安裝；Linux 上是 CUDA 13.0 的 PyTorch。
 
 主機上的目錄（`<base>` 預設是家目錄下的 `zhuyintype`，可用 `ZHUYIN_REMOTE_BASE` 改變）：

@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import ZhuyinCore
+import ZhuyinEngine
 
 /// The 候選字視窗 page's preview: still scenes side by side, each a line of a document with the key just pressed
 /// beside it and the real candidate window (or 中/英 badge) under it.  Every setting on the page redraws every scene at
@@ -234,11 +234,21 @@ private struct PreviewBlock: View {
     var body: some View {
         let scene = layout.scene
         VStack(alignment: .leading, spacing: 6) {
-            Text(scene.title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
+            // The title, and on the right how much a window too large for the block is shrunk (never over the scene).
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text(scene.title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if layout.scale < 0.99 {
+                    Text("縮小為 \(Int((layout.scale * 100).rounded()))%")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: layout.width, height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color(nsColor: .textBackgroundColor))
@@ -271,14 +281,6 @@ private struct PreviewBlock: View {
             }
             .frame(width: layout.width, height: layout.height, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay(alignment: .bottomTrailing) {
-                if layout.scale < 0.99 {
-                    Text("縮小為 \(Int((layout.scale * 100).rounded()))%")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .padding(6)
-                }
-            }
         }
     }
 }

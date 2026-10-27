@@ -93,9 +93,9 @@ MixtureLanguageModel 直接使用百科 ID。只出現在聊天模型的詞編�
 
 ```sh
 python -m unittest zhuyintype_ml.training.lm.test_compile_data
-# Swift 檢查包括獨立的二進位 fixture、每一種截斷的詞庫前綴、
+# 引擎的測試包括獨立的二進位 fixture、每一種截斷的詞庫前綴、
 # 格式錯誤的 offset、個人覆蓋層、ASCII ID 與混合格式 LM。
-.build/release/ZhuyinCoreChecks
+tools/zt check engine
 ```
 
 量測結果、確切的評測設定與一致性差異見 [../memory/REPORT.md](../../ml/src/zhuyintype_ml/training/memory/REPORT.md)。
