@@ -470,4 +470,4 @@ def build(out: Path | None = None) -> Path:
 
 
 if __name__ == "__main__":
-    build()
+    build(Path(sys.argv[1]) if len(sys.argv) > 1 else None)  # an output path, or the data directory's lexicon.tsv
