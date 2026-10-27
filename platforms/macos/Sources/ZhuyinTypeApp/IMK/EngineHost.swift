@@ -1,3 +1,4 @@
+import Carbon
 import Foundation
 import os
 import ZhuyinCore
@@ -44,6 +45,7 @@ enum EngineHost {
         // Static lets initialise on first use: record what was launched now, before any update can replace it.
         _ = (launchedVersion, launchedExecutable)
         restoreModeAfterRestart()
+        observeInputSourceChanges()
         reload()
         monitor = UpdateMonitor(paths: [Bundle.main.bundleURL.deletingLastPathComponent().path, modelsDirectory.path]) {
             checkForUpdates()
@@ -223,6 +225,29 @@ enum EngineHost {
         if let lastEnglishMode {
             UserDefaults.standard.set(["english": lastEnglishMode, "time": Date().timeIntervalSince1970], forKey: modeKey)
         }
+    }
+
+    /// Switching to another input source forgets Chinese or English, so coming back starts as the settings say
+    /// (Chinese unless 「開始輸入時使用英文」).  Moving between apps and fields with ZhuyinType selected keeps the mode.
+    private static func observeInputSourceChanges() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil,
+            queue: .main
+        ) { _ in
+            inputSourceChanged(toOurs: currentInputSourceIsOurs())
+        }
+    }
+
+    /// Whether the selected keyboard input source is one of this input method's modes.
+    static func currentInputSourceIsOurs() -> Bool {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let pointer = TISGetInputSourceProperty(source, kTISPropertyBundleID) else { return false }
+        let bundle = Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
+        return bundle == Bundle.main.bundleIdentifier
+    }
+
+    static func inputSourceChanged(toOurs: Bool) {
+        if !toOurs { lastEnglishMode = nil }
     }
 
     /// Keeps Chinese or English across a restart for an update (within a minute of it).

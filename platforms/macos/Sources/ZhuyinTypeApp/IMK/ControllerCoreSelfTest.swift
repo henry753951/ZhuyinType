@@ -117,6 +117,15 @@ enum ControllerCoreSelfTest {
             try expect(core.isEnglish && callbackSawCommit, "mode changed without preserving typed text")
             try expect(!core.keyDown(keyCode: 0, modifiers: []) && client.inserts == [visible], "English key consumed")
         }
+        test("switching to another input source forgets English; coming back starts in Chinese") {
+            let saved = EngineHost.lastEnglishMode
+            defer { EngineHost.lastEnglishMode = saved }
+            EngineHost.lastEnglishMode = true
+            EngineHost.inputSourceChanged(toOurs: true)
+            try expect(EngineHost.lastEnglishMode == true, "moving between fields lost the mode")
+            EngineHost.inputSourceChanged(toOurs: false)
+            try expect(EngineHost.lastEnglishMode == nil, "another input source kept English")
+        }
         test("Shift outside a text field neither switches the mode nor shows the badge") {
             let (core, client) = session()
             client.hasInsertionPoint = false
