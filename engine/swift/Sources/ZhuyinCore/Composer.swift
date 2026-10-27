@@ -35,6 +35,19 @@ public final class Composer {
     /// (`KeyDecoder`), and how many tokens at the end they produced.
     private var run: [KeyDecoder.Key] = []
     private var runTokens = 0
+    /// What a composition is made of, to put it back after ` (Zhuyin as typed).
+    private struct Snapshot: Equatable {
+        var tokens: [CompositionToken]
+        var cursor: Int
+        var buffer: [Character?]
+        var bufferKeys: String
+        var fixed: [FixedWord]
+        var run: [KeyDecoder.Key]
+        var runTokens: Int
+    }
+    /// The composition before and right after the last `: pressing ` again or Esc, with nothing changed in between,
+    /// puts the syllables back.
+    private var literalUndo: (before: Snapshot, after: Snapshot)?
     /// LM history of the words committed just before this composition; the sentence start after punctuation, a
     /// passed-through key or `breakContext()`.
     private var leadingHistory = LanguageModelHistory()
@@ -159,8 +172,28 @@ public final class Composer {
         return Array((tail.count == words.count ? earlier + Array(tail) : Array(tail)).suffix(2))
     }
 
+    private func snapshot() -> Snapshot {
+        Snapshot(tokens: tokens, cursor: cursor, buffer: buffer, bufferKeys: bufferKeys, fixed: fixed, run: run,
+                 runTokens: runTokens)
+    }
+
+    private func restore(_ state: Snapshot) {
+        tokens = state.tokens; cursor = state.cursor; buffer = state.buffer; bufferKeys = state.bufferKeys
+        fixed = state.fixed; run = state.run; runTokens = state.runTokens
+        conversionDirty = true
+    }
+
     private func process(_ key: KeyInput) -> KeyResult {
         notice = nil
+        if let undo = literalUndo {
+            literalUndo = nil
+            if key == .char("`") || key == .escape, choices.isEmpty, snapshot() == undo.after {
+                restore(undo.before)
+                refresh()
+                return .consumed
+            }
+        }
+        let beforeKey = snapshot()
         if !continuesRun(key) { settleRun() }
         if key == .shiftLeft || key == .shiftRight {
             guard hasComposition else { return .passThrough }
@@ -199,11 +232,13 @@ public final class Composer {
                 let text = bufferText
                 clearBuffer()
                 insert(.literal(text))
+                literalUndo = (beforeKey, snapshot())
                 result = .consumed
             } else if cursor > 0, let reading = tokens[cursor - 1].reading {
                 let target = cursor - 1
                 delete(target..<cursor)
                 insert(.literal(ZhuyinKeyboard.plain(reading)))
+                literalUndo = (beforeKey, snapshot())
                 result = .consumed
             } else { result = hasComposition ? .consumed : .passThrough }
         } else if let literal = ZhuyinKeyboard.literal(for: key, keys: options.punctuationKeys) {
@@ -641,10 +676,12 @@ public final class Composer {
             let range = choices[candidateSelection].range
             guard tokens[range].allSatisfy({ $0.reading != nil }) else { closeCandidates(); refresh(); return .consumed }
             let text = ZhuyinKeyboard.plain(tokens[range].compactMap(\.reading).joined(separator: " "))
+            let before = snapshot()
             delete(range)
             cursor = range.lowerBound
             insert(.literal(text))
             closeCandidates()
+            literalUndo = (before, snapshot())
         case .enter: return selectCandidate(at: candidateSelection)
         case .shiftDown: openCandidates(singleCharacter: !singleCharacterList, tolerant: tolerantList)
         case .shiftUp:

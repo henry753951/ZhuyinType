@@ -980,6 +980,30 @@ for size in [0, 1, 2, 9, 30] {
     check(c.presentation.text == "ㄅㄚ" && c.presentation.zhuyinHint == nil, "footer action fixes literal")
 }
 
+// A ` pressed by mistake: ` again or Esc right after puts the syllables back; any other key keeps the literal.
+let undoAgain = composer(engine, "18 q8 ")
+_ = undoAgain.handle(.char("`"))
+check(undoAgain.presentation.text == "八ㄆㄚ", "backtick before undo")
+_ = undoAgain.handle(.char("`"))
+check(undoAgain.presentation.text == "八趴" && undoAgain.presentation.cursor == 2, "second backtick restores the syllable")
+_ = undoAgain.handle(.char("`"))
+check(undoAgain.presentation.text == "八ㄆㄚ", "a third backtick converts again")
+let undoEscape = composer(engine, "18 q8 ")
+_ = undoEscape.handle(.char("`")); _ = undoEscape.handle(.escape)
+check(undoEscape.presentation.text == "八趴" && undoEscape.isComposing, "Esc right after a backtick restores instead of clearing")
+let undoBuffer = composer(engine, "18 q8")
+_ = undoBuffer.handle(.char("`")); _ = undoBuffer.handle(.escape)
+type(" ", into: undoBuffer)
+check(undoBuffer.presentation.text == "八趴", "restored unfinished syllable completes as typed")
+let undoList = composer(engine, "18 q8 ")
+_ = undoList.handle(.down); _ = undoList.handle(.char("`"))
+let listLiteral = undoList.presentation.text
+_ = undoList.handle(.char("`"))
+check(listLiteral != "八趴" && undoList.presentation.text == "八趴", "backtick from the candidate list is undone too")
+let undoGone = composer(engine, "18 q8 ")
+_ = undoGone.handle(.char("`")); type("a8 ", into: undoGone); _ = undoGone.handle(.escape)
+check(!undoGone.isComposing, "after another key, Esc clears as usual")
+
 // Compare every incremental edit with a forced full decode, including EOS/history and word-boundary edits.
 let incrementalScript = "18 q8 a8 18 q8 a8 18 q8 a8 ".map { $0 == " " ? KeyInput.space : .char($0) }
     + [.left, .left, .backspace, .char("1"), .char("8"), .space, .home, .forwardDelete,
