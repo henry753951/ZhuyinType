@@ -36,6 +36,7 @@ enum ControllerCoreSelfTest {
     private struct Failure: Error, CustomStringConvertible { var description: String }
 
     static func run(lexiconURL: URL) -> Int32 {
+        let focus = Headless.FocusGuard()
         let engine: Engine
         do {
             engine = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
@@ -1011,8 +1012,7 @@ enum ControllerCoreSelfTest {
             Preferences.shared = preferences
             let items = (0..<14).map { Candidate(text: $0 % 9 == 0 ? "很長很長的候選字\($0)" : "字\($0)") }
             let content = CandidateContentView(frame: .zero)
-            let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 400, height: 600), styleMask: [.borderless],
-                                  backing: .buffered, defer: false)
+            let window = HeadlessWindow(size: NSSize(width: 400, height: 600))
             window.isReleasedWhenClosed = false
             window.alphaValue = 0
             window.contentView = content
@@ -1058,8 +1058,7 @@ enum ControllerCoreSelfTest {
             state.scrolled()
             try expect(state.hovered == nil, "scrolling left a row hovered")
             let content = CandidateContentView(frame: .zero)
-            let window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 300, height: 600), styleMask: [.borderless],
-                                  backing: .buffered, defer: false)
+            let window = HeadlessWindow(size: NSSize(width: 300, height: 600))
             window.isReleasedWhenClosed = false
             window.contentView = content
             defer { window.contentView = nil; window.close() }
@@ -1117,6 +1116,12 @@ enum ControllerCoreSelfTest {
             _ = preferences.resetBindings(.singleCharacterList)
             try expect(preferences.bindings[.nextPage] == ShortcutCommand.nextPage.defaultBindings, "下一頁 not restored")
             try expect(stored().isEmpty, "restored commands are still stored: \(stored().keys)")
+        }
+
+        test("headless: the self-tests never made ZhuyinType active or one of its windows key") {
+            try expect(NSRunningApplication.current.activationPolicy == .prohibited, "the self-test can become active")
+            let problems = focus.check()
+            try expect(problems.isEmpty, problems.joined(separator: "; "))
         }
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")

@@ -40,7 +40,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
             return window
         }
         let split = SettingsSplitViewController(model: model)
-        let window = NSWindow(contentViewController: split)
+        let window = Self.isPreview ? HeadlessTitledWindow(contentViewController: split) : NSWindow(contentViewController: split)
+        if Self.isPreview { window.ignoresMouseEvents = true }
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         let toolbar = NSToolbar(identifier: "ZhuyinTypeSettings")
         toolbar.delegate = self
@@ -102,6 +103,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
     }
 
     func windowWillClose(_ notification: Notification) {
+        guard !Self.isPreview else { return }
         NSApp.setActivationPolicy(.accessory)
     }
 
