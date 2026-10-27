@@ -31,6 +31,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         model.reloadLists()
+        WizardWindowController.shared.showOnFirstUse()
     }
 
     /// The window, built but not shown, open on `pane`; also used by the preview renderer.

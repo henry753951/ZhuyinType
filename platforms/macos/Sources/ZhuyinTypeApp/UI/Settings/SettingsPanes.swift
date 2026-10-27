@@ -17,10 +17,12 @@ enum DemoPinning {
     static var fieldStates: [ShortcutCommand: ShortcutFieldPreview] = [:]
     /// A push into the current sub-page (or a pop out of it) drawn still at `progress` (0…1).
     static var navigation: (push: Bool, progress: Double)?
-    /// The vignettes of the 視窗與提示 page drawn at this phase.
-    static var vignettePhase: Int?
+    /// The 視窗與提示 preview drawn at this state and moment of its flow.
+    static var previewState: (state: PreviewState, frame: Int)?
     /// The floating preview after a change, drawn at this point (window coordinates, top left).
     static var flashAt: CGPoint?
+    /// The setup wizard's step transition drawn still: the step it leaves, and the progress (0…1).
+    static var wizardTransition: (from: WizardStep, progress: Double)?
     /// A row drawn as if the pointer were over it.
     static var hoveredRow: String?
     /// A list row being removed, drawn still at `progress` (0: in place, 1: gone).
@@ -109,10 +111,7 @@ struct AdvancedPane: View {
     var body: some View {
         SettingsForm {
             SettingsSection("改字記錄") {
-                SettingRow(title: "記錄改字", subtitle: "改字時記下打的鍵與改前改後的字，用來改進選字",
-                           accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences))))) {
-                    RowSwitch(title: "記錄改字", isOn: binding(preferences, \.recordsCorrections))
-                }
+                RegistryRow("recordsCorrections", preferences, accessory: .info(title: "記錄改字", content: AnyView(CorrectionLogInfo(keys: CurrentKeys(preferences)))))
                 SettingRow(title: "一併記錄游標前的文字", subtitle: "重播記錄時使用同樣的前文", indent: true,
                            dimmed: !preferences.recordsCorrections) {
                     RowSwitch(title: "一併記錄游標前的文字", isOn: binding(preferences, \.recordsCorrectionContext))
