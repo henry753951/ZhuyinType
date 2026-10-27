@@ -77,6 +77,32 @@ SETS = [
         "shanjie-daily", f"{SHANJIE}/sets/daily.clean.rows.txt", "rows", "external", "tracked", "善解日常句（CC0）"
     ),
 ]
+MISREAD = "lexicon_coverage/misread"
+MISREAD_SUBSETS = {
+    "taiwan": "台灣讀音",
+    "neutral": "輕聲打本調",
+    "colloquial": "口語讀音",
+    "misread": "有邊讀邊",
+    "interjection": "語氣詞的聲調",
+    "examples": "使用者回報的例子",
+}
+SETS += [
+    EvalSet("misread-dev", f"{MISREAD}/misread-dev.rows.txt", "rows", "dev", "local", "開發集照實際讀音打（全部）"),
+    EvalSet(
+        "wiki-new-dev",
+        "lexicon_coverage/wiki-new/wiki-new.rows.txt",
+        "rows",
+        "dev",
+        "local",
+        "2026-10-02 之後新建的維基條目名稱（時間切分）",
+    ),
+    *[
+        EvalSet(
+            f"misread-dev-{name}", f"{MISREAD}/{name}.rows.txt", "rows", "dev", "local", f"開發集照實際讀音打：{text}"
+        )
+        for name, text in MISREAD_SUBSETS.items()
+    ],
+]
 BY_NAME = {s.name: s for s in SETS}
 
 # Named groups, for the common choices.
@@ -84,6 +110,8 @@ GROUPS = {
     "dev": ["colloquial-dev", "wiki-dev", "chat-dev"],
     "test": ["colloquial-test", "wiki-test", "chat-test", "smoke"],
     "shanjie": [s.name for s in SETS if s.name.startswith("shanjie-")],
+    # Built by `zt train lexicon misread` (ml/src/zhuyintype_ml/training/lexicon/misread.py).
+    "misread": [f"misread-dev-{name}" for name in MISREAD_SUBSETS],
 }
 
 
