@@ -10,6 +10,8 @@ shift
 export PATH="$HOME/opt/swift/usr/bin:$PATH" ONNXRUNTIME_ROOT=${ONNXRUNTIME_ROOT:-$HOME/opt/onnxruntime}
 export PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 torch_python=${ZHUYIN_TORCH_PYTHON:-$HOME/zhuyintype/work/onnx-eval-claude/.venv/bin/python}
+# A persistent archive cache on the host (verified by hash like any download) avoids re-downloading per checkout.
+export ZHUYIN_ASSET_CACHE=${ZHUYIN_ASSET_CACHE:-$HOME/zhuyintype/asset-cache}
 python3 nlp/data/assets.py fetch lexicon lm lm_chat reranker v3 eval-sets checkpoints
 swift build -c release --package-path nlp/engine --scratch-path .build
 python3 training/lm/compile_data.py data/build >/dev/null   # mapped data: small processes, never stale
