@@ -114,20 +114,20 @@
 
 ## 從原始碼建置
 
-需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
+需要 [Rust](https://rustup.rs)（引擎；`engine/rust-toolchain.toml` 固定版本）、Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
 
 ```sh
 tools/zt setup           # 檢查並準備開發環境
 tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 resources/assets.json 驗證雜湊）
 tools/zt build app       # dist/ZhuyinType.app
 tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
-tools/zt check engine    # 引擎檢查
+tools/zt check engine    # 引擎的測試（cargo test --release）
 tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 ```
 
 | 目錄 | 內容 |
 |---|---|
-| `engine/` | 所有平台共用的輸入法引擎：組字、按鍵解碼、容錯、語言模型、神經模型、`zhuyin-cli` |
+| `engine/` | 所有平台共用的輸入法引擎（Rust）：組字、按鍵解碼、容錯、語言模型、神經模型、C 介面、`zhuyin-cli` |
 | `platforms/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
 | `ml/` | 研發：資料、訓練、評測與 `zt` 指令（Python，見 [ml/README.md](ml/README.md)） |
 | `resources/` | 資料與模型的固定版本、來源與授權、二進位格式 |
