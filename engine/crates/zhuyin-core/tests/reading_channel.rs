@@ -210,7 +210,27 @@ fn the_character_model_sees_variant_characters() {
     let (syllables, lists) = typed.last().unwrap();
     assert_eq!((syllables[1].base.as_deref(), syllables[1].cost_bucket), (Some("ㄓㄡ"), 1));
     assert_eq!(lists[1], ["喙"]);
-    // Within the window only: 喙 (−13) is far from 宙 (−9) at its position, so no second call.
+    // Outside the window 喙 (−13, far from 宙 at −9) is ranked with its cost; when it is still listed, a correction
+    // as typed keeps its cost bucket, as in v3's training noise.
     let windowed = model_calls(VariantScores::Typed, 3.0, "sul35.4");
-    assert!(windowed.iter().all(|(s, _)| s.iter().all(|x| x.cost_bucket == 0)));
+    let listed = windowed.iter().any(|(_, lists)| lists.get(1).is_some_and(|l| l.contains(&"喙".to_owned())));
+    let bucketed = windowed.iter().any(|(s, lists)| {
+        s.get(1).is_some_and(|x| x.base.as_deref() == Some("ㄓㄡ") && x.cost_bucket == 1) && lists[1] == ["喙"]
+    });
+    assert!(listed, "喙 stays in the list at its cost");
+    assert!(bucketed);
+    // The other modes keep the window: no bucket outside it.
+    for mode in [VariantScores::Standard, VariantScores::Best, VariantScores::Zero] {
+        let calls = model_calls(mode, 3.0, "sul35.4");
+        assert!(calls.iter().all(|(s, _)| s.iter().all(|x| x.cost_bucket == 0)), "{mode:?}");
+    }
+}
+
+#[test]
+fn accepted_readings_reach_the_model_with_bucket_zero_as_typed() {
+    // ㄕㄡˊ for 熟 is accepted (taiwan): as typed, one call, bucket 0, at any window.
+    for window in [f64::INFINITY, 3.0, 0.0] {
+        let calls = model_calls(VariantScores::Typed, window, "g.6");
+        assert_eq!(calls.iter().filter(|(s, _)| s.iter().any(|x| x.cost_bucket != 0)).count(), 0, "{window}");
+    }
 }
