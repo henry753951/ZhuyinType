@@ -14,7 +14,7 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
         self.model = model
         let window = self.window ?? makeWindow()
         window.contentViewController = NSHostingController(rootView: WizardView(model: model))
-        window.setContentSize(NSSize(width: 760, height: 600))
+        window.setContentSize(WizardLayout.defaultSize)
         window.title = mode == .keysOnly ? "你會用到的按鍵" : "設定嚮導"
         if case .newSince = mode { window.title = "新功能導覽" }
         self.window = window
@@ -52,9 +52,12 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 600),
-                              styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: WizardLayout.defaultSize),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.titlebarAppearsTransparent = true
+        // Laid out to fit its smallest without scrolling; never larger than a MacBook screen comfortably shows.
+        window.contentMinSize = WizardLayout.minSize
+        window.contentMaxSize = WizardLayout.maxSize
         window.isReleasedWhenClosed = false
         window.delegate = self
         return window

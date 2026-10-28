@@ -64,7 +64,7 @@ final class PreviewDirector: ObservableObject {
     func pin(_ state: PreviewState) {
         pinnedState = state
         self.state = state
-        frame = 0
+        frame = Int.max
     }
 
     /// The next moment of the flow; after its last, the next state (or this one again, when it is pinned or the user

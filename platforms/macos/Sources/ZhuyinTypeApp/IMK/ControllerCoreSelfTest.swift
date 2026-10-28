@@ -1179,7 +1179,7 @@ enum ControllerCoreSelfTest {
                 }
             }
             try expect(SettingsPreset.custom.changes(from: Preferences(defaults: MemorySettingsStorage())).isEmpty, "自訂 changed settings")
-            try expect(Lesson.all.filter { $0.level == .basic }.map(\.id) == ["typing", "punctuation", "modeSwitch", "paging", "editing"],
+            try expect(Lesson.all.filter { $0.level == .basic }.map(\.id) == ["typing", "punctuation", "modeSwitch", "selecting", "paging", "editing"],
                        "basic lessons")
             for group in Lesson.all.flatMap(\.groups) {
                 for style in group.styles {
@@ -1198,7 +1198,7 @@ enum ControllerCoreSelfTest {
         test("setup wizard: steps from the lessons; nothing is written until 套用; 全部捨棄 writes nothing") {
             let original = Preferences(defaults: MemorySettingsStorage())
             let quick = WizardModel(original: original, mode: .quick)
-            try expect(quick.steps.count == 2 + 5 + 2, "快速設定 has \(quick.steps.count) steps")
+            try expect(quick.steps.count == 2 + 6 + 2, "快速設定 has \(quick.steps.count) steps")
             try expect(WizardModel(original: original, mode: .full).steps.count == 2 + Lesson.all.count + 2, "完整導覽 steps")
             try expect(WizardModel(original: original, mode: .newSince("0.4.2")).lessons.isEmpty, "新功能導覽 listed old lessons")
             quick.choosePreset(.mac)
@@ -1344,6 +1344,30 @@ enum ControllerCoreSelfTest {
             }
         }
 
+        test("wizard: every page of 完整導覽 fits the smallest window without scrolling") {
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            let model = WizardModel(original: Preferences.shared, mode: .full)
+            model.choosePreset(.windows)
+            let size = WizardLayout.minSize
+            let window = HeadlessWindow(size: size)
+            window.contentView = NSHostingView(rootView: WizardView(model: model).frame(width: size.width, height: size.height))
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            WizardFit.reset()
+            var seen: [String] = []
+            for step in model.steps {
+                model.jump(to: step)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+                seen.append(step.id)
+            }
+            let pages = Set(WizardFit.latest.keys)
+            try expect(Set(seen).isSubset(of: pages), "pages not measured: \(Set(seen).subtracting(pages))")
+            try expect(WizardFit.overflows.isEmpty, "taller than the window: \(WizardFit.overflows)")
+        }
+
         test("live: the wizard's parts arrive, and closing it leaves the settings window open") {
             _ = NSApplication.shared
             let saved = Preferences.shared
@@ -1351,8 +1375,9 @@ enum ControllerCoreSelfTest {
             Preferences.shared = Preferences(defaults: MemorySettingsStorage())
             let before = WizardEntrance.played
             let model = WizardModel(original: Preferences.shared, mode: .quick)
-            let hosting = NSHostingView(rootView: WizardView(model: model).frame(width: 760, height: 600))
-            let window = HeadlessWindow(size: NSSize(width: 760, height: 600))
+            let hosting = NSHostingView(rootView: WizardView(model: model).frame(width: WizardLayout.defaultSize.width,
+                                                                                 height: WizardLayout.defaultSize.height))
+            let window = HeadlessWindow(size: WizardLayout.defaultSize)
             window.contentView = hosting
             window.orderFrontRegardless()
             RunLoop.main.run(until: Date().addingTimeInterval(0.4))
