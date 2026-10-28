@@ -1,0 +1,45 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "zero",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on"
+   ]
+  },
+  {
+   "name": "typed",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--v3-variants",
+    "typed"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "context",
+   "set": "wiki-dev",
+   "options": [
+    "--context",
+    "line",
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "continue",
+   "set": "colloquial-dev",
+   "options": [
+    "--split",
+    "continue",
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  }
+ ]
+}

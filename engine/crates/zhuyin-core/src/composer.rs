@@ -1096,15 +1096,28 @@ impl Composer {
         }
         // Characters only a variant brings, within the window of the best other character: ranked without the
         // variant's cost, so the cut keeps them for the model (rule 8); the others keep their cost and the model's
-        // score as typed.
+        // score as typed.  As typed, a correction outside the window still carries its cost bucket, as in v3's
+        // training noise (`VariantScores::Typed`).
+        let typed = self.variant_scores == VariantScores::Typed;
+        let mut outside: Vec<HashMap<String, VariantCharacter>> = vec![HashMap::new(); count];
         for (position, seen) in variants.iter_mut().enumerate() {
             let floor = plain_best[position] - self.variant_window;
-            seen.retain(|character, v| candidates[position].get(character).is_none_or(|c| !c.1) && v.prior >= floor);
+            let kept = &mut outside[position];
+            seen.retain(|character, v| {
+                let only = candidates[position].get(character).is_none_or(|c| !c.1);
+                if only && typed && v.correction && v.prior < floor {
+                    kept.insert(character.clone(), v.clone());
+                }
+                only && v.prior >= floor
+            });
             for (character, v) in seen.iter() {
                 if let Some(slot) = candidates[position].get_mut(character) {
                     slot.0 = swift_max(slot.0, v.prior);
                 }
             }
+        }
+        for (seen, kept) in variants.iter_mut().zip(outside) {
+            seen.extend(kept);
         }
         // Equal priors by character, so the cut does not depend on the table's order.
         let lists: Vec<Vec<String>> = candidates

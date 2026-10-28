@@ -22,7 +22,7 @@ import random
 import shutil
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -39,15 +39,18 @@ from .common import BASE, MODEL, RUN, jsonl, save
 
 
 class Batches(IterableDataset):
-    """Training batches from the filtered shard indexes and the real-source clauses of `directory`."""
+    """Training batches from the filtered shard indexes and the real-source clauses of `directory`.  `make` builds
+    each worker's Builder (the reading-noise run gives it a reading channel)."""
 
-    def __init__(self, batch: int, directory: Path = RUN) -> None:
-        self.batch, self.directory = batch, directory
+    def __init__(
+        self, batch: int, directory: Path = RUN, make: Callable[[], Builder] = Builder, seed: int = 812
+    ) -> None:
+        self.batch, self.directory, self.make, self.seed = batch, directory, make, seed
 
     def __iter__(self) -> Iterator[tuple[torch.Tensor, ...]]:
         worker = torch.utils.data.get_worker_info()
-        rng = random.Random(812 + (worker.id if worker else 0))
-        builder = Builder()
+        rng = random.Random(self.seed + (worker.id if worker else 0))
+        builder = self.make()
         directory = self.directory
         manifest = json.loads((directory / "filtered.json").read_text())["shards"]
         groups = json.loads((directory / "inventory.json").read_text())["kept"]

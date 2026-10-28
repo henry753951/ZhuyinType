@@ -1,0 +1,31 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "app",
+   "config": "app"
+  }
+ ],
+ "sets": [
+  {
+   "name": "context",
+   "set": "wiki-dev",
+   "options": [
+    "--context",
+    "line",
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "continue",
+   "set": "colloquial-dev",
+   "options": [
+    "--split",
+    "continue",
+    "--typing-lexicon",
+    "data/build/lexicon.tsv"
+   ]
+  }
+ ]
+}
