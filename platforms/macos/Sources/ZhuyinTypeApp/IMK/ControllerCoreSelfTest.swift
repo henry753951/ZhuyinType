@@ -604,6 +604,79 @@ enum ControllerCoreSelfTest {
                 try expect(plain(records.all.first?["typing"]) == "su3cl3`" + undo, "typing \(undo)")
             }
         }
+
+        // MARK: Long compositions
+
+        func han(_ text: String) -> Int {
+            text.unicodeScalars.filter { (0x4E00...0x9FFF).contains($0.value) }.count
+        }
+        test("a full composition sends its head and keeps every key, the list open or not") {
+            let (core, client) = session()
+            var syllables = 0
+            var heads = 0
+            for round in 0..<60 {
+                // From the 20th round on, every fifth has the list open when its first key comes.
+                if round >= 20, round % 5 == 0 {
+                    _ = core.handle(.down)
+                    try expect(core.composer.presentation.candidates != nil, "round \(round): the list did not open")
+                }
+                let visible = core.composer.presentation.text
+                let inserted = client.inserts.count
+                let operations = client.operations.count
+                type("su3cl3", into: core)
+                syllables += 2
+                if client.inserts.count > inserted {
+                    heads += 1
+                    let head = client.inserts[inserted]
+                    try expect(client.inserts.count == inserted + 1, "round \(round): more than one commit")
+                    try expect(visible.hasPrefix(head) && han(head) >= 18 && han(head) <= 20,
+                               "round \(round): the head \(head) is not about a third of what was shown: \(visible)")
+                    try expect(core.composer.isComposing && client.operations[operations...].first == "insert"
+                               && client.operations.last == "mark", "round \(round): the rest is not marked after the head")
+                    try expect(core.recentText.hasSuffix(head), "round \(round): the head is not the text before the rest")
+                }
+                try expect(han(core.composer.presentation.text) <= 60, "round \(round): past the limit")
+            }
+            _ = core.keyDown(keyCode: 36, modifiers: [])
+            let text = client.inserts.joined()
+            try expect(han(text) == syllables && text.count == syllables,
+                       "\(han(text)) of \(syllables) syllables arrived: \(text)")
+            try expect(heads == 3, "\(heads) heads for \(syllables) syllables (at 61, 81 and 101)")
+        }
+        test("correction log: a pick, then a full composition sends its head: one record of all of it") {
+            let (core, client) = session()
+            let records = recording(core)
+            press("su3cl3<down>", into: core)
+            guard let list = core.composer.presentation.candidates,
+                  let index = list.items.indices.first(where: { !"你好".hasSuffix(list.items[$0].text) }),
+                  index < 9 else { throw Failure(description: "no other candidate for 你好") }
+            press(String(index + 1), into: core)
+            let picked = core.composer.presentation.text
+            press(String(repeating: "su3cl3", count: 35), into: core)
+            press("<enter>", into: core)
+            guard records.all.count == 1, let record = records.all.first else {
+                throw Failure(description: "\(records.all.count) records")
+            }
+            let all = client.inserts.joined()
+            try expect(client.inserts.count >= 2 && client.inserts[0].hasPrefix(picked),
+                       "the head did not keep the pick: \(client.inserts)")
+            try expect(record["committed"] as? String == all && han(all) == 72, "committed \(record["committed"] ?? "")")
+            try expect(events(record, "commit").map { $0["text"] as? String ?? "" } == client.inserts,
+                       "commit events \(events(record, "commit"))")
+            try expect(plain(record["typing"]) == String(repeating: "su3cl3", count: 36)
+                       && record["replayable"] as? Bool == true, "typing \(record["typing"] ?? "")")
+            try expect((record["shown"] as? String)?.hasPrefix("你好") == true, "shown \(record["shown"] ?? "")")
+        }
+        test("secure input: a full composition still sends every key, and nothing is kept or recorded") {
+            let (core, client) = session()
+            let records = recording(core)
+            core.secureInput = { true }
+            press(String(repeating: "su3cl3", count: 40) + "<enter>", into: core)
+            let text = client.inserts.joined()
+            try expect(client.inserts.count == 2 && han(text) == 80, "\(han(text)) of 80 syllables arrived")
+            try expect(core.recentText.isEmpty && core.composer.learningSuspended && records.all.isEmpty,
+                       "secure input kept context, learned or recorded")
+        }
         test("correction log file: appended, exported and cleared") {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeTest-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: directory) }
@@ -1179,7 +1252,7 @@ enum ControllerCoreSelfTest {
                 }
             }
             try expect(SettingsPreset.custom.changes(from: Preferences(defaults: MemorySettingsStorage())).isEmpty, "自訂 changed settings")
-            try expect(Lesson.all.filter { $0.level == .basic }.map(\.id) == ["typing", "punctuation", "modeSwitch", "paging", "editing"],
+            try expect(Lesson.all.filter { $0.level == .basic }.map(\.id) == ["typing", "punctuation", "modeSwitch", "selecting", "paging", "editing"],
                        "basic lessons")
             for group in Lesson.all.flatMap(\.groups) {
                 for style in group.styles {
@@ -1198,7 +1271,7 @@ enum ControllerCoreSelfTest {
         test("setup wizard: steps from the lessons; nothing is written until 套用; 全部捨棄 writes nothing") {
             let original = Preferences(defaults: MemorySettingsStorage())
             let quick = WizardModel(original: original, mode: .quick)
-            try expect(quick.steps.count == 2 + 5 + 2, "快速設定 has \(quick.steps.count) steps")
+            try expect(quick.steps.count == 2 + 6 + 2, "快速設定 has \(quick.steps.count) steps")
             try expect(WizardModel(original: original, mode: .full).steps.count == 2 + Lesson.all.count + 2, "完整導覽 steps")
             try expect(WizardModel(original: original, mode: .newSince("0.4.2")).lessons.isEmpty, "新功能導覽 listed old lessons")
             quick.choosePreset(.mac)
@@ -1224,6 +1297,8 @@ enum ControllerCoreSelfTest {
 
         test("live: the 視窗與提示 preview plays — moments and states change over time, and the 中英 badge appears") {
             _ = NSApplication.shared
+            // Under Reduce Motion the preview does not play by itself (by design); a CI machine may have it on.
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { print("     skipped: Reduce Motion is on"); return }
             let saved = (Preferences.shared, PreviewDirector.step)
             defer { Preferences.shared = saved.0; PreviewDirector.step = saved.1 }
             Preferences.shared = Preferences(defaults: MemorySettingsStorage())
@@ -1240,7 +1315,8 @@ enum ControllerCoreSelfTest {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.05))
                 states.insert(director.state)
             }
-            try expect(director.ticks >= 6, "the preview did not play: \(director.ticks) moments")
+            try expect(director.ticks >= 6, "the preview did not play: \(director.ticks) moments"
+                       + " (window visible: \(window.occlusionState.contains(.visible)), screens: \(NSScreen.screens.count))")
             try expect(states.count >= 3, "the preview stayed on \(states)")
             director.show(.mode, last: false)
             var badge = false
@@ -1251,6 +1327,123 @@ enum ControllerCoreSelfTest {
                 badge = find(hosting)
             }
             try expect(badge, "the 中英 badge never appeared in the preview")
+            // A press pauses it, for about 2 s only.
+            director.interact()
+            let held = (director.state, director.frame, director.ticks)
+            director.advance(states: PreviewState.allCases, frames: { _ in 2 })
+            try expect((director.state, director.frame, director.ticks) == held, "a press did not pause the preview")
+            try expect(director.pausedUntil.timeIntervalSinceNow <= PreviewDirector.hold + 0.1, "a press paused it for long")
+            director.pausedUntil = .distantPast
+            director.advance(states: PreviewState.allCases, frames: { _ in 2 })
+            try expect(director.ticks == held.2 + 1, "the preview did not go on after the pause")
+        }
+
+        test("preview: the real window at 100 % with the floating panel's shadow; a narrow or short room lists fewer") {
+            _ = NSApplication.shared
+            let preferences = Preferences(defaults: MemorySettingsStorage())
+            let combos: [(String, (Preferences) -> Void)] = [
+                ("default", { _ in }),
+                ("horizontal", { $0.candidateLayout = .horizontal }),
+                ("28 pt", { $0.candidateFontSize = 28 }),
+                ("horizontal 24 pt", { $0.candidateLayout = .horizontal; $0.candidateFontSize = 24 }),
+            ]
+            for (name, apply) in combos {
+                preferences.resetToDefaults()
+                apply(preferences)
+                for (width, maxHeight) in [(CGFloat(340), CGFloat(240)), (420, 200), (560, 300)] {
+                    let preview = UnifiedPreview(preferences: preferences, director: PreviewDirector(), maxHeight: maxHeight)
+                    let flows = preview.fittingFlows(in: width)
+                    let limit = flows.scenes.list.list?.pageSize ?? 0
+                    for scene in flows.states.flatMap(flows.frames) {
+                        let layout = SceneLayout(scene: scene, width: width, preferences: preferences)
+                        try expect(layout.panel?.size == layout.panelSize, "\(name): a window drawn at another size")
+                        try expect(limit <= 2 || (!layout.overflows && layout.naturalHeight <= maxHeight),
+                                   "\(name) at \(width)×\(maxHeight): \(scene.title) does not fit with \(limit) a page")
+                    }
+                }
+            }
+            preferences.resetToDefaults()
+            let hosting = NSHostingView(rootView: UnifiedPreview(preferences: preferences, director: PreviewDirector(), tabs: false).frame(width: 520))
+            let window = HeadlessWindow(size: NSSize(width: 520, height: 360))
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            func surfaces(_ view: NSView) -> [InputSurface] { (view as? InputSurface).map { [$0] } ?? view.subviews.flatMap(surfaces) }
+            let shown = surfaces(hosting).filter { $0.content is CandidateContentView }
+            try expect(!shown.isEmpty, "no real candidate window in the preview")
+            for surface in shown {
+                try expect(surface.castsWindowShadow && surface.layer?.sublayers?.contains { $0.shadowOpacity > 0 && $0.shadowRadius >= 8 } == true,
+                           "the preview's window has no shadow")
+                try expect(surface.convert(surface.bounds, to: nil).size == surface.bounds.size && surface.frame.size == surface.content.frame.size,
+                           "the preview's window is scaled: \(surface.convert(surface.bounds, to: nil).size) for \(surface.content.frame.size)")
+            }
+        }
+
+        test("live: the wizard's welcome preview and 視窗與提示 go through ≥ 3 states in 10 s with the pointer resting on them") {
+            // At the real pace, in real windows, with mouse-moved events over the preview the whole time: the pointer
+            // resting on it must not stop it (it used to, which looked like a broken carousel).
+            _ = NSApplication.shared
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { print("     skipped: Reduce Motion is on"); return }
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            PreviewDirector.clearHistory("welcome")
+            PreviewDirector.clearHistory("candidates")
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            let size = NSSize(width: 680, height: 700)
+            let wizard = HeadlessWindow(size: size)
+            wizard.contentView = NSHostingView(rootView: WizardView(model: model).frame(width: size.width, height: size.height))
+            let settings = HeadlessWindow(size: NSSize(width: 620, height: 700))
+            settings.contentView = NSHostingView(rootView: CandidatesPane(preferences: Preferences.shared, model: SettingsModel())
+                .frame(width: 620, height: 700))
+            let windows = [wizard, settings]
+            for window in windows {
+                window.acceptsMouseMovedEvents = true
+                window.orderFrontRegardless()
+            }
+            defer { for window in windows { window.orderOut(nil); window.contentView = nil; window.close() } }
+            let until = Date().addingTimeInterval(10)
+            var rested: Set<Int> = []
+            while Date() < until {
+                for window in windows {
+                    // The pointer over the preview: the welcome page's lower half, the pane's top.
+                    let point = window === wizard ? NSPoint(x: size.width / 2, y: size.height * 0.3)
+                                                  : NSPoint(x: 300, y: 560)
+                    PointerRest.rest(at: point, in: window, entering: !rested.contains(window.windowNumber))
+                    rested.insert(window.windowNumber)
+                }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            }
+            for name in ["welcome", "candidates"] {
+                let states = PreviewDirector.history[name] ?? []
+                try expect(Set(states).count >= 3, "the \(name) preview went through \(states.map(\.rawValue)) in 10 s"
+                           + " (windows visible: \(windows.map { $0.occlusionState.contains(.visible) }), screens: \(NSScreen.screens.count))")
+            }
+        }
+
+        test("wizard: every page of 完整導覽 fits the smallest window without scrolling") {
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            let model = WizardModel(original: Preferences.shared, mode: .full)
+            model.choosePreset(.windows)
+            let size = WizardLayout.minSize
+            let window = HeadlessWindow(size: size)
+            window.contentView = NSHostingView(rootView: WizardView(model: model).frame(width: size.width, height: size.height))
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            WizardFit.reset()
+            var seen: [String] = []
+            for step in model.steps {
+                model.jump(to: step)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+                seen.append(step.id)
+            }
+            let pages = Set(WizardFit.latest.keys)
+            try expect(Set(seen).isSubset(of: pages), "pages not measured: \(Set(seen).subtracting(pages))")
+            try expect(WizardFit.overflows.isEmpty, "taller than the window: \(WizardFit.overflows)")
         }
 
         test("live: the wizard's parts arrive, and closing it leaves the settings window open") {
@@ -1260,8 +1453,9 @@ enum ControllerCoreSelfTest {
             Preferences.shared = Preferences(defaults: MemorySettingsStorage())
             let before = WizardEntrance.played
             let model = WizardModel(original: Preferences.shared, mode: .quick)
-            let hosting = NSHostingView(rootView: WizardView(model: model).frame(width: 760, height: 600))
-            let window = HeadlessWindow(size: NSSize(width: 760, height: 600))
+            let hosting = NSHostingView(rootView: WizardView(model: model).frame(width: WizardLayout.defaultSize.width,
+                                                                                 height: WizardLayout.defaultSize.height))
+            let window = HeadlessWindow(size: WizardLayout.defaultSize)
             window.contentView = hosting
             window.orderFrontRegardless()
             RunLoop.main.run(until: Date().addingTimeInterval(0.4))
@@ -1292,5 +1486,23 @@ enum ControllerCoreSelfTest {
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
+    }
+}
+
+/// The pointer resting at a point of a headless window: the hosting view is told it entered (once) and moved there,
+/// which is where SwiftUI's hover comes from (a headless window has no tracking areas of its own to fire).
+enum PointerRest {
+    static func rest(at point: NSPoint, in window: NSWindow, entering: Bool) {
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let root = window.contentView,
+              let moved = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [], timestamp: time,
+                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                             clickCount: 0, pressure: 0) else { return }
+        if entering, let entered = NSEvent.enterExitEvent(with: .mouseEntered, location: point, modifierFlags: [],
+                                                          timestamp: time, windowNumber: window.windowNumber, context: nil,
+                                                          eventNumber: 0, trackingNumber: 0, userData: nil) {
+            root.mouseEntered(with: entered)
+        }
+        root.mouseMoved(with: moved)
     }
 }

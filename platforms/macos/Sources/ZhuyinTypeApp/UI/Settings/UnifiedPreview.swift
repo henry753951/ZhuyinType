@@ -28,18 +28,28 @@ final class PreviewDirector: ObservableObject {
     @Published var state: PreviewState = .list
     /// The moment of the state's flow; it starts at the last, which shows the window.
     @Published var frame = Int.max
-    /// The pointer is over the preview.
-    @Published var hovered = false
-    /// No autoplay until then: the user picked a tab or changed a setting.
+    /// No moving to another state until then: the user just picked a tab or changed a setting.  Short, so the
+    /// carousel goes on soon after.
     var heldUntil = Date.distantPast
+    /// A state the preview stays on, playing its flow (a wizard lesson's demo); nil plays every state in turn.
+    var pinnedState: PreviewState?
     /// Every candidate of a page (not the compact few) until then: 每頁的候選字 just changed.
     @Published var fullPageUntil = Date.distantPast
     var showsFullPage: Bool { Date() < fullPageUntil }
+    /// No moving at all until then: the user is pressing or dragging in the preview.
+    var pausedUntil = Date.distantPast
+    /// A name for the self-tests, which read the states it went through.
+    let name: String?
+
+    init(name: String? = nil) { self.name = name }
 
     static var step: TimeInterval = 1.4
-    static let hold: TimeInterval = 8
+    static let hold: TimeInterval = 2
+    /// The states each named preview has shown, for the self-tests.
+    private(set) static var history: [String: [PreviewState]] = [:]
 
-    /// Shows `state` (from its first moment, or its last, which shows the setting), and holds it a while.
+    /// Shows `state` (from its first moment, or its last, which shows the setting); the carousel goes on after a
+    /// short hold.
     func show(_ state: PreviewState, last: Bool = true, animated: Bool = true) {
         heldUntil = Date().addingTimeInterval(Self.hold)
         let apply = { [self] in
@@ -47,26 +57,45 @@ final class PreviewDirector: ObservableObject {
             frame = last ? Int.max : 0
         }
         if animated { withAnimation(.easeInOut(duration: 0.3)) { apply() } } else { apply() }
+        record()
     }
 
-    /// The next moment of the flow; after its last, the next state, unless the user is looking at this one (a tab
-    /// picked or a setting changed a moment ago), which then plays its flow again.
+    /// Keeps the preview on `state`, playing its flow over and over (a wizard lesson's demo).
+    func pin(_ state: PreviewState) {
+        pinnedState = state
+        self.state = state
+        frame = Int.max
+    }
+
+    /// The next moment of the flow; after its last, the next state (or this one again, when it is pinned or the user
+    /// has just picked it).  Nothing pauses it but the user's own clicks: the pointer resting over it does not.
     func advance(states: [PreviewState], frames: (PreviewState) -> Int) {
-        guard !hovered, !states.isEmpty else { return }
+        guard !states.isEmpty, Date() >= pausedUntil else { return }
         let count = frames(state)
         let current = min(frame, max(0, count - 1))
         if current + 1 < count {
             withAnimation(.easeOut(duration: 0.25)) { frame = current + 1 }
-        } else if Date() < heldUntil {
+        } else if pinnedState != nil || Date() < heldUntil || !states.contains(where: { $0 != state }) {
             withAnimation(.easeOut(duration: 0.25)) { frame = 0 }
         } else {
             let index = states.firstIndex(of: state).map { ($0 + 1) % states.count } ?? 0
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
                 state = states[index]
                 frame = 0
             }
+            record()
         }
         ticks += 1
+    }
+
+    static func clearHistory(_ name: String) { history[name] = nil }
+
+    /// The user pressed or dragged in the preview: it stays as it is, and goes on a moment after they let go.
+    func interact() { pausedUntil = Date().addingTimeInterval(Self.hold) }
+
+    private func record() {
+        guard let name else { return }
+        Self.history[name, default: []].append(state)
     }
 
     /// How many moments have played (the self-tests check that the preview moves).
@@ -78,52 +107,68 @@ struct UnifiedPreview: View {
     @ObservedObject var director: PreviewDirector
     /// The state tabs above the scene (the wizard's lessons show one state, without them).
     var tabs = true
-    /// The scene's tallest; a larger window is drawn smaller as a whole.
+    /// The scene's tallest.  The window is never drawn smaller: a page of fewer candidates fits instead.
     var maxHeight: CGFloat = UnifiedPreview.defaultMaxHeight
+    /// One height for every state (the tallest), for a page laid out around the preview (the wizard's welcome is
+    /// centred and must not move); otherwise the box grows and shrinks with the state shown.
+    var steadyHeight = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 520
 
     var body: some View {
-        let flows = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
+        let flows = fittingFlows(in: width)
         let states = flows.states
         let shown = states.contains(director.state) ? director.state : .list
         let pinned = DemoPinning.previewState
         let state = pinned?.state ?? shown
         let frames = flows.frames(state)
         let frame = min(pinned?.frame ?? director.frame, frames.count - 1)
+        let sceneWidth = sceneWidth(flows, states, in: width)
+        // The scene's card fits the state shown; with `steadyHeight` the box around it keeps the tallest's height.
+        let sceneHeight = stageHeight(flows, [state], width: sceneWidth)
+        // The note beside the scene, when there is room for it, is never cut off either.
+        let noteWidth = min(StateNote.maxWidth, width - sceneWidth - 18)
+        let noteHeight = noteWidth > 150 ? StateNote.height(state, preferences, width: noteWidth) : 0
+        let height = max(steadyHeight ? stageHeight(flows, states, width: sceneWidth) : sceneHeight, noteHeight)
+        // The outgoing state fades out first, then the next one in: never two scenes or two notes over each other.
+        let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.12)),
+                                            removal: .opacity.animation(.easeIn(duration: 0.12)))
         VStack(alignment: .leading, spacing: 10) {
             if tabs { PreviewTabs(states: states, selected: state) { director.show($0, last: false) } }
             GeometryReader { proxy in
                 // The scene as wide as the window needs (a horizontal list takes the whole width); the state's
                 // description beside it in the room left.
-                let sceneWidth = sceneWidth(flows, states, in: proxy.size.width)
-                let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences, maxHeight: maxHeight)
+                let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences)
                 HStack(alignment: .top, spacing: 18) {
-                    PreviewBlock(layout: layout.fitted(height: stageHeight(flows, [state], width: sceneWidth)),
+                    PreviewBlock(layout: layout.fitted(height: sceneHeight),
                                  preferences: preferences, animated: !DemoPinning.still && !reduceMotion, showsTitle: false)
                         .frame(width: sceneWidth)
                         .id(state)
-                        .transition(.opacity)
+                        .transition(swap)
                     if proxy.size.width - sceneWidth > 150 {
                         StateNote(state: state, preferences: preferences)
                             .id("note-" + state.rawValue)
-                            .transition(.opacity)
+                            .transition(swap)
                     }
                 }
                 .onAppear { width = proxy.size.width }
                 .onChange(of: proxy.size.width) { _, now in width = now }
             }
-            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it.
-            .frame(height: stageHeight(flows, [state], width: sceneWidth(flows, states, in: width)))
+            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it; the
+            // outgoing scene never draws outside it.
+            .frame(height: height, alignment: .top)
+            .clipped()
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
-        .onHover { director.hovered = $0 }
+        // Only a press or a drag pauses it (and it goes on about 2 s later); the pointer resting over it does not.
+        .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in director.interact() }
+            .onEnded { _ in director.interact() })
         .task(id: reduceMotion) {
             // Autoplay; none under Reduce Motion (the tabs and the switch on a change still work, as a crossfade).
             guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview || DemoPinning.live else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(PreviewDirector.step))
-                let current = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
+                let current = fittingFlows(in: width)
                 director.advance(states: current.states, frames: { current.frames($0).count })
             }
         }
@@ -134,23 +179,41 @@ struct UnifiedPreview: View {
     /// The candidates the preview lists a page: fewer than the window does, so the preview stays short; all of them
     /// for a while after 每頁的候選字 changes.
     static let pageLimit = 4
-    /// The scene's tallest: a larger window (big type) is drawn smaller as a whole.
     static let defaultMaxHeight: CGFloat = 300
+
+    /// The flows with as many candidates a page as fit `available` and `maxHeight` at 100 % (the compact few, or the
+    /// whole page just after 每頁的候選字 changed); at least two.
+    func fittingFlows(in available: CGFloat) -> PreviewFlows {
+        let most = director.showsFullPage ? preferences.pageSelectionKeys.count : Self.pageLimit
+        var limit = max(2, most)
+        while true {
+            let flows = PreviewFlows(preferences: preferences, pageLimit: limit)
+            if limit <= 2 || fits(flows, in: available) { return flows }
+            limit -= 1
+        }
+    }
+
+    private func fits(_ flows: PreviewFlows, in available: CGFloat) -> Bool {
+        flows.states.flatMap(flows.frames).allSatisfy { scene in
+            let layout = SceneLayout(scene: scene, width: available, preferences: preferences)
+            return !layout.overflows && layout.naturalHeight <= maxHeight
+        }
+    }
 
     /// The width the scenes need: the widest window plus the line's inset, at most the room there is.
     private func sceneWidth(_ flows: PreviewFlows, _ states: [PreviewState], in available: CGFloat) -> CGFloat {
         guard preferences.candidateLayout == .vertical else { return available }
         let needed = states.flatMap(flows.frames).compactMap { scene -> CGFloat? in
-            let layout = SceneLayout(scene: scene, width: available, preferences: preferences, maxHeight: maxHeight)
+            let layout = SceneLayout(scene: scene, width: available, preferences: preferences)
             return layout.panel.map { $0.maxX + 16 }
         }.max() ?? 300
         return min(available, max(300, needed))
     }
 
-    /// One height for every state and moment, so the page never moves while the preview plays.
+    /// The height of the state's tallest moment, so the box does not move while its flow plays.
     private func stageHeight(_ flows: PreviewFlows, _ states: [PreviewState], width: CGFloat) -> CGFloat {
         states.flatMap(flows.frames)
-            .map { SceneLayout(scene: $0, width: width, preferences: preferences, maxHeight: maxHeight).naturalHeight }
+            .map { SceneLayout(scene: $0, width: width, preferences: preferences).naturalHeight }
             .max() ?? 120
     }
 }
@@ -164,8 +227,21 @@ private struct StateNote: View {
             Text(state.title).font(.headline)
             Text(Self.text(state, preferences)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.top, 10)
-        .frame(maxWidth: 260, alignment: .leading)
+        .padding(.top, Self.top)
+        .frame(maxWidth: Self.maxWidth, alignment: .leading)
+    }
+
+    static let maxWidth: CGFloat = 260
+    private static let top: CGFloat = 10
+
+    /// The note's height at `width`, measured with the fonts it is drawn in.
+    static func height(_ state: PreviewState, _ p: Preferences, width: CGFloat) -> CGFloat {
+        func measure(_ text: String, _ style: NSFont.TextStyle) -> CGFloat {
+            ceil((text as NSString).boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude),
+                                                 options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                 attributes: [.font: NSFont.preferredFont(forTextStyle: style)]).height)
+        }
+        return top + measure(state.title, .headline) + 6 + measure(text(state, p), .callout) + 2
     }
 
     static func text(_ state: PreviewState, _ p: Preferences) -> String {

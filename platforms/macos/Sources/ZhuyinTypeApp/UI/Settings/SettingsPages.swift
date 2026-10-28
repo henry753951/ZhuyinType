@@ -539,7 +539,7 @@ struct CandidatesPane: View {
     @State private var previewInView = true
     @State private var flash: UUID?
     @State private var flashAt: CGPoint?
-    @StateObject private var director = PreviewDirector()
+    @StateObject private var director = PreviewDirector(name: "candidates")
     @State private var shownSettings: PreviewSettings?
 
     var body: some View {

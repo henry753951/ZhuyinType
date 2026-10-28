@@ -2,7 +2,7 @@
 // composer set up as ControllerCore sets it up, keys typed one at a time, with Core ML as in the app.  Accepts the zhuyin-cli options `zt eval latency` passes, so
 //   ZT_CLI=.build/release/EngineBench tools/zt eval latency
 // measures it the same way:
-//   EngineBench --models DIR [--channel on|off|PATH] [--timing] "<keys>"
+//   EngineBench --models DIR [--channel on|off|PATH] [--timing] [--early-commit N] [--max-syllables N] "<keys>"
 // prints each commit and, with --timing, the per-key latency, CPU, energy and memory summary.
 import Foundation
 import ZhuyinEngine
@@ -27,8 +27,15 @@ func classBits(_ list: String) -> UInt32 {
         return bits | (1 << UInt32(index))
     }
 }
+var earlyCommit = 0
+var maxSyllables: Int?
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
+    case "--early-commit", "--max-syllables":
+        // As zhuyin-cli: the early commit (0: off) and the longest composition.
+        guard arguments.count >= 2, let value = Int(arguments[1]), value >= 0 else { fail("\(option) needs a number") }
+        if option == "--early-commit" { earlyCommit = value } else { maxSyllables = value }
+        arguments.removeFirst(2)
     case "--models":
         guard arguments.count >= 2 else { fail("--models needs a directory") }
         models = URL(fileURLWithPath: arguments[1])
@@ -72,10 +79,10 @@ while let option = arguments.first, option.hasPrefix("--") {
             print("v3 test vectors: \(check.passed)/\(check.total) within tolerance; largest difference \(check.worst)")
             exit(check.passed == check.total ? 0 : 1)
         } catch { fail(error.localizedDescription) }
-    default: fail("Usage: EngineBench --models DIR [--channel on|off|PATH] [--timing] \"<keys>\"")
+    default: fail("Usage: EngineBench --models DIR [--channel on|off|PATH] [--timing] [--early-commit N] [--max-syllables N] \"<keys>\"")
     }
 }
-guard let models, arguments.count == 1 else { fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"") }
+guard let models, arguments.count == 1 else { fail("Usage: EngineBench --models DIR [--timing] [--early-commit N] [--max-syllables N] \"<keys>\"") }
 
 let specials: [String: KeyInput] = [
     "space": .space, "bs": .backspace, "enter": .enter, "esc": .escape, "left": .left, "right": .right,
@@ -87,8 +94,12 @@ let text = arguments[0]
 while index < text.endIndex {
     if text[index] == "<", let end = text[index...].firstIndex(of: ">") {
         let name = String(text[text.index(after: index)..<end])
-        guard let key = specials[name] else { fail("Unknown key escape <\(name)>") }
-        keys.append(key)
+        if name.hasPrefix("C-"), name.count == 3, let character = name.last {
+            keys.append(.controlChar(character))
+        } else {
+            guard let key = specials[name] else { fail("Unknown key escape <\(name)>") }
+            keys.append(key)
+        }
         index = text.index(after: end)
     } else {
         keys.append(text[index] == " " ? .space : .char(text[index]))
@@ -125,8 +136,16 @@ if timing {
 var recentText = ""
 var options = ComposerOptions()
 options.learningEnabled = ProcessInfo.processInfo.environment["ZHUYIN_BENCH_LEARNING"] != "off"
+options.earlyCommitSyllables = earlyCommit
+if let maxSyllables { options.maxSyllables = maxSyllables }
 let composer = Composer(engine: engine, options: options)
 if let (mode, window) = variantScores { composer.setVariantScores(mode: mode, window: window) }
+// A full composition's head is text before the rest while the rest is converted again (ControllerCore does the same).
+var sentDuringKey = ""
+composer.commitListener = { text in
+    recentText += text
+    sentDuringKey += text
+}
 if let characterModel {
     composer.characterWeight = SyllableScorer.appWeight
     composer.characterScorer = { syllables, candidates in
@@ -152,9 +171,10 @@ for key in keys {
     let result = composer.handle(key, at: clock)
     keyTimes.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
     if let commit = result.commit, !commit.isEmpty {
-        recentText += commit
+        recentText += String(commit.dropFirst(sentDuringKey.count))
         print("  committed: \(commit)")
     }
+    sentDuringKey = ""
 }
 print("  shown: \(composer.presentation.text)")
 if timing {

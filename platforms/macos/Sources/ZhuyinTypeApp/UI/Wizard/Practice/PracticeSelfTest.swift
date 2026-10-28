@@ -270,9 +270,8 @@ enum PracticeSelfTest {
             try expect(model.session.core?.composer.options.verticalList == false && model.view.candidates.animatesOverride == false,
                        "layout or animation did not follow")
             try expect(model.view.panelFrame.width > model.view.panelFrame.height * 2, "the window is not horizontal: \(model.view.panelFrame)")
-            try expect(model.view.bounds.contains(model.view.panelFrame) && model.view.panelScale <= 1
-                       && (model.view.panelScale == 1) == (model.view.panelHost.bounds.width <= model.view.bounds.width),
-                       "a window wider than the field is not drawn smaller: \(model.view.panelFrame), scale \(model.view.panelScale)")
+            try expect(model.view.panelScale == 1 && model.view.panelFrame.size == model.view.surface.frame.size,
+                       "the window is not drawn at 100 %: \(model.view.panelFrame), scale \(model.view.panelScale)")
             press("esc", model)
             press("esc", model)
 
@@ -362,11 +361,17 @@ enum PracticeSelfTest {
             press("return", mode)
             try expect(mode.progress.isComplete, "中英切換: \(mode.progress.outcome.text) \(mode.progress.outcome.events)")
 
+            let selecting = field(try lesson("selecting"))
+            type("au/6", selecting)
+            press("down", selecting)
+            try pick("名", selecting)
+            try expect(selecting.progress.isComplete, "選字: picks \(selecting.progress.outcome.picks)")
+
             let paging = field(try lesson("paging"))
             type("au/6", paging)
             press("down", paging)
             try pick("暝", paging)
-            try expect(paging.progress.isComplete, "選字與翻頁: picks \(paging.progress.outcome.picks) \(paging.progress.outcome.events)")
+            try expect(paging.progress.isComplete, "翻頁: picks \(paging.progress.outcome.picks) \(paging.progress.outcome.events)")
 
             let editing = field(try lesson("editing"))
             // 「你」 is the last character, so changing it to 「妳」 leaves 「謝謝」 as it is.

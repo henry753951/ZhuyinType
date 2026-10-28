@@ -542,8 +542,13 @@ pub struct ComposerOptions {
     pub escape_clears_composition: bool,
     /// Learn from commits and candidate picks.
     pub learning_enabled: bool,
-    /// Longest composition, in syllables; further Zhuyin keys are refused (the key is consumed, nothing changes).
+    /// Longest composition, in syllables.  A key that would make it longer first commits the head of the composition
+    /// as shown (`KeyResult::commit`) and composes the rest: up to the last clause or sentence punctuation when at most
+    /// two thirds of the limit follow it, otherwise about the first third, ending between two words.
     pub max_syllables: usize,
+    /// 0: off.  Otherwise a typing key that makes the composition longer than this many syllables first commits
+    /// everything up to the last sentence-ending punctuation (。！？…), if there is one before the cursor.
+    pub early_commit_syllables: usize,
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     pub typo_tolerance: TypoTolerance,
     /// Which side of the cursor the candidate window is for.
@@ -584,6 +589,7 @@ impl Default for ComposerOptions {
             escape_clears_composition: true,
             learning_enabled: true,
             max_syllables: 60,
+            early_commit_syllables: 0,
             typo_tolerance: TypoTolerance::Standard,
             candidate_anchor: CandidateAnchor::AfterCursor,
             key_decoder: KeyDecoderMethod::Timed,
@@ -607,6 +613,7 @@ mod tests {
         assert_eq!(options.key_decoder, KeyDecoderMethod::Timed);
         assert_eq!(options.selection_keys.len(), 9);
         assert_eq!(options.max_syllables, 60);
+        assert_eq!(options.early_commit_syllables, 0, "no early commit by default");
     }
 
     #[test]
