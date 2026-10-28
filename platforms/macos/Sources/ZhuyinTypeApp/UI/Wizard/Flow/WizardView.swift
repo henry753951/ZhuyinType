@@ -430,7 +430,9 @@ private struct WelcomePreview: View {
     @ObservedObject var preferences: Preferences
     var maxHeight: CGFloat
     @StateObject private var director = PreviewDirector(name: "welcome")
-    var body: some View { UnifiedPreview(preferences: preferences, director: director, tabs: false, maxHeight: maxHeight) }
+    var body: some View {
+        UnifiedPreview(preferences: preferences, director: director, tabs: false, maxHeight: maxHeight, steadyHeight: true)
+    }
 }
 
 private struct PresetStep: View {

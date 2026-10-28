@@ -109,6 +109,9 @@ struct UnifiedPreview: View {
     var tabs = true
     /// The scene's tallest.  The window is never drawn smaller: a page of fewer candidates fits instead.
     var maxHeight: CGFloat = UnifiedPreview.defaultMaxHeight
+    /// One height for every state (the tallest), for a page laid out around the preview (the wizard's welcome is
+    /// centred and must not move); otherwise the box grows and shrinks with the state shown.
+    var steadyHeight = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 520
 
@@ -121,6 +124,12 @@ struct UnifiedPreview: View {
         let frames = flows.frames(state)
         let frame = min(pinned?.frame ?? director.frame, frames.count - 1)
         let sceneWidth = sceneWidth(flows, states, in: width)
+        // The scene's card fits the state shown; with `steadyHeight` the box around it keeps the tallest's height.
+        let sceneHeight = stageHeight(flows, [state], width: sceneWidth)
+        let height = steadyHeight ? stageHeight(flows, states, width: sceneWidth) : sceneHeight
+        // The outgoing state fades out first, then the next one in: never two scenes or two notes over each other.
+        let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.12)),
+                                            removal: .opacity.animation(.easeIn(duration: 0.12)))
         VStack(alignment: .leading, spacing: 10) {
             if tabs { PreviewTabs(states: states, selected: state) { director.show($0, last: false) } }
             GeometryReader { proxy in
@@ -128,22 +137,24 @@ struct UnifiedPreview: View {
                 // description beside it in the room left.
                 let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences)
                 HStack(alignment: .top, spacing: 18) {
-                    PreviewBlock(layout: layout.fitted(height: stageHeight(flows, [state], width: sceneWidth)),
+                    PreviewBlock(layout: layout.fitted(height: sceneHeight),
                                  preferences: preferences, animated: !DemoPinning.still && !reduceMotion, showsTitle: false)
                         .frame(width: sceneWidth)
                         .id(state)
-                        .transition(.opacity)
+                        .transition(swap)
                     if proxy.size.width - sceneWidth > 150 {
                         StateNote(state: state, preferences: preferences)
                             .id("note-" + state.rawValue)
-                            .transition(.opacity)
+                            .transition(swap)
                     }
                 }
                 .onAppear { width = proxy.size.width }
                 .onChange(of: proxy.size.width) { _, now in width = now }
             }
-            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it.
-            .frame(height: stageHeight(flows, [state], width: sceneWidth))
+            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it; the
+            // outgoing scene never draws outside it.
+            .frame(height: height, alignment: .top)
+            .clipped()
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
         // Only a press or a drag pauses it (and it goes on about 2 s later); the pointer resting over it does not.
