@@ -1,0 +1,45 @@
+name: Rebuild releases
+run-name: Rebuild ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本標籤（例如 v0.4.7），或 all 重建所有正式版本'
+        required: true
+        default: all
+        type: string
+
+concurrency:
+  group: rebuild-releases
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Rebuild selected releases in version order
+        shell: bash
+        run: |
+          versions=$(gh release list --exclude-drafts --exclude-pre-releases --limit 100 --json tagName \
+            --jq '[.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | .[]')
+          if [[ "$VERSION" != all ]]; then
+            grep -Fxq -- "$VERSION" <<< "$versions" || { echo "找不到正式版本：$VERSION" >&2; exit 1; }
+            versions=$VERSION
+          fi
+          for version in $versions; do
+            run_id=$(gh api "repos/$GH_REPO/actions/workflows/release.yml/dispatches" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' -f ref="$version" --jq .workflow_run_id)
+            echo "重建 ${version}：https://github.com/$GH_REPO/actions/runs/$run_id"
+            gh run watch "$run_id" --exit-status --interval 30
+            echo "- ${version}：完成" >> "$GITHUB_STEP_SUMMARY"
+          done
