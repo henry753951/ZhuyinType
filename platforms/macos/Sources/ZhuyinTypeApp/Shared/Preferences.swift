@@ -89,6 +89,7 @@ final class Preferences: ObservableObject {
             Key.typoTolerance: TypoSetting.standard.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
             Key.fuzzySounds: 0,
+            Key.readingChannel: true,
             Key.usesPrecedingText: true,
             Key.characterForms: CharacterForms.common.rawValue,
             Key.punctuationKeys: PunctuationKeys.windows.rawValue,
@@ -126,6 +127,9 @@ final class Preferences: ObservableObject {
         static let typoTolerance = "typoTolerance"
         static let candidateAnchor = "candidateAnchor"
         static let fuzzySounds = "fuzzySounds"
+        /// 「接受常見的其他讀法」: the engine's reading channel (有邊讀邊, 輕聲 typed with its tone, Taiwan readings
+        /// in words).  On by default.
+        static let readingChannel = "readingChannel"
         static let usesPrecedingText = "usesPrecedingText"
         /// Before multiple bindings: one shortcut per command.  Read while `keyBindings` is unset.
         static let shortcuts = "shortcuts"
@@ -150,7 +154,7 @@ final class Preferences: ObservableObject {
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
-                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
+                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, readingChannel, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
@@ -459,12 +463,18 @@ final class Preferences: ObservableObject {
     }
     /// The settings recorded with each correction.
     var correctionSettings: CorrectionSettings {
-        CorrectionSettings(options: composerOptions, fuzzy: fuzzySounds, precedingText: usesPrecedingText)
+        CorrectionSettings(options: composerOptions, fuzzy: fuzzySounds, precedingText: usesPrecedingText,
+                           readingChannel: readingChannel)
     }
 
     var fuzzySounds: FuzzySounds {
         get { FuzzySounds(rawValue: defaults.integer(forKey: Key.fuzzySounds)) }
         set { defaults.set(newValue.rawValue, forKey: Key.fuzzySounds); changed() }
+    }
+
+    var readingChannel: Bool {
+        get { defaults.bool(forKey: Key.readingChannel) }
+        set { defaults.set(newValue, forKey: Key.readingChannel); changed() }
     }
 
     var composerOptions: ComposerOptions {

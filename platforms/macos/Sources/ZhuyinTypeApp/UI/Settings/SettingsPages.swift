@@ -54,7 +54,7 @@ enum SettingsRow {
     static let typeZhuyin = "typeZhuyin", selectPhrase = "selectPhrase", deleteAfterCommit = "deleteAfterCommit"
     static let pageKeys = "pageKeys", single = "single", zhuyinRow = "zhuyinRow", selection = "selection"
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
-    static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin"
+    static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin", otherReadings = "otherReadings"
     static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
 }
 
@@ -476,6 +476,7 @@ private struct ChoosingPane: View {
             SettingsSection("按錯鍵") {
                 RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
                     current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList)))))
+                RegistryRow("readingChannel", preferences)
                 FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
                            feature: .correctionsList, commands: [.correctionsList], anchor: SettingsRow.corrections)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",

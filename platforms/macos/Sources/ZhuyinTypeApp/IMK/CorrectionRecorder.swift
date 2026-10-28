@@ -21,10 +21,12 @@ struct CorrectionSettings: Encodable, Equatable {
     var verticalList = true
     var learning = true
     var precedingText = true
+    /// 「接受常見的其他讀法」 (the engine's reading channel).
+    var readingChannel = true
 
     init() {}
 
-    init(options: ComposerOptions, fuzzy: FuzzySounds, precedingText: Bool) {
+    init(options: ComposerOptions, fuzzy: FuzzySounds, precedingText: Bool, readingChannel: Bool = true) {
         typoTolerance = options.typoTolerance.rawValue
         fuzzySounds = [(FuzzySounds.zZh, "zh"), (.cCh, "ch"), (.sSh, "sh"), (.enEng, "en"), (.anAng, "an")]
             .filter { fuzzy.contains($0.0) }.map(\.1)
@@ -36,6 +38,7 @@ struct CorrectionSettings: Encodable, Equatable {
         verticalList = options.verticalList
         learning = options.learningEnabled
         self.precedingText = precedingText
+        self.readingChannel = readingChannel
     }
 }
 

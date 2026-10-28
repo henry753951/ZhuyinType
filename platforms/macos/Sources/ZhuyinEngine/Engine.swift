@@ -92,6 +92,12 @@ public final class Engine: @unchecked Sendable {
         set { zt_engine_set_fuzzy_sounds(handle, UInt32(truncatingIfNeeded: newValue.rawValue)) }
     }
 
+    /// The reading channel (「接受常見的其他讀法」): on by default; off, matching is as without it.
+    public var readingChannelEnabled: Bool {
+        get { zt_engine_reading_channel_active(handle) }
+        set { zt_engine_set_reading_channel_enabled(handle, newValue) }
+    }
+
     public func flushPersonalData() { zt_engine_flush_personal_data(handle) }
     public func forgetAllLearned() { zt_engine_forget_all_learned(handle) }
 

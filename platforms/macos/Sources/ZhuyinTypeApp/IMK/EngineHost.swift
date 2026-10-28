@@ -60,6 +60,8 @@ enum EngineHost {
     private struct Sources {
         var lexicon: URL
         var chat: URL?
+        /// The reading channel's table beside the lexicon (`channel.bin`).
+        var channel: URL?
         var reranker: URL?
         var characters: URL?
     }
@@ -79,6 +81,7 @@ enum EngineHost {
             lexicon: dataRoot.appendingPathComponent("lexicon.tsv"),
             chat: exists(dataRoot.appendingPathComponent("lm_chat"), "bigram.tsv")
                 ?? exists(dataRoot.appendingPathComponent("lm_chat"), "lm.bin"),
+            channel: exists(dataRoot, "channel.bin")?.appendingPathComponent("channel.bin"),
             reranker: exists(modelsDirectory.appendingPathComponent("reranker"), "vocab.json")
                 ?? exists(bundled?.appendingPathComponent("reranker"), "vocab.json"),
             characters: exists(modelsDirectory.appendingPathComponent("v3"), "chars.json")
@@ -106,6 +109,8 @@ enum EngineHost {
             do {
                 try FileManager.default.createDirectory(at: userDirectory, withIntermediateDirectories: true)
                 Engine.chatModelDirectory = sources.chat
+                // Loaded whenever it is there; 「接受常見的其他讀法」 turns it on or off without a reload.
+                Engine.readingChannel = sources.channel
                 let loaded = try Engine(lexiconURL: sources.lexicon, userDataDirectory: userDirectory)
                 let engineSeconds = Date().timeIntervalSince(start)
                 logger.info("Engine loaded in \(engineSeconds, privacy: .public) seconds")
@@ -117,6 +122,7 @@ enum EngineHost {
                 let charactersSeconds = characters == nil ? nil : Date().timeIntervalSince(charactersStart)
                 DispatchQueue.main.async {
                     engine?.flushPersonalData()
+                    loaded.readingChannelEnabled = Preferences.shared.readingChannel
                     engine = loaded
                     loadDurations = (engineSeconds, rerankerSeconds, charactersSeconds)
                     reranker = neural
@@ -166,7 +172,7 @@ enum EngineHost {
         var parts: [String] = []
         let manager = FileManager.default
         for root in [Bundle.main.resourceURL, modelsDirectory].compactMap({ $0 }) {
-            for name in ["manifest.json", "lexicon.tsv", "lexicon.bin", "lm", "lm_chat", "reranker", "v3"] {
+            for name in ["manifest.json", "lexicon.tsv", "lexicon.bin", "channel.bin", "lm", "lm_chat", "reranker", "v3"] {
                 let url = root.appendingPathComponent(name)
                 guard manager.fileExists(atPath: url.path) else { continue }
                 let files = manager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])

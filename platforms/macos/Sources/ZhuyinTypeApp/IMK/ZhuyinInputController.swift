@@ -316,6 +316,7 @@ final class ZhuyinInputController: IMKInputController {
             core?.stats = nil
         }
         EngineHost.engine?.fuzzySounds = p.fuzzySounds
+        EngineHost.engine?.readingChannelEnabled = p.readingChannel
         core?.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)
         if let core, p.recordsCorrections {
             let recorder = core.recorder ?? CorrectionRecorder { CorrectionLog.shared.append($0) }

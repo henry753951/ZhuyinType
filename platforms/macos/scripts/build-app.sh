@@ -52,7 +52,7 @@ fi
 # The lexicon and language models ship compiled (lexicon.bin, lm/lm.bin, lm_chat/lm.bin): the engine maps them
 # instead of parsing text, so it starts in about 0.1 s and keeps them out of its own memory.  If compiling fails the
 # TSV files are copied instead; the engine reads either.
-if [[ -f data/build/lm/bigram.tsv ]] && tools/zt data compile --no-channel "$contents/Resources" >/dev/null; then
+if [[ -f data/build/lm/bigram.tsv ]] && tools/zt data compile "$contents/Resources" >/dev/null; then
     :
 else
     echo '注意：無法編譯詞庫與語言模型，改用 TSV。' >&2

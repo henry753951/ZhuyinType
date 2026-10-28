@@ -39,6 +39,9 @@ enum ControllerCoreSelfTest {
         let focus = Headless.FocusGuard()
         let engine: Engine
         do {
+            // As EngineHost: the reading channel beside the lexicon, on.
+            let channel = lexiconURL.deletingLastPathComponent().appendingPathComponent("channel.bin")
+            Engine.readingChannel = FileManager.default.fileExists(atPath: channel.path) ? channel : nil
             engine = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
         } catch {
             print("FAIL load lexicon: \(error)")
@@ -82,6 +85,24 @@ enum ControllerCoreSelfTest {
             core.secureInput = { false }
             type("su3", into: core)
             try expect(!core.composer.learningSuspended, "learning stayed paused after secure input ended")
+        }
+
+        test("reading channel: 有邊讀邊 and a neutral tone typed with its tone convert; off, they do not") {
+            func committed(_ keys: String) -> String? {
+                let (core, client) = session()
+                type(keys, into: core)
+                _ = core.keyDown(keyCode: 36, modifiers: [])
+                return client.inserts.last
+            }
+            try expect(engine.readingChannelEnabled, "the bundle's reading channel did not load")
+            // 睦 typed with 陸's ㄌㄨˋ (its phonetic component), 麼 (ㄇㄜ˙ in 什麼) typed ㄇㄚˊ.
+            try expect(committed("ck6xj4vu; tj3") == "和睦相處", "ㄏㄜˊ ㄌㄨˋ ㄒㄧㄤ ㄔㄨˇ: \(committed("ck6xj4vu; tj3") ?? "")")
+            try expect(committed("u.3gp6a86") == "有什麼", "ㄧㄡˇ ㄕㄣˊ ㄇㄚˊ: \(committed("u.3gp6a86") ?? "")")
+            engine.readingChannelEnabled = false
+            defer { engine.readingChannelEnabled = true }
+            try expect(!engine.readingChannelEnabled, "the reading channel did not turn off")
+            try expect(committed("ck6xj4vu; tj3") != "和睦相處" && committed("u.3gp6a86") != "有什麼",
+                       "turned off, the other readings still converted")
         }
 
         test("normal typing and Enter commit") {
