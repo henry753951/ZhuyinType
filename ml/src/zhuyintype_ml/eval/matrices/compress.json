@@ -1,0 +1,41 @@
+{
+  "evaluator": "conversion",
+  "configurations": [
+    {"name": "current", "config": "app"},
+    {"name": "fp16", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/fp16/reranker", "--v3", "{data}/compress/fp16/v3"]},
+    {"name": "int8-channel", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/int8-channel/reranker", "--v3", "{data}/compress/int8-channel/v3"]},
+    {"name": "int8-block32", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/int8-block32/reranker", "--v3", "{data}/compress/int8-block32/v3"]},
+    {"name": "int4-block32", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/int4-block32/reranker", "--v3", "{data}/compress/int4-block32/v3"]},
+    {"name": "pal6", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/pal6/reranker", "--v3", "{data}/compress/pal6/v3"]},
+    {"name": "pal4", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/pal4/reranker", "--v3", "{data}/compress/pal4/v3"]},
+    {"name": "pal6-group16", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/pal6-group16/reranker", "--v3", "{data}/compress/pal6-group16/v3"]},
+    {"name": "pal4-group16", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/pal4-group16/reranker", "--v3", "{data}/compress/pal4-group16/v3"]},
+    {"name": "onnx-int8", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/onnx-int8/reranker", "--v3", "{data}/compress/onnx-int8/v3"]},
+    {"name": "onnx-int8-tensor", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/onnx-int8-tensor/reranker",
+                  "--v3", "{data}/compress/onnx-int8-tensor/v3"]},
+    {"name": "onnx-int8-weights", "config": "app",
+     "cli_args": ["--reranker", "{data}/compress/onnx-int8-weights/reranker",
+                  "--v3", "{data}/compress/onnx-int8-weights/v3"]},
+    {"name": "no-reranker", "config": "app", "cli_args": ["--models", "{data}/compress/no-reranker"]},
+    {"name": "no-reranker-v3w1", "config": "app",
+     "cli_args": ["--models", "{data}/compress/no-reranker", "--v3-weight", "1.0"]}
+  ],
+  "sets": [
+    {"name": "colloquial", "set": "colloquial-dev"},
+    {"name": "wikipedia", "set": "wiki-dev"},
+    {"name": "chat", "set": "chat-dev"},
+    {"name": "context", "set": "wiki-dev", "options": ["--context", "line"]},
+    {"name": "continue", "set": "colloquial-dev", "options": ["--split", "continue"]},
+    {"name": "zai", "set": "zai-dev"}
+  ]
+}
