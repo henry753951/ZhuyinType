@@ -1262,6 +1262,48 @@ enum ControllerCoreSelfTest {
             try expect(director.ticks == held.2 + 1, "the preview did not go on after the pause")
         }
 
+        test("preview: the real window at 100 % with the floating panel's shadow; a narrow or short room lists fewer") {
+            _ = NSApplication.shared
+            let preferences = Preferences(defaults: MemorySettingsStorage())
+            let combos: [(String, (Preferences) -> Void)] = [
+                ("default", { _ in }),
+                ("horizontal", { $0.candidateLayout = .horizontal }),
+                ("28 pt", { $0.candidateFontSize = 28 }),
+                ("horizontal 24 pt", { $0.candidateLayout = .horizontal; $0.candidateFontSize = 24 }),
+            ]
+            for (name, apply) in combos {
+                preferences.resetToDefaults()
+                apply(preferences)
+                for (width, maxHeight) in [(CGFloat(340), CGFloat(240)), (420, 200), (560, 300)] {
+                    let preview = UnifiedPreview(preferences: preferences, director: PreviewDirector(), maxHeight: maxHeight)
+                    let flows = preview.fittingFlows(in: width)
+                    let limit = flows.scenes.list.list?.pageSize ?? 0
+                    for scene in flows.states.flatMap(flows.frames) {
+                        let layout = SceneLayout(scene: scene, width: width, preferences: preferences)
+                        try expect(layout.panel?.size == layout.panelSize, "\(name): a window drawn at another size")
+                        try expect(limit <= 2 || (!layout.overflows && layout.naturalHeight <= maxHeight),
+                                   "\(name) at \(width)×\(maxHeight): \(scene.title) does not fit with \(limit) a page")
+                    }
+                }
+            }
+            preferences.resetToDefaults()
+            let hosting = NSHostingView(rootView: UnifiedPreview(preferences: preferences, director: PreviewDirector(), tabs: false).frame(width: 520))
+            let window = HeadlessWindow(size: NSSize(width: 520, height: 360))
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+            func surfaces(_ view: NSView) -> [InputSurface] { (view as? InputSurface).map { [$0] } ?? view.subviews.flatMap(surfaces) }
+            let shown = surfaces(hosting).filter { $0.content is CandidateContentView }
+            try expect(!shown.isEmpty, "no real candidate window in the preview")
+            for surface in shown {
+                try expect(surface.castsWindowShadow && surface.layer?.sublayers?.contains { $0.shadowOpacity > 0 && $0.shadowRadius >= 8 } == true,
+                           "the preview's window has no shadow")
+                try expect(surface.convert(surface.bounds, to: nil).size == surface.bounds.size && surface.frame.size == surface.content.frame.size,
+                           "the preview's window is scaled: \(surface.convert(surface.bounds, to: nil).size) for \(surface.content.frame.size)")
+            }
+        }
+
         test("live: the wizard's welcome preview and 視窗與提示 go through ≥ 3 states in 10 s with the pointer resting on them") {
             // At the real pace, in real windows, with mouse-moved events over the preview the whole time: the pointer
             // resting on it must not stop it (it used to, which looked like a broken carousel).

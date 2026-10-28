@@ -107,26 +107,26 @@ struct UnifiedPreview: View {
     @ObservedObject var director: PreviewDirector
     /// The state tabs above the scene (the wizard's lessons show one state, without them).
     var tabs = true
-    /// The scene's tallest; a larger window is drawn smaller as a whole.
+    /// The scene's tallest.  The window is never drawn smaller: a page of fewer candidates fits instead.
     var maxHeight: CGFloat = UnifiedPreview.defaultMaxHeight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 520
 
     var body: some View {
-        let flows = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
+        let flows = fittingFlows(in: width)
         let states = flows.states
         let shown = states.contains(director.state) ? director.state : .list
         let pinned = DemoPinning.previewState
         let state = pinned?.state ?? shown
         let frames = flows.frames(state)
         let frame = min(pinned?.frame ?? director.frame, frames.count - 1)
+        let sceneWidth = sceneWidth(flows, states, in: width)
         VStack(alignment: .leading, spacing: 10) {
             if tabs { PreviewTabs(states: states, selected: state) { director.show($0, last: false) } }
             GeometryReader { proxy in
                 // The scene as wide as the window needs (a horizontal list takes the whole width); the state's
                 // description beside it in the room left.
-                let sceneWidth = sceneWidth(flows, states, in: proxy.size.width)
-                let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences, maxHeight: maxHeight)
+                let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences)
                 HStack(alignment: .top, spacing: 18) {
                     PreviewBlock(layout: layout.fitted(height: stageHeight(flows, [state], width: sceneWidth)),
                                  preferences: preferences, animated: !DemoPinning.still && !reduceMotion, showsTitle: false)
@@ -143,7 +143,7 @@ struct UnifiedPreview: View {
                 .onChange(of: proxy.size.width) { _, now in width = now }
             }
             // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it.
-            .frame(height: stageHeight(flows, [state], width: sceneWidth(flows, states, in: width)))
+            .frame(height: stageHeight(flows, [state], width: sceneWidth))
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
         // Only a press or a drag pauses it (and it goes on about 2 s later); the pointer resting over it does not.
@@ -154,7 +154,7 @@ struct UnifiedPreview: View {
             guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview || DemoPinning.live else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(PreviewDirector.step))
-                let current = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
+                let current = fittingFlows(in: width)
                 director.advance(states: current.states, frames: { current.frames($0).count })
             }
         }
@@ -165,23 +165,41 @@ struct UnifiedPreview: View {
     /// The candidates the preview lists a page: fewer than the window does, so the preview stays short; all of them
     /// for a while after 每頁的候選字 changes.
     static let pageLimit = 4
-    /// The scene's tallest: a larger window (big type) is drawn smaller as a whole.
     static let defaultMaxHeight: CGFloat = 300
+
+    /// The flows with as many candidates a page as fit `available` and `maxHeight` at 100 % (the compact few, or the
+    /// whole page just after 每頁的候選字 changed); at least two.
+    func fittingFlows(in available: CGFloat) -> PreviewFlows {
+        let most = director.showsFullPage ? preferences.pageSelectionKeys.count : Self.pageLimit
+        var limit = max(2, most)
+        while true {
+            let flows = PreviewFlows(preferences: preferences, pageLimit: limit)
+            if limit <= 2 || fits(flows, in: available) { return flows }
+            limit -= 1
+        }
+    }
+
+    private func fits(_ flows: PreviewFlows, in available: CGFloat) -> Bool {
+        flows.states.flatMap(flows.frames).allSatisfy { scene in
+            let layout = SceneLayout(scene: scene, width: available, preferences: preferences)
+            return !layout.overflows && layout.naturalHeight <= maxHeight
+        }
+    }
 
     /// The width the scenes need: the widest window plus the line's inset, at most the room there is.
     private func sceneWidth(_ flows: PreviewFlows, _ states: [PreviewState], in available: CGFloat) -> CGFloat {
         guard preferences.candidateLayout == .vertical else { return available }
         let needed = states.flatMap(flows.frames).compactMap { scene -> CGFloat? in
-            let layout = SceneLayout(scene: scene, width: available, preferences: preferences, maxHeight: maxHeight)
+            let layout = SceneLayout(scene: scene, width: available, preferences: preferences)
             return layout.panel.map { $0.maxX + 16 }
         }.max() ?? 300
         return min(available, max(300, needed))
     }
 
-    /// One height for every state and moment, so the page never moves while the preview plays.
+    /// The height of the state's tallest moment, so the box does not move while its flow plays.
     private func stageHeight(_ flows: PreviewFlows, _ states: [PreviewState], width: CGFloat) -> CGFloat {
         states.flatMap(flows.frames)
-            .map { SceneLayout(scene: $0, width: width, preferences: preferences, maxHeight: maxHeight).naturalHeight }
+            .map { SceneLayout(scene: $0, width: width, preferences: preferences).naturalHeight }
             .max() ?? 120
     }
 }

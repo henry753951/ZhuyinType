@@ -270,9 +270,8 @@ enum PracticeSelfTest {
             try expect(model.session.core?.composer.options.verticalList == false && model.view.candidates.animatesOverride == false,
                        "layout or animation did not follow")
             try expect(model.view.panelFrame.width > model.view.panelFrame.height * 2, "the window is not horizontal: \(model.view.panelFrame)")
-            try expect(model.view.bounds.contains(model.view.panelFrame) && model.view.panelScale <= 1
-                       && (model.view.panelScale == 1) == (model.view.panelHost.bounds.width <= model.view.bounds.width),
-                       "a window wider than the field is not drawn smaller: \(model.view.panelFrame), scale \(model.view.panelScale)")
+            try expect(model.view.panelScale == 1 && model.view.panelFrame.size == model.view.surface.frame.size,
+                       "the window is not drawn at 100 %: \(model.view.panelFrame), scale \(model.view.panelScale)")
             press("esc", model)
             press("esc", model)
 
