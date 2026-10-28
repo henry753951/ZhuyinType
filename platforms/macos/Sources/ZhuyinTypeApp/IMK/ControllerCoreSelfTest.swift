@@ -39,9 +39,11 @@ enum ControllerCoreSelfTest {
         let focus = Headless.FocusGuard()
         let engine: Engine
         do {
-            // As EngineHost: the reading channel beside the lexicon, on.
+            // As EngineHost: the reading channel beside the lexicon, on; a lexicon from data/build has none beside it
+            // (it is compiled into the bundle), so the bundle's.
             let channel = lexiconURL.deletingLastPathComponent().appendingPathComponent("channel.bin")
-            Engine.readingChannel = FileManager.default.fileExists(atPath: channel.path) ? channel : nil
+            Engine.readingChannel = FileManager.default.fileExists(atPath: channel.path)
+                ? channel : Bundle.main.url(forResource: "channel", withExtension: "bin")
             engine = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
         } catch {
             print("FAIL load lexicon: \(error)")
