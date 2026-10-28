@@ -25,6 +25,25 @@ https://github.com/rspeer/wordfreq/blob/master/README.md
 Upstream credits and citations are included in wordfreq-NOTICE.txt.
 https://creativecommons.org/licenses/by-sa/4.0/
 
+Taiwan readings (data-4 and later): readings Taiwan's sources attest are
+added as the words' readings or as variants below them (ZhuyinType
+ml/src/zhuyintype_ml/training/lexicon). Only readings are taken from the
+following; no definitions, words or frequencies:
+
+English Wiktionary (Chinese entries), extracted by Wiktextract: Copyright
+Wiktionary contributors; Wiktextract by Tatu Ylonen.
+https://kaikki.org/dictionary/Chinese/
+Licensed under CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/
+
+CNS11643 中文標準交換碼全字庫 (character readings): 本資料由國家發展委員會提供，
+依政府資料開放授權條款進行公眾釋出。Open Government Data License, version 1.0:
+https://data.gov.tw/license  Dataset: https://data.gov.tw/dataset/5961
+
+McBopomofo data.txt (readings of words already in this lexicon):
+Copyright (c) 2011-2026 Mengjuei Hsieh et al., MIT License (full text in
+McBopomofo-MIT.txt); its phrases derive from libtabe tsi.src (BSD).
+https://github.com/openvanilla/McBopomofo
+
 The generated lexicon is distributed under CC BY-SA 4.0. Copies of that
 license and Unicode License v3 accompany this notice. The application code
 is separately licensed under GNU AGPL version 3 (AGPL-3.0-only). These licenses do not grant trademark

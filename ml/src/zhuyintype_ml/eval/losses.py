@@ -3,6 +3,8 @@
     zt eval losses --set shanjie-dev302 path/to/rows.txt -k 64 --json data/build/eval/losses.json
     zt eval losses --set shanjie --reference other-lexicon.tsv --whole-words names stores
     python -m zhuyintype_ml.eval.losses REPORT.json --lexicon data/build/lexicon.tsv --reference more.tsv --out new.json
+    python -m zhuyintype_ml.eval.losses REPORT.json --lexicon data/build/lexicon.tsv \\
+        --channel data/build/lexicon_coverage/channel --out new.json    # reading causes by reading-channel class
 
 Each row (`context|truth|syllables`, as `zt eval rows`) is typed after its context and committed with the app setup
 (--config app) and with the lexicon and language model alone (engine).  For each the K best (zhuyin-cli
@@ -339,17 +341,41 @@ def reclassify(
     reference: list[Path | str],
     variants: Path | str | None = None,
     whole_words: Iterable[str] = (),
+    channel: Path | str | None = None,
 ) -> dict[str, Any]:
     """A `zt eval losses` report classified again offline (another lexicon or reference vocabulary), no engine."""
     data = json.loads(Path(report).read_text(encoding="utf-8"))
+    table = reading_classes(channel) if channel else None
     ours = Vocabulary(lexicon)
     ref = Vocabulary([*lexicon, *reference]) if reference else None
     k = int(data["options"].get("k", 64))
     for section in data["sections"]:
         whole = any(text in section["name"] for text in whole_words)
         metrics, items = analyse(section["items"], ours, ref, normalizer(variants), k, whole)
+        if table is not None:
+            for item in items:
+                if not item["ok"] and item["cause"] in READING_CAUSES and item.get("wrong"):
+                    i = item["wrong"][0]
+                    typed = item["syllables"].split()[i] if isinstance(item["syllables"], str) else item["syllables"][i]
+                    item["reading_class"] = table.get((item["truth"][i], typed), "none")
+            metrics["reading_classes"] = dict(Counter(i["reading_class"] for i in items if "reading_class" in i))
         section["metrics"], section["items"] = metrics, items
     return data
+
+
+# Causes where the typed reading is not the lexicon's: grouped by the reading channel's class with --channel.
+READING_CAUSES = ("neutral", "tone", "reading", "word-reading")
+
+
+def reading_classes(directory: Path | str) -> dict[tuple[str, str], str]:
+    """(character, reading) -> class, from a reading channel's channel.tsv (resources/formats/reading-channel.md)."""
+    table: dict[tuple[str, str], str] = {}
+    with open(Path(directory) / "channel.tsv", encoding="utf-8") as lines:
+        for line in lines:
+            if not line.startswith("#"):
+                parts = line.rstrip("\n").split("\t")
+                table[(parts[0], parts[1])] = parts[2]
+    return table
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -359,9 +385,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--reference", nargs="+", default=[])
     parser.add_argument("--shanjie-variants")
     parser.add_argument("--whole-words", nargs="+", default=[])
+    parser.add_argument("--channel", help="reading channel directory (channel.tsv): group reading causes by class")
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    data = reclassify(args.report, args.lexicon, args.reference, args.shanjie_variants, args.whole_words)
+    data = reclassify(args.report, args.lexicon, args.reference, args.shanjie_variants, args.whole_words, args.channel)
     Path(args.out).write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     for section in data["sections"]:
         print(section["name"], Losses().describe(section["metrics"]))

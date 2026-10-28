@@ -9,6 +9,8 @@ import ZhuyinEngine
 enum UIPreviewRenderer {
     /// Rows whose trailing block was not centred on the leading block, by page; the render fails when any.
     private static var misaligned: [String] = []
+    /// Wizard pages whose content is taller than the window gives it (nothing scrolls, so it would be cut off).
+    private static var wizardOverflow: [String] = []
 
     /// Returns false when a page has a misaligned row.
     @discardableResult
@@ -37,7 +39,6 @@ enum UIPreviewRenderer {
         DemoPinning.context = 0
         DemoPinning.intro = 12
         DemoPinning.mini = 99
-        DemoPinning.vignettePhase = 1
         do {
             for sub in ["panels", "settings", "popovers", "frames"] {
                 try FileManager.default.createDirectory(at: directory.appendingPathComponent(sub), withIntermediateDirectories: true)
@@ -45,6 +46,32 @@ enum UIPreviewRenderer {
             let settings = SettingsWindowController.shared
             CorrectionLog.shared = try sampleCorrectionLog()
             settings.engine = try sampleEngine()
+            if only == "live" || only == nil {
+                try renderLive(to: directory.appendingPathComponent("live"))
+            }
+            if only == "storyboard" || only == "wizard" || only == nil {
+                try renderWizard(to: directory.appendingPathComponent("wizard"))
+            }
+            if only == "storyboard" {
+                // The planned 設定嚮導, frame by frame, for docs/product/SETUP_WIZARD.md.
+                try FileManager.default.createDirectory(at: directory.appendingPathComponent("storyboard"), withIntermediateDirectories: true)
+                for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearanceName)
+                    Preferences.shared.resetToDefaults()
+                    Preferences.shared.punctuationKeys = .windows
+                    for frame in StoryboardFrame.allCases {
+                        // The practice field's window, small enough to sit in the wizard.
+                        Preferences.shared.candidateFontSize = [.paging, .success].contains(frame) ? 14 : 18
+                        Preferences.shared.candidateDensity = [.paging, .success].contains(frame) ? .compact : .standard
+                        try capture(swiftUI: WizardStoryboard(frame: frame, preferences: Preferences.shared), width: 720,
+                                    to: directory.appendingPathComponent("storyboard/\(frame.rawValue)-\(name).png"), settle: 0.3)
+                    }
+                }
+            }
+            if only == "practice" {
+                // The setup wizard's practice field, driven by synthetic keys (UI/Wizard/Practice).
+                try PracticeRender.render(to: directory.appendingPathComponent("practice"))
+            }
             if let only, let pane = SettingsPane(rawValue: only) {
                 NSApp.appearance = NSAppearance(named: .aqua)
                 try renderPanels(to: directory.appendingPathComponent("panels"), suffix: "light")
@@ -81,6 +108,17 @@ enum UIPreviewRenderer {
             return false
         }
         print("Focus: ZhuyinType never became active and no window became key")
+        if only == nil || only == "wizard" {
+            if wizardOverflow.isEmpty {
+                print("Wizard fit: every page fits the window at \(Int(WizardLayout.minSize.width))×\(Int(WizardLayout.minSize.height)), "
+                      + "\(Int(WizardLayout.defaultSize.width))×\(Int(WizardLayout.defaultSize.height)) and "
+                      + "\(Int(WizardLayout.maxSize.width))×\(Int(WizardLayout.maxSize.height)) without scrolling")
+            } else {
+                print("FAIL wizard fit: \(wizardOverflow.count) pages taller than the window:")
+                wizardOverflow.forEach { print("  \($0)") }
+                return false
+            }
+        }
         if misaligned.isEmpty {
             print("Row geometry: every trailing block centred on its leading block; every card balanced")
             return true
@@ -243,31 +281,29 @@ enum UIPreviewRenderer {
             let view = ContextIllustration(pinned: scene).padding(16).background(Color(nsColor: .windowBackgroundColor))
             try capture(swiftUI: view, width: 552, to: directory.appendingPathComponent("context-scene\(scene)-\(suffix).png"))
         }
-        // The 視窗與提示 vignettes, each in both phases and for the settings they follow.
-        let vignettes: [(String, () -> Void, AnyView)] = [
-            ("corrections", {}, AnyView(CorrectionsVignette(preferences: preferences))),
-            ("corrections-plain", { preferences.showsAnnotations = false }, AnyView(CorrectionsVignette(preferences: preferences))),
-            ("placement-below", {}, AnyView(PlacementVignette(preferences: preferences))),
-            ("placement-above", { preferences.candidatePlacement = .above }, AnyView(PlacementVignette(preferences: preferences))),
-            ("density-standard", {}, AnyView(DensityVignette(preferences: preferences))),
-            ("density-compact-5", { preferences.candidateDensity = .compact; preferences.candidatesPerPage = 5 },
-             AnyView(DensityVignette(preferences: preferences))),
-            ("density-horizontal", { preferences.candidateLayout = .horizontal }, AnyView(DensityVignette(preferences: preferences))),
-            ("motion-on", {}, AnyView(MotionVignette(preferences: preferences))),
-            ("motion-off", { preferences.panelAnimation = false }, AnyView(MotionVignette(preferences: preferences))),
-            ("badge", {}, AnyView(ModeBadgeVignette(preferences: preferences))),
-            ("badge-off", { preferences.showModeToast = false }, AnyView(ModeBadgeVignette(preferences: preferences))),
-        ]
-        for (name, apply, view) in vignettes {
-            for phase in [0, 1] {
-                preferences.resetToDefaults()
-                apply()
-                DemoPinning.vignettePhase = phase
-                try capture(swiftUI: view.padding(12).background(Color(nsColor: .windowBackgroundColor)), width: 460,
-                            to: directory.appendingPathComponent("vignette-\(name)-\(phase)-\(suffix).png"))
+        // The 視窗與提示 preview: every state at every moment of its flow (the carousel), and a switch after a change.
+        let director = PreviewDirector()
+        for state in PreviewState.allCases {
+            for frame in 0..<PreviewFlows(preferences: preferences).frames(state).count {
+                DemoPinning.previewState = (state, frame)
+                try capture(swiftUI: UnifiedPreview(preferences: preferences, director: director).padding(16)
+                                .background(Color(nsColor: .textBackgroundColor)), width: 560,
+                            to: directory.appendingPathComponent("preview-\(state.rawValue)-\(frame)-\(suffix).png"), settle: 0.2)
             }
         }
-        DemoPinning.vignettePhase = 1
+        // A change of 標出修正的讀音 while the list plays: before, and after the switch to the corrections list.
+        let before = PreviewSettings(preferences)
+        DemoPinning.previewState = (.list, 1)
+        try capture(swiftUI: UnifiedPreview(preferences: preferences, director: director).padding(16)
+                        .background(Color(nsColor: .textBackgroundColor)), width: 560,
+                    to: directory.appendingPathComponent("preview-switch-0-before-\(suffix).png"), settle: 0.2)
+        preferences.showsAnnotations = false
+        let switched = PreviewFlows.state(showing: before, PreviewSettings(preferences)) ?? .list
+        DemoPinning.previewState = (switched, 1)
+        try capture(swiftUI: UnifiedPreview(preferences: preferences, director: director).padding(16)
+                        .background(Color(nsColor: .textBackgroundColor)), width: 560,
+                    to: directory.appendingPathComponent("preview-switch-1-\(switched.rawValue)-\(suffix).png"), settle: 0.2)
+        DemoPinning.previewState = nil
         preferences.resetToDefaults()
         let demos: [(String, [DemoFrame])] = [
             ("space-open", OptionDemos.space(.openCandidates)),
@@ -611,6 +647,106 @@ enum UIPreviewRenderer {
                   checks: grid)
     }
 
+    /// The live views over real time, sampled (0, 100, 200, 400 ms…): the preview playing, the 中英切換 state picked,
+    /// the wizard's parts arriving and a step moving in.  Drawn from the running views, not from still frames.
+    private static func renderLive(to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let saved = (DemoPinning.still, DemoPinning.live, PreviewDirector.step)
+        defer { DemoPinning.still = saved.0; DemoPinning.live = saved.1; PreviewDirector.step = saved.2 }
+        DemoPinning.still = false
+        DemoPinning.live = true
+        PreviewDirector.step = 0.6
+        func sample<V: View>(_ view: V, size: NSSize, name: String, at times: [Int], before: (() -> Void)? = nil) throws {
+            let hosting = NSHostingView(rootView: view.frame(width: size.width, height: size.height))
+            hosting.frame = NSRect(origin: .zero, size: size)
+            let window = HeadlessWindow(size: size)
+            window.backgroundColor = .windowBackgroundColor
+            window.contentView = hosting
+            window.orderFrontRegardless()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            before?()
+            let start = Date()
+            for time in times {
+                RunLoop.main.run(until: start.addingTimeInterval(Double(time) / 1000))
+                hosting.layoutSubtreeIfNeeded()
+                hosting.display()
+                try write(view: hosting, rect: hosting.bounds, to: directory.appendingPathComponent("\(name)-\(time)ms.png"))
+            }
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
+        for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            Preferences.shared.resetToDefaults()
+            let director = PreviewDirector()
+            try sample(UnifiedPreview(preferences: Preferences.shared, director: director).padding(16), size: NSSize(width: 600, height: 380),
+                       name: "preview-playing-\(suffix)", at: [0, 100, 200, 400, 800, 1600, 2400, 3200])
+            let modeDirector = PreviewDirector()
+            try sample(UnifiedPreview(preferences: Preferences.shared, director: modeDirector).padding(16), size: NSSize(width: 600, height: 380),
+                       name: "preview-mode-\(suffix)", at: [0, 100, 200, 400, 800, 1200, 1600],
+                       before: { modeDirector.show(.mode, last: false) })
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            try sample(WizardView(model: model), size: WizardLayout.defaultSize, name: "wizard-welcome-\(suffix)",
+                       at: [0, 100, 200, 300, 450, 600, 800, 1100, 1600, 3000, 4500])
+            let next = WizardModel(original: Preferences.shared, mode: .quick)
+            try sample(WizardView(model: next), size: WizardLayout.defaultSize, name: "wizard-next-\(suffix)",
+                       at: [0, 50, 100, 200, 300, 400, 600], before: {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+                next.next()
+            })
+        }
+        Preferences.shared.resetToDefaults()
+    }
+
+    /// The setup wizard: every kind of step at the three window sizes, light and dark; the transition between two
+    /// steps frame by frame; the finish page with changes.
+    private static func renderWizard(to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            Preferences.shared.resetToDefaults()
+            func model() -> WizardModel {
+                let model = WizardModel(original: Preferences.shared, mode: .quick)
+                model.choosePreset(.windows)
+                model.sandbox.typoTolerance = .aggressive
+                _ = model.sandbox.unbind(.nextPage, at: 2)
+                model.completed = ["paging"]
+                return model
+            }
+            let steps: [(String, WizardStep, ((WizardModel) -> Void)?)] = [
+                ("welcome", .welcome, nil), ("preset", .preset, nil), ("typing", .lesson("typing"), nil),
+                ("punctuation", .lesson("punctuation"), nil), ("selecting", .lesson("selecting"), nil),
+                ("selecting-horizontal", .lesson("selecting"), { $0.sandbox.candidateLayout = .horizontal }),
+                ("paging", .lesson("paging"), nil), ("look", .lesson("look"), nil), ("finish", .finish, nil), ("keys", .keys, nil),
+            ]
+            let sizes = [(WizardLayout.defaultSize, ""), (WizardLayout.minSize, "-min"), (WizardLayout.maxSize, "-large")]
+            for (size, label) in sizes {
+                for (stepName, step, adjust) in steps {
+                    let wizard = model()
+                    wizard.mode = .full
+                    wizard.jump(to: step)
+                    adjust?(wizard)
+                    WizardFit.reset()
+                    try capture(swiftUI: WizardView(model: wizard).frame(width: size.width, height: size.height), width: size.width,
+                                to: directory.appendingPathComponent("\(stepName)\(label)-\(name).png"), settle: 0.3)
+                    wizardOverflow += WizardFit.overflows.map { "\(stepName)\(label)-\(name) \($0)" }
+                }
+            }
+            // preset → punctuation, frame by frame.
+            for progress in [0.0, 0.3, 0.6, 1.0] {
+                let wizard = model()
+                wizard.jump(to: .lesson("punctuation"))
+                DemoPinning.wizardTransition = (.preset, progress)
+                try capture(swiftUI: WizardView(model: wizard).frame(width: WizardLayout.defaultSize.width, height: WizardLayout.defaultSize.height),
+                            width: WizardLayout.defaultSize.width,
+                            to: directory.appendingPathComponent("transition-\(Int(progress * 100))-\(name).png"), settle: 0.2)
+            }
+            DemoPinning.wizardTransition = nil
+        }
+        Preferences.shared.resetToDefaults()
+    }
+
     /// Measures the rows again from scratch: views that left the window (the page a sub-page replaced) report nothing,
     /// the ones on screen report again after a 1 pt resize.
     private static func remeasure(_ window: NSWindow) {
@@ -636,7 +772,7 @@ enum UIPreviewRenderer {
         return nil
     }
 
-    private static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
+    static func capture<V: View>(swiftUI view: V, width: CGFloat, to url: URL, settle: TimeInterval = 0.15) throws {
         let hosting = NSHostingView(rootView: view.frame(width: width).fixedSize(horizontal: false, vertical: true))
         hosting.frame.size = NSSize(width: width, height: max(1, hosting.fittingSize.height))
         try capture(view: hosting, to: url, settle: settle)

@@ -419,7 +419,7 @@ pub struct CharacterModelSyllable {
 
 /// One word of a scored sentence.  Ranges are composition token offsets, not UTF-16 offsets.  Literals have an
 /// empty reading.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SentenceWord {
     /// Composition tokens the word covers.
     pub range: Range<usize>,
@@ -429,6 +429,10 @@ pub struct SentenceWord {
     pub reading: String,
     /// Matched through a typing correction or a fuzzy sound, not the keys as typed.
     pub corrected: bool,
+    /// Shown as a correction only because of a reading-channel correction (no key correction or fuzzy sound).
+    pub reading_corrected: bool,
+    /// The reading-channel variant one of its syllables took.
+    pub channel: Option<crate::reading_channel::ChannelUse>,
 }
 
 /// One of the engine's N best sentences.
@@ -451,6 +455,12 @@ impl ScoredSentence {
     #[must_use]
     pub fn corrected(&self) -> bool {
         self.words.iter().any(|word| word.corrected)
+    }
+
+    /// Some word differs from the keys as typed, and only through reading-channel corrections.
+    #[must_use]
+    pub fn reading_corrected_only(&self) -> bool {
+        self.corrected() && self.words.iter().all(|word| !word.corrected || word.reading_corrected)
     }
 }
 
@@ -532,8 +542,13 @@ pub struct ComposerOptions {
     pub escape_clears_composition: bool,
     /// Learn from commits and candidate picks.
     pub learning_enabled: bool,
-    /// Longest composition, in syllables; further Zhuyin keys are refused (the key is consumed, nothing changes).
+    /// Longest composition, in syllables.  A key that would make it longer first commits the head of the composition
+    /// as shown (`KeyResult::commit`) and composes the rest: up to the last clause or sentence punctuation when at most
+    /// two thirds of the limit follow it, otherwise about the first third, ending between two words.
     pub max_syllables: usize,
+    /// 0: off.  Otherwise a typing key that makes the composition longer than this many syllables first commits
+    /// everything up to the last sentence-ending punctuation (。！？…), if there is one before the cursor.
+    pub early_commit_syllables: usize,
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     pub typo_tolerance: TypoTolerance,
     /// Which side of the cursor the candidate window is for.
@@ -574,6 +589,7 @@ impl Default for ComposerOptions {
             escape_clears_composition: true,
             learning_enabled: true,
             max_syllables: 60,
+            early_commit_syllables: 0,
             typo_tolerance: TypoTolerance::Standard,
             candidate_anchor: CandidateAnchor::AfterCursor,
             key_decoder: KeyDecoderMethod::Timed,
@@ -597,6 +613,7 @@ mod tests {
         assert_eq!(options.key_decoder, KeyDecoderMethod::Timed);
         assert_eq!(options.selection_keys.len(), 9);
         assert_eq!(options.max_syllables, 60);
+        assert_eq!(options.early_commit_syllables, 0, "no early commit by default");
     }
 
     #[test]

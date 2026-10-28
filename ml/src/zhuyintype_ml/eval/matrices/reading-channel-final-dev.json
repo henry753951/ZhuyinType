@@ -1,0 +1,165 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "final",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero"
+   ]
+  },
+  {
+   "name": "final-fwd",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--channel-sandhi",
+    "forward"
+   ]
+  },
+  {
+   "name": "final-sandhicorr",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--channel-state",
+    "sandhi=correction"
+   ]
+  },
+  {
+   "name": "final-nosandhi",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--channel-classes",
+    "series,neutral,taiwan-word"
+   ]
+  },
+  {
+   "name": "final-nosingle",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--channel-single-classes",
+    "none"
+   ]
+  },
+  {
+   "name": "final-best",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--v3-variants",
+    "best"
+   ]
+  },
+  {
+   "name": "final-std",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--v3-variants",
+    "standard"
+   ]
+  },
+  {
+   "name": "final-typed",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--v3-variants",
+    "typed"
+   ]
+  },
+  {
+   "name": "final-cap8",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "series",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero",
+    "--channel-cap",
+    "8"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  }
+ ]
+}

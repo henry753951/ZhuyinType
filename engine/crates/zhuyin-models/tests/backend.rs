@@ -66,7 +66,14 @@ impl RerankerModel for Constant {
 
 fn sentence(text: &str, score: f64, corrected: bool) -> ScoredSentence {
     ScoredSentence {
-        words: vec![SentenceWord { range: 0..1, text: text.to_owned(), reading: String::new(), corrected }],
+        words: vec![SentenceWord {
+            range: 0..1,
+            text: text.to_owned(),
+            reading: String::new(),
+            corrected,
+            reading_corrected: false,
+            channel: None,
+        }],
         score,
     }
 }
@@ -88,6 +95,14 @@ fn reranker_inputs_penalty_batching_and_margin() {
     assert_eq!(last, [32, 32, 1]);
     assert_eq!(model.choose(&[sentence("甲", 0.0, false), sentence("乙", 7.9, true)], ""), 0);
     assert_eq!(model.choose(&[sentence("甲", 0.0, false), sentence("乙", 8.0, true)], ""), 1);
+    // Corrected only by the reading channel: the reading margin (4), not the keys' (8).
+    let reading = |text: &str, score: f64| {
+        let mut s = sentence(text, score, true);
+        s.words[0].reading_corrected = true;
+        s
+    };
+    assert_eq!(model.choose(&[sentence("甲", 0.0, false), reading("乙", 3.9)], ""), 0);
+    assert_eq!(model.choose(&[sentence("甲", 0.0, false), reading("乙", 4.0)], ""), 1);
     assert_eq!(model.scores("", &["甲".repeat(64)]), None);
 }
 

@@ -13,10 +13,10 @@
       "size": 499702
     },
     "lexicon": {
-      "file": "zhuyintype-lexicon-cf7a43f94758.tar.gz",
-      "release": "data-1",
-      "sha256": "cf7a43f94758aeb1100d353ed2ebf0560b407574c83002c38b853211038d9fb4",
-      "size": 1440171
+      "file": "zhuyintype-lexicon-e08ba2ab10b9.tar.gz",
+      "release": "data-4",
+      "sha256": "e08ba2ab10b9fb03c0e4e7bdd42801a193d6ed2d8397197fddb000c3ba891841",
+      "size": 1527099
     },
     "lm": {
       "file": "zhuyintype-lm-db7f06036a76.tar.gz",

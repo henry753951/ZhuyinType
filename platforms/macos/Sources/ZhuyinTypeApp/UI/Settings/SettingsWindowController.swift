@@ -31,6 +31,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         model.reloadLists()
+        WizardWindowController.shared.showOnFirstUse()
     }
 
     /// The window, built but not shown, open on `pane`; also used by the preview renderer.
@@ -53,7 +54,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
-        if !Self.isPreview { window.setFrameAutosaveName("ZhuyinTypeSettings") }
+        // Headless runs (self-tests) never touch the user's remembered window frame or page.
+        if !Self.isPreview, !Headless.isActive { window.setFrameAutosaveName("ZhuyinTypeSettings") }
         self.toolbar = toolbar
         split.onSelect = { [weak self, weak window] pane in
             window?.title = pane.title
@@ -102,8 +104,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         open(SettingsPlace(.keys, row: RowSections.headerID((command?.section ?? section).title)))
     }
 
+    /// The settings window, when it is on screen.
+    var visibleWindow: NSWindow? { window?.isVisible == true ? window : nil }
+
     func windowWillClose(_ notification: Notification) {
-        guard !Self.isPreview else { return }
+        guard !Self.isPreview, !Headless.isActive else { return }
+        // The wizard may still be open over it; the app stays in front for it.
+        if WizardWindowController.shared.isOpen { return }
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -259,7 +266,10 @@ enum SettingsPane: String, CaseIterable {
             guard let raw = UserDefaults.standard.string(forKey: defaultsKey) else { return .intro }
             return SettingsPane(rawValue: raw) ?? earlier[raw] ?? .intro
         }
-        set { if !SettingsWindowController.isPreview { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) } }
+        set {
+            guard !SettingsWindowController.isPreview, !Headless.isActive else { return }
+            UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey)
+        }
     }
 
     /// A System Settings style icon: a white symbol on a rounded colour tile.  Drawn on demand, so it stays sharp at

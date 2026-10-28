@@ -14,7 +14,7 @@ import json
 import random
 from collections.abc import Iterator
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -23,6 +23,9 @@ from torch.utils.data import IterableDataset
 from .common import OUT
 from .noise import Noise
 from .readings import Lexicon, Reading
+
+if TYPE_CHECKING:
+    from .noise import ReadingChannel
 
 
 class Shard:
@@ -44,6 +47,8 @@ class Builder:
         self.sids = {s: i for i, s in enumerate(self.syllables)}
         self.lex = Lexicon(OUT / "lexicon.tsv")
         self.noise = Noise(self.lex.candidates)
+        # Readings typed another way (the reading channel), when a training run sets it.
+        self.reading: ReadingChannel | None = None
         self.pool = {
             r: [self.chars.get(c, 2) for c in sorted(rows, key=lambda c: (-rows[c], c))]
             for r, rows in self.lex.candidates.items()
@@ -74,7 +79,7 @@ class Builder:
         rate: float | None = None,
         augment: bool = True,
     ) -> dict[str, Any]:
-        variants = self.noise.variants(text, readings, self.lex, rng, rate, augment)
+        variants = self.noise.variants(text, readings, self.lex, rng, rate, augment, self.reading)
         candidates: list[list[int]] = []
         labels: list[int] = []
         for char, (reading, _cost, _boundary) in zip(text, variants):

@@ -175,6 +175,12 @@ impl MappedLexicon {
         self.syllable_strs().map(str::to_owned).collect()
     }
 
+    /// Every reading, in table order.
+    #[must_use]
+    pub fn reading_strs(&self) -> impl ExactSizeIterator<Item = &str> + '_ {
+        (0..self.reading_count).map(|i| self.spelling(self.sections[READINGS] + i * 16))
+    }
+
     /// The readings whose toneless form is `base`, borrowed.
     pub fn reading_strs_for_base(&self, base: &str) -> impl Iterator<Item = &str> + '_ {
         let range = match self.find(base.as_bytes(), BASES, self.base_count, 16) {
@@ -250,6 +256,13 @@ impl MappedLexicon {
     #[must_use]
     pub fn readings_of(&self, word: &str) -> Vec<(String, f64)> {
         self.reading_strs_of(word).map(|(reading, score)| (reading.to_owned(), score)).collect()
+    }
+
+    /// The word's most common reading, borrowed.
+    #[must_use]
+    pub fn best_reading_str(&self, word: &str) -> Option<&str> {
+        let i = self.word_index(word)?;
+        Some(self.reading_entry(self.uint(self.sections[WORDS] + i * 24 + 16)).0)
     }
 
     /// The word's most common reading (the first of the highest-scoring ones) and its score.

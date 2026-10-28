@@ -2,7 +2,7 @@
 // composer set up as ControllerCore sets it up, keys typed one at a time, with Core ML as in the app.  Accepts the zhuyin-cli options `zt eval latency` passes, so
 //   ZT_CLI=.build/release/EngineBench tools/zt eval latency
 // measures it the same way:
-//   EngineBench --models DIR [--timing] "<keys>"
+//   EngineBench --models DIR [--channel on|off|PATH] [--timing] [--early-commit N] [--max-syllables N] "<keys>"
 // prints each commit and, with --timing, the per-key latency, CPU, energy and memory summary.
 import Foundation
 import ZhuyinEngine
@@ -15,8 +15,27 @@ func fail(_ message: String) -> Never {
 var arguments = Array(CommandLine.arguments.dropFirst())
 var models: URL?
 var timing = false
+var channel: String?
+var variantScores: (UInt8, Double)?
+var channelSettings = ChannelSettings()
+let channelClasses = ["lexicon", "taiwan", "word", "attested", "cns", "unihan", "series", "interjection", "taiwan-word",
+                      "neutral", "sandhi"]
+func classBits(_ list: String) -> UInt32 {
+    list.split(separator: ",").reduce(0) { bits, name in
+        if name == "none" { return bits }
+        guard let index = channelClasses.firstIndex(of: String(name)) else { fail("unknown class \(name)") }
+        return bits | (1 << UInt32(index))
+    }
+}
+var earlyCommit = 0
+var maxSyllables: Int?
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
+    case "--early-commit", "--max-syllables":
+        // As zhuyin-cli: the early commit (0: off) and the longest composition.
+        guard arguments.count >= 2, let value = Int(arguments[1]), value >= 0 else { fail("\(option) needs a number") }
+        if option == "--early-commit" { earlyCommit = value } else { maxSyllables = value }
+        arguments.removeFirst(2)
     case "--models":
         guard arguments.count >= 2 else { fail("--models needs a directory") }
         models = URL(fileURLWithPath: arguments[1])
@@ -24,6 +43,32 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--timing":
         timing = true
         arguments.removeFirst()
+    case "--v3-variants":
+        // As zhuyin-cli: standard, best, zero or typed, with the window after a comma (default 3).
+        guard arguments.count >= 2 else { fail("--v3-variants needs standard, best, zero or typed") }
+        let parts = arguments[1].split(separator: ",")
+        guard let mode = ["standard", "best", "zero", "typed"].firstIndex(of: String(parts[0])) else {
+            fail("--v3-variants needs standard, best, zero or typed")
+        }
+        variantScores = (UInt8(mode), parts.count > 1 ? Double(parts[1]) ?? 3 : 3)
+        arguments.removeFirst(2)
+    case "--channel-classes", "--channel-single-classes", "--channel-cap", "--channel-max-cost", "--channel-sandhi":
+        // As zhuyin-cli.
+        guard arguments.count >= 2 else { fail("\(option) needs a value") }
+        let value = arguments[1]
+        switch option {
+        case "--channel-classes": channelSettings.classes = classBits(value)
+        case "--channel-single-classes": channelSettings.singleClasses = classBits(value)
+        case "--channel-cap": channelSettings.optionsPerSyllable = UInt32(value) ?? 4
+        case "--channel-sandhi": channelSettings.sandhiReverse = value != "forward"
+        default: channelSettings.maxCost = Double(value) ?? 8
+        }
+        arguments.removeFirst(2)
+    case "--channel":
+        // The reading channel: `on` for channel.bin beside the lexicon, a path, or `off`.
+        guard arguments.count >= 2 else { fail("--channel needs on, off or a path") }
+        channel = arguments[1] == "off" ? nil : arguments[1]
+        arguments.removeFirst(2)
     case "--check-v3":
         // The v3 golden outputs through the app's character model (Rust with Core ML called back), as
         // zhuyin-cli --check-v3 does with ONNX Runtime.
@@ -34,10 +79,10 @@ while let option = arguments.first, option.hasPrefix("--") {
             print("v3 test vectors: \(check.passed)/\(check.total) within tolerance; largest difference \(check.worst)")
             exit(check.passed == check.total ? 0 : 1)
         } catch { fail(error.localizedDescription) }
-    default: fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"")
+    default: fail("Usage: EngineBench --models DIR [--channel on|off|PATH] [--timing] [--early-commit N] [--max-syllables N] \"<keys>\"")
     }
 }
-guard let models, arguments.count == 1 else { fail("Usage: EngineBench --models DIR [--timing] \"<keys>\"") }
+guard let models, arguments.count == 1 else { fail("Usage: EngineBench --models DIR [--timing] [--early-commit N] [--max-syllables N] \"<keys>\"") }
 
 let specials: [String: KeyInput] = [
     "space": .space, "bs": .backspace, "enter": .enter, "esc": .escape, "left": .left, "right": .right,
@@ -49,8 +94,12 @@ let text = arguments[0]
 while index < text.endIndex {
     if text[index] == "<", let end = text[index...].firstIndex(of: ">") {
         let name = String(text[text.index(after: index)..<end])
-        guard let key = specials[name] else { fail("Unknown key escape <\(name)>") }
-        keys.append(key)
+        if name.hasPrefix("C-"), name.count == 3, let character = name.last {
+            keys.append(.controlChar(character))
+        } else {
+            guard let key = specials[name] else { fail("Unknown key escape <\(name)>") }
+            keys.append(key)
+        }
         index = text.index(after: end)
     } else {
         keys.append(text[index] == " " ? .space : .char(text[index]))
@@ -65,6 +114,8 @@ func exists(_ directory: String, _ file: String) -> URL? {
 }
 let loadStart = Date()
 Engine.chatModelDirectory = exists("lm_chat", "lm.bin") ?? exists("lm_chat", "bigram.tsv")
+Engine.channelSettings = channelSettings
+Engine.readingChannel = channel.map { $0 == "on" ? models.appendingPathComponent("channel.bin") : URL(fileURLWithPath: $0) }
 let engine: Engine
 do { engine = try Engine(lexiconURL: models.appendingPathComponent("lexicon.tsv"), userDataDirectory: nil) }
 catch { fail("engine: \(error.localizedDescription)") }
@@ -85,7 +136,16 @@ if timing {
 var recentText = ""
 var options = ComposerOptions()
 options.learningEnabled = ProcessInfo.processInfo.environment["ZHUYIN_BENCH_LEARNING"] != "off"
+options.earlyCommitSyllables = earlyCommit
+if let maxSyllables { options.maxSyllables = maxSyllables }
 let composer = Composer(engine: engine, options: options)
+if let (mode, window) = variantScores { composer.setVariantScores(mode: mode, window: window) }
+// A full composition's head is text before the rest while the rest is converted again (ControllerCore does the same).
+var sentDuringKey = ""
+composer.commitListener = { text in
+    recentText += text
+    sentDuringKey += text
+}
 if let characterModel {
     composer.characterWeight = SyllableScorer.appWeight
     composer.characterScorer = { syllables, candidates in
@@ -111,9 +171,10 @@ for key in keys {
     let result = composer.handle(key, at: clock)
     keyTimes.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
     if let commit = result.commit, !commit.isEmpty {
-        recentText += commit
+        recentText += String(commit.dropFirst(sentDuringKey.count))
         print("  committed: \(commit)")
     }
+    sentDuringKey = ""
 }
 print("  shown: \(composer.presentation.text)")
 if timing {

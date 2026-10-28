@@ -8,19 +8,25 @@ pool of a reading also takes in its three nearest valid neighbours.
     from zhuyintype_ml.training.v3.noise import Noise
     noise = Noise(lexicon.candidates)
     typed = noise.variants(text, readings, lexicon, random.Random(7))
+
+`variants` also takes a reading channel (`reading`, ml/src/zhuyintype_ml/training/reading/noise.py): readings typed
+another way, each with its own cost bucket; those positions take no further augmentation or key noise.
 """
 
 from __future__ import annotations
 
 import math
 import random
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING
 
 from zhuyintype_ml.core import zhuyin
 
 if TYPE_CHECKING:
     from .readings import Lexicon, Reading
+
+    # (text, readings, lexicon, rng) -> {position: (typed reading, cost bucket)}
+    ReadingChannel = Callable[[str, Sequence[Reading], Lexicon, random.Random], dict[int, tuple[Reading, int]]]
 
 # Standard-layout key → Zhuyin symbol, in keyboard order 1qaz2wsx… (the order `corrupt` draws extra keys from).
 KEYS = {key: symbol for symbol, key in zhuyin.KEYS.items() if symbol not in zhuyin.TONES}
@@ -101,9 +107,13 @@ class Noise:
         rng: random.Random,
         rate: float | None = None,
         augment: bool = True,
+        reading: ReadingChannel | None = None,
     ) -> list[tuple[Reading, int, int]]:
+        channel = reading(text, readings, lexicon, rng) if reading else {}
         readings = list(readings)
         for i, (char, r) in enumerate(zip(text, readings)):
+            if i in channel:
+                continue
             if augment and char in "一不" and rng.random() < 0.5:
                 following = readings[i + 1][1] if i + 1 < len(readings) else 0
                 if char == "一" and following:
@@ -121,8 +131,11 @@ class Noise:
                 readings[i] = rng.choice(choices)
         rate = rng.uniform(0, 0.15) if rate is None else rate
         result = []
-        for reading in readings:
-            typed, cost = self.corrupt(reading, rng) if rng.random() < rate else (reading, 0)
+        for i, item in enumerate(readings):
+            if i in channel:
+                typed, cost = channel[i]
+            else:
+                typed, cost = self.corrupt(item, rng) if rng.random() < rate else (item, 0)
             boundary = int(augment and typed[1] == 1 and rng.random() < 0.2)
             result.append((typed, cost, boundary))
         return result

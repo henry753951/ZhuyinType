@@ -193,7 +193,7 @@ typedef struct {
   bool escape_clears_composition;
   // Learn from commits and picks.
   bool learning_enabled;
-  // Longest composition, in syllables.
+  // Longest composition, in syllables: a key that would make it longer first commits the head.
   size_t max_syllables;
   // One of `ZT_TYPO_*`.
   uint32_t typo_tolerance;
@@ -209,6 +209,8 @@ typedef struct {
   uint32_t character_forms;
   // One of `ZT_PUNCTUATION_*`.
   uint32_t punctuation_keys;
+  // 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
+  size_t early_commit_syllables;
 } ZtComposerOptions;
 
 // What a key did (Swift's `KeyResult`).
@@ -304,6 +306,19 @@ typedef struct {
   void (*release)(void *context);
 } ZtCandidateScorerHook;
 
+// The commit hook: told the text a full composition commits by itself in the middle of a key, before the rest is
+// converted again, so the host's models can read it as text before the composition.  The same text also comes back
+// in the key's result (`ZtKeyResult::commit`), to insert as usual.
+typedef struct {
+  // Passed to `committed` and `release`.
+  void *context;
+  // Called with the committed text (UTF-8, valid during the call).  It must not call back into the composer.
+  // NULL removes the hook.
+  void (*committed)(void *context, const char *text);
+  // Called once when the hook is replaced or the composer freed; may be NULL.
+  void (*release)(void *context);
+} ZtCommitHook;
+
 // One syllable as the character model reads it.
 typedef struct {
   // Toneless reading (UTF-8), or NULL for a literal.
@@ -349,6 +364,20 @@ typedef struct {
   double domain_evidence_centre;
   // Hotspot replacement costs in the typing channel.
   bool hotspot;
+  // The reading channel's table (`channel.bin`), or NULL for no reading channel.
+  const char *reading_channel;
+  // The reading channel's classes in use, one bit per class (`reading-channel.md`).
+  uint32_t channel_classes;
+  // The classes a single-character word takes variants from.
+  uint32_t channel_single_classes;
+  // The classes whose variants are corrections.
+  uint32_t channel_corrections;
+  // The most lexicon readings one typed syllable reaches through the channel.
+  uint32_t channel_options_per_syllable;
+  // Variants that cost more are left out.
+  double channel_max_cost;
+  // Third-tone sandhi also reads a typed third tone as the lexicon's second.
+  bool channel_sandhi_reverse;
 } ZtEngineConfig;
 
 // One personal-data entry.
@@ -558,6 +587,16 @@ void zt_composer_set_reranking_count(ZtComposer *composer, size_t count);
 // `composer` is a live handle.
 void zt_composer_set_character_weight(ZtComposer *composer, double weight);
 
+// How the character scorer scores characters only a reading-channel variant brings: 0 by their lexicon reading
+// (one more call), 1 the position's best, 2 nothing, 3 as typed; only those within `window` nats of the best other
+// character at their position.  Other values leave the setting.
+//
+// # Safety
+// `composer` is a live handle.
+void zt_composer_set_variant_scores(ZtComposer *composer,
+                                    uint8_t mode,
+                                    double window);
+
 // Whether the character scorer also orders the candidate list.
 //
 // # Safety
@@ -617,6 +656,12 @@ void zt_composer_set_reranker(ZtComposer *composer, ZtRerankerHook hook);
 // # Safety
 // `composer` is a live handle; the hook follows the threading and ownership rules of the header.
 void zt_composer_set_candidate_scorer(ZtComposer *composer, ZtCandidateScorerHook hook);
+
+// Sets (or, with a NULL `committed`, removes) the commit hook.
+//
+// # Safety
+// `composer` is a live handle; the hook follows the threading and ownership rules of the header.
+void zt_composer_set_commit_hook(ZtComposer *composer, ZtCommitHook hook);
 
 // How many rows (syllables).
 //

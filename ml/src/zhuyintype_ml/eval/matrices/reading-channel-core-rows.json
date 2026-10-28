@@ -1,0 +1,245 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "core",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi"
+   ]
+  },
+  {
+   "name": "core-best",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "best"
+   ]
+  },
+  {
+   "name": "core-zero",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variants",
+    "zero"
+   ]
+  },
+  {
+   "name": "core-std0",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--v3-variant-window",
+    "0"
+   ]
+  },
+  {
+   "name": "core-sandhicorr",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-state",
+    "sandhi=correction"
+   ]
+  },
+  {
+   "name": "core-nosandhi",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-classes",
+    "series,neutral,taiwan-word"
+   ]
+  },
+  {
+   "name": "core-cap2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-cap",
+    "2"
+   ]
+  },
+  {
+   "name": "core-cap8",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-cap",
+    "8"
+   ]
+  },
+  {
+   "name": "core-margin2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--reading-margin",
+    "2"
+   ]
+  },
+  {
+   "name": "core-margin8",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--reading-margin",
+    "8"
+   ]
+  },
+  {
+   "name": "core-neutralcorr",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-state",
+    "neutral=correction"
+   ]
+  },
+  {
+   "name": "core-plus1",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-classes",
+    "series,neutral,taiwan-word,sandhi",
+    "--channel-offset",
+    "lexicon=1",
+    "--channel-offset",
+    "taiwan=1",
+    "--channel-offset",
+    "word=1",
+    "--channel-offset",
+    "attested=1",
+    "--channel-offset",
+    "cns=1",
+    "--channel-offset",
+    "unihan=1",
+    "--channel-offset",
+    "series=1",
+    "--channel-offset",
+    "interjection=1",
+    "--channel-offset",
+    "taiwan-word=1",
+    "--channel-offset",
+    "neutral=1",
+    "--channel-offset",
+    "sandhi=1"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "sj-neutral",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--neutral--words.txt"
+  },
+  {
+   "name": "sj-moedict",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--sets--moedict.txt"
+  },
+  {
+   "name": "user-examples",
+   "set": "misread-dev-examples"
+  },
+  {
+   "name": "sj-reported",
+   "set": "shanjie-reported"
+  },
+  {
+   "name": "sj-trap",
+   "set": "shanjie-trap"
+  },
+  {
+   "name": "sj-daily",
+   "set": "shanjie-daily"
+  },
+  {
+   "name": "misread-taiwan",
+   "set": "misread-dev-taiwan"
+  },
+  {
+   "name": "misread-mainland",
+   "set": "misread-dev-mainland"
+  },
+  {
+   "name": "misread-neutral",
+   "set": "misread-dev-neutral"
+  },
+  {
+   "name": "misread-colloquial",
+   "set": "misread-dev-colloquial"
+  },
+  {
+   "name": "misread-misread",
+   "set": "misread-dev-misread"
+  },
+  {
+   "name": "misread-interjection",
+   "set": "misread-dev-interjection"
+  }
+ ]
+}

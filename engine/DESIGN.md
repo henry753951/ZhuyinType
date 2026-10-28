@@ -133,7 +133,7 @@ pub trait SyllableModel: Send {
 - **Handle**：`ZtEngine`（詞庫、語言模型、個人資料）、`ZtComposer`、`ZtReranker`、`ZtSyllableScorer` 都是不透明指標，由 `zt_*_open`／`zt_*_new`／`zt_reranker_configured` 建立、`zt_*_free` 釋放；Composer 持有 Engine 的參考計數，Engine 可以先釋放。
 - **字串與資料**：輸入的字串是 UTF-8、以 NUL 結尾，只在呼叫期間借用。傳回的 `char *` 歸呼叫端，以 `zt_string_free` 釋放；`ZtPresentation`、`ZtPhraseList`、`ZtStringList` 有各自的 `_free`。按鍵是 `ZtKey`（`ZT_KEY_*` 種類與 Unicode 純量），選項是 `ZtComposerOptions`（列舉以 `ZT_*` 常數表示，超出範圍時拒絕），呈現是 `ZtPresentation`（UTF-16 的游標與子句、候選字清單、提示）。
 - **個人資料**：自訂詞的新增與移除、學到的字詞與排除清單、單一字詞的遺忘、全部遺忘、匯出與匯入、立即寫入。
-- **Hook**：組字器的三個模型 hook（`zt_composer_set_reranker`、`_set_candidate_scorer`、`_set_character_scorer`）是 C 函式加上 `context` 與 `release`。Hook 收到的是組字器資料的檢視（`ZtSentences`、`ZtStrings`、`ZtCandidateRows`），可以直接交給 `zt_reranker_choose`、`zt_reranker_candidate_scores_view`、`zt_syllable_scorer_scores_rows`，資料不必經過主機複製。
+- **Hook**：組字器的三個模型 hook（`zt_composer_set_reranker`、`_set_candidate_scorer`、`_set_character_scorer`）是 C 函式加上 `context` 與 `release`。Hook 收到的是組字器資料的檢視（`ZtSentences`、`ZtStrings`、`ZtCandidateRows`），可以直接交給 `zt_reranker_choose`、`zt_reranker_candidate_scores_view`、`zt_syllable_scorer_scores_rows`，資料不必經過主機複製。另有 `zt_composer_set_commit_hook`：組字超過 `max_syllables`、自動送出前段時，在重新轉換後段之前把送出的文字告訴主機，讓模型讀的前文接上它（同樣的文字也在 `ZtKeyResult.commit` 傳回）。
 - **主機的模型**：`ZtRerankerModel`、`ZtSyllableModel` 是推論的 C callback（輸入、輸出都是呼叫端配置的連續陣列）；建立失敗時也會呼叫 `release`。
 - **執行緒**：Engine 可以在多個執行緒同時使用；Composer 同一時間只能由一個執行緒使用；Reranker 與 SyllableScorer 可以共用，模型呼叫會序列化。Callback 在呼叫者的執行緒上同步執行，不能回頭呼叫同一個 Composer；檢視只在 callback 期間有效。標頭開頭寫明這些規則。
 - **錯誤**：可能失敗的函式回傳 NULL、`false` 或 −1，訊息經 `char **error`。Release 版 panic 直接結束程序（§2）。
@@ -300,3 +300,31 @@ Linux 上的 golden 摘要：提交的摘要在 macOS 上產生。Linux 的 glib
 | 5 切換 | App、評測工具、GPU 主機改用 Rust；文件更新；移除 Swift 引擎 | 完成：§8.5；0.4.2 以 Rust 引擎發布 |
 
 五個階段都已完成。之後的引擎改變直接在 Rust 上做，以 `parity/gate.sh` 和 main 的建置比對（§7「比對」）。
+
+## 10. 移植後有意的行為改變
+
+| 改變 | 內容 | 比對 |
+|---|---|---|
+| 組字太長時送出前段（0.4.2） | Swift 引擎在組字已有 `maxSyllables`（60）個音節時略過新的注音鍵（鍵被吃掉，畫面不變）。現在這個鍵先送出前段、其餘繼續組字，送出的規則見 [ARCHITECTURE.md §5.1](../docs/engine/ARCHITECTURE.md#51-組字狀態)；另加 `early_commit_syllables` 選項（預設關閉）與 commit hook（§6）。按鍵串重切後找不到切法的 Backspace，改成刪掉未完成音節的最後一個注音符號（原本沒有作用）。 | 60 個音節以內的輸入不受影響：golden 的 `composer.app`、`standard-forms`、`legacy`、`other`、`insert-space`、`edge-stays` 都和摘要相同。`composer.commit`（`max_syllables` 12，開發集的按鍵稿有些超過 12 個音節）改以 Rust 引擎重新記錄。 |
+
+## 11. 讀音通道（只有 Rust）
+
+Swift 引擎移除後的第一個新功能（2026-10-28，`reading-channel` 分支）：字被打成另一個讀音時（有邊讀邊、輕聲打本調、詞裡的台灣讀音、三聲變調）也能比對到詞，不必把每種讀音展開成詞庫的列。規格與成本在 [resources/formats/reading-channel.md](../resources/formats/reading-channel.md)，演算法在 [MODEL.md §2.5](../docs/engine/MODEL.md#25-讀音通道引擎)，選預設值的實驗在研究紀錄。
+
+| 部分 | 位置 |
+|---|---|
+| 字音表 `channel.bin`（ZTCB/1）、成本、索引、選項 | `zhuyin_core::reading_channel`（`ChannelTable`、`ChannelSettings`、`ChannelIndex`、`ChannelUse`） |
+| 比對：每個音節的選項、一個詞一個變體、限定字的查詢、三聲變調 | `zhuyin_core::engine`（`build_matches`、`visit`、`push_matches`、`ChannelStep`） |
+| 修正的狀態 | `Match::reading_corrected`、`ConvertedWord`／`SentenceWord` 的 `channel` 與 `reading_corrected`、`ScoredSentence::reading_corrected_only` |
+| 重排的 `reading_margin` | `zhuyin_models::NeuralReranker::choose` |
+| v3 的過渡做法與截斷 | `zhuyin_core::composer`（`VariantScores`、`variant_window`、`score_variants`） |
+| 編譯與 Python 參考實作 | `ml/src/zhuyintype_ml/training/lm/compile_data.py`（`compile_channel`）、`training/lexicon/engine_channel.py` |
+| C 介面 | `ZtEngineConfig` 的 `reading_channel`、`channel_*`；`zt_composer_set_variant_scores` |
+
+**關閉時逐位元相同。** 沒有 `--channel` 時不載入字音表、不建索引，比對的快取鍵與每個分支都和原本相同；golden 摘要全部相同，main（4534c1e）對這個分支的完整 gate 62,216 行 0 行不同。
+
+**資料結構。** 載入時字音表從映射的檔案直接讀成排序好的陣列（字、列、台灣讀音），用二分搜尋，不建雜湊表。索引分兩次掃描詞庫：第一次只計數，第二次把每個緩衝區配置在最後的大小；詞與讀音放在同一個字串區，詞的陣列依（讀音、位置、字、詞）排序，讀音表記錄每個讀音的起點與筆數，前綴檢查直接在排序好的讀音表上二分搜尋。沒有變體的列不配置任何東西。這是為了記憶體：最早每一筆都是自己的配置，App 路徑的記憶體多 55 MB（多是建索引時的暫存留下的碎片），現在預設設定多約 4 MB、所有類別多約 8 MB。載入多約 0.1 s。
+
+**每鍵的成本。** 限定字的選項先做前綴檢查（不拿鎖、不組無聲調的讀音），比對的快取鍵只多「下一個音節是不是三聲」（而且只在開三聲變調時）。只開一類時每鍵指令數多不到 1%；所有類別多約 8%。App 路徑上主要的成本是 v3：第 7 點的 (a) 每鍵多呼叫一次模型，p95 多約 10%；變體字不扣成本排進候選字清單也會讓清單變長，所以只對在 `variant_window` 以內的字這樣做。預設設定的 p95 和關閉時相同（研究紀錄）。
+
+**Python 與 Rust 一致。** `engine_channel.py` 依同一份規格計算每一列的變體與成本，`zhuyin-cli --channel-table` 印出 Rust 的整張表；兩邊在完整的字音表上（所有類別 62,420 列、預設 30,006 列）逐列相同，成本逐位元相同。Python 3.12 的 `sum()` 會補償捨入誤差，所以參考實作照 Rust 的順序逐項相加。
