@@ -60,9 +60,12 @@ for y in 0..<rep.pixelsHigh {
     }
 }
 precondition(visible > 40 && transparent > 40, "Monochrome artwork must have transparent background")
-for name in ["reranker/Reranker.mlmodelc/model.mil", "reranker/vocab.json", "reranker/config.json"] {
+for name in ["reranker/vocab.json", "reranker/config.json"] {
     precondition(FileManager.default.fileExists(atPath: resources.appendingPathComponent(name).path), name)
 }
+precondition(["reranker/RerankerTree.mlmodelc/model.mil", "reranker/Reranker.mlmodelc/model.mil"].contains {
+    FileManager.default.fileExists(atPath: resources.appendingPathComponent($0).path)
+}, "reranker model")
 let stray = FileManager.default.enumerator(atPath: app.path)!.compactMap { $0 as? String }
     .filter { ($0 as NSString).lastPathComponent.hasPrefix("._") }
 precondition(stray.isEmpty, "AppleDouble files in the bundle: \(stray.prefix(3))")

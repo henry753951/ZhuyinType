@@ -18,22 +18,30 @@ private func int32Array(_ values: UnsafePointer<Int32>, _ shape: [Int]) throws -
     return array
 }
 
-/// Core ML inference of the reranker: the batched model and, when present, the prefix-tree model.
+/// Core ML inference of the reranker: the prefix-tree model and the batched model, the same weights.  Either may be
+/// absent: the tree scores every call the engine makes (up to 32 candidates of 63 characters), so the app bundles
+/// only the tree; the batched model alone serves older model directories.
 private final class CoreMLReranker {
-    let batch: MLModel
+    let batch: MLModel?
     let tree: MLModel?
 
     init(directory: URL, computeUnits: MLComputeUnits) throws {
         let configuration = MLModelConfiguration()
         configuration.computeUnits = computeUnits
-        batch = try compiledModel(directory, "Reranker", configuration)
         let treeURL = directory.appendingPathComponent("RerankerTree.mlmodelc")
         tree = FileManager.default.fileExists(atPath: treeURL.path)
             ? try? MLModel(contentsOf: treeURL, configuration: configuration) : nil
+        let batchFiles = ["Reranker.mlmodelc", "Reranker.mlpackage"].map { directory.appendingPathComponent($0).path }
+        if tree == nil || batchFiles.contains(where: FileManager.default.fileExists(atPath:)) {
+            batch = try compiledModel(directory, "Reranker", configuration)
+        } else {
+            batch = nil
+        }
     }
 
     func logprob(ids: UnsafePointer<Int32>, targets: UnsafePointer<Int32>, rows: Int, length: Int,
                  out: UnsafeMutablePointer<Double>) -> Bool {
+        guard let batch else { return false }
         do {
             let input = try MLDictionaryFeatureProvider(dictionary: [
                 "ids": try int32Array(ids, [rows, length]), "targets": try int32Array(targets, [rows, length])])

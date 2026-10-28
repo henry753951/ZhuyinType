@@ -1,8 +1,11 @@
 import SwiftUI
 import ZhuyinEngine
 
-// The setup wizard's window content: a header (上一步, progress, 全部跳過), the step, and its buttons.  Steps push in from
-// the side they come from; under Reduce Motion they crossfade.
+// The setup wizard's window content, quiet as Apple's own setup screens: the window background, faint grouped surfaces,
+// the system accent colour only for the main button and the selection, and type and spacing doing the rest.  A header
+// (上一步, progress, 全部跳過); the step; its buttons.  Steps move in from the side they come from and their parts arrive
+// one after another (10 pt, 40 ms apart, soft springs); a choice's highlight moves between the cards.  Under Reduce
+// Motion everything crossfades.
 
 struct WizardView: View {
     @ObservedObject var model: WizardModel
@@ -11,7 +14,6 @@ struct WizardView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().opacity(model.step == .welcome ? 0 : 1)
             ZStack {
                 if let pinned = DemoPinning.wizardTransition {
                     // The UI previews: the step transition drawn still at `progress`.
@@ -28,14 +30,14 @@ struct WizardView: View {
             .clipped()
         }
         .frame(minWidth: 720, minHeight: 560)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(WizardBackdrop())
     }
 
     private var transition: AnyTransition {
         if reduceMotion { return .opacity }
         let forward = model.direction > 0
-        return .asymmetric(insertion: .modifier(active: WizardSlide(x: forward ? 28 : -28, opacity: 0), identity: WizardSlide(x: 0, opacity: 1)),
-                           removal: .modifier(active: WizardSlide(x: forward ? -14 : 14, opacity: 0), identity: WizardSlide(x: 0, opacity: 1)))
+        return .asymmetric(insertion: .modifier(active: WizardSlide(x: forward ? 16 : -16, opacity: 0), identity: WizardSlide(x: 0, opacity: 1)),
+                           removal: .modifier(active: WizardSlide(x: forward ? -8 : 8, opacity: 0), identity: WizardSlide(x: 0, opacity: 1)))
     }
 
     private var header: some View {
@@ -51,11 +53,11 @@ struct WizardView: View {
                 HStack(spacing: 6) {
                     ForEach(1...progress.count, id: \.self) { index in
                         Capsule()
-                            .fill(index <= progress.index ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary))
-                            .frame(width: index == progress.index ? 18 : 7, height: 7)
+                            .fill(index <= progress.index ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.15)))
+                            .frame(width: index == progress.index ? 22 : 7, height: 7)
                     }
                 }
-                .animation(WizardMotion.step, value: progress.index)
+                .animation(WizardMotion.success, value: progress.index)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("第 \(progress.index) 步，共 \(progress.count) 步")
             }
@@ -64,8 +66,9 @@ struct WizardView: View {
                 Button("全部跳過") { model.skipAll() }.buttonStyle(.borderless).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 20)
-        .frame(height: 44)
+        .padding(.leading, 84)
+        .padding(.trailing, 24)
+        .frame(height: 52)
     }
 
     @ViewBuilder private func stepView(_ step: WizardStep) -> some View {
@@ -85,15 +88,71 @@ private struct WizardSlide: ViewModifier {
     func body(content: Content) -> some View { content.offset(x: x).opacity(opacity) }
 }
 
+// MARK: - Backdrop, glass and entrances
+
+/// The window's backdrop: the plain window background, as Apple's setup screens and System Settings.
+struct WizardBackdrop: View {
+    var body: some View {
+        Color(nsColor: .windowBackgroundColor).ignoresSafeArea().accessibilityHidden(true)
+    }
+}
+
+/// A quiet surface, as the grouped boxes of System Settings: a faint fill and a hairline.  `tint` (the selection)
+/// washes it with the accent colour.
+struct Glass: View {
+    var cornerRadius: CGFloat = 12
+    var tint: Color?
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        shape.fill(tint.map { $0.opacity(0.07) } ?? Color.primary.opacity(0.04))
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+    }
+}
+
+/// How many step entrances have played (the self-tests check that they do).
+enum WizardEntrance {
+    static var played = 0
+}
+
+/// A part of a step arriving: it rises a little and fades in, after the parts before it.
+private struct Entrance: ViewModifier {
+    let order: Int
+    let appeared: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        content
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 10)
+            .animation(reduceMotion ? .easeOut(duration: 0.2).delay(Double(order) * 0.03)
+                       : .spring(response: 0.42, dampingFraction: 0.92).delay(0.05 + Double(order) * 0.04), value: appeared)
+    }
+}
+
+extension View {
+    fileprivate func entrance(_ order: Int, _ appeared: Bool) -> some View { modifier(Entrance(order: order, appeared: appeared)) }
+}
+
+/// A step's parts arrive when it appears.
+private struct Arrival: ViewModifier {
+    @Binding var appeared: Bool
+    func body(content: Content) -> some View {
+        content.onAppear {
+            guard !appeared else { return }
+            WizardEntrance.played += 1
+            DispatchQueue.main.async { appeared = true }
+        }
+    }
+}
+
 // MARK: - Pieces
 
 private struct StepTitle: View {
     let title: String
     let detail: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.title2.weight(.semibold))
-            Text(detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 26, weight: .semibold))
+            Text(detail).font(.title3).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -108,39 +167,97 @@ private struct StepFooter<Leading: View, Trailing: View>: View {
             trailing()
         }
         .controlSize(.large)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 28)
         .padding(.vertical, 16)
+    }
+}
+
+/// The step's main action: prominent, in the accent colour.
+private struct PrimaryButton: View {
+    let title: String
+    var enabled = true
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { Text(title).frame(minWidth: 84) }
+            .buttonStyle(.borderedProminent)
+            .tint(.accentColor)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!enabled)
+    }
+}
+
+/// A secondary action beside the primary one.
+private struct SecondaryButton: View {
+    let title: String
+    let action: () -> Void
+    var body: some View { Button(title, action: action).buttonStyle(.bordered) }
+}
+
+/// A step's page: its content, fitted to the window (scrolling without a scroller only when the window is too short),
+/// and its footer.
+private struct StepPage<Content: View, Footer: View>: View {
+    @ViewBuilder let content: () -> Content
+    @ViewBuilder let footer: () -> Footer
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                content()
+                    .padding(.horizontal, 44)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: 940)
+                    .frame(maxWidth: .infinity)
+            }
+            .scrollIndicators(.never)
+            footer()
+        }
     }
 }
 
 private struct ChoiceCard: View {
     let title: String
-    let lines: [String]
+    let lines: [(keys: [String], text: String)]
     var symbol: String?
     let selected: Bool
+    let namespace: Namespace.ID
+    let group: String
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    if let symbol { Image(systemName: symbol).foregroundStyle(Color.accentColor) }
+                    if let symbol { Image(systemName: symbol).font(.title3).foregroundStyle(.secondary) }
                     Text(title).font(.headline)
                     Spacer()
                     Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
                         .foregroundStyle(selected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                 }
-                ForEach(lines, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    HStack(spacing: 6) {
+                        ForEach(line.keys, id: \.self) { KeyChip(text: $0) }
+                        Text(line.text).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.03)))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: selected ? 2 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+            .background {
+                ZStack {
+                    Glass(cornerRadius: 12)
+                    if selected {
+                        // The selection moves between the cards.
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 1.5))
+                            .matchedGeometryEffect(id: "selection-" + group, in: namespace)
+                    }
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .animation(WizardMotion.success, value: selected)
     }
 }
 
@@ -148,118 +265,222 @@ private struct ChoiceCard: View {
 
 private struct WelcomeStep: View {
     @ObservedObject var model: WizardModel
+    @Namespace private var namespace
+    @State private var appeared = DemoPinning.still
+
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 14) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72).padding(.top, 28)
-                Text("設定 ZhuyinType").font(.largeTitle.weight(.semibold))
-                Text("選好你習慣的打法，並在這裡試打。所有設定之後都能在「設定」中更改。")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 420)
-                HStack(spacing: 12) {
-                    ChoiceCard(title: "快速設定", lines: ["標點、空白鍵、中英切換、選字與翻頁、改字，約 2 分鐘"], symbol: "bolt",
-                               selected: model.mode == .quick) { model.choose(.quick) }
-                    ChoiceCard(title: "完整導覽", lines: ["依序介紹每個功能，並在每一步試打"], symbol: "map",
-                               selected: model.mode == .full) { model.choose(.full) }
+        StepPage {
+            VStack(spacing: 22) {
+                VStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 80, height: 80)
+                    Text("歡迎使用 ZhuyinType").font(.system(size: 28, weight: .semibold))
+                    Text("選好你習慣的打法，並在這裡試打。所有設定之後都能在「設定」中更改。")
+                        .font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 480)
                 }
-                .frame(maxWidth: 540)
-                .padding(.top, 10)
+                .entrance(0, appeared)
+                HStack(spacing: 16) {
+                    ChoiceCard(title: "快速設定", lines: [([], "標點、空白鍵、中英切換、選字與翻頁、改字"), ([], "約 2 分鐘")], symbol: "bolt.fill",
+                               selected: model.mode == .quick, namespace: namespace, group: "mode") {
+                        withAnimation(WizardMotion.success) { model.choose(.quick) }
+                    }
+                    .entrance(1, appeared)
+                    ChoiceCard(title: "完整導覽", lines: [([], "依序介紹每個功能，並在每一步試打"), ([], "\(Lesson.all.count) 個步驟")], symbol: "map.fill",
+                               selected: model.mode == .full, namespace: namespace, group: "mode") {
+                        withAnimation(WizardMotion.success) { model.choose(.full) }
+                    }
+                    .entrance(2, appeared)
+                }
+                WelcomePreview(preferences: model.sandbox)
+                    .padding(16)
+                    .background(Glass())
+                    .entrance(3, appeared)
             }
-            .padding(.horizontal, 40)
-            Spacer()
+            .padding(.top, 10)
+        } footer: {
             StepFooter { EmptyView() } trailing: {
-                Button("開始") { model.next() }.keyboardShortcut(.defaultAction)
+                PrimaryButton(title: "開始") { model.next() }
             }
         }
+        .modifier(Arrival(appeared: $appeared))
     }
+}
+
+private struct WelcomePreview: View {
+    @ObservedObject var preferences: Preferences
+    @StateObject private var director = PreviewDirector()
+    var body: some View { UnifiedPreview(preferences: preferences, director: director, maxHeight: 200) }
 }
 
 private struct PresetStep: View {
     @ObservedObject var model: WizardModel
+    @Namespace private var namespace
+    @State private var appeared = DemoPinning.still
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 14) {
+        StepPage {
+            VStack(alignment: .leading, spacing: 20) {
                 StepTitle(title: "你原本習慣哪一種注音輸入？", detail: "選一個最接近的習慣組合，之後每一步都可以再改。")
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                    ForEach(SettingsPreset.all) { preset in
-                        ChoiceCard(title: preset.title, lines: preset.lines, selected: model.preset == preset.id) {
+                    .entrance(0, appeared)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
+                    ForEach(Array(SettingsPreset.all.enumerated()), id: \.element.id) { index, preset in
+                        ChoiceCard(title: preset.title, lines: preset.lines, selected: model.preset == preset.id,
+                                   namespace: namespace, group: "preset") {
                             withAnimation(WizardMotion.success) { model.choosePreset(preset) }
                         }
+                        .entrance(1 + index, appeared)
                     }
                 }
-                let count = model.changes.count
-                Text(count == 0 ? "不改變設定" : "會改變 \(count) 項設定")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .animation(.easeOut(duration: 0.2), value: count)
+                PresetChanges(changes: model.changes).entrance(6, appeared)
             }
-            .padding(.horizontal, 40)
-            .padding(.top, 24)
-            Spacer()
+        } footer: {
             StepFooter { EmptyView() } trailing: {
-                Button("下一步") { model.next() }.keyboardShortcut(.defaultAction)
+                PrimaryButton(title: "下一步") { model.next() }
             }
         }
+        .modifier(Arrival(appeared: $appeared))
+    }
+}
+
+/// What the chosen preset changes, as chips.
+private struct PresetChanges: View {
+    let changes: [SettingChange]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(changes.isEmpty ? "和目前的設定相同，不改變設定" : "會改變 \(changes.count) 項設定")
+                .font(.headline)
+                .contentTransition(.numericText())
+            TrailingFlow(spacing: 8, lineSpacing: 8, leading: true) {
+                ForEach(changes) { change in
+                    HStack(spacing: 6) {
+                        Text(change.setting.title).foregroundStyle(.secondary)
+                        Text(change.newLabel).fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
+            }
+        }
+        .animation(WizardMotion.success, value: changes.map(\.id))
     }
 }
 
 private struct LessonStep: View {
     @ObservedObject var model: WizardModel
     let lesson: Lesson
-    @StateObject private var director = PreviewDirector()
+    @State private var appeared = DemoPinning.still
 
     var body: some View {
         let done = model.completed.contains(lesson.id) || lesson.tasks.isEmpty
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    StepTitle(title: lesson.title, detail: lesson.detail)
-                    ForEach(lesson.groups) { group in StyleGroupView(group: group, preferences: model.sandbox) }
-                    if let task = lesson.tasks.first {
-                        PracticeArea(lesson: lesson, task: task, preferences: model.sandbox, done: model.completed.contains(lesson.id)) {
-                            withAnimation(WizardMotion.success) { _ = model.completed.insert(lesson.id) }
-                        }
-                    } else if let state = lesson.preview {
-                        UnifiedPreview(preferences: model.sandbox, director: director)
-                            .onAppear { director.show(state, animated: false) }
+        StepPage {
+            VStack(alignment: .leading, spacing: 20) {
+                StepTitle(title: lesson.title, detail: lesson.detail).entrance(0, appeared)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 22) {
+                        choices.frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading).entrance(1, appeared)
+                        demo.frame(minWidth: 320, maxWidth: .infinity, alignment: .topLeading).entrance(2, appeared)
+                    }
+                    VStack(alignment: .leading, spacing: 20) {
+                        choices.entrance(1, appeared)
+                        demo.entrance(2, appeared)
                     }
                 }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 24)
+                if let task = lesson.tasks.first {
+                    PracticeArea(model: model, lesson: lesson, task: task, done: model.completed.contains(lesson.id)) {
+                        withAnimation(WizardMotion.success) { _ = model.completed.insert(lesson.id) }
+                    }
+                    .entrance(3, appeared)
+                }
             }
+        } footer: {
             StepFooter {
                 if lesson.groups.contains(where: { $0.styles.contains { $0.id.hasPrefix("keys.") } }) {
                     Button("自行設定…") { SettingsWindowController.shared.show(SettingsPlace(.keys)) }.buttonStyle(.link)
                 }
             } trailing: {
-                if !done { Button("略過這一步") { model.next() } }
-                Button("下一步") { model.next() }.keyboardShortcut(.defaultAction).disabled(!done)
+                if !done { SecondaryButton(title: "略過這一步") { model.next() } }
+                PrimaryButton(title: "下一步", enabled: done) { model.next() }
             }
         }
+        .modifier(Arrival(appeared: $appeared))
+    }
+
+    private var choices: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(lesson.groups) { group in StyleGroupView(group: group, preferences: model.sandbox) }
+        }
+    }
+
+    @ViewBuilder private var demo: some View {
+        if let demo = lesson.demo { LessonDemoView(demo: demo, preferences: model.sandbox) }
     }
 }
 
-/// A group of styles: exclusive ones as a choice, combinable ones as checkboxes.
+/// The demo beside a lesson's choices, following the sandbox's settings: the real preview, or an ⓘ demo.
+private struct LessonDemoView: View {
+    let demo: LessonDemo
+    @ObservedObject var preferences: Preferences
+    @StateObject private var director = PreviewDirector()
+    var body: some View {
+        Group {
+            switch demo {
+            case .preview(let state):
+                UnifiedPreview(preferences: preferences, director: director, tabs: false, maxHeight: 240)
+                    .onAppear { director.show(state, animated: false) }
+            case .space: SpaceInfo(current: preferences.spaceAction)
+            case .punctuation: PunctuationTable(current: preferences.punctuationKeys)
+            case .typo: TypoInfo(current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList))
+            case .fuzzy: FuzzyInfo()
+            case .context: ContextIllustration(pinned: DemoPinning.still ? DemoPinning.context : nil)
+            case .correctionLog: CorrectionLogInfo(keys: CurrentKeys(preferences))
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Glass())
+    }
+}
+
+/// A group of styles: exclusive ones as a choice whose highlight moves between the options, combinable ones as
+/// checkboxes.
 private struct StyleGroupView: View {
     let group: HabitGroup
     @ObservedObject var preferences: Preferences
+    @Namespace private var namespace
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(group.title).font(.headline)
             if group.exclusive {
-                HStack(spacing: 10) {
+                VStack(spacing: 8) {
                     ForEach(group.styles) { style in
                         let on = style.isActive(preferences)
                         Button { withAnimation(WizardMotion.success) { style.set(preferences, true) } } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(style.title).fontWeight(on ? .semibold : .regular)
-                                if let detail = style.detail { Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                            HStack(spacing: 12) {
+                                Image(systemName: on ? "largecircle.fill.circle" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(on ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(style.title).font(.body.weight(on ? .semibold : .regular))
+                                    if let detail = style.detail {
+                                        Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                Spacer(minLength: 0)
                             }
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(on ? Color.accentColor.opacity(0.12) : Color.primary.opacity(0.03)))
-                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(on ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: on ? 1.5 : 1))
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .background {
+                                ZStack {
+                                    Glass(cornerRadius: 10)
+                                    if on {
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(Color.accentColor.opacity(0.06))
+                                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 1.5))
+                                            .matchedGeometryEffect(id: "selection", in: namespace)
+                                    }
+                                }
+                            }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -267,98 +488,99 @@ private struct StyleGroupView: View {
                     }
                 }
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 9) {
                     ForEach(group.styles) { style in
-                        Toggle(isOn: Binding(get: { style.isActive(preferences) }, set: { style.set(preferences, $0) })) {
+                        Toggle(isOn: Binding(get: { style.isActive(preferences) },
+                                             set: { on in withAnimation(WizardMotion.success) { style.set(preferences, on) } })) {
                             HStack(spacing: 8) {
                                 Text(style.title)
-                                if let detail = style.detail { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                                if let detail = style.detail { Text(detail).font(.callout).foregroundStyle(.secondary) }
                             }
                         }
                         .toggleStyle(.checkbox)
                     }
                 }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Glass(cornerRadius: 10))
             }
         }
     }
 }
 
-/// Where the lesson's task is practised.  The practice field (an embedded ControllerCore with the sandbox's settings,
-/// the real candidate window under it) plugs in here; until it lands, the task is shown with the preview and can be
-/// marked done.
+/// Where the lesson's task is practised: the real practice field (an embedded ControllerCore with the sandbox's
+/// settings and temporary user data, the real candidate window under it).
 private struct PracticeArea: View {
+    @ObservedObject var model: WizardModel
     let lesson: Lesson
     let task: PracticeTask
-    @ObservedObject var preferences: Preferences
     let done: Bool
     let complete: () -> Void
-    @StateObject private var director = PreviewDirector()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(task.prompt, systemImage: "keyboard").font(.headline)
-                Spacer()
-                if done {
-                    Label("完成", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(Color(nsColor: .systemGreen))
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                }
-            }
-            if let hint = task.hint { Text(hint).font(.callout).foregroundStyle(.secondary) }
-            if let state = lesson.preview {
-                UnifiedPreview(preferences: preferences, director: director)
-                    .onAppear { director.show(state, animated: false) }
-            }
-            if !done { Button("我打好了") { complete() } }
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.03)))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(done ? Color(nsColor: .systemGreen) : Color.primary.opacity(0.08), lineWidth: done ? 2 : 1))
-        .animation(WizardMotion.success, value: done)
+        PracticeField(settings: SettingsSnapshot(model.sandbox), task: task,
+                      onProgress: { progress in
+                          let added = progress.userPhrases.filter { phrase in !model.practicePhrases.contains { $0.word == phrase.word } }
+                          if !added.isEmpty { model.practicePhrases += added }
+                      },
+                      onComplete: complete)
+            .id(SettingsSnapshot(model.sandbox).values.hashValue)
+            .padding(16)
+            .background(Glass())
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(done ? Color(nsColor: .systemGreen) : Color.clear, lineWidth: 2))
+            .animation(WizardMotion.success, value: done)
     }
 }
 
 private struct FinishStep: View {
     @ObservedObject var model: WizardModel
     @State private var editing: String?
+    @State private var appeared = DemoPinning.still
 
     var body: some View {
         let changes = model.changes
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    StepTitle(title: "確認要套用的設定", detail: changes.isEmpty ? "沒有要改變的設定。"
-                              : "以下是這次改變的設定；可以在這裡改回原本的值或再調整。")
-                    if !changes.isEmpty {
-                        VStack(spacing: 0) {
-                            ForEach(Array(changes.enumerated()), id: \.element.id) { index, change in
-                                if index > 0 { Divider().padding(.horizontal, 16) }
-                                ChangeRow(change: change, sandbox: model.sandbox, editing: editing == change.id,
-                                          edit: { withAnimation(.easeOut(duration: 0.2)) { editing = editing == change.id ? nil : change.id } },
-                                          revert: { withAnimation(.easeOut(duration: 0.25)) { model.revert(change) } })
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
-                        }
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.03)))
-                    }
-                    if !model.practicePhrases.isEmpty {
-                        Toggle("保留練習中加入的自訂詞（\(model.practicePhrases.map(\.word).joined(separator: "、"))）", isOn: $model.keepPracticePhrases)
-                            .toggleStyle(.checkbox)
-                    }
+        StepPage {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 18) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 40))
+                        .foregroundStyle(Color(nsColor: .systemGreen))
+                        .scaleEffect(appeared ? 1 : 0.85)
+                        .opacity(appeared ? 1 : 0)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: appeared)
+                    StepTitle(title: "設定好了", detail: changes.isEmpty ? "沒有要改變的設定。"
+                              : "按「套用」之前，可以在這裡改回或再調整每一項。")
+                        .entrance(0, appeared)
                 }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 24)
+                if !changes.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(changes.enumerated()), id: \.element.id) { index, change in
+                            if index > 0 { Divider().padding(.horizontal, 16) }
+                            ChangeRow(change: change, sandbox: model.sandbox, editing: editing == change.id,
+                                      edit: { withAnimation(.easeOut(duration: 0.2)) { editing = editing == change.id ? nil : change.id } },
+                                      revert: { withAnimation(.easeOut(duration: 0.25)) { model.revert(change) } })
+                                .entrance(2 + index, appeared)
+                        }
+                    }
+                    .background(Glass())
+                    .entrance(1, appeared)
+                }
+                if !model.practicePhrases.isEmpty {
+                    Toggle("保留練習中加入的自訂詞（\(model.practicePhrases.map(\.word).joined(separator: "、"))）", isOn: $model.keepPracticePhrases)
+                        .toggleStyle(.checkbox)
+                        .entrance(3 + changes.count, appeared)
+                }
             }
+        } footer: {
             StepFooter { EmptyView() } trailing: {
-                Button("全部捨棄") { model.discard() }
-                Button("套用") {
+                SecondaryButton(title: "全部捨棄") { model.discard() }
+                PrimaryButton(title: "套用") {
                     model.apply { word, reading in try? SettingsWindowController.shared.model.engine?.addUserPhrase(word: word, reading: reading) }
                 }
-                .keyboardShortcut(.defaultAction)
             }
         }
+        .modifier(Arrival(appeared: $appeared))
     }
 }
 
@@ -374,15 +596,16 @@ private struct ChangeRow: View {
             HStack(spacing: 10) {
                 Button(action: edit) {
                     HStack(spacing: 4) {
-                        Text(change.setting.title)
-                        Image(systemName: "chevron.down").font(.caption2).rotationEffect(.degrees(editing ? 0 : -90))
+                        Text(change.setting.title).fontWeight(.medium)
+                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(editing ? 90 : 0))
                     }
                 }
                 .buttonStyle(.plain)
-                .frame(width: 170, alignment: .leading)
+                .frame(width: 180, alignment: .leading)
                 Text(change.oldLabel).foregroundStyle(.secondary).strikethrough(true, color: .secondary).lineLimit(1)
                 Image(systemName: "arrow.right").font(.caption).foregroundStyle(.tertiary)
-                Text(change.newLabel).fontWeight(.medium).lineLimit(1)
+                Text(change.newLabel).fontWeight(.semibold).foregroundStyle(Color.accentColor).lineLimit(1)
                 Spacer()
                 Button("改回", action: revert).buttonStyle(.link).font(.callout)
             }
@@ -395,57 +618,83 @@ private struct ChangeRow: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
     }
 }
 
 /// 你會用到的按鍵: from the final settings, only what is on.
 struct KeySummaryStep: View {
     @ObservedObject var model: WizardModel
+    @State private var appeared = DemoPinning.still
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    StepTitle(title: "你會用到的按鍵", detail: "依你的設定產生；之後可以在「介紹」再看一次。")
-                    KeySummary(preferences: model.original)
-                }
-                .padding(.horizontal, 40)
-                .padding(.vertical, 24)
+        StepPage {
+            VStack(alignment: .leading, spacing: 20) {
+                StepTitle(title: "你會用到的按鍵", detail: "依你的設定產生；之後可以在「介紹」再看一次。").entrance(0, appeared)
+                KeySummary(preferences: model.original, appeared: appeared)
             }
+        } footer: {
             StepFooter { EmptyView() } trailing: {
-                Button("完成") { model.onClose?() }.keyboardShortcut(.defaultAction)
+                PrimaryButton(title: "完成") { model.onClose?() }
             }
         }
+        .modifier(Arrival(appeared: $appeared))
     }
 }
 
-/// The keys of the current settings, two columns of keycaps and what they do.
+/// The keys of the current settings, in cards by what they are for.
 struct KeySummary: View {
     @ObservedObject var preferences: Preferences
+    var appeared = true
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 24), GridItem(.flexible(), spacing: 24)], alignment: .leading, spacing: 10) {
-            ForEach(Array(Self.items(preferences).enumerated()), id: \.offset) { _, item in
-                HStack(spacing: 10) {
-                    HStack(spacing: 4) { ForEach(item.keys, id: \.self) { KeyChip(text: $0) } }
-                        .frame(width: 130, alignment: .leading)
-                    Text(item.action).fixedSize(horizontal: false, vertical: true)
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 14, alignment: .top), GridItem(.flexible(), spacing: 14, alignment: .top)],
+                  alignment: .leading, spacing: 14) {
+            ForEach(Array(Self.groups(preferences).enumerated()), id: \.element.title) { index, group in
+                KeyCard(order: index, appeared: appeared) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(group.title, systemImage: group.symbol).font(.headline)
+                        ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
+                            HStack(spacing: 10) {
+                                HStack(spacing: 4) { ForEach(item.keys, id: \.self) { KeyChip(text: $0) } }
+                                    .frame(width: 92, alignment: .leading)
+                                Text(item.action).font(.callout).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    static func items(_ p: Preferences) -> [(keys: [String], action: String)] {
+    static func groups(_ p: Preferences) -> [(title: String, symbol: String, items: [(keys: [String], action: String)])] {
         let keys = CurrentKeys(p)
-        var items: [(keys: [String], action: String)] = [
+        func commands(_ section: KeySection) -> [(keys: [String], action: String)] {
+            ShortcutCommand.allCases.filter { $0.section == section && p.isEnabled($0) }.compactMap { command in
+                let list = (p.bindings[command] ?? []).prefix(2).map(\.compact)
+                return list.isEmpty ? nil : (Array(list), command.label)
+            }
+        }
+        var typing: [(keys: [String], action: String)] = [
             (["空白"], OptionDemos.spaceLabel(p.spaceAction)),
-            ([keys.selection], "選字"),
             (["Esc"], p.escapeClearsComposition ? "清除注音，再按一次清除組字" : "清除注音"),
         ]
-        if let mode = keys.modeKey { items.append(([mode], "切換中英")) }
-        for command in ShortcutCommand.allCases where p.isEnabled(command) {
-            let list = (p.bindings[command] ?? []).prefix(2).map(\.compact)
-            if !list.isEmpty { items.append((Array(list), command.label)) }
-        }
-        return items
+        if let mode = keys.modeKey { typing.append(([mode], "切換中英")) }
+        return [
+            ("打字", "keyboard", typing + commands(.composing)),
+            ("候選字清單", "list.bullet.rectangle", [(["↓"], "開啟候選字清單"), ([keys.selection], "選字")] + commands(.list)),
+            ("改字與選取", "character.cursor.ibeam", commands(.editing)),
+        ].filter { !$0.2.isEmpty }
+    }
+}
+
+private struct KeyCard<Content: View>: View {
+    let order: Int
+    let appeared: Bool
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(Glass())
+            .entrance(1 + order, appeared)
     }
 }

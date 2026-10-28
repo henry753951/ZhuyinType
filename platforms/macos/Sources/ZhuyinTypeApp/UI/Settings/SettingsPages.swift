@@ -619,6 +619,7 @@ struct CandidatesPane: View {
                 guard let before = shownSettings, before != now else { return }
                 shownSettings = now
                 if let state = PreviewFlows.state(showing: before, now) { director.show(state) }
+                if before.perPage != now.perPage { director.fullPageUntil = Date().addingTimeInterval(PreviewDirector.hold) }
                 showFlash()
             }
         }

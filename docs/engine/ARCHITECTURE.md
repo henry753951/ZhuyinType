@@ -323,7 +323,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 | 詞庫 `lexicon.bin` | 根目錄 | mmap，不解析（ZTLX/1，`resources/formats/lexicon.md`）；只有 `lexicon.tsv` 時讀文字檔 |
 | 百科語言模型 | `lm/lm.bin` | mmap（ZTLM/1，`resources/formats/lm.md`），bigram；也能讀 TSV |
 | 聊天語言模型 | `lm_chat/lm.bin` | mmap；兩個模型都是 bigram 時和百科模型混合 |
-| v2b 整句重排 | `reranker/Reranker.mlmodelc`、`RerankerTree.mlmodelc`、`vocab.json`、`config.json` | Core ML，只用 CPU。`config.json` 為 `{"weight": 1.0, "count": 16}`。有 `RerankerTree` 時，32 句以內排成前綴樹一次計算 |
+| v2b 整句重排 | `reranker/RerankerTree.mlmodelc`、`vocab.json`、`config.json` | Core ML，只用 CPU。`config.json` 為 `{"weight": 1.0, "count": 16}`。整句重排與候選字排序（每次最多 32 個、每個 63 字）都排成前綴樹一次計算。同一份權重的批次模型 `Reranker.mlmodelc` 只在模型目錄沒有前綴樹時打包與載入；兩個都在時，前綴樹失敗才用批次模型 |
 | v3 字模型 | `v3/ContextEncoder.mlmodelc`、`v3/SyllableEncoder.mlmodelc`、`chars.json`、`syllables.json`、`config.json` | Core ML，只用 CPU |
 | 版本清單 | `manifest.json` | 版本與每個資料、模型檔的 SHA-256 |
 

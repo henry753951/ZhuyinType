@@ -37,11 +37,16 @@ cp -R -X platforms/macos/Resources/*.lproj "$contents/Resources/"
 cp -R -X platforms/macos/Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"
 cp -X resources/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
-if [[ -f data/build/reranker/vocab.json && -d data/build/reranker/Reranker.mlmodelc ]]; then
+if [[ -f data/build/reranker/vocab.json && ( -d data/build/reranker/RerankerTree.mlmodelc || -d data/build/reranker/Reranker.mlmodelc ) ]]; then
     mkdir -p "$contents/Resources/reranker"
-    cp -R -X data/build/reranker/Reranker.mlmodelc "$contents/Resources/reranker/"
-    # The same weights scoring the candidates as one prefix tree (used when present; see ml/src/zhuyintype_ml/training/reranker/REPORT_tree.md).
-    [[ -d data/build/reranker/RerankerTree.mlmodelc ]] && cp -R -X data/build/reranker/RerankerTree.mlmodelc "$contents/Resources/reranker/"
+    # The prefix-tree model scores every call (ml/src/zhuyintype_ml/training/reranker/REPORT_tree.md); the batched
+    # model holds the same weights again, so it is bundled only for a model directory without the tree
+    # (docs/research/log.md, 2026-10-28 模型壓縮).
+    if [[ -d data/build/reranker/RerankerTree.mlmodelc ]]; then
+        cp -R -X data/build/reranker/RerankerTree.mlmodelc "$contents/Resources/reranker/"
+    else
+        cp -R -X data/build/reranker/Reranker.mlmodelc "$contents/Resources/reranker/"
+    fi
     cp -X data/build/reranker/vocab.json data/build/reranker/config.json "$contents/Resources/reranker/"
 fi
 # The lexicon and language models ship compiled (lexicon.bin, lm/lm.bin, lm_chat/lm.bin): the engine maps them
