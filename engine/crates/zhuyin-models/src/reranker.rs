@@ -37,6 +37,9 @@ pub struct NeuralReranker {
     /// under the app setup (reranker weight 1.0): 4 let a corrected reading win where the keys were right (ㄜˇ became
     /// 與); 8 keeps standard typing untouched on the dev sets and costs 0.5–1.7 points with 10% mistyped keys.
     pub exact_margin: f64,
+    /// The same for a sentence corrected only by the reading channel (a phonetic-series misreading): 4 to start
+    /// (`resources/formats/reading-channel.md`), tuned on the development sets.
+    pub reading_margin: f64,
     /// τ: the model is consulted only when the engine's two best sentences are this close (`docs/engine/MODEL.md`
     /// §7).
     pub gate_margin: f64,
@@ -68,6 +71,7 @@ impl NeuralReranker {
             context_length: 24,
             unknown_penalty: 5465f64.ln(),
             exact_margin: 8.0,
+            reading_margin: 4.0,
             gate_margin: 8.0,
             switch_margin: 0.0,
             index: character_index(&vocabulary, 3),
@@ -194,8 +198,9 @@ impl NeuralReranker {
             return best;
         }
         let exact = first_max(totals.iter().copied().enumerate().filter(|&(i, _)| !sentences[i].corrected()));
+        let margin = if sentences[best].reading_corrected_only() { self.reading_margin } else { self.exact_margin };
         match exact {
-            Some(exact) if totals[best] - totals[exact] < self.exact_margin => exact,
+            Some(exact) if totals[best] - totals[exact] < margin => exact,
             _ => best,
         }
     }

@@ -36,6 +36,73 @@ pub const CHARACTER_CANDIDATES: usize = 64;
 /// How much costlier than the cheapest a split may be and still be judged by the language model.
 pub const SPLIT_MARGIN: f64 = 6.0;
 
+/// The character model's cost bucket for a correction of this cost: the keyboard channel's and the reading
+/// channel's corrections share the bounds (`resources/formats/reading-channel.md`, `v3_noise.tsv`).
+#[must_use]
+pub fn cost_bucket(cost: f64) -> i32 {
+    if cost <= 6.0 {
+        1
+    } else if cost <= 11.0 {
+        2
+    } else {
+        3
+    }
+}
+
+/// How the character model scores a character that only a reading-channel variant put at a position.  The model
+/// was trained on standard readings, so it reads 熟 typed ㄕㄡˊ as unlikely; until it is retrained on the channel's
+/// reading noise one of the first three stands in (`resources/formats/reading-channel.md`, rule 7).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VariantScores {
+    /// (a) The score the character gets under its lexicon reading: one more model call with that syllable.
+    Standard,
+    /// (a) without the extra call: the position's best score.
+    Best,
+    /// (b) No character-model score (weight 0): the default; (a) scored the same on every set and its extra call
+    /// costs the Mac about 10% per-key p95 (`docs/research/log.md`, 2026-10-28).
+    #[default]
+    Zero,
+    /// As typed, for a model trained on the channel's noise: accepted readings with cost bucket 0, corrections
+    /// bucketed by their cost.
+    Typed,
+}
+
+impl VariantScores {
+    /// Every option.
+    pub const ALL: [VariantScores; 4] =
+        [VariantScores::Standard, VariantScores::Best, VariantScores::Zero, VariantScores::Typed];
+
+    /// The command-line name.
+    #[must_use]
+    pub fn raw_value(self) -> &'static str {
+        match self {
+            VariantScores::Standard => "standard",
+            VariantScores::Best => "best",
+            VariantScores::Zero => "zero",
+            VariantScores::Typed => "typed",
+        }
+    }
+
+    /// The option named `raw`.
+    #[must_use]
+    pub fn from_raw(raw: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|v| v.raw_value() == raw)
+    }
+}
+
+/// The default [`Composer::variant_window`].
+pub const VARIANT_WINDOW: f64 = 3.0;
+
+/// A character only a reading-channel variant put at a position: its lexicon syllable, and the variant's state and
+/// cost, from the best-scoring such match.
+#[derive(Clone, Debug)]
+struct VariantCharacter {
+    prior: f64,
+    syllable: String,
+    correction: bool,
+    cost: f64,
+}
+
 /// The last character of a literal that ends a clause or a sentence: an automatic commit prefers to end after it.
 /// ASCII `.`, `,` and `:` are left out, as they also stand inside numbers, times and addresses.
 const CLAUSE_ENDS: &str = "。！？，、；：…．!?;";
@@ -103,6 +170,11 @@ pub struct Composer {
     pub candidate_scoring_count: usize,
     /// The key decoder's costs (Swift's shared `KeyDecoder.costs`).
     pub decoder_costs: Costs,
+    /// How the character model scores characters only a reading-channel variant brings.
+    pub variant_scores: VariantScores,
+    /// Only variant characters whose prior (without the variant's cost) is within this many nats of the best other
+    /// character at their position get [`VariantScores`]; the rest keep the model's score as typed.
+    pub variant_window: f64,
     presentation: Presentation,
     /// Text committed by the key being handled before what it composes (a full composition's head).
     sent: String,
@@ -202,10 +274,38 @@ impl Composer {
             character_scores: None,
             candidate_scoring_count: 24,
             decoder_costs: Costs::default(),
+            variant_scores: VariantScores::default(),
+            variant_window: VARIANT_WINDOW,
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,
         }
+    }
+
+    /// Every match through the reading channel at every syllable of the composition (`zhuyin-cli --channel-report`).
+    #[must_use]
+    pub fn channel_matches(&self) -> Vec<Match> {
+        (0..self.tokens.len())
+            .filter(|&start| self.tokens[start].reading().is_some())
+            .flat_map(|start| self.engine.matches(&self.tokens, start, self.options.typo_tolerance))
+            .filter(|m| m.channel.is_some())
+            .collect()
+    }
+
+    /// The words of the last commit, with how each was matched.
+    #[must_use]
+    pub fn last_committed(&self) -> &[ConvertedWord] {
+        self.last_commit.as_ref().map_or(&[], |c| c.words.as_slice())
+    }
+
+    /// Whether a pick came through the reading channel (its annotation is not a keyboard slip to learn).
+    fn picked_through_channel(&self, choice: &FixedWord) -> bool {
+        self.engine.reading_channel().is_some()
+            && self
+                .engine
+                .matches(&self.tokens, choice.range.start, self.options.typo_tolerance)
+                .iter()
+                .any(|m| m.range == choice.range && m.entry.word == choice.text && m.channel.is_some())
     }
 
     /// The options.
@@ -664,6 +764,7 @@ impl Composer {
         } else {
             if self.learns()
                 && let Some(annotation) = &choice.annotation
+                && !self.picked_through_channel(&choice)
             {
                 // A picked correction: the keys typed against the reading meant teach this user's slips.
                 let meant: Vec<String> = annotation
@@ -924,14 +1025,20 @@ impl Composer {
     }
 
     /// Asks the character model about every syllable: the characters any lattice word puts there, the most frequent
-    /// `CHARACTER_CANDIDATES` of them.
+    /// `CHARACTER_CANDIDATES` of them.  A reading-channel variant's character ranks without the variant's cost, so
+    /// the model sees it ([`VariantScores`] says how it is scored).
+    // One function, as in Swift, with the reading channel's additions in place.
+    #[allow(clippy::too_many_lines)]
     fn score_characters(&mut self) -> Option<CharacterScores> {
         self.character_scorer.as_ref()?;
         if !self.tokens.iter().any(|t| t.reading().is_some()) {
             return None;
         }
         let count = self.tokens.len();
-        let mut candidates: Vec<HashMap<String, f64>> = vec![HashMap::new(); count];
+        // Each character's best prior, and whether some match puts it there without a reading-channel variant.
+        let mut candidates: Vec<HashMap<String, (f64, bool)>> = vec![HashMap::new(); count];
+        let mut variants: Vec<HashMap<String, VariantCharacter>> = vec![HashMap::new(); count];
+        let mut plain_best: Vec<f64> = vec![f64::NEG_INFINITY; count];
         for start in 0..count {
             if self.tokens[start].reading().is_none() {
                 continue;
@@ -939,9 +1046,42 @@ impl Composer {
             for m in self.engine.matches(&self.tokens, start, self.options.typo_tolerance) {
                 let prior = m.entry.logp + m.entry.reading_prior - m.entry.penalty;
                 for (offset, character) in graphemes(&m.entry.word).into_iter().enumerate() {
-                    if start + offset < count {
-                        let slot = candidates[start + offset].entry(character.to_owned()).or_insert(f64::NEG_INFINITY);
-                        *slot = swift_max(*slot, prior);
+                    if start + offset >= count {
+                        continue;
+                    }
+                    let value = prior;
+                    let through = m.channel.filter(|c| c.position == offset);
+                    if let Some(channel) = through {
+                        // Ranked without the variant's cost, if it is competitive (below).
+                        let free = prior + channel.cost;
+                        let syllable = m
+                            .entry
+                            .reading
+                            .as_deref()
+                            .and_then(|r| r.split(' ').nth(offset))
+                            .unwrap_or_default()
+                            .to_owned();
+                        let seen = variants[start + offset].entry(character.to_owned()).or_insert(VariantCharacter {
+                            prior: f64::NEG_INFINITY,
+                            syllable: String::new(),
+                            correction: false,
+                            cost: 0.0,
+                        });
+                        if free > seen.prior {
+                            *seen = VariantCharacter {
+                                prior: free,
+                                syllable,
+                                correction: channel.correction,
+                                cost: channel.cost,
+                            };
+                        }
+                    }
+                    let slot =
+                        candidates[start + offset].entry(character.to_owned()).or_insert((f64::NEG_INFINITY, false));
+                    slot.0 = swift_max(slot.0, value);
+                    slot.1 |= through.is_none();
+                    if through.is_none() {
+                        plain_best[start + offset] = plain_best[start + offset].max(value);
                     }
                 }
             }
@@ -949,7 +1089,20 @@ impl Composer {
         for word in &self.fixed {
             for (offset, character) in graphemes(&word.text).into_iter().enumerate() {
                 if word.range.start + offset < count {
-                    candidates[word.range.start + offset].insert(character.to_owned(), 0.0);
+                    candidates[word.range.start + offset].insert(character.to_owned(), (0.0, true));
+                    plain_best[word.range.start + offset] = plain_best[word.range.start + offset].max(0.0);
+                }
+            }
+        }
+        // Characters only a variant brings, within the window of the best other character: ranked without the
+        // variant's cost, so the cut keeps them for the model (rule 8); the others keep their cost and the model's
+        // score as typed.
+        for (position, seen) in variants.iter_mut().enumerate() {
+            let floor = plain_best[position] - self.variant_window;
+            seen.retain(|character, v| candidates[position].get(character).is_none_or(|c| !c.1) && v.prior >= floor);
+            for (character, v) in seen.iter() {
+                if let Some(slot) = candidates[position].get_mut(character) {
+                    slot.0 = swift_max(slot.0, v.prior);
                 }
             }
         }
@@ -957,7 +1110,7 @@ impl Composer {
         let lists: Vec<Vec<String>> = candidates
             .into_iter()
             .map(|position| {
-                let mut entries: Vec<(String, f64)> = position.into_iter().collect();
+                let mut entries: Vec<(String, f64)> = position.into_iter().map(|(c, (v, _))| (c, v)).collect();
                 entries.sort_by(|a, b| {
                     if a.1 == b.1 {
                         a.0.as_bytes().cmp(b.0.as_bytes())
@@ -978,26 +1131,12 @@ impl Composer {
                     CharacterModelSyllable { base: None, tone: 0, cost_bucket: 0, implicit: false }
                 }
                 CompositionToken::Syllable { reading, keys, implicit } => {
-                    let tone = match reading.chars().last() {
-                        Some('ˊ') => 2,
-                        Some('ˇ') => 3,
-                        Some('ˋ') => 4,
-                        Some('˙') => 5,
-                        _ => 1,
-                    };
-                    let base: String = reading.chars().filter(|&c| !keyboard::is_tone_mark(c)).collect();
                     let mut bucket = 0;
                     if !self.engine.is_valid_syllable(reading) {
                         let cost = self.engine.alternatives(keys).first().map_or(f64::INFINITY, |a| a.cost);
-                        bucket = if cost <= 6.0 {
-                            1
-                        } else if cost <= 11.0 {
-                            2
-                        } else {
-                            3
-                        };
+                        bucket = cost_bucket(cost);
                     }
-                    CharacterModelSyllable { base: Some(base), tone, cost_bucket: bucket, implicit: *implicit }
+                    model_syllable(reading, bucket, *implicit)
                 }
             })
             .collect();
@@ -1012,7 +1151,77 @@ impl Composer {
                 }
             }
         }
+        if variants.iter().any(|v| !v.is_empty()) {
+            self.score_variants(&syllables, &lists, &variants, &mut positions);
+        }
         Some(CharacterScores::new(positions, self.character_weight))
+    }
+
+    /// Replaces the scores of characters only a reading-channel variant put in the lists ([`VariantScores`]).
+    fn score_variants(
+        &mut self,
+        syllables: &[CharacterModelSyllable],
+        lists: &[Vec<String>],
+        variants: &[HashMap<String, VariantCharacter>],
+        positions: &mut [HashMap<String, f64>],
+    ) {
+        let count = lists.len();
+        let best: Vec<f64> = positions.iter().map(|p| p.values().copied().fold(f64::NEG_INFINITY, swift_max)).collect();
+        // The listed variant characters at each position, best prior first (the list's order).
+        let listed: Vec<Vec<(&String, &VariantCharacter)>> =
+            (0..count).map(|i| lists[i].iter().filter_map(|c| variants[i].get(c).map(|v| (c, v))).collect()).collect();
+        let mode = self.variant_scores;
+        let mut again: Option<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)> = None;
+        if matches!(mode, VariantScores::Standard | VariantScores::Typed) {
+            let mut changed = syllables.to_vec();
+            let mut asked: Vec<Vec<String>> = vec![vec![]; count];
+            for (i, characters) in listed.iter().enumerate() {
+                if mode == VariantScores::Standard {
+                    // The lexicon syllable of the best of them; the others with that syllable are asked too.
+                    let Some((_, first)) = characters.first() else { continue };
+                    changed[i] = model_syllable(&first.syllable, 0, false);
+                    asked[i] = characters
+                        .iter()
+                        .filter(|(_, v)| v.syllable == first.syllable)
+                        .map(|(c, _)| (*c).clone())
+                        .collect();
+                } else {
+                    let corrections: Vec<&(&String, &VariantCharacter)> =
+                        characters.iter().filter(|(_, v)| v.correction).collect();
+                    let Some(cheapest) = corrections.iter().map(|(_, v)| v.cost).reduce(f64::min) else { continue };
+                    changed[i].cost_bucket = cost_bucket(cheapest);
+                    asked[i] = corrections.iter().map(|(c, _)| (*c).clone()).collect();
+                }
+            }
+            if asked.iter().any(|a| !a.is_empty()) {
+                again = Some((changed, asked));
+            }
+        }
+        let extra = match (&again, self.character_scorer.as_mut()) {
+            (Some((changed, asked)), Some(model)) => model(changed, asked),
+            _ => None,
+        };
+        for (i, characters) in listed.iter().enumerate() {
+            for (character, variant) in characters {
+                let from_extra = again.as_ref().zip(extra.as_ref()).and_then(|((_, asked), rows)| {
+                    let column = asked[i].iter().position(|c| c == *character)?;
+                    rows.get(i)?.get(column).copied()
+                });
+                let score = match mode {
+                    VariantScores::Standard => from_extra.unwrap_or(best[i]),
+                    VariantScores::Best => best[i],
+                    VariantScores::Zero => 0.0,
+                    VariantScores::Typed => {
+                        if variant.correction {
+                            from_extra.unwrap_or(best[i])
+                        } else {
+                            continue;
+                        }
+                    }
+                };
+                positions[i].insert((*character).clone(), score);
+            }
+        }
     }
 
     /// The run's split: the decoder's cheapest, unless another split of the same shape (as many syllables, the same
@@ -1427,6 +1636,8 @@ impl Composer {
                     text: value.into(),
                     history: None,
                     corrected: false,
+                    channel: None,
+                    reading_corrected: false,
                 }
             })
             .collect();
@@ -1676,6 +1887,8 @@ impl Composer {
                     word_id,
                     history: Some(history),
                     corrected: false,
+                    channel: None,
+                    reading_corrected: false,
                 }
             })
             .collect();
@@ -1796,4 +2009,17 @@ impl Composer {
             zhuyin_hint: zhuyin,
         };
     }
+}
+
+/// A syllable as the character model reads it.
+fn model_syllable(reading: &str, cost_bucket: i32, implicit: bool) -> CharacterModelSyllable {
+    let tone = match reading.chars().last() {
+        Some('ˊ') => 2,
+        Some('ˇ') => 3,
+        Some('ˋ') => 4,
+        Some('˙') => 5,
+        _ => 1,
+    };
+    let base: String = reading.chars().filter(|&c| !keyboard::is_tone_mark(c)).collect();
+    CharacterModelSyllable { base: Some(base), tone, cost_bucket, implicit }
 }

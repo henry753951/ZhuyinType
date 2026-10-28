@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use zhuyin_core::api::FuzzySounds;
 use zhuyin_core::engine::{Engine, EngineConfig};
+use zhuyin_core::reading_channel::ChannelSettings;
 
 use crate::ZtStringList;
 use crate::strings::{borrowed, owned, set_error, string_list};
@@ -40,6 +41,20 @@ pub struct ZtEngineConfig {
     pub domain_evidence_centre: f64,
     /// Hotspot replacement costs in the typing channel.
     pub hotspot: bool,
+    /// The reading channel's table (`channel.bin`), or NULL for no reading channel.
+    pub reading_channel: *const c_char,
+    /// The reading channel's classes in use, one bit per class (`reading-channel.md`).
+    pub channel_classes: u32,
+    /// The classes a single-character word takes variants from.
+    pub channel_single_classes: u32,
+    /// The classes whose variants are corrections.
+    pub channel_corrections: u32,
+    /// The most lexicon readings one typed syllable reaches through the channel.
+    pub channel_options_per_syllable: u32,
+    /// Variants that cost more are left out.
+    pub channel_max_cost: f64,
+    /// Third-tone sandhi also reads a typed third tone as the lexicon's second.
+    pub channel_sandhi_reverse: bool,
 }
 
 /// The default settings (no chat model).
@@ -54,11 +69,18 @@ pub extern "C" fn zt_engine_config_default() -> ZtEngineConfig {
         domain_evidence_scale: config.domain_evidence_scale,
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
+        reading_channel: std::ptr::null(),
+        channel_classes: u32::from(config.channel.classes),
+        channel_single_classes: u32::from(config.channel.single_classes),
+        channel_corrections: u32::from(config.channel.corrections),
+        channel_options_per_syllable: u32::try_from(config.channel.options_per_syllable).unwrap_or(u32::MAX),
+        channel_max_cost: config.channel.max_cost,
+        channel_sandhi_reverse: config.channel.sandhi_reverse,
     }
 }
 
 /// # Safety
-/// `config` is NULL or a valid `ZtEngineConfig` whose directory is NULL or a C string.
+/// `config` is NULL or a valid `ZtEngineConfig` whose paths are NULL or C strings.
 unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
     // SAFETY: the caller passes NULL or a valid config.
     let Some(config) = (unsafe { config.as_ref() }) else { return EngineConfig::default() };
@@ -71,6 +93,18 @@ unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
         domain_evidence_scale: config.domain_evidence_scale,
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
+        // SAFETY: NULL or a C string per the contract.
+        reading_channel: unsafe { borrowed(config.reading_channel) }.map(PathBuf::from),
+        channel: ChannelSettings {
+            classes: (config.channel_classes & 0xffff) as u16,
+            single_classes: (config.channel_single_classes & 0xffff) as u16,
+            corrections: (config.channel_corrections & 0xffff) as u16,
+            options_per_syllable: config.channel_options_per_syllable as usize,
+            max_cost: config.channel_max_cost,
+            sandhi_reverse: config.channel_sandhi_reverse,
+            ..ChannelSettings::default()
+        },
+        ..EngineConfig::default()
     }
 }
 

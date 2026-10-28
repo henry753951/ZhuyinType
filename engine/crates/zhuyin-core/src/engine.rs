@@ -24,6 +24,10 @@ use crate::language_model::{
 };
 use crate::lexicon::{TextLexicon, WordEntry, swift_max, swift_min};
 use crate::personal::{DecayingCount, PersonalLanguageModel, Word};
+use crate::reading_channel::{
+    ChannelClass, ChannelIndex, ChannelOption, ChannelSettings, ChannelTable, ChannelUse, LexiconRows, RowRef,
+    VariantRow,
+};
 use crate::swift_format::{format_double, grapheme_count, graphemes};
 use crate::syllables::{SyllableSet, without_tones};
 use crate::tsv::{parse_double, parse_int, scan_tsv};
@@ -45,6 +49,14 @@ pub struct EngineConfig {
     pub domain_evidence_centre: f64,
     /// Hit-area substitution costs in the keyboard channel (an evaluation setting).
     pub hotspot: bool,
+    /// Cost of a lexicon neutral tone typed with a tone (same syllable).
+    pub neutral_toned_cost: f64,
+    /// Cost of a neutral tone typed where the lexicon has a tone (same syllable).
+    pub neutral_untoned_cost: f64,
+    /// The reading channel's table (`channel.bin`); `None` turns the channel off.
+    pub reading_channel: Option<PathBuf>,
+    /// The reading channel's classes and costs.
+    pub channel: ChannelSettings,
 }
 
 impl Default for EngineConfig {
@@ -57,6 +69,10 @@ impl Default for EngineConfig {
             domain_evidence_scale: 1.0,
             domain_evidence_centre: -2.5,
             hotspot: false,
+            neutral_toned_cost: 0.4,
+            neutral_untoned_cost: 1.2,
+            reading_channel: None,
+            channel: ChannelSettings::default(),
         }
     }
 }
@@ -184,6 +200,18 @@ pub struct Match {
     pub entry: WordEntry,
     /// The plain lexicon reading, when it differs from the keys typed (a correction or fuzzy sound).
     pub annotation: Option<Arc<str>>,
+    /// The reading-channel variant one of its syllables took.
+    pub channel: Option<ChannelUse>,
+    /// Matched through a typing correction or fuzzy sound.
+    pub key_corrected: bool,
+}
+
+impl Match {
+    /// Shown as a correction only because of a reading-channel correction (no key correction or fuzzy sound).
+    #[must_use]
+    pub fn reading_corrected(&self) -> bool {
+        self.annotation.is_some() && self.channel.is_some_and(|c| c.correction) && !self.key_corrected
+    }
 }
 
 /// The language model the engine scores with: the base model (unigram, one n-gram model or the two-domain mixture),
@@ -459,6 +487,7 @@ pub struct Engine {
     state: Mutex<State>,
     directory: Option<PathBuf>,
     writer: Writer,
+    channel: Option<ChannelIndex>,
 }
 
 impl Engine {
@@ -482,19 +511,26 @@ impl Engine {
         config: EngineConfig,
     ) -> Result<Engine, DataError> {
         let binary = lexicon.with_extension("bin");
+        let channel = config.reading_channel.as_deref().map(ChannelTable::open).transpose()?;
         if binary.exists() {
             let mapped = MappedLexicon::open(&binary)?;
-            Ok(Self::build(&[], Some(mapped), user_data, model, config))
+            Ok(Self::build(&[], Some(mapped), user_data, model, config, channel.as_ref()))
         } else {
             let data = std::fs::read(lexicon)?;
-            Ok(Self::build(&data, None, user_data, model, config))
+            Ok(Self::build(&data, None, user_data, model, config, channel.as_ref()))
         }
     }
 
     /// An engine for TSV lexicon text.
     #[must_use]
     pub fn from_text(text: &str, user_data: Option<&Path>, model: Option<&Path>, config: EngineConfig) -> Engine {
-        Self::build(text.as_bytes(), None, user_data, model, config)
+        Self::build(text.as_bytes(), None, user_data, model, config, None)
+    }
+
+    /// An engine for TSV lexicon text with a reading channel (`config.reading_channel` is not read).
+    #[must_use]
+    pub fn from_text_with_channel(text: &str, channel: &ChannelTable, config: EngineConfig) -> Engine {
+        Self::build(text.as_bytes(), None, None, None, config, Some(channel))
     }
 
     fn build(
@@ -503,6 +539,7 @@ impl Engine {
         user_data: Option<&Path>,
         model_directory: Option<&Path>,
         config: EngineConfig,
+        channel: Option<&ChannelTable>,
     ) -> Engine {
         let personal = Arc::new(PersonalLanguageModel::new());
         let mut base = BaseModel::Unigram(UnigramLanguageModel);
@@ -562,7 +599,7 @@ impl Engine {
             state.lexicon = text.entries;
             state.reverse = text.reverse;
         }
-        let engine = Engine {
+        let mut engine = Engine {
             config,
             mapped,
             model,
@@ -570,13 +607,36 @@ impl Engine {
             state: Mutex::new(state),
             directory: user_data.map(Path::to_path_buf),
             writer: Writer::new(),
+            channel: None,
         };
+        if let Some(table) = channel {
+            let index = ChannelIndex::build(table, &engine.config.channel, &engine.lexicon_rows());
+            engine.channel = Some(index);
+        }
         {
             let mut state = engine.lock();
             engine.load_personal_data(&mut state);
             engine.rebuild_reading_index(&mut state);
         }
         engine
+    }
+
+    /// The lexicon's rows for the reading channel, read under the lock.
+    fn lexicon_rows(&self) -> EngineRows<'_> {
+        EngineRows { engine: self, state: self.lock() }
+    }
+
+    /// The reading channel's index, when the channel is on.
+    #[must_use]
+    pub fn reading_channel(&self) -> Option<&ChannelIndex> {
+        self.channel.as_ref()
+    }
+
+    /// Every variant `table` gives the lexicon's rows under this engine's channel settings, sorted (the table the
+    /// Python reference is checked against).
+    #[must_use]
+    pub fn channel_variants(&self, table: &ChannelTable) -> Vec<VariantRow> {
+        ChannelIndex::table(table, &self.config.channel, &self.lexicon_rows())
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -728,9 +788,9 @@ impl Engine {
                         continue;
                     }
                     if l.ends_with('˙') {
-                        penalty += 0.4;
+                        penalty += self.config.neutral_toned_cost;
                     } else if t.ends_with('˙') {
-                        penalty += 1.2;
+                        penalty += self.config.neutral_untoned_cost;
                     } else {
                         penalty = f64::INFINITY;
                         break;
@@ -874,8 +934,8 @@ impl Engine {
         result
     }
 
-    /// The words matching the syllables from `start` (at most six), as typed, with tone tolerance, corrections and
-    /// fuzzy sounds; cached per keys.
+    /// The words matching the syllables from `start` (at most six), as typed, with tone tolerance, corrections,
+    /// fuzzy sounds and the reading channel; cached per keys.
     pub fn matches(&self, tokens: &[CompositionToken], start: usize, typo: TypoTolerance) -> Vec<Match> {
         let fuzzy = self.fuzzy_sounds();
         let mut span: Vec<&CompositionToken> = Vec::new();
@@ -886,6 +946,16 @@ impl Engine {
             key.push('\t');
             key.push_str(keys);
         }
+        // Third-tone sandhi reads the syllable after the span's last one.
+        let following = self
+            .channel
+            .as_ref()
+            .filter(|c| c.settings.uses(ChannelClass::Sandhi))
+            .and(tokens.get(start + span.len()))
+            .and_then(CompositionToken::reading);
+        if following.is_some_and(|f| f.ends_with('ˇ')) {
+            key.push('\u{2}');
+        }
         let (cached, revision) = {
             let mut state = self.lock();
             self.expire_caches_on_new_day(&mut state);
@@ -894,7 +964,7 @@ impl Engine {
         let matches = if let Some(cached) = cached {
             cached
         } else {
-            let built = Arc::new(exact(self.build_matches(&span, typo, fuzzy)));
+            let built = Arc::new(exact(self.build_matches(&span, following, typo, fuzzy)));
             let mut state = self.lock();
             if revision == state.revision {
                 if state.match_cache.len() >= 4096 {
@@ -914,7 +984,13 @@ impl Engine {
             .collect()
     }
 
-    fn build_matches(&self, tokens: &[&CompositionToken], typo: TypoTolerance, fuzzy: FuzzySounds) -> Vec<Match> {
+    fn build_matches(
+        &self,
+        tokens: &[&CompositionToken],
+        following: Option<&str>,
+        typo: TypoTolerance,
+        fuzzy: FuzzySounds,
+    ) -> Vec<Match> {
         let mut options: Vec<Vec<ReadingAlternative>> = Vec::new();
         let mut typed: Vec<&str> = Vec::new();
         for token in tokens {
@@ -935,8 +1011,23 @@ impl Engine {
             list.sort_by(|a, b| swift_order(a.cost, b.cost).then_with(|| a.reading.cmp(&b.reading)));
             options.push(list);
         }
+        let steps: Vec<Vec<ChannelStep<'_>>> = match &self.channel {
+            None => vec![],
+            Some(channel) => (0..typed.len())
+                .map(|i| {
+                    let mut list: Vec<ChannelStep<'_>> =
+                        channel.options(typed[i]).iter().map(ChannelStep::Restricted).collect();
+                    let next = typed.get(i + 1).copied().or(following.filter(|_| i + 1 == typed.len()));
+                    if let Some(reading) = channel.sandhi(typed[i], next) {
+                        list.push(ChannelStep::Sandhi(reading));
+                    }
+                    list
+                })
+                .collect(),
+        };
+        let walk = Walk { options: &options, steps: &steps, typed: &typed, typo };
         let mut result: Vec<Match> = Vec::new();
-        self.visit(&options, &typed, typo, 0, "", "", 0.0, 0, &mut result);
+        self.visit(&walk, &Path0 { index: 0, reading: "", base: "", cost: 0.0, edits: 0, used: None }, &mut result);
         // The language model sees the same word ID on duplicate paths; keep its best channel/lexicon score once.
         let order = self.model.order();
         let mut best: HashMap<PhraseKey, (Match, f64)> = HashMap::new();
@@ -973,63 +1064,161 @@ impl Engine {
         matches
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn visit(
-        &self,
-        options: &[Vec<ReadingAlternative>],
-        typed: &[&str],
-        typo: TypoTolerance,
-        index: usize,
-        reading: &str,
-        base: &str,
-        cost: f64,
-        edits: usize,
-        result: &mut Vec<Match>,
-    ) {
-        if index >= options.len() {
+    /// Whether a path's reading can still lead to a word.
+    fn known(&self, used: Option<&Used<'_>>, next: &str, next_base: &str) -> bool {
+        // A path through a restricted variant can only reach the indexed words: check those first, without the lock.
+        if let Some(Used { step: ChannelStep::Restricted(_), .. }) = used
+            && !self.channel.as_ref().is_some_and(|c| c.has_prefix(next))
+        {
+            return false;
+        }
+        let state = self.lock();
+        state.reading_prefixes.contains(next_base) || self.mapped.as_ref().is_some_and(|m| m.contains_prefix(next_base))
+    }
+
+    /// Walks the syllables' options depth first: the typed reading, its corrections and fuzzy sounds, and (once per
+    /// word) a reading-channel variant.
+    fn visit(&self, walk: &Walk<'_>, path: &Path0<'_>, result: &mut Vec<Match>) {
+        let index = path.index;
+        if index >= walk.options.len() {
             return;
         }
-        for option in &options[index] {
-            let count = edits + usize::from(option.cost > 0.0 && !option.fuzzy);
+        for option in &walk.options[index] {
+            let count = path.edits + usize::from(option.cost > 0.0 && !option.fuzzy);
             if count > 2 {
                 continue;
             }
-            let next =
-                if reading.is_empty() { option.reading.clone() } else { format!("{reading} {}", option.reading) };
-            let option_base = without_tones(&option.reading);
-            let next_base = if base.is_empty() { option_base } else { format!("{base} {option_base}") };
-            let known = {
-                let state = self.lock();
-                state.reading_prefixes.contains(&next_base)
-                    || self.mapped.as_ref().is_some_and(|m| m.contains_prefix(&next_base))
+            let next = if path.reading.is_empty() {
+                option.reading.clone()
+            } else {
+                format!("{} {}", path.reading, option.reading)
             };
-            if !known {
+            let option_base = without_tones(&option.reading);
+            let next_base = if path.base.is_empty() { option_base } else { format!("{} {option_base}", path.base) };
+            if !self.known(path.used.as_ref(), &next, &next_base) {
                 continue;
             }
-            let total = cost + option.cost * typo.cost_multiplier();
+            let total = path.cost + option.cost * walk.typo.cost_multiplier();
             if count <= if index < 3 { 1 } else { 2 } {
-                let typed_reading: Arc<str> = typed[..=index].join(" ").into();
-                // Entries come grouped by the reading they were found under: one annotation per reading, shared.
-                let mut shared: Option<(String, Arc<str>)> = None;
-                for entry in self.entries(&next).iter() {
-                    let mut entry = entry.clone();
-                    let annotation = (total > 0.0).then(|| {
-                        let source = entry.reading.as_deref().unwrap_or(&next);
-                        match &shared {
-                            Some((reading, annotation)) if reading == source => annotation.clone(),
-                            _ => {
-                                let annotation: Arc<str> = Arc::from(keyboard::plain(source).as_str());
-                                shared = Some((source.to_owned(), annotation.clone()));
-                                annotation
-                            }
-                        }
-                    });
-                    entry.recalled = entry.recalled && *typed_reading == *next;
-                    entry.penalty += total;
-                    result.push(Match { range: 0..index + 1, typed_reading: typed_reading.clone(), entry, annotation });
-                }
+                self.push_matches(walk, index, &next, total, path.used.as_ref(), result);
             }
-            self.visit(options, typed, typo, index + 1, &next, &next_base, total, count, result);
+            let deeper = Path0 {
+                index: index + 1,
+                reading: &next,
+                base: &next_base,
+                cost: total,
+                edits: count,
+                used: path.used,
+            };
+            self.visit(walk, &deeper, result);
+        }
+        if path.used.is_some() || walk.steps.is_empty() {
+            return;
+        }
+        for step in &walk.steps[index] {
+            let count = path.edits + usize::from(step.correction(self.channel.as_ref()));
+            if count > 2 {
+                continue;
+            }
+            let reading = step.reading();
+            let next = if path.reading.is_empty() { reading.to_owned() } else { format!("{} {reading}", path.reading) };
+            if let ChannelStep::Restricted(_) = step
+                && !self.channel.as_ref().is_some_and(|c| c.has_prefix(&next))
+            {
+                continue;
+            }
+            let option_base = without_tones(reading);
+            let next_base = if path.base.is_empty() { option_base } else { format!("{} {option_base}", path.base) };
+            let used = Some(Used { position: index, step });
+            if !self.known(used.as_ref(), &next, &next_base) {
+                continue;
+            }
+            if count <= if index < 3 { 1 } else { 2 } {
+                self.push_matches(walk, index, &next, path.cost, used.as_ref(), result);
+            }
+            let deeper =
+                Path0 { index: index + 1, reading: &next, base: &next_base, cost: path.cost, edits: count, used };
+            self.visit(walk, &deeper, result);
+        }
+    }
+
+    /// The words read `next` (the path's readings through syllable `index`).
+    fn push_matches(
+        &self,
+        walk: &Walk<'_>,
+        index: usize,
+        next: &str,
+        total: f64,
+        used: Option<&Used<'_>>,
+        result: &mut Vec<Match>,
+    ) {
+        let typed_reading: Arc<str> = walk.typed[..=index].join(" ").into();
+        if let Some(Used { position, step: ChannelStep::Restricted(option) }) = used {
+            let Some(channel) = &self.channel else { return };
+            let typed = walk.typed[*position];
+            let mut annotation: Option<Arc<str>> = None;
+            for (mut entry, character, single, excluded) in channel.entries(next, *position) {
+                let Some((class, cost)) = option.character(character, single) else { continue };
+                if excluded.contains(&typed) {
+                    continue;
+                }
+                entry.penalty += total;
+                entry.penalty += cost;
+                let key_corrected = total > 0.0;
+                let shown = (key_corrected || option.correction)
+                    .then(|| annotation.get_or_insert_with(|| keyboard::plain(next).into()).clone());
+                result.push(Match {
+                    range: 0..index + 1,
+                    typed_reading: typed_reading.clone(),
+                    entry,
+                    annotation: shown,
+                    channel: Some(ChannelUse { position: *position, class, cost, correction: option.correction }),
+                    key_corrected,
+                });
+            }
+            return;
+        }
+        let sandhi = used.map(|u| {
+            let channel = self.channel.as_ref();
+            let cost = channel.map_or(0.0, ChannelIndex::sandhi_cost);
+            (u.position, cost, channel.is_some_and(ChannelIndex::sandhi_is_correction))
+        });
+        // Entries come grouped by the reading they were found under: one annotation per reading, shared.
+        let mut shared: Option<(String, Arc<str>)> = None;
+        for entry in self.entries(next).iter() {
+            if let Some((position, _, _)) = sandhi
+                && entry.word.chars().nth(position).is_some_and(|c| c == '一' || c == '不')
+            {
+                // The sandhi of 一 and 不 is the lexicon's own rows.
+                continue;
+            }
+            let mut entry = entry.clone();
+            let shown = total > 0.0 || sandhi.is_some_and(|s| s.2);
+            let annotation = shown.then(|| {
+                let source = entry.reading.as_deref().unwrap_or(next);
+                match &shared {
+                    Some((reading, annotation)) if reading == source => annotation.clone(),
+                    _ => {
+                        let annotation: Arc<str> = Arc::from(keyboard::plain(source).as_str());
+                        shared = Some((source.to_owned(), annotation.clone()));
+                        annotation
+                    }
+                }
+            });
+            entry.recalled = entry.recalled && *typed_reading == *next;
+            entry.penalty += total;
+            let channel = sandhi.map(|(position, cost, correction)| {
+                entry.penalty += cost;
+                ChannelUse { position, class: ChannelClass::Sandhi, cost, correction }
+            });
+            result.push(Match {
+                range: 0..index + 1,
+                typed_reading: typed_reading.clone(),
+                entry,
+                annotation,
+                channel,
+                key_corrected: total > 0.0,
+            });
         }
     }
 
@@ -1257,6 +1446,8 @@ impl Engine {
                     word_id: Some(id),
                     history: Some(history),
                     corrected: false,
+                    channel: None,
+                    reading_corrected: false,
                 }
             })
             .collect()
@@ -1840,4 +2031,111 @@ fn learned_row(fields: &[std::borrow::Cow<'_, str>]) -> Option<(PhraseKey, Recal
     value.long = DecayingCount::new(long_value, long_time);
     value.picks = picks.max(0);
     Some((PhraseKey::new(fields[1].as_ref(), fields[2].as_ref()), value))
+}
+
+/// One syllable's reading-channel options while matching.
+enum ChannelStep<'a> {
+    /// A lexicon syllable reached by some characters.
+    Restricted(&'a ChannelOption),
+    /// Third-tone sandhi: the other tone, for every word.
+    Sandhi(String),
+}
+
+impl ChannelStep<'_> {
+    fn reading(&self) -> &str {
+        match self {
+            ChannelStep::Restricted(option) => &option.reading,
+            ChannelStep::Sandhi(reading) => reading,
+        }
+    }
+
+    fn correction(&self, channel: Option<&ChannelIndex>) -> bool {
+        match self {
+            ChannelStep::Restricted(option) => option.correction,
+            ChannelStep::Sandhi(_) => channel.is_some_and(ChannelIndex::sandhi_is_correction),
+        }
+    }
+}
+
+/// The channel step a path took, at which syllable.
+#[derive(Clone, Copy)]
+struct Used<'a> {
+    position: usize,
+    step: &'a ChannelStep<'a>,
+}
+
+/// What every path of one `build_matches` shares.
+struct Walk<'a> {
+    options: &'a [Vec<ReadingAlternative>],
+    steps: &'a [Vec<ChannelStep<'a>>],
+    typed: &'a [&'a str],
+    typo: TypoTolerance,
+}
+
+/// One path of the walk: the syllables so far.
+struct Path0<'a> {
+    index: usize,
+    reading: &'a str,
+    base: &'a str,
+    cost: f64,
+    edits: usize,
+    used: Option<Used<'a>>,
+}
+
+/// The engine's lexicon rows, for building the reading channel's index.
+struct EngineRows<'a> {
+    engine: &'a Engine,
+    state: MutexGuard<'a, State>,
+}
+
+impl LexiconRows for EngineRows<'_> {
+    fn rows(&self, each: &mut dyn FnMut(&RowRef<'_>)) {
+        match &self.engine.mapped {
+            Some(mapped) => {
+                for reading in mapped.reading_strs() {
+                    for entry in mapped.entry_refs(reading) {
+                        let word_id = self
+                            .engine
+                            .model
+                            .word_id(entry.word)
+                            .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32));
+                        each(&RowRef {
+                            reading,
+                            word: entry.word,
+                            logp: entry.logp,
+                            reading_prior: entry.reading_prior,
+                            word_id,
+                        });
+                    }
+                }
+            }
+            None => {
+                for (reading, entries) in &self.state.lexicon {
+                    for entry in entries {
+                        each(&RowRef {
+                            reading,
+                            word: &entry.word,
+                            logp: entry.logp,
+                            reading_prior: entry.reading_prior,
+                            word_id: entry.word_id,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn is_best(&self, word: &str, reading: &str) -> bool {
+        match &self.engine.mapped {
+            Some(mapped) => mapped.best_reading_str(word).is_some_and(|b| b == reading),
+            None => self.engine.best_reading(&self.state, word).is_some_and(|b| b.0 == reading),
+        }
+    }
+
+    fn readings(&self, word: &str, each: &mut dyn FnMut(&str)) {
+        match &self.engine.mapped {
+            Some(mapped) => mapped.reading_strs_of(word).for_each(|(r, _)| each(r)),
+            None => self.state.reverse.get(word).into_iter().flatten().for_each(|(r, _)| each(r)),
+        }
+    }
 }

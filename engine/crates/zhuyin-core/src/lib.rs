@@ -16,6 +16,7 @@
 //! | `Conversion.swift` | [`conversion`] |
 //! | `Composer.swift` | [`composer`] |
 //! | `PersonalLanguageModel.swift` | [`personal`] |
+//! | (Rust only) the reading channel | [`reading_channel`] |
 //!
 //! Numbers follow the Swift code operation for operation (`f64` where Swift uses `Double`, the same summation
 //! order), so scores are bit-identical; the golden tests check this against values the Swift code produced.
@@ -31,6 +32,7 @@ pub mod keyboard;
 pub mod language_model;
 pub mod lexicon;
 pub mod personal;
+pub mod reading_channel;
 pub mod swift_format;
 pub mod syllables;
 pub mod tsv;

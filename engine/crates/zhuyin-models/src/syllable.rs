@@ -13,8 +13,8 @@ use zhuyin_core::swift_format::graphemes;
 use crate::vocabulary::{CharacterIndex, character_index, read_strings};
 use crate::{ModelError, SyllableInput, SyllableModel};
 
-/// The last request and its answer: a key that leaves the syllables and candidates as they were is answered without
-/// running the model.
+/// A recent request and its answer: a key that leaves the syllables and candidates as they were is answered without
+/// running the model.  Two are kept: with the reading channel the composer asks a second question per key.
 struct LastRequest {
     context: String,
     syllables: Vec<CharacterModelSyllable>,
@@ -28,7 +28,7 @@ pub struct SyllableScorer {
     syllable_ids: HashMap<Box<str>, i32>,
     /// Swift's `lock`: one model call at a time.
     model: Mutex<Box<dyn SyllableModel>>,
-    last_request: Mutex<Option<LastRequest>>,
+    last_requests: Mutex<Vec<LastRequest>>,
 }
 
 impl std::fmt::Debug for SyllableScorer {
@@ -60,7 +60,7 @@ impl SyllableScorer {
             character_ids: character_index(&characters, 4),
             syllable_ids,
             model: Mutex::new(model),
-            last_request: Mutex::new(None),
+            last_requests: Mutex::new(Vec::new()),
         })
     }
 
@@ -96,17 +96,19 @@ impl SyllableScorer {
             return None;
         }
         {
-            let last = self.last_request.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(last) = last.as_ref()
-                && last.context == context
-                && last.syllables == syllables
-                && last.candidates == candidates
+            let last = self.last_requests.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(last) =
+                last.iter().find(|l| l.context == context && l.syllables == syllables && l.candidates == candidates)
             {
                 return Some(last.scores.clone());
             }
         }
         let result = self.compute_scores(context, syllables, candidates)?;
-        *self.last_request.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(LastRequest {
+        let mut last = self.last_requests.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if last.len() >= 2 {
+            last.remove(0);
+        }
+        last.push(LastRequest {
             context: context.to_owned(),
             syllables: syllables.to_vec(),
             candidates: candidates.to_vec(),
