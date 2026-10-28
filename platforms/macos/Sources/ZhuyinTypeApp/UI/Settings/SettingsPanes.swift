@@ -264,9 +264,6 @@ struct AboutPane: View {
                 }
             }
             SettingsSection {
-                SettingRow(title: "開發者") {
-                    Link("Henry753951", destination: URL(string: "https://github.com/henry753951")!)
-                }
                 SettingRow(title: "程式授權") {
                     Link("AGPL 3.0", destination: Bundle.main.resourceURL?.appendingPathComponent("Licenses/AGPL-3.0.txt")
                          ?? URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!)
@@ -276,10 +273,7 @@ struct AboutPane: View {
                 }
                 DrillRow(model: model, title: "授權與資料來源", subtitle: "程式庫、詞庫、資料集與模型的授權與署名",
                          value: "", subpage: .sources)
-                SettingRow(title: "詞庫授權", value: "CC BY-SA 4.0")
-                SettingRow(title: "詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
             }
-            FooterText("Copyright © 2026 Henry753951 與 ZhuyinType 貢獻者。軟體依現況提供，不提供擔保；可依 AGPL 3.0 條款修改與再散布。")
         }
     }
 }
