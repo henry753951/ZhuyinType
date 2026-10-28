@@ -1771,12 +1771,31 @@ impl Composer {
                     word.history.unwrap_or_else(|| history.appending(word.word_id, order))
                 };
             }
-            let all_matches: Vec<Match> = self
+            let mut all_matches: Vec<Match> = self
                 .engine
                 .matches(&self.tokens, range.start, self.options.typo_tolerance)
                 .into_iter()
                 .filter(|m| m.range == *range)
                 .collect();
+            // Matching keeps one match per word, the best scoring: a word with another reading (載 typed ㄗㄞˇ, read
+            // ㄗㄞˋ) can survive only as a correction.  The list still offers it under the reading typed.
+            let lexical = self.engine.entries(&reading);
+            let restored: Vec<Match> = all_matches
+                .iter()
+                .filter(|m| m.annotation.is_some())
+                .filter(|m| !all_matches.iter().any(|o| o.annotation.is_none() && o.entry.word == m.entry.word))
+                .filter_map(|m| {
+                    let entry = lexical.iter().find(|e| e.word == m.entry.word && e.penalty == 0.0)?;
+                    Some(Match {
+                        entry: entry.clone(),
+                        annotation: None,
+                        channel: None,
+                        key_corrected: false,
+                        ..m.clone()
+                    })
+                })
+                .collect();
+            all_matches.extend(restored);
             let mut ranked: Vec<(&Match, f64)> = all_matches
                 .iter()
                 .filter(|m| tolerant || m.annotation.is_none())
@@ -1857,9 +1876,7 @@ impl Composer {
             exact
         });
         for word in ordered {
-            if choices.len() < 60
-                && !choices.iter().any(|c| c.range == word.range && forms.apply(&c.text) == forms.apply(&word.text))
-            {
+            if !choices.iter().any(|c| c.range == word.range && forms.apply(&c.text) == forms.apply(&word.text)) {
                 choices.push(word);
             }
         }

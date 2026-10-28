@@ -205,10 +205,13 @@ private final class CandidateRow: NSView {
     }
     /// The room for text after the key, and the width the candidate's own text gets.
     private func textWidths() -> (available: CGFloat, main: CGFloat) {
-        let available = max(0, bounds.width - textInset - trailingPad)
         let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width } ?? 0
-        let main = min((candidate.text as NSString).size(withAttributes: textAttributes).width,
-                       max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
+        let textWidth = (candidate.text as NSString).size(withAttributes: textAttributes).width
+        // A squeezed row gives up its trailing pad before its text.
+        let room = max(0, bounds.width - textInset)
+        let needed = textWidth + (annotationWidth > 0 ? annotationWidth + 10 : 0)
+        let available = max(0, room - min(trailingPad, max(0, room - needed)))
+        let main = min(textWidth, max(0, available - (annotationWidth > 0 ? annotationWidth + 10 : 0)))
         return (available, main)
     }
     /// Set by the window, which keeps one hovered row at most (`CandidateContentView.hover(at:)`).
@@ -606,7 +609,12 @@ final class CandidateContentView: InputMaterialView {
         noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
         previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
         var x: CGFloat = 0
-        let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? footerWidth : 0))
+        // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them, so a
+        // single character is never cut to nothing.
+        let rowsRoom = max(0, width - padding * 2 - (layout == .horizontal ? footerWidth : 0))
+        let fitSpacing = layout == .horizontal && indices.count > 1
+            ? min(spacing, max(0, (rowsRoom - naturalRowWidth) / CGFloat(indices.count - 1))) : spacing
+        let availableWidth = max(0, rowsRoom - CGFloat(max(0, indices.count - 1)) * fitSpacing)
         let scale = min(1, availableWidth / max(1, naturalRowWidth))
         // The rows' area: a vertical list with pages keeps room for a full page, so the last page is the same height.
         let slots = layout == .vertical && hasPages ? max(indices.count, list?.pageSize ?? 0) : indices.count
@@ -617,7 +625,7 @@ final class CandidateContentView: InputMaterialView {
         for row in activeRows {
             let rowWidth = layout == .vertical ? width - padding * 2 : floor(row.preferredWidth * scale)
             row.frame = NSRect(x: x, y: rowY, width: max(0, rowWidth), height: rowHeight)
-            if layout == .vertical { rowY += rowHeight } else { x += rowWidth + spacing }
+            if layout == .vertical { rowY += rowHeight } else { x += rowWidth + fitSpacing }
         }
         rowClip.frame = rowsArea
         rowClip.isHidden = !listOpen

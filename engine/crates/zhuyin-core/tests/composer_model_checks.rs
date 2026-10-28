@@ -651,7 +651,7 @@ fn wide_beams() {
         "N-best K widens beyond the default beam"
     );
     wide.handle(KeyInput::Down);
-    assert_eq!(items(&wide).len(), 60, "candidate list cap at 60 even for wide lexicon");
+    assert_eq!(items(&wide).len(), words.len(), "candidate list keeps every word in a wide lexicon");
     wide.handle(KeyInput::Escape);
     type_keys("18 ", &mut wide);
     assert_eq!(text(&wide), "一丁", "cached final-position scores never leak into an interior position");
