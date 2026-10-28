@@ -463,6 +463,10 @@ fn apply_models(s: &mut Settings) {
             s.rerank_count = usize::try_from(count).unwrap_or(usize::MAX);
         }
     }
+    // The app turns the reading channel on when its data has channel.bin (「接受常見的其他讀法」, on by default).
+    if !s.given.contains("--channel") && root.join("channel.bin").exists() {
+        s.channel = Some(root.join("channel.bin").to_string_lossy().into_owned());
+    }
     if !s.given.contains("--v3") && has("v3", "chars.json") {
         s.v3 = Some(root.join("v3").to_string_lossy().into_owned());
     }

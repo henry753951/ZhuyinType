@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -139,6 +140,13 @@ def main() -> int:
     parser.add_argument(
         "--skip", nargs="+", metavar="NAME", default=[], help="not these configurations (e.g. one the reference lacks)"
     )
+    parser.add_argument(
+        "--cli-args",
+        default="",
+        metavar="FLAGS",
+        help='flags added to every configuration of both builds, e.g. "--channel off" (zhuyin-cli --models turns the '
+        "reading channel on when channel.bin is there)",
+    )
     args = parser.parse_args()
     limit = args.limit or (50 if args.quick else None)
     lexicon = Lexicon(args.lexicon)
@@ -149,6 +157,9 @@ def main() -> int:
     configs = CONFIGS if args.suite != "models" else []
     if args.suite != "engine":
         configs = configs + model_configs(args.models)
+    if args.cli_args:
+        extra = shlex.split(args.cli_args)
+        configs = [(name, [*flags, *extra], ending) for name, flags, ending in configs]
     if args.only:
         configs = [c for c in configs if c[0] in args.only]
     configs = [c for c in configs if c[0] not in args.skip]

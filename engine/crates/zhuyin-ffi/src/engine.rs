@@ -216,6 +216,28 @@ pub unsafe extern "C" fn zt_engine_set_fuzzy_sounds(engine: *const ZtEngine, fuz
     }
 }
 
+/// Turns the loaded reading channel on or off; off, matching is exactly as without one.  On by default.
+///
+/// # Safety
+/// `engine` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_engine_set_reading_channel_enabled(engine: *const ZtEngine, on: bool) {
+    // SAFETY: live handle.
+    if let Some(engine) = unsafe { engine_ref(engine) } {
+        engine.set_reading_channel_enabled(on);
+    }
+}
+
+/// Whether the reading channel is loaded (`ZtEngineConfig.reading_channel`) and on.
+///
+/// # Safety
+/// `engine` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_engine_reading_channel_active(engine: *const ZtEngine) -> bool {
+    // SAFETY: live handle.
+    unsafe { engine_ref(engine) }.is_some_and(|engine| engine.reading_channel().is_some())
+}
+
 /// The fuzzy sound pairs (see [`zt_engine_set_fuzzy_sounds`]).
 ///
 /// # Safety
