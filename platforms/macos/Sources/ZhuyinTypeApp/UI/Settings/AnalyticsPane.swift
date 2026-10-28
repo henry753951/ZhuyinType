@@ -16,7 +16,6 @@ struct AnalyticsPane: View {
     @State private var words: (phrases: Int, learned: Int)?
     /// Advanced every two seconds while the page is shown.
     @State private var tick = 0
-    @State private var wordsDirty = false
 
     enum Period: String, CaseIterable { case month, all }
 
@@ -30,12 +29,11 @@ struct AnalyticsPane: View {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                     if !Task.isCancelled {
                         tick &+= 1
-                        if wordsDirty { countWords(); wordsDirty = false }
+                        countWords()
                     }
                 }
             }
         .onAppear(perform: countWords)
-        .onReceive(NotificationCenter.default.publisher(for: .personalDataMayHaveChanged)) { _ in wordsDirty = true }
         .onChange(of: model.engine != nil) { _, _ in countWords() }
         .alert("要清除使用統計嗎？", isPresented: $confirmingClear) {
             Button("清除", role: .destructive) {

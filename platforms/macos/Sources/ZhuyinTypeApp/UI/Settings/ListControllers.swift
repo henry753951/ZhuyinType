@@ -24,7 +24,6 @@ final class PhraseListController: NSObject, NSTextFieldDelegate {
         guard let engine = model?.engine else { list.set([]); return }
         let rows = engine.userPhrases().map { ListItem(id: "\($0.reading)\t\($0.word)", title: $0.word, detail: $0.reading) }
         list.set(rows, select: ids)
-        NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil)
     }
 
     private func remove(_ rows: [ListItem]) {
@@ -151,7 +150,6 @@ final class LearnedListController: NSObject {
                      meta: "不記住", count: -1, marked: true)
         }
         list.set(learned + excluded)
-        NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil)
     }
 
     /// Removing a learned word forgets it; removing an excluded one lets it be learned again.
@@ -247,7 +245,6 @@ final class AppListController: NSObject {
             ListItem(id: id, title: Self.appInfo(bundleID: id).name, detail: id, appIcon: id)
         }
         list.set(rows, select: ids)
-        NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil)
     }
 
     private static func appInfo(bundleID: String) -> (name: String, icon: NSImage) {

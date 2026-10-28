@@ -171,10 +171,6 @@ final class ControllerCore {
         }
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
-        if !composer.learningSuspended, (before.candidates != nil && composer.presentation.candidates == nil ||
-            before.notice != composer.presentation.notice && composer.presentation.notice != nil || commit != nil) {
-            NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil)
-        }
         let latency = stats == nil ? nil : DispatchTime.now().uptimeNanoseconds - started
         observe(.key(key, time: time), before: before, commit: commit, handled: result.handled, latency: latency)
         if !result.handled {
@@ -278,7 +274,6 @@ final class ControllerCore {
         let result = composer.selectCandidate(at: index)
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
-        if !composer.learningSuspended { NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil) }
         observe(.click(index: index), before: before, commit: commit, handled: true)
     }
 
@@ -372,7 +367,6 @@ final class ControllerCore {
         let text = composer.commitAll()
         let commit = preservingVisibleSuffix(text, visible: before.text)
         render(commit: commit)
-        if commit != nil, !composer.learningSuspended { NotificationCenter.default.post(name: .personalDataMayHaveChanged, object: nil) }
         observe(.commit, before: before, commit: commit, handled: true)
     }
 
@@ -459,8 +453,4 @@ final class ControllerCore {
                              replacementRange: insertionRange)
         lastMark = nil
     }
-}
-
-extension Notification.Name {
-    static let personalDataMayHaveChanged = Notification.Name("ZhuyinTypePersonalDataMayHaveChanged")
 }
