@@ -1,4 +1,4 @@
-# 字音表：ZTRC/1 與 ZTRT/1
+# 字音表：ZTRC/1、ZTRT/1 與 ZTRW/1
 
 讀音通道的資料：每個字可能被打成哪些讀音、各自的機率與來源。由 `zt train lexicon channel`（`ml/src/zhuyintype_ml/training/lexicon/channel.py`）產生，寫在資料目錄的 `lexicon_coverage/channel/`。Python（詞庫建置、`misread-dev`、v3 的讀音雜訊）與引擎讀同一份檔案；兩邊的讀法以本文件為準，`test_lexicon.py` 的格式檢查與引擎的單元測試都對照這裡。
 
@@ -55,6 +55,28 @@
 
 每個（字，詞裡的讀音）只出現一次，依字與讀音的 UTF-8 位元組排序。
 
+引擎與 `merge.py` 把這裡的改寫套到所有含這個字的詞，所以只收強度至少 0.5（`channel.py` 的 `WORD_LEVEL_TAIWAN`）或 standard = 1 的列。較弱的改寫只在 Wiktionary 給了台灣讀音的那些詞成立（騎 ㄑㄧˊ→ㄐㄧˋ 在 坐騎、鐵騎，不在 騎術；弟 ㄉㄧˋ→ㄉㄧˇ 套到所有詞時，底子 打 ㄉㄧˇ ㄗˇ 會變成 弟子），改寫成 `words.tsv` 的列。
+
+## words.tsv（ZTRW/1）
+
+只對個別的詞成立、不能從單一個字推出的讀音。第一列是 `# ZTRW/1 word<TAB>word reading<TAB>position<TAB>reading typed<TAB>class<TAB>log P<TAB>state`：
+
+| 欄 | 內容 |
+|---|---|
+| word | 一個詞（兩個字以上，字數和音節數相同） |
+| word reading | 基本詞庫裡這個詞最好的讀音（和 `taiwan.tsv` 的 word reading 同義） |
+| position | 改變的字的位置，從 0 起算 |
+| reading typed | 這個位置打的讀音，和 word reading 在這個位置的音節不同 |
+| class | `taiwan`：Wiktionary 給這個詞的台灣讀音，而 `taiwan.tsv` 沒有對應的改寫（坐騎 ㄗㄨㄛˋ ㄐㄧˋ）；`loan`：台語借詞的字照台語音打（蚵仔煎 ㄜˊ ㄚ ㄐㄧㄢ） |
+| log P | 自然對數，P(打這個讀音 \| 想打這個詞)。`taiwan` 是 log 0.5（和詞的另一個讀音一樣常見，`MARKED`）；`loan` 是 log m − log 5（沒有來源給台語音節的華語聲調，五個聲調都列） |
+| state | `taiwan` 是 `accepted`，`loan` 是 `correction` |
+
+依詞的 UTF-8 位元組、位置、打的讀音排序；（詞，位置，打的讀音）不重複。
+
+台語借詞只算 CC-CEDICT 標明來自台語的詞（「from Taiwanese」，代誌、囝仔），以及 Wiktionary「台灣華語」分類裡含「仔」的詞；音節由 Wiktionary 的台羅拼音對到最接近的華語音節（`phonology.tailo_to_zhuyin`）。「台灣華語」分類大多只是台灣的用語（公車、便當），不是借詞，所以不全算。
+
+`merge.py` 把 `taiwan` 列做成詞庫的列（`marked` 類別）；`loan` 是修正，引擎讀這張表之前也可以做成詞庫的列（`loan` 類別），但詞庫的列不會標成修正。v3 的讀音雜訊可以用這張表，只在詞的範圍內換讀音。
+
 ## channel.json
 
 估計出的比例與次數，包括：
@@ -78,12 +100,12 @@
 | char | 一個字 |
 | reading in the text | 文中這個字的讀音；`*` 表示不論文中讀音 |
 | reading typed | 打的讀音 |
-| class | `channel.tsv` 的類別；`taiwan` 也用於 `taiwan.tsv` 的詞層級改寫；`misread` 是不熟悉的字打成它的其他讀音 |
+| class | `channel.tsv` 的類別；`taiwan` 也用於 `taiwan.tsv` 的改寫；`misread` 是不熟悉的字打成它的其他讀音 |
 | probability | 把文中讀音換成打的讀音的機率 |
 | state | `accepted`（接受的讀音）或 `correction`（修正），見下方「三種狀態」。`series` 與台語音是修正，其他是接受的讀音；`misread` 列依打的讀音的類別 |
 | cost bucket | 給 v3 的 `cost_bucket`：接受的讀音是 0；修正依 −log 機率分桶，和按錯鍵同一套界線（≤ 6 為 1，≤ 11 為 2，其他為 3，`composer.rs`） |
 
-三聲變調與輕聲打本調是規則層級的變體，不逐字列出；它們是接受的讀音（`cost_bucket` 0），比例在 `channel.json`（`misread`、`neutral_full_tone`）。`channel.validate` 檢查狀態與分桶一致。
+只對個別的詞成立的讀音（弱的台灣讀音、台語音）在 `words.tsv`，不在這裡，因為這張表沒有詞的欄位。三聲變調與輕聲打本調是規則層級的變體，不逐字列出；它們是接受的讀音（`cost_bucket` 0），比例在 `channel.json`（`misread`、`neutral_full_tone`）。`channel.validate` 檢查狀態與分桶一致。
 
 ## 引擎該用的成本
 
@@ -92,12 +114,13 @@
 | 類別 | 狀態 | 成本（自然對數，負號省略） |
 |---|---|---|
 | `taiwan.tsv` 的 standard = 1 | 標準讀音 | 0；原讀音改為 −log max(1 − strength, m) |
-| `taiwan.tsv` 的其他列 | 接受的讀音 | −log strength |
+| `taiwan.tsv` 的其他列（強度 ≥ 0.5） | 接受的讀音 | −log strength |
+| `words.tsv` 的 `taiwan` | 接受的讀音 | −log 0.5；目前是詞庫的列 |
 | `taiwan`、`word`、`attested`、`cns`、`unihan` | 接受的讀音 | −log m − log P(讀音 \| 字，不是詞裡的讀音)，只給不熟悉的字；熟悉的字只在單字時用 −log P 的比值 |
 | `series` | 修正 | 同上，另外和按錯鍵修正一樣要贏過完全打對的整句一個差距 |
 | 輕聲打本調 | 接受的讀音 | −log `neutral_full_tone` − log P(讀音 \| 字，非輕聲) |
 | 三聲前二、三聲互換 | 接受的讀音 | −log m |
-| 台語音（只對 Wiktionary「台灣華語」分類的詞） | 修正 | −log m + log 5（聲調不限） |
+| 台語音（`words.tsv` 的 `loan`） | 修正 | −log m + log 5（聲調不限） |
 
 詞庫裡的列（詞專屬的讀音、兩個以上音節同時改變、需要詞層級成本的）覆寫這些預設值，同一組（詞，讀音）不重複計分。
 
@@ -131,7 +154,7 @@
 
 ## channel.bin（ZTCB/1）
 
-引擎讀的二進位版本。`zt data compile` 從資料目錄的 `channel/`（沒有時用 `lexicon_coverage/channel/`）的 `channel.tsv`、`taiwan.tsv`、`familiar.txt` 與 `channel.json` 編成，放在詞庫旁邊；`channel.json`（和 `channel.bin` 同名的中繼資料）記錄四個來源檔的 SHA-256，來源沒變時不重編。編譯程式是 `ml/src/zhuyintype_ml/training/lm/compile_data.py` 的 `compile_channel`，讀取程式是 `engine/crates/zhuyin-core/src/reading_channel.rs` 的 `ChannelTable::open`。
+引擎讀的二進位版本。`zt data compile` 從資料目錄的 `channel/`（沒有時用 `lexicon_coverage/channel/`）的 `channel.tsv`、`taiwan.tsv`、`familiar.txt` 與 `channel.json` 編成（`words.tsv` 目前不編進來），放在詞庫旁邊；`channel.json`（和 `channel.bin` 同名的中繼資料）記錄四個來源檔的 SHA-256，來源沒變時不重編。編譯程式是 `ml/src/zhuyintype_ml/training/lm/compile_data.py` 的 `compile_channel`，讀取程式是 `engine/crates/zhuyin-core/src/reading_channel.rs` 的 `ChannelTable::open`。
 
 所有數字是 little-endian。檔頭 96 位元組：
 
@@ -162,7 +185,7 @@
 
 ## 引擎的做法（`reading_channel.rs`）
 
-- **開關。** `zhuyin-cli --channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`；沒有給時讀音通道關閉，輸出和沒有讀音通道的引擎逐位元相同。App 目前不開；C 介面的 `ZtEngineConfig.reading_channel` 與 EngineBench 的 `--channel` 用來量 App 的路徑。
+- **開關。** App 0.4.3 起預設開啟：載入 Resources（或模型資料夾）裡詞庫旁的 `channel.bin`，設定「選字 › 按錯鍵 › 接受常見的其他讀法」（`readingChannel`）在不重新載入的情況下開關（`Engine::set_reading_channel_enabled`，C 介面 `zt_engine_set_reading_channel_enabled`）；關閉時輸出和沒有讀音通道的引擎逐位元相同。`zhuyin-cli --models DIR` 與 EngineBench 照 App，在 `DIR/channel.bin` 存在時開啟，`--channel off` 關閉；只給 `--lexicon` 時用 `--channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`。C 介面的 `ZtEngineConfig` 只有字音表的路徑與類別的位元，App 用預設類別。
 - **類別。** `channel.tsv` 的八類，加上 `taiwan-word`（`taiwan.tsv`）、`neutral`（輕聲打本調）與 `sandhi`（三聲變調），共十一類。每類可以開關（`--channel-classes`）、加成本（`--channel-offset CLASS=NATS`）、改狀態（`--channel-state CLASS=accepted|correction`）；單字詞另外用 `--channel-single-classes` 決定用哪些類別。`series` 是修正，其他是接受的讀音；成本超過 `--channel-max-cost`（預設 8）的不用。
 - **預設**（研究紀錄 2026-10-28，依開發集與 Mac 的每鍵 p95 選）：多字詞的 `series`、`neutral`、`taiwan-word`；單字詞不用變體；三聲變調不開（`--channel-classes ...,sandhi` 開啟，`--channel-sandhi forward` 只把打的二聲讀成詞庫的三聲）；v3 用 (b)；每個音節 4 個選項；`reading_margin` 4；各類成本不加。其他類別在開發集與讀音獨立的集合上都沒有改對，單字讀音與三聲變調改壞了一些，而且每開一類每鍵都慢一點。
 - **一個字的變體。** 詞庫的一列（詞，讀音）裡，位置 i 的字 c 讀 s 時：

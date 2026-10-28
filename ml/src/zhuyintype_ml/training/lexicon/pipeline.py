@@ -15,7 +15,9 @@ Options (--option KEY=VALUE):
     expanded   1: every reading class expanded into rows (the A/B baseline for the engine's reading channel)
     max_cost   lowest log P(typed | word) of an expanded misreading variant (default: 8)
     char_classes  channel classes whose single-character readings become rows (default: taiwan,word)
-    min_taiwan    lowest strength of a Taiwan reading carried into words (default: 0.5)
+    taiwan_rows   1: also carry taiwan.tsv's readings into every word as rows (data-4; default 0, the engine's
+                  `taiwan-word` class does it with the reading channel on)
+    min_taiwan    lowest strength of those rows (default: 0.5)
     exclude    extra directory of evaluation rows kept out of the mining corpora (every *.txt in it)
     wiki_work  a finished `zt train lm` work directory (default: lm/work), for the lm step
     dump       the Wikipedia dump that work directory came from (default: data/raw/lm/...)
@@ -158,13 +160,16 @@ def merge(ctx: Context) -> None:
 # The merge candidate (docs/research/log.md 2026-10-28): strong Taiwan readings as the words' readings, readings
 # Taiwan's sources attest as rows 2 nats below the word's reading; the engine's reading channel takes the rest.
 # --option expanded=1 builds the A/B baseline with every class expanded into rows; --option standard=0 keeps
-# CC-CEDICT's readings as the words' readings.
-CANDIDATE_CLASSES = ("char", "taiwan", "mcbopomofo", "variants")
+# CC-CEDICT's readings as the words' readings.  Step 3 (log 2026-10-28, 讀音通道步驟 3): taiwan.tsv's readings in
+# words are the engine's (`taiwan-word`, the same on every set as the 1,979 rows); the Taiwan readings of single words
+# (words.tsv, `marked`) and Hokkien loans (`loan`, which the engine has no class for) are rows.
+CANDIDATE_CLASSES = ("char", "marked", "mcbopomofo", "variants", "loan")
+OFFSET_CLASSES = ("char", "taiwan", "marked", "mcbopomofo", "variants")  # loan's log m - log 5 is cost enough
 CANDIDATE_OFFSET = 2.0
 # Each single-character row is matched at every syllable: CNS11643's and Wiktionary's other character readings
 # (3,700 rows) cost 8% CPU per key on the Mac with no change on any set, so only the readings Taiwan's sources and
-# dictionary words give a character stay rows (蚵 ㄎㄜ); the rest are the engine's.  Taiwan readings weaker than 0.5
-# carried into every word with the character (17,000 rows) change nothing either.
+# dictionary words give a character stay rows (蚵 ㄎㄜ); the rest are the engine's.  The app's engine has no switch
+# for single-character classes, so these rows stay until it does.
 CANDIDATE_CHARACTERS = "taiwan,word"
 CANDIDATE_MIN_TAIWAN = 0.5
 
@@ -176,13 +181,17 @@ def standard(ctx: Context) -> bool:
 def variant_options(ctx: Context) -> list[str]:
     if str(ctx.options.get("expanded", "0")) == "1":
         return []
-    classes = ["standard", *CANDIDATE_CLASSES] if standard(ctx) else CANDIDATE_CLASSES
+    classes = list(CANDIDATE_CLASSES)
+    if str(ctx.options.get("taiwan_rows", "0")) == "1":
+        classes.insert(1, "taiwan")
+    if standard(ctx):
+        classes.insert(0, "standard")
     offset = str(ctx.options.get("offset", CANDIDATE_OFFSET))
     return [
         "--data-only",
         "--mechanisms",
         ",".join(classes),
-        *[arg for c in CANDIDATE_CLASSES for arg in ("--offset", f"{c}={offset}")],
+        *[arg for c in classes if c in OFFSET_CLASSES for arg in ("--offset", f"{c}={offset}")],
         "--char-classes",
         str(ctx.options.get("char_classes", CANDIDATE_CHARACTERS)),
         "--min-taiwan",

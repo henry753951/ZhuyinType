@@ -488,6 +488,7 @@ pub struct Engine {
     directory: Option<PathBuf>,
     writer: Writer,
     channel: Option<ChannelIndex>,
+    channel_on: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -608,6 +609,7 @@ impl Engine {
             directory: user_data.map(Path::to_path_buf),
             writer: Writer::new(),
             channel: None,
+            channel_on: std::sync::atomic::AtomicBool::new(true),
         };
         if let Some(table) = channel {
             let index = ChannelIndex::build(table, &engine.config.channel, &engine.lexicon_rows());
@@ -626,10 +628,33 @@ impl Engine {
         EngineRows { engine: self, state: self.lock() }
     }
 
-    /// The reading channel's index, when the channel is on.
+    /// The reading channel's index, when the channel is loaded and on.
     #[must_use]
     pub fn reading_channel(&self) -> Option<&ChannelIndex> {
-        self.channel.as_ref()
+        self.channel.as_ref().filter(|_| self.channel_on.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// Whether a reading channel was loaded (`EngineConfig::reading_channel`).
+    #[must_use]
+    pub fn has_reading_channel(&self) -> bool {
+        self.channel.is_some()
+    }
+
+    /// Turns a loaded reading channel on or off (the app's 「接受常見的其他讀法」).  Off, matching is exactly as
+    /// without a channel.  On by default.
+    pub fn set_reading_channel_enabled(&self, on: bool) {
+        if self.channel_on.swap(on, std::sync::atomic::Ordering::Relaxed) == on {
+            return;
+        }
+        let mut state = self.lock();
+        state.match_cache.clear();
+        state.revision = state.revision.wrapping_add(1);
+    }
+
+    /// Whether the reading channel is on (true also when none is loaded: the setting, not the data).
+    #[must_use]
+    pub fn reading_channel_enabled(&self) -> bool {
+        self.channel_on.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Every variant `table` gives the lexicon's rows under this engine's channel settings, sorted (the table the
@@ -948,8 +973,7 @@ impl Engine {
         }
         // Third-tone sandhi reads the syllable after the span's last one.
         let following = self
-            .channel
-            .as_ref()
+            .reading_channel()
             .filter(|c| c.settings.uses(ChannelClass::Sandhi))
             .and(tokens.get(start + span.len()))
             .and_then(CompositionToken::reading);
@@ -1011,7 +1035,7 @@ impl Engine {
             list.sort_by(|a, b| swift_order(a.cost, b.cost).then_with(|| a.reading.cmp(&b.reading)));
             options.push(list);
         }
-        let steps: Vec<Vec<ChannelStep<'_>>> = match &self.channel {
+        let steps: Vec<Vec<ChannelStep<'_>>> = match self.reading_channel() {
             None => vec![],
             Some(channel) => (0..typed.len())
                 .map(|i| {

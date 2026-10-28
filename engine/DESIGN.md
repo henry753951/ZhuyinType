@@ -321,6 +321,8 @@ Swift 引擎移除後的第一個新功能（2026-10-28，`reading-channel` 分�
 | 編譯與 Python 參考實作 | `ml/src/zhuyintype_ml/training/lm/compile_data.py`（`compile_channel`）、`training/lexicon/engine_channel.py` |
 | C 介面 | `ZtEngineConfig` 的 `reading_channel`、`channel_*`；`zt_composer_set_variant_scores` |
 
+**App。** 0.4.3 起 App 帶著 `channel.bin`，`EngineHost` 載入引擎時一併載入（`Engine.readingChannel`），用預設的類別。使用者設定「選字 › 按錯鍵 › 接受常見的其他讀法」（`readingChannel`，預設開）透過 `Engine::set_reading_channel_enabled` 開關，不必重新載入：索引留著，只是比對不走它，並清掉比對的快取。`ZtEngineConfig` 已經帶著類別、單字類別、修正類別、選項上限與成本上限的位元（EngineBench 的 `--channel-*` 用它們），所以 App 要用單字詞的類別時不必改 C 介面，只要在 `ChannelSettings` 填值。
+
 **關閉時逐位元相同。** 沒有 `--channel` 時不載入字音表、不建索引，比對的快取鍵與每個分支都和原本相同；golden 摘要全部相同，main（4534c1e）對這個分支的完整 gate 62,216 行 0 行不同。
 
 **資料結構。** 載入時字音表從映射的檔案直接讀成排序好的陣列（字、列、台灣讀音），用二分搜尋，不建雜湊表。索引分兩次掃描詞庫：第一次只計數，第二次把每個緩衝區配置在最後的大小；詞與讀音放在同一個字串區，詞的陣列依（讀音、位置、字、詞）排序，讀音表記錄每個讀音的起點與筆數，前綴檢查直接在排序好的讀音表上二分搜尋。沒有變體的列不配置任何東西。這是為了記憶體：最早每一筆都是自己的配置，App 路徑的記憶體多 55 MB（多是建索引時的暫存留下的碎片），現在預設設定多約 4 MB、所有類別多約 8 MB。載入多約 0.1 s。

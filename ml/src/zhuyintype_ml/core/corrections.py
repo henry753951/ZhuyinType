@@ -87,7 +87,10 @@ def cli_options(settings: dict[str, Any]) -> list[str]:
         str(settings.get("character_forms", "common")),
     ]
     fuzzy = [name for name in settings.get("fuzzy_sounds", []) if name in FUZZY]
-    return options + (["--fuzzy", ",".join(fuzzy)] if fuzzy else [])
+    # 「接受常見的其他讀法」: zhuyin-cli --models turns the reading channel on as the app does; a record made with it
+    # off replays with it off.
+    channel = [] if settings.get("reading_channel", True) else ["--channel", "off"]
+    return options + (["--fuzzy", ",".join(fuzzy)] if fuzzy else []) + channel
 
 
 @dataclass(frozen=True)

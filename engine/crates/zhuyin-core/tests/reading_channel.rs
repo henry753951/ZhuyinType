@@ -136,6 +136,14 @@ fn settings_and_off() {
     assert!(off.reading_channel().is_none());
     assert!(find(&matches(&off, &["ㄕㄡˊ", "ㄒㄧ"]), "熟悉").is_none());
     assert!(matches(&off, &["ㄕㄡˊ"]).iter().all(|m| m.channel.is_none()));
+    // Turned off at run time: exactly as without a channel; on again, the variants come back.
+    let switched = engine(ChannelSettings::every_class());
+    let before = matches(&switched, &["ㄕㄡˊ", "ㄒㄧ"]);
+    switched.set_reading_channel_enabled(false);
+    assert!(switched.reading_channel().is_none() && switched.has_reading_channel());
+    assert_eq!(matches(&switched, &["ㄕㄡˊ", "ㄒㄧ"]), matches(&off, &["ㄕㄡˊ", "ㄒㄧ"]));
+    switched.set_reading_channel_enabled(true);
+    assert_eq!(matches(&switched, &["ㄕㄡˊ", "ㄒㄧ"]), before);
     let mut settings = ChannelSettings::every_class();
     settings.set_uses(ChannelClass::Sandhi, false);
     settings.set_correction(ChannelClass::TaiwanWord, true);

@@ -1,0 +1,63 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "old",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on"
+   ]
+  },
+  {
+   "name": "Bl-def",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  },
+  {
+   "name": "Blc-def",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Blc/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "wikinew",
+   "set": "wiki-new-dev"
+  },
+  {
+   "name": "sj-stores",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--names--stores.txt"
+  },
+  {
+   "name": "sj-slang",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--net-slang--words.txt"
+  },
+  {
+   "name": "sj-it",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--it--words.txt"
+  },
+  {
+   "name": "sj-creators",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--names--creators.txt"
+  },
+  {
+   "name": "sj-dev302",
+   "set": "shanjie-dev302"
+  }
+ ]
+}

@@ -15,7 +15,8 @@ func fail(_ message: String) -> Never {
 var arguments = Array(CommandLine.arguments.dropFirst())
 var models: URL?
 var timing = false
-var channel: String?
+// As the app: the reading channel when channel.bin is beside the lexicon; --channel off measures without it.
+var channel: String? = "on"
 var variantScores: (UInt8, Double)?
 var channelSettings = ChannelSettings()
 let channelClasses = ["lexicon", "taiwan", "word", "attested", "cns", "unihan", "series", "interjection", "taiwan-word",
@@ -115,7 +116,9 @@ func exists(_ directory: String, _ file: String) -> URL? {
 let loadStart = Date()
 Engine.chatModelDirectory = exists("lm_chat", "lm.bin") ?? exists("lm_chat", "bigram.tsv")
 Engine.channelSettings = channelSettings
-Engine.readingChannel = channel.map { $0 == "on" ? models.appendingPathComponent("channel.bin") : URL(fileURLWithPath: $0) }
+Engine.readingChannel = channel.flatMap {
+    $0 == "on" ? exists("", "channel.bin").map { _ in models.appendingPathComponent("channel.bin") } : URL(fileURLWithPath: $0)
+}
 let engine: Engine
 do { engine = try Engine(lexiconURL: models.appendingPathComponent("lexicon.tsv"), userDataDirectory: nil) }
 catch { fail("engine: \(error.localizedDescription)") }

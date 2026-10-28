@@ -1,0 +1,223 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "d4",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/d4/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "old",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on"
+   ]
+  },
+  {
+   "name": "new",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  },
+  {
+   "name": "d4m",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/d4m/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-new",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  },
+  {
+   "name": "B-new-single",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-single-classes",
+    "taiwan,word"
+   ]
+  },
+  {
+   "name": "Bc-new",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bc/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  },
+  {
+   "name": "Bt",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bt/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-taiwan",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "taiwan-word"
+   ]
+  },
+  {
+   "name": "Bc",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bc/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-single",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "none",
+    "--channel-single-classes",
+    "taiwan,word"
+   ]
+  },
+  {
+   "name": "Bn",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bn/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-neutral",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "neutral"
+   ]
+  },
+  {
+   "name": "Bx",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bx/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-misread",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "lexicon,taiwan,word,attested,cns,unihan,series,interjection"
+   ]
+  },
+  {
+   "name": "Bs",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bs/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-sandhi",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "sandhi"
+   ]
+  },
+  {
+   "name": "B-sandhi-fwd",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "sandhi",
+    "--channel-sandhi",
+    "forward"
+   ]
+  },
+  {
+   "name": "Bl",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  },
+  {
+   "name": "smoke",
+   "set": "smoke"
+  }
+ ]
+}

@@ -724,6 +724,19 @@ void zt_engine_free(ZtEngine *engine);
 // `engine` is a live handle.
 void zt_engine_set_fuzzy_sounds(const ZtEngine *engine, uint32_t fuzzy);
 
+// Turns the loaded reading channel on or off; off, matching is exactly as without one.  On by default.
+//
+// # Safety
+// `engine` is a live handle.
+void zt_engine_set_reading_channel_enabled(const ZtEngine *engine,
+                                           bool on);
+
+// Whether the reading channel is loaded (`ZtEngineConfig.reading_channel`) and on.
+//
+// # Safety
+// `engine` is a live handle.
+bool zt_engine_reading_channel_active(const ZtEngine *engine);
+
 // The fuzzy sound pairs (see [`zt_engine_set_fuzzy_sounds`]).
 //
 // # Safety
