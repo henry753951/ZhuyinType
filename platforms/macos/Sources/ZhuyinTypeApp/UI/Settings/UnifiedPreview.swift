@@ -126,7 +126,10 @@ struct UnifiedPreview: View {
         let sceneWidth = sceneWidth(flows, states, in: width)
         // The scene's card fits the state shown; with `steadyHeight` the box around it keeps the tallest's height.
         let sceneHeight = stageHeight(flows, [state], width: sceneWidth)
-        let height = steadyHeight ? stageHeight(flows, states, width: sceneWidth) : sceneHeight
+        // The note beside the scene, when there is room for it, is never cut off either.
+        let noteWidth = min(StateNote.maxWidth, width - sceneWidth - 18)
+        let noteHeight = noteWidth > 150 ? StateNote.height(state, preferences, width: noteWidth) : 0
+        let height = max(steadyHeight ? stageHeight(flows, states, width: sceneWidth) : sceneHeight, noteHeight)
         // The outgoing state fades out first, then the next one in: never two scenes or two notes over each other.
         let swap = AnyTransition.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.12)),
                                             removal: .opacity.animation(.easeIn(duration: 0.12)))
@@ -224,8 +227,21 @@ private struct StateNote: View {
             Text(state.title).font(.headline)
             Text(Self.text(state, preferences)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.top, 10)
-        .frame(maxWidth: 260, alignment: .leading)
+        .padding(.top, Self.top)
+        .frame(maxWidth: Self.maxWidth, alignment: .leading)
+    }
+
+    static let maxWidth: CGFloat = 260
+    private static let top: CGFloat = 10
+
+    /// The note's height at `width`, measured with the fonts it is drawn in.
+    static func height(_ state: PreviewState, _ p: Preferences, width: CGFloat) -> CGFloat {
+        func measure(_ text: String, _ style: NSFont.TextStyle) -> CGFloat {
+            ceil((text as NSString).boundingRect(with: NSSize(width: width, height: .greatestFiniteMagnitude),
+                                                 options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                                 attributes: [.font: NSFont.preferredFont(forTextStyle: style)]).height)
+        }
+        return top + measure(state.title, .headline) + 6 + measure(text(state, p), .callout) + 2
     }
 
     static func text(_ state: PreviewState, _ p: Preferences) -> String {
