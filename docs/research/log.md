@@ -4,6 +4,27 @@
 
 ## 2026-10-28
 
+### 模型壓縮：採用 int8，data-5
+
+重新訓練的 v3 沒有採用，所以出貨的 v3 不變，下一版發布它和 v2b 的 int8（每列一個 scale，見「模型壓縮（ROADMAP §4 第 9 項）」）。`data-5` 是一個完整的資料版本，以 `ZT_DATA=data/build/compress/int8-channel zt data pack data-5 v3 reranker checkpoints` 打包，尚未發布：
+
+| 元件 | 內容 | 壓縮檔 |
+|---|---|---|
+| `v3` | int8 的 ContextEncoder、SyllableEncoder 與 JSON、授權檔 | 51.2 MB（原本 125.2 MB） |
+| `reranker` | int8 的前綴樹模型 `RerankerTree.mlmodelc`、`vocab.json`、`config.json`；不再含批次模型 | 27.1 MB（原本 115.7 MB） |
+| `checkpoints` | 同樣的 int8 權重（以 fp16 存的假量化 `charlm.pt`、`syllable.pt`）、這些 Core ML 模型的 golden vectors `test_vectors.json`、原本的 `context.pt` 與 `articles.tsv.gz` | 308.4 MB（原本 530.3 MB） |
+
+主機上從 `checkpoints` 匯出的 ONNX 就是出貨的權重，App 設定的評測與 ZhuyinBench 量的是 App 實際的模型。
+
+合併最新的 main（624f49d，詞庫 `data-4`、引擎的讀音通道）後重新確認：
+
+- 開發集（App 設定、`--backend cpu`，主機上的 `data-5` 對 main 的釘選）：口語 87.00%、維基 81.25%、Taiwan Tongues 71.75%、維基有前文 86.00%、口語接續 82.25% 都相同（口語改對 1、改壞 1），在／再 79.25% → 79.00%（改壞 1）。主機匯出的 ONNX 確認用的是 int8 檢查點（SHA-256 相同）。
+- Mac 一致性：解壓縮後的權重和主機相同（差異 0），輸出和同一份權重未壓縮的匯出逐位元相同；和主機的差異 v3 0.087（首選一致 99.2%）、v2b 0.078，fp16 為 0.083（99.0%）、0.059。App 路徑的 `EngineBench --check-v3` 對新的 golden vectors 為 20／20、差異 0。
+- Mac 延遲（這次建置的 App 的 Resources，和同一份詞庫加 fp16 模型交錯 3 輪）：每鍵 p50／p95 為 3.20／12.40 ms 對 3.25／12.40 ms，CPU 4.60 對 4.55 ms，能耗 23.8 對 23.8 mJ。
+- `zt build app`：App 170 MB，`Resources/v3` 66 MB、`Resources/reranker` 30 MB（只有前綴樹）；已安裝、只帶前綴樹的 fp16 版本是 264 MB（v3 130 MB、reranker 60 MB）。`zt check app`：84／84 自我測試與打包檢查通過；`zt check all` 通過。
+
+決定：0.4.3 採用 `data-5`，發布前先以 `zt data publish data-5` 上傳三個壓縮檔。
+
 ### 讀音雜訊的 v3 配上引擎的讀音通道（`v3-reading-noise`）
 
 引擎的讀音通道合併進 main（07f7014）之後，把上一條的兩個候選（s3、r10）在讀音通道開著時再比一次：重訓的 v3 自己為變體字評分（`--v3-variants typed`，關掉過渡做法），基準是出貨的 v3 加上過渡做法 (b)（`--channel on` 的預設：多字詞的有邊讀邊、輕聲、`taiwan.tsv`，變體字的 v3 權重 0）。
@@ -520,7 +541,7 @@ ONNX（Linux，GPU 主機，單執行緒，v3 20 組／v2b 4 組的耗時；主�
 - 不採用：4 位元每個矩陣（變差）、6 位元每個矩陣（能耗多 40%，輸出和主機不同）、6 位元每 16 列（合計改對 9、改壞 21）、int8 每 32 欄（結果和每列相同，但較大、需要 macOS 15）。
 - Linux 之後用 int8 權重加 DequantizeLinear，ONNX 的 session 設定加上折疊（`engine/crates/zhuyin-models/src/onnx.rs`，這次沒有改）。動態 int8 快約 2 倍，但結果和 Mac 不同，不作為預設。
 - v3 正在以讀音雜訊重新訓練（`v3-reading-noise`）。新的檢查點出來後，以 `zt --remote train compress --option v3=<目錄>`、評測矩陣 `compress.json` 與 Mac 上的 `coreml`、`parity`、`measure` 重跑，再打包。
-- 發布 int8 時，`checkpoints` 元件也要換成 int8 的假量化檢查點（`compress/int8-channel/` 的 `charlm.pt`、`syllable.pt` 與新的 `test_vectors.json`），主機上的 App 設定評測與 ZhuyinBench 才是出貨的權重。`data-5` 只打包了 App 用的 `v3` 與 `reranker`。
+- 發布 int8 時，`checkpoints` 元件也要換成 int8 的假量化檢查點（`compress/int8-channel/` 的 `charlm.pt`、`syllable.pt` 與新的 `test_vectors.json`），主機上的 App 設定評測與 ZhuyinBench 才是出貨的權重。後來已併入 `data-5`（上一則）。
 
 ### 評測在 GPU 主機上的速度
 
