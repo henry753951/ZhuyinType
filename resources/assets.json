@@ -19,10 +19,10 @@
       "size": 1826222
     },
     "lm": {
-      "file": "zhuyintype-lm-db7f06036a76.tar.gz",
-      "release": "data-1",
-      "sha256": "db7f06036a76836bac9d137afa2973dedb8dcbd31fd73d956541fb7afb6a8989",
-      "size": 36499353
+      "file": "zhuyintype-lm-68d981d14b78.tar.gz",
+      "release": "data-8",
+      "sha256": "68d981d14b78c87e8c0bad1ea5748025a04f89ab88745e29058516afa353e233",
+      "size": 63940887
     },
     "lm_chat": {
       "file": "zhuyintype-lm_chat-a93f6891b879.tar.gz",
@@ -31,16 +31,16 @@
       "size": 5210068
     },
     "reranker": {
-      "file": "zhuyintype-reranker-c83842642e1f.tar.gz",
-      "release": "data-5",
-      "sha256": "c83842642e1f1b412d32e1bd55cc272a58739718592870ea9266b791d87d3148",
-      "size": 27062175
+      "file": "zhuyintype-reranker-2f2796febc6a.tar.gz",
+      "release": "data-8",
+      "sha256": "2f2796febc6a9f0d999d15a674f87465c4cd7836db0a0b8bf1da7cfbb7645b35",
+      "size": 27063472
     },
     "v3": {
-      "file": "zhuyintype-v3-533962548bc5.tar.gz",
-      "release": "data-5",
-      "sha256": "533962548bc523d475d158dd3a01a58fcc65322fc0c824647612790b682e5a84",
-      "size": 51221902
+      "file": "zhuyintype-v3-82ba074b7781.tar.gz",
+      "release": "data-8",
+      "sha256": "82ba074b77812cf9a2c8a99f9e7a6f0f024491d325fdfe26a0f3109b65f39556",
+      "size": 72359844
     }
   },
   "repository": "henry753951/ZhuyinType"

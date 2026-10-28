@@ -48,7 +48,8 @@ COMPONENTS: dict[str, list[str]] = {
         "channel/channel.json",
         "channel/NOTICE.md",
     ],
-    "lm": ["lm/unigram.tsv", "lm/bigram.tsv", "lm/backoff.tsv", "lm/NOTICE.md"],
+    # NOTICE.md asks redistributors to keep the article list with the model.
+    "lm": ["lm/unigram.tsv", "lm/bigram.tsv", "lm/backoff.tsv", "lm/NOTICE.md", "lm/articles.tsv.gz"],
     "lm_chat": [
         "lm_chat/unigram.tsv",
         "lm_chat/bigram.tsv",
@@ -63,6 +64,7 @@ COMPONENTS: dict[str, list[str]] = {
         "reranker/RerankerTree.mlmodelc",
         "reranker/vocab.json",
         "reranker/config.json",
+        "reranker/NOTICE.md",
     ],
     "v3": [
         "v3/ContextEncoder.mlmodelc",
@@ -74,6 +76,7 @@ COMPONENTS: dict[str, list[str]] = {
         "v3/attribution.jsonl",
         "v3/source-manifest.json",
         "v3/Licenses",
+        "v3/articles.tsv.gz",
     ],
     "eval-sets": [
         "corpus/dev_colloquial.txt",
