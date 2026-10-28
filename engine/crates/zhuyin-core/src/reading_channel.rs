@@ -589,7 +589,7 @@ pub(crate) struct IndexedWord {
     pub single: bool,
 }
 
-/// One variant of one lexicon row, as [`ChannelIndex::table`] lists them.
+/// One variant of one lexicon row, as [`Engine::channel_variants`](crate::engine::Engine::channel_variants) lists them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct VariantRow {
     /// The lexicon reading.
