@@ -122,7 +122,7 @@ impl NeuralReranker {
         let mut model = self.model.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if model.has_tree() && candidates.len() <= 32 {
             let tree = RerankerTree::new(&prefix, &encoded);
-            if let Ok(logprob) = model.tree_logprob(&tree.packed)
+            if let Ok(logprob) = model.tree_logprob(tree.packed())
                 && let Some(result) = tree.scores(&logprob, self.unknown_penalty)
             {
                 return Some(result);

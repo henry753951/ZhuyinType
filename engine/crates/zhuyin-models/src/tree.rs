@@ -9,9 +9,9 @@ use crate::PackedTree;
 #[derive(Clone, Debug, Default)]
 pub struct RerankerTree {
     /// What the tree model reads.
-    pub packed: PackedTree,
+    packed: PackedTree,
     /// Per candidate, the node index (into `packed.targets`) of each of its tokens.
-    pub paths: Vec<Vec<usize>>,
+    paths: Vec<Vec<usize>>,
 }
 
 impl RerankerTree {
@@ -68,6 +68,12 @@ impl RerankerTree {
             targets,
         };
         RerankerTree { packed, paths }
+    }
+
+    /// The tensors passed to the model.
+    #[must_use]
+    pub fn packed(&self) -> &PackedTree {
+        &self.packed
     }
 
     /// Each candidate's log probability from the tree model's per-target values; `None` when they do not fit.
