@@ -273,10 +273,103 @@ struct AboutPane: View {
                 SettingRow(title: "原始碼") {
                     Link("查看此版本", destination: sourceURL)
                 }
+                SettingRow(title: "授權與資料來源") {
+                    Button("查看") { SettingsWindowController.shared.select(.sources) }
+                }
                 SettingRow(title: "詞庫授權", value: "CC BY-SA 4.0")
                 SettingRow(title: "詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
             }
             FooterText("Copyright © 2026 Henry753951 與 ZhuyinType 貢獻者。軟體依現況提供，不提供擔保；可依 AGPL 3.0 條款修改與再散布。")
+        }
+    }
+}
+
+
+private struct SourceList: Decodable {
+    struct Group: Decodable, Identifiable { let id: String; let title: String }
+    struct Entry: Decodable, Identifiable {
+        let id: String, group: String, name: String, use: String, distribution: String, license: String
+        let copyright: String?, url: URL?, version: String?, changes: String?
+        let licenseFiles: [String]
+        let notices: [String]?
+    }
+    let version: Int
+    let groups: [Group]
+    let entries: [Entry]
+}
+
+struct SourcesPane: View {
+    private let resources = Bundle.main.resourceURL
+    private let sources = SourcesPane.load()
+
+    // Read once per pane: the list is static data in the bundle.
+    private static func load() -> SourceList? {
+        let resources = Bundle.main.resourceURL
+        guard let url = resources?.appendingPathComponent("Licenses/sources.json"),
+              let data = try? Data(contentsOf: url),
+              let list = try? JSONDecoder().decode(SourceList.self, from: data), list.version == 1,
+              Set(list.groups.map(\.id)).count == list.groups.count,
+              Set(list.entries.map(\.id)).count == list.entries.count,
+              list.entries.allSatisfy({ entry in list.groups.contains { $0.id == entry.group } &&
+                  ["bundled", "training", "evaluation"].contains(entry.distribution) }) else { return nil }
+        return list
+    }
+
+    var body: some View {
+        SettingsForm {
+            if let sources {
+                ForEach(sources.groups) { group in
+                    SettingsSection(group.title) {
+                        ForEach(sources.entries.filter { $0.group == group.id }) { entry in
+                            DisclosureGroup {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if let copyright = entry.copyright { Text(copyright) }
+                                    if let version = entry.version { Text("版本：\(version)") }
+                                    if let changes = entry.changes { Text("修改：\(changes)") }
+                                    if let url = entry.url { Link("來源", destination: url) }
+                                    ForEach(entry.licenseFiles, id: \.self) { file in
+                                        fileButton(file, prefix: "Licenses/")
+                                    }
+                                    ForEach(entry.notices ?? [], id: \.self) { file in
+                                        fileButton(file, prefix: "")
+                                    }
+                                }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.name)
+                                    Text("\(entry.use)・\(entry.license)・\(distribution(entry.distribution))")
+                                        .foregroundStyle(.secondary).font(.callout)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                SettingsSection {
+                    SettingRow(title: "無法讀取授權與資料來源") {
+                        Button("開啟授權資料夾") {
+                            if let resources { NSWorkspace.shared.open(resources.appendingPathComponent("Licenses")) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func distribution(_ value: String) -> String {
+        switch value {
+        case "bundled": return "隨 App 提供"
+        case "training": return "用於模型訓練"
+        default: return "僅用於評測"
+        }
+    }
+
+    private func fileButton(_ file: String, prefix: String) -> some View {
+        Button(file) {
+            guard let url = resources?.appendingPathComponent(prefix + file) else { return }
+            // Archives would be unpacked by Archive Utility; show them in Finder instead.
+            if url.pathExtension == "gz" { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            else { NSWorkspace.shared.open(url) }
         }
     }
 }

@@ -1,0 +1,380 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "id": "app",
+      "title": "ZhuyinType"
+    },
+    {
+      "id": "libraries",
+      "title": "程式庫"
+    },
+    {
+      "id": "data",
+      "title": "詞庫與資料集"
+    },
+    {
+      "id": "models",
+      "title": "模型與訓練來源"
+    },
+    {
+      "id": "evaluation",
+      "title": "評測"
+    }
+  ],
+  "entries": [
+    {
+      "id": "zhuyintype",
+      "group": "app",
+      "name": "ZhuyinType",
+      "use": "輸入法程式",
+      "distribution": "bundled",
+      "license": "AGPL-3.0-only",
+      "licenseFiles": [
+        "AGPL-3.0.txt",
+        "NOTICE.txt"
+      ],
+      "copyright": "Copyright (c) 2026 Henry753951 and ZhuyinType contributors",
+      "url": "https://github.com/henry753951/ZhuyinType"
+    },
+    {
+      "id": "rust-crates",
+      "group": "libraries",
+      "name": "Rust 套件",
+      "use": "輸入法引擎使用的 Rust 相依套件",
+      "distribution": "bundled",
+      "license": "各套件授權見授權清單",
+      "licenseFiles": [
+        "Rust-crates.txt"
+      ]
+    },
+    {
+      "id": "sparkle",
+      "group": "libraries",
+      "name": "Sparkle",
+      "use": "提供軟體更新",
+      "distribution": "bundled",
+      "license": "MIT",
+      "licenseFiles": [
+        "Sparkle-LICENSE.txt"
+      ],
+      "version": "2.10.0",
+      "url": "https://github.com/sparkle-project/Sparkle"
+    },
+    {
+      "id": "cc-cedict",
+      "group": "data",
+      "name": "CC-CEDICT",
+      "use": "詞庫與讀音通道的詞彙及讀音",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://www.mdbg.net/chinese/dictionary?page=cc-cedict",
+      "changes": "轉換讀音、篩選詞條並計算詞頻。"
+    },
+    {
+      "id": "unihan",
+      "group": "data",
+      "name": "Unicode Unihan",
+      "use": "詞庫與讀音通道的字元、讀音及次數",
+      "distribution": "bundled",
+      "license": "Unicode License v3",
+      "licenseFiles": [
+        "Unicode-3.0.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://www.unicode.org/charts/unihan.html",
+      "version": "讀音通道使用 18.0.0"
+    },
+    {
+      "id": "wordfreq",
+      "group": "data",
+      "name": "wordfreq（含 SUBTLEX-CH）",
+      "use": "提供詞庫與讀音通道使用的詞頻",
+      "distribution": "bundled",
+      "license": "程式 Apache-2.0，資料 CC BY-SA 4.0",
+      "licenseFiles": [
+        "Apache-2.0.txt",
+        "CC-BY-SA-4.0.txt",
+        "wordfreq-NOTICE.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://github.com/rspeer/wordfreq",
+      "changes": "詞頻用於計算詞庫機率；SUBTLEX 作者及引用見聲明。"
+    },
+    {
+      "id": "wiktionary",
+      "group": "data",
+      "name": "英文 Wiktionary 與 Wiktextract",
+      "use": "提供詞庫及讀音通道的讀音與字形資料",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0；Wiktionary 亦採 GFDL",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://kaikki.org/dictionary/Chinese/",
+      "version": "2026-10-25 擷取",
+      "copyright": "Wiktionary 貢獻者；Wiktextract 作者 Tatu Ylonen",
+      "changes": "擷取讀音與字形等事實，不使用釋義。"
+    },
+    {
+      "id": "cns11643",
+      "group": "data",
+      "name": "CNS11643 中文標準交換碼全字庫",
+      "use": "提供詞庫與讀音通道的台灣字音",
+      "distribution": "bundled",
+      "license": "政府資料開放授權條款第 1 版",
+      "licenseFiles": [
+        "OGDL-1.0.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://data.gov.tw/dataset/5961",
+      "copyright": "本資料由國家發展委員會提供，依政府資料開放授權條款進行公眾釋出。",
+      "version": "2026-08-05"
+    },
+    {
+      "id": "mcbopomofo",
+      "group": "data",
+      "name": "小麥注音",
+      "use": "提供既有詞條的其他讀音",
+      "distribution": "bundled",
+      "license": "MIT；片語來源 libtabe 採 BSD",
+      "licenseFiles": [
+        "McBopomofo-MIT.txt",
+        "LEXICON.txt"
+      ],
+      "url": "https://github.com/openvanilla/McBopomofo",
+      "version": "3.1.1",
+      "changes": "只取既有詞條的讀音。"
+    },
+    {
+      "id": "libtabe",
+      "group": "data",
+      "name": "libtabe tsi.src",
+      "use": "小麥注音片語資料的來源",
+      "distribution": "bundled",
+      "license": "BSD 3-Clause（TaBE Project、中研院資訊所 CSCL 等）",
+      "licenseFiles": [
+        "libtabe-COPYING.txt",
+        "LEXICON.txt"
+      ],
+      "changes": "小麥注音提供既有詞條的讀音。",
+      "url": "https://github.com/kcwu/libtabe",
+      "version": "ea382a8（授權全文的取得版本）"
+    },
+    {
+      "id": "ids",
+      "group": "data",
+      "name": "BabelStone IDS",
+      "use": "提供讀音通道判斷聲符的字形部件",
+      "distribution": "bundled",
+      "license": "維護者聲明字形描述序列為事實並放棄檔案格式的權利",
+      "licenseFiles": [
+        "LEXICON.txt"
+      ],
+      "url": "https://www.babelstone.co.uk/CJK/IDS.TXT",
+      "version": "2025-06-27",
+      "copyright": "Andrew West；資料來源包括 Kawabata Taichi、John Knightley 與 IRG",
+      "changes": "擷取字的第一層部件。"
+    },
+    {
+      "id": "channel",
+      "group": "data",
+      "name": "讀音通道字音表",
+      "use": "提供字與詞的不同讀音及估計比例",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "LEXICON.txt"
+      ],
+      "changes": "由 CC-CEDICT、Unihan、Wiktionary、全字庫、IDS 與 wordfreq 資料推得。"
+    },
+    {
+      "id": "lm",
+      "group": "models",
+      "name": "百科語言模型",
+      "use": "以百科語料估計詞語機率",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt"
+      ],
+      "version": "data-1",
+      "notices": [
+        "lm/NOTICE.md",
+        "lm/articles.tsv.gz"
+      ]
+    },
+    {
+      "id": "lm-chat",
+      "group": "models",
+      "name": "聊天語言模型",
+      "use": "以口語資料估計詞語機率",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "CC-BY-4.0.txt",
+        "OGDL-1.0.txt",
+        "CC0-1.0.txt"
+      ],
+      "version": "data-2",
+      "notices": [
+        "lm_chat/NOTICE.md",
+        "lm_chat/attribution.jsonl",
+        "lm_chat/source-manifest.json"
+      ],
+      "changes": "出貨的是只含真實文字的版本：立法院公報、維基百科討論頁與 Common Voice 的句子。NOTICE 裡的 Qwen 語料說明指的是沒有出貨的另一個版本。"
+    },
+    {
+      "id": "v3",
+      "group": "models",
+      "name": "字模型",
+      "use": "依前文與讀音推估候選字",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "CC-BY-4.0.txt",
+        "OGDL-1.0.txt",
+        "CC0-1.0.txt"
+      ],
+      "version": "data-5",
+      "notices": [
+        "v3/NOTICE.md",
+        "v3/attribution.jsonl",
+        "v3/source-manifest.json",
+        "v3/articles.tsv.gz"
+      ]
+    },
+    {
+      "id": "reranker",
+      "group": "models",
+      "name": "整句重排模型",
+      "use": "依前文為候選句評分",
+      "distribution": "bundled",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [
+        "CC-BY-SA-4.0.txt",
+        "CC0-1.0.txt",
+        "Reranker-NOTICE.md"
+      ],
+      "version": "data-5",
+      "notices": [
+        "lm/NOTICE.md",
+        "lm/articles.tsv.gz",
+        "v3/Licenses/Qwen3-8B-LICENSE"
+      ]
+    },
+    {
+      "id": "wikipedia",
+      "group": "models",
+      "name": "中文維基百科",
+      "use": "用於百科語言模型、字模型與整句重排訓練",
+      "distribution": "training",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [],
+      "url": "https://dumps.wikimedia.org/zhwiki/20261001/",
+      "copyright": "中文維基百科貢獻者",
+      "changes": "擷取、轉換及篩選文章文字。"
+    },
+    {
+      "id": "wiki-talk",
+      "group": "models",
+      "name": "中文維基百科討論頁",
+      "use": "用於聊天語言模型與字模型訓練",
+      "distribution": "training",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [],
+      "url": "https://zh.wikipedia.org/",
+      "copyright": "中文維基百科貢獻者",
+      "changes": "擷取討論文字並排除簽名與標記。"
+    },
+    {
+      "id": "gazette",
+      "group": "models",
+      "name": "立法院公報與 LYAPI",
+      "use": "用於聊天語言模型與字模型訓練",
+      "distribution": "training",
+      "license": "政府資料開放授權條款第 1 版；LYAPI CC BY 4.0",
+      "licenseFiles": [],
+      "url": "https://v2.ly.govapi.tw/",
+      "copyright": "本資料由立法院提供，依政府資料開放授權條款進行公眾釋出；OpenFun 提供 LYAPI。",
+      "changes": "擷取發言文字並篩選。"
+    },
+    {
+      "id": "common-voice",
+      "group": "models",
+      "name": "Common Voice",
+      "use": "台灣華語句子用於模型訓練",
+      "distribution": "training",
+      "license": "CC0-1.0",
+      "licenseFiles": [],
+      "url": "https://commonvoice.mozilla.org/",
+      "copyright": "Common Voice 句子收集器貢獻者",
+      "version": "20fd76cd7d3b1e937fe99359b2ef3649b9c466ac"
+    },
+    {
+      "id": "qwen",
+      "group": "models",
+      "name": "Qwen3-8B",
+      "use": "產生整句重排與字模型的訓練句子",
+      "distribution": "training",
+      "license": "模型權重 Apache-2.0",
+      "licenseFiles": [],
+      "url": "https://huggingface.co/Qwen/Qwen3-8B",
+      "version": "b968826d9c46dd6066d109eabc6255188de91218",
+      "changes": "產生台灣口語句子並過濾、去重。"
+    },
+    {
+      "id": "business-registry",
+      "group": "models",
+      "name": "全國營業（稅籍）登記資料集",
+      "use": "自動找詞的語料來源",
+      "distribution": "training",
+      "license": "政府資料開放授權條款第 1 版",
+      "licenseFiles": [],
+      "url": "https://data.gov.tw/dataset/9400",
+      "copyright": "本資料由財政部財政資訊中心提供，依政府資料開放授權條款進行公眾釋出。",
+      "version": "2026-10-26",
+      "changes": "擷取常見的詞語片段，不保存個別登記。"
+    },
+    {
+      "id": "taiwan-tongues",
+      "group": "evaluation",
+      "name": "Taiwan Tongues ASR CE",
+      "use": "提供台灣華語轉寫評測資料",
+      "distribution": "evaluation",
+      "license": "TRAIL-D",
+      "licenseFiles": [],
+      "url": "https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw"
+    },
+    {
+      "id": "shanjie",
+      "group": "evaluation",
+      "name": "善解",
+      "use": "提供評測資料並作為比較對象",
+      "distribution": "evaluation",
+      "license": "程式 Apache-2.0；評測資料依各檔授權",
+      "licenseFiles": [],
+      "url": "https://github.com/Nanako0129/shanjie",
+      "version": "bd3b6095e170012e5675b15b9443786a04103790",
+      "changes": "評測資料保留來源，並排除訓練資料重疊。"
+    },
+    {
+      "id": "0c",
+      "group": "evaluation",
+      "name": "靈犀注音",
+      "use": "作為輸入法比較對象",
+      "distribution": "evaluation",
+      "license": "程式 AGPL-3.0-only；模型及資料依各自授權",
+      "licenseFiles": [],
+      "url": "https://github.com/0c-biggo/0c-ime"
+    }
+  ]
+}

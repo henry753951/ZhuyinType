@@ -173,6 +173,7 @@ struct SettingsPaneView: View {
         case .keys: KeysPane(preferences: preferences, model: model)
         case .advanced: AdvancedPane(model: model, preferences: preferences)
         case .about: AboutPane()
+        case .sources: SourcesPane()
         }
     }
 

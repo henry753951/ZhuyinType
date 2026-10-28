@@ -37,6 +37,8 @@ cp -R -X platforms/macos/Resources/*.lproj "$contents/Resources/"
 cp -R -X platforms/macos/Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"
 cp -X NOTICE "$contents/Resources/Licenses/NOTICE.txt"
+cp -X resources/sources.json "$contents/Resources/Licenses/sources.json"
+swift platforms/macos/scripts/rust-licenses.swift "$contents/Resources/Licenses/Rust-crates.txt"
 cp -X resources/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
 if [[ -f data/build/reranker/vocab.json && ( -d data/build/reranker/RerankerTree.mlmodelc || -d data/build/reranker/Reranker.mlmodelc ) ]]; then
     mkdir -p "$contents/Resources/reranker"
@@ -64,13 +66,14 @@ else
         cp -X data/build/$model/{unigram,bigram,backoff}.tsv "$contents/Resources/$model/"
     done
 fi
-[[ -d "$contents/Resources/lm" ]] && cp -X data/build/lm/NOTICE.md "$contents/Resources/lm/"
+[[ -d "$contents/Resources/lm" ]] && cp -X data/build/lm/{NOTICE.md,articles.tsv.gz} "$contents/Resources/lm/"
 [[ -d "$contents/Resources/lm_chat" ]] && cp -X data/build/lm_chat/{NOTICE.md,attribution.jsonl,source-manifest.json} "$contents/Resources/lm_chat/"
 if [[ -d data/build/v3/ContextEncoder.mlmodelc && -d data/build/v3/SyllableEncoder.mlmodelc ]]; then
     mkdir -p "$contents/Resources/v3"
     cp -R -X data/build/v3/ContextEncoder.mlmodelc data/build/v3/SyllableEncoder.mlmodelc "$contents/Resources/v3/"
     cp -X data/build/v3/{chars,syllables,config}.json "$contents/Resources/v3/"
     # Attribution for the training text (the article list itself is in the checkpoints asset).
+    cp -X data/build/v3/articles.tsv.gz "$contents/Resources/v3/"
     for notice in NOTICE.md attribution.jsonl source-manifest.json Licenses; do
         [[ -e data/build/v3/$notice ]] && cp -R -X data/build/v3/$notice "$contents/Resources/v3/"
     done

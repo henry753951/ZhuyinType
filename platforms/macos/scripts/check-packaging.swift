@@ -76,6 +76,42 @@ for name in ["Licenses/AGPL-3.0.txt", "Licenses/NOTICE.txt", "Licenses/LEXICON.t
     let data = try Data(contentsOf: resources.appendingPathComponent(name))
     precondition(!data.isEmpty, name)
 }
+struct Sources: Decodable {
+    struct Group: Decodable { let id: String }
+    struct Entry: Decodable {
+        let id: String, group: String, distribution: String
+        let licenseFiles: [String]
+        let notices: [String]?
+    }
+    let version: Int
+    let groups: [Group]
+    let entries: [Entry]
+}
+let sources = try JSONDecoder().decode(Sources.self, from: Data(contentsOf: resources.appendingPathComponent("Licenses/sources.json")))
+precondition(sources.version == 1, "sources version")
+let groupIDs = Set(sources.groups.map(\.id))
+precondition(groupIDs.count == sources.groups.count, "duplicate group id")
+precondition(Set(sources.entries.map(\.id)).count == sources.entries.count, "duplicate source id")
+func checkSourceFile(_ path: String, under directory: URL) throws {
+    let url = directory.appendingPathComponent(path).standardizedFileURL
+    precondition(!path.isEmpty && url.path.hasPrefix(directory.standardizedFileURL.path + "/"), "invalid source path: \(path)")
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    precondition(attributes[.type] as? FileAttributeType == .typeRegular && (attributes[.size] as? NSNumber)?.int64Value ?? 0 > 0, "empty source file: \(path)")
+}
+for entry in sources.entries {
+    precondition(groupIDs.contains(entry.group), "unknown group: \(entry.group)")
+    precondition(["bundled", "training", "evaluation"].contains(entry.distribution), "unknown distribution: \(entry.distribution)")
+    if entry.distribution == "bundled" {
+        for file in entry.licenseFiles { try checkSourceFile(file, under: resources.appendingPathComponent("Licenses")) }
+    }
+    for file in entry.notices ?? [] { try checkSourceFile(file, under: resources) }
+}
+if FileManager.default.fileExists(atPath: resources.appendingPathComponent("lm").path) {
+    try checkSourceFile("lm/articles.tsv.gz", under: resources)
+}
+if FileManager.default.fileExists(atPath: resources.appendingPathComponent("v3").path) {
+    try checkSourceFile("v3/articles.tsv.gz", under: resources)
+}
 let bundledLicense = try Data(contentsOf: resources.appendingPathComponent("Licenses/AGPL-3.0.txt"))
 let programLicense = try Data(contentsOf: root.appendingPathComponent("LICENSE"))
 precondition(bundledLicense == programLicense, "bundled program license")
