@@ -14,42 +14,14 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <sparkle:shortVersionString>0.4.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.7/ZhuyinType-0.4.7.zip" length="156522641" type="application/octet-stream" sparkle:edSignature="SLdw4cIvQ0pBbRx+eRWPawO+Q85gJGLZaoWRDyIATmLaWFFX6l+Ewzibmr+Er3nW+gLGJZhDlJDGNfrJ0C8HCg=="/>
+            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.7/ZhuyinType-0.4.7.zip" length="156522641" type="application/octet-stream" sparkle:edSignature="NnYYYSvoSfmsSGRdRLnVCZvjlOrTxMAbGr90rz9vYNprL92iLrn0nC9+3Wj9EnpcMTSklFHMY2LH6fzO3oBCBQ=="/>
             <sparkle:deltas>
-                <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.7/ZhuyinType21-20.delta" sparkle:deltaFrom="20" length="48977478" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="941872" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="uxoDtT2jHbomkO4Ef2JmIbgGzPqM0NR7brtNOFnpwC5tTdn9+fa7Suxewk4EcnLg5FpZNXh3NgWQ7IAMpnH3DA=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>0.4.6</title>
-            <pubDate>Wed, 28 Oct 2026 15:09:11 +0000</pubDate>
-            <link>https://github.com/henry753951/ZhuyinType/releases/tag/v0.4.6</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/henry753951/ZhuyinType/blob/main/docs/releases/v0.4.6.md</sparkle:fullReleaseNotesLink>
-            <sparkle:version>20</sparkle:version>
-            <sparkle:shortVersionString>0.4.6</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.7/ZhuyinType-0.4.6.zip" length="107883031" type="application/octet-stream" sparkle:edSignature="XNWOOen0d16AEPxRZjstOFC/gM47EGVzExicEXVZbubRz4QRvmdOWe7qtcC1WyAZm/BdNCau6wwU0jAblTH7Aw=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.6/ZhuyinType20-19.delta" sparkle:deltaFrom="19" length="485254" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="941872" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Z3I/6ewzRuSX+1MDRsepmXQWHulUisMmB7ZMY09LBK76PxzkiawmTalwJtQ3oV+VNAquZY2MWeBJ9P9bcmhsDw=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>0.4.5</title>
-            <pubDate>Wed, 28 Oct 2026 14:59:40 +0000</pubDate>
-            <link>https://github.com/henry753951/ZhuyinType/releases/tag/v0.4.5</link>
-            <sparkle:fullReleaseNotesLink>https://github.com/henry753951/ZhuyinType/blob/main/docs/releases/v0.4.5.md</sparkle:fullReleaseNotesLink>
-            <sparkle:version>19</sparkle:version>
-            <sparkle:shortVersionString>0.4.5</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.6/ZhuyinType-0.4.5.zip" length="107852825" type="application/octet-stream" sparkle:edSignature="x2O48/GOr6QAb7P6mHGrOQav73ZHgDIrisviKnqzFoC8nElDHalHHS+ncUjwDgYsVkI6GerutQlI33BxFNLyDg=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.5/ZhuyinType19-18.delta" sparkle:deltaFrom="18" length="225594" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="941872" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="UKxcbMpk5pJ8byY+vwPREHpsj2PDTdrp95MsDlM+Vlj5YJS5AW/wT6//FexQBoQj4yHYoP6eYaHtZ955arPsBQ=="/>
+                <enclosure url="https://github.com/henry753951/ZhuyinType/releases/download/v0.4.7/ZhuyinType21-20.delta" sparkle:deltaFrom="20" length="48977474" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="941872" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="VWtAGTUnuMfrhK+2jHWe7yLRj3iF36kKxNMGRBt1BU+QY+Q60xw+CvA9qGzIGy93Xj/TidZwtR2GIRY64i7CAQ=="/>
             </sparkle:deltas>
         </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: yFwCfkbifNu9vtkDIjJAdl1w2pELTQd4J+JsKIP85PvD2DvVgZxi3i/ENTBJmrZjVAp6KKEz8IBZQkqFzuTJDw==
-length: 4618
+edSignature: lPyZz0n3tPmBz/+I3PLsbg4C+VthuApjnAvvgYcFw7G89leTCaMIJ5wCvVOd0eHYXfXsavXXchHLh2D/eDkTCA==
+length: 1830
 -->
