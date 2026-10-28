@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import coremltools as ct
 import numpy as np
@@ -24,7 +25,9 @@ from .models import FFN, HEADS, LAYERS, WIDTH, ContextExport, SyllableExport, lo
 NAMES = ["syllable_ids", "tone_ids", "cost_bucket", "boundary", "candidate_ids", "memory_k", "memory_v"]
 
 
-def export(checkpoint: Path, out: Path) -> None:
+def export(checkpoint: Path, out: Path, target: Any = ct.target.macOS14) -> None:
+    """Writes the two packages and config.json; `target` is the minimum macOS (compressed weights in blocks or
+    grouped palettes need macOS 15, ml/src/zhuyintype_ml/training/compress)."""
     torch.set_num_threads(4)
     out.mkdir(exist_ok=True, parents=True)
     context, syllable = load_models(checkpoint)
@@ -36,7 +39,7 @@ def export(checkpoint: Path, out: Path) -> None:
         traced,
         inputs=[ct.TensorType(name="context_ids", shape=(1, lc), dtype=np.int32)],
         outputs=[ct.TensorType(name="memory_k", dtype=np.float16), ct.TensorType(name="memory_v", dtype=np.float16)],
-        minimum_deployment_target=ct.target.macOS14,
+        minimum_deployment_target=target,
         compute_precision=ct.precision.FLOAT16,
         convert_to="mlprogram",
         skip_model_load=True,
@@ -60,7 +63,7 @@ def export(checkpoint: Path, out: Path) -> None:
         traced,
         inputs=inputs,
         outputs=[ct.TensorType(name="logprob", dtype=np.float32)],
-        minimum_deployment_target=ct.target.macOS14,
+        minimum_deployment_target=target,
         compute_precision=ct.precision.FLOAT16,
         convert_to="mlprogram",
         skip_model_load=True,
@@ -72,7 +75,7 @@ def export(checkpoint: Path, out: Path) -> None:
         out / "config.json",
         {
             "version": 3,
-            "minimum_macos": "14.0",
+            "minimum_macos": "15.0" if target == ct.target.macOS15 else "14.0",
             "format": "mlprogram",
             "precision": "float16",
             "layers": LAYERS,
