@@ -539,7 +539,7 @@ struct CandidatesPane: View {
     @State private var previewInView = true
     @State private var flash: UUID?
     @State private var flashAt: CGPoint?
-    @StateObject private var director = PreviewDirector()
+    @StateObject private var director = PreviewDirector(name: "candidates")
     @State private var shownSettings: PreviewSettings?
 
     var body: some View {
@@ -619,6 +619,7 @@ struct CandidatesPane: View {
                 guard let before = shownSettings, before != now else { return }
                 shownSettings = now
                 if let state = PreviewFlows.state(showing: before, now) { director.show(state) }
+                if before.perPage != now.perPage { director.fullPageUntil = Date().addingTimeInterval(PreviewDirector.hold) }
                 showFlash()
             }
         }

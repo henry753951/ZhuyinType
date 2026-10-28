@@ -25,9 +25,14 @@ final class InputSurface: NSView {
     static let cornerRadius: CGFloat = 14
     let content: NSView
     private let backdrop: NSView
+    private let radius: CGFloat
+    /// The window server's shadow for the floating panel, drawn by the surface itself when it is shown inside another
+    /// window (the settings preview, the wizard's practice field): a soft drop shadow and a tight contact edge.
+    private var shadows: [CALayer] = []
 
     init(content: NSView, cornerRadius: CGFloat = InputSurface.cornerRadius) {
         self.content = content
+        radius = cornerRadius
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
             glass.cornerRadius = cornerRadius
@@ -56,6 +61,66 @@ final class InputSurface: NSView {
     /// Follow the content's size after the owner has laid it out.
     func fitContent() {
         if frame.size != content.frame.size { setFrameSize(content.frame.size) }
+    }
+
+    /// Draws the shadow the floating panel gets from the window server (`InputPanel.hasShadow`), for a surface shown
+    /// inside another window.  The real panels never set it.
+    var castsWindowShadow = false {
+        didSet {
+            guard castsWindowShadow != oldValue else { return }
+            wantsLayer = true
+            layer?.masksToBounds = false
+            if castsWindowShadow {
+                // The values of a borderless, non-key window's shadow: wide and soft, and a hairline-tight edge.
+                shadows = [(radius: 10.0, y: -5.0), (radius: 1.0, y: -0.5)].map { spec in
+                    let shadow = CALayer()
+                    shadow.shadowColor = NSColor.black.cgColor
+                    shadow.shadowRadius = spec.radius
+                    shadow.shadowOffset = CGSize(width: 0, height: spec.y)
+                    shadow.zPosition = -1
+                    // Only outside the window, as the window server draws it: never through the glass.
+                    shadow.mask = CAShapeLayer()
+                    layer?.insertSublayer(shadow, at: 0)
+                    return shadow
+                }
+            } else {
+                shadows.forEach { $0.removeFromSuperlayer() }
+                shadows = []
+            }
+            updateShadows()
+        }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateShadows()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateShadows()
+    }
+
+    private func updateShadows() {
+        guard !shadows.isEmpty else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let path = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (index, shadow) in shadows.enumerated() {
+            shadow.frame = bounds
+            shadow.shadowPath = path
+            if let mask = shadow.mask as? CAShapeLayer {
+                let outside = CGMutablePath()
+                outside.addRect(bounds.insetBy(dx: -40, dy: -40))
+                outside.addPath(path)
+                mask.frame = bounds
+                mask.path = outside
+                mask.fillRule = .evenOdd
+            }
+            shadow.shadowOpacity = index == 0 ? (dark ? 0.5 : 0.22) : (dark ? 0.6 : 0.18)
+        }
+        CATransaction.commit()
     }
 }
 
@@ -393,6 +458,10 @@ final class CandidateContentView: InputMaterialView {
     var onSingleCharacter: (() -> Void)?
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
+    /// Whether pages move and the end of the list bounces: the 動畫 setting unless set (the wizard's practice field
+    /// follows its own draft settings).
+    var animatesOverride: Bool?
+    private var animates: Bool { animatesOverride ?? PanelMotion.animates }
     private(set) var candidateTextInset: CGFloat = 36
 
     override init(frame: NSRect) {
@@ -583,7 +652,7 @@ final class CandidateContentView: InputMaterialView {
         }
         if hasFooter, let list {
             let pageText = "\(list.page + 1) / \(list.pageCount)"
-            if direction != 0, pageText != pageLabel.stringValue, PanelMotion.animates, window?.isVisible == true {
+            if direction != 0, pageText != pageLabel.stringValue, animates, window?.isVisible == true {
                 let fade = CATransition()
                 fade.type = .fade
                 fade.duration = PageMotion.duration
@@ -694,7 +763,7 @@ final class CandidateContentView: InputMaterialView {
             pinMotion(pinned, incoming: incoming, outgoing: outgoing)
             return
         }
-        guard direction != 0, PanelMotion.animates, window?.isVisible == true else {
+        guard direction != 0, animates, window?.isVisible == true else {
             if direction != 0 || outgoing.isHidden == false { stopMotion() }
             return
         }
@@ -736,7 +805,7 @@ final class CandidateContentView: InputMaterialView {
     /// Paging stopped at the first or last page: the page nudges a few points that way and settles back (a short dip
     /// in opacity under Reduce Motion).
     func bounce(direction: Int) {
-        guard PanelMotion.animates, window?.isVisible == true, !rowClip.isHidden else { return }
+        guard animates, window?.isVisible == true, !rowClip.isHidden else { return }
         stopMotion()
         let page = pageViews[front]
         let generation = transitionGeneration

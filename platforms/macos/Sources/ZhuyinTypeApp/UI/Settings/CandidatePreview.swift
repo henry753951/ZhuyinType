@@ -105,9 +105,10 @@ struct PreviewScenes {
     private static let hint = "ㄒㄧㄠˇ ㄇㄧㄥˊ"
     private static let words = ["曉明", "小明", "小名", "明", "名", "鳴", "銘", "冥", "茗", "溟", "螟", "暝", "瞑", "酩"]
 
-    init(preferences: Preferences) {
+    /// `pageLimit`: show at most this many candidates a page (the compact preview), still with the real window.
+    init(preferences: Preferences, pageLimit: Int? = nil) {
         let keys = CurrentKeys(preferences)
-        let pageSize = preferences.pageSelectionKeys.count
+        let pageSize = min(preferences.pageSelectionKeys.count, pageLimit ?? .max)
         func candidates(tolerant: Bool) -> CandidateList {
             var items = Self.words.map { Candidate(text: $0) }
             if tolerant {
@@ -147,9 +148,8 @@ struct SceneLayout {
     private(set) var above: Bool
     var height: CGFloat = 0
     var lineTop: CGFloat = 0
-    /// The window at its natural size and the scale it is drawn at.
+    /// The window at its natural size: it is always drawn at 100 %, as on the screen.
     var panelSize: CGSize?
-    var scale: CGFloat = 1
     var panel: CGRect?
     var badge: CGRect?
     var keycapX: CGFloat = 0
@@ -164,8 +164,10 @@ struct SceneLayout {
         return Self.inset * 2 + Self.lineHeight + (content > 0 ? InputPanelPlacement.gap + content : 0)
     }
 
-    /// `maxHeight`: the tallest the scene may be; a taller window is drawn smaller, as a whole.
-    init(scene: PreviewScene, width: CGFloat, preferences: Preferences, maxHeight: CGFloat = .infinity) {
+    /// Whether the window is wider than the scene (it is never drawn smaller; the caller shows fewer candidates).
+    var overflows: Bool { (panel?.maxX ?? 0) > width - 4 }
+
+    init(scene: PreviewScene, width: CGFloat, preferences: Preferences) {
         self.scene = scene
         self.width = width
         above = preferences.candidatePlacement == .above
@@ -180,10 +182,8 @@ struct SceneLayout {
                                                 style: preferences.candidateStyle, notice: scene.notice,
                                                 zhuyinHint: scene.zhuyinHint)
             panelSize = measured.size
-            let room = maxHeight - Self.inset * 2 - Self.lineHeight - InputPanelPlacement.gap
-            scale = min(1, max(0.3, min((width - 12) / max(1, measured.size.width), room / max(1, measured.size.height))))
-            let size = CGSize(width: measured.size.width * scale, height: measured.size.height * scale)
-            let x = min(max(start - measured.textInset * scale, 6), max(6, width - size.width - 6))
+            let size = measured.size
+            let x = min(max(start - measured.textInset, 6), max(6, width - size.width - 6))
             panel = CGRect(origin: CGPoint(x: x, y: 0), size: size)
         }
         if scene.badge != nil {
@@ -238,22 +238,12 @@ struct PreviewBlock: View {
     var body: some View {
         let scene = layout.scene
         VStack(alignment: .leading, spacing: 6) {
-            // The title, and on the right how much a window too large for the block is shrunk (never over the scene).
             if showsTitle {
-            HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(scene.title)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Spacer(minLength: 0)
-                if layout.scale < 0.99 {
-                    Text("縮小為 \(Int((layout.scale * 100).rounded()))%")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(width: layout.width, height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
+                    .frame(width: layout.width, height: CandidatePreview.titleHeight - 6, alignment: .bottomLeading)
             }
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -264,18 +254,21 @@ struct PreviewBlock: View {
                     .offset(x: SceneLayout.inset, y: layout.lineTop)
                 PressedKeycap(keys: scene.keys, note: scene.note, animated: animated)
                     .offset(x: layout.keycapX, y: layout.lineTop - 1)
-                if let panel = layout.panel, let natural = layout.panelSize {
+                if let panel = layout.panel {
+                    // The real window at 100 %, with the floating panel's material and shadow.
                     CandidateWindowView(scene: scene, style: preferences.candidateStyle,
                                         keys: preferences.pageSelectionKeys, appearance: preferences.panelAppearance)
-                        .frame(width: natural.width, height: natural.height)
-                        .scaleEffect(layout.scale, anchor: .topLeading)
-                        .frame(width: panel.width, height: panel.height, alignment: .topLeading)
+                        .frame(width: panel.width, height: panel.height)
                         .offset(x: panel.minX, y: panel.minY)
+                        // As the real window appears: a short fade and a few points towards its place.
+                        .transition(.opacity.combined(with: .offset(y: layout.above ? 4 : -4)))
                 }
                 if let badge = layout.badge, let text = scene.badge {
                     ModeBadgeRepresentable(text: text, appearance: preferences.panelAppearance)
                         .frame(width: badge.width, height: badge.height)
                         .offset(x: badge.minX, y: badge.minY)
+                        .id(text)
+                        .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
                 if scene.badgeOff {
                     Text("不顯示提示")
@@ -302,7 +295,9 @@ private struct CandidateWindowView: NSViewRepresentable {
     func makeNSView(context: Context) -> InputSurface {
         let content = CandidateContentView(frame: .zero)
         content.hoverEnabled = false
-        return InputSurface(content: content)
+        let surface = InputSurface(content: content)
+        surface.castsWindowShadow = true
+        return surface
     }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
@@ -318,7 +313,11 @@ private struct ModeBadgeRepresentable: NSViewRepresentable {
     let text: String
     let appearance: PanelAppearance
 
-    func makeNSView(context: Context) -> InputSurface { InputSurface.modeBadge() }
+    func makeNSView(context: Context) -> InputSurface {
+        let badge = InputSurface.modeBadge()
+        badge.castsWindowShadow = true
+        return badge
+    }
 
     func updateNSView(_ surface: InputSurface, context: Context) {
         surface.appearance = appearance.appearance

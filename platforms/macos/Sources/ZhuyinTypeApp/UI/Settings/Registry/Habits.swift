@@ -138,8 +138,8 @@ enum Habits {
 struct SettingsPreset: Identifiable {
     let id: String
     let title: String
-    /// What it sets, one line each, for the choice.
-    let lines: [String]
+    /// What it sets, one line each, for the choice: the keys it is about (drawn as keycaps) and the words.
+    let lines: [(keys: [String], text: String)]
     /// The settings it sets; the others keep their values.
     let values: [String: SettingValue]
     /// Where the behaviour of the input method it follows is documented.
@@ -151,23 +151,26 @@ struct SettingsPreset: Identifiable {
         return now.changes(to: SettingsSnapshot(values: now.values.merging(values) { _, preset in preset }))
     }
 
-    /// Only what each input method's own documentation states is in its preset; the rest keeps the current value.
+    /// Only behaviour with a source is in a preset (docs/product/PRESETS.md); the rest keeps the current value.
     static let windows = SettingsPreset(
         id: "windows", title: "Windows 注音的習慣",
-        lines: ["⌃ 加符號鍵打中文標點", "單按 Shift 切換中英"],
-        values: ["punctuationKeys": .text(PunctuationKeys.windows.rawValue), "shiftSwitch": .bool(true),
-                 "shiftToggle": .text(ShiftToggle.both.rawValue)],
+        lines: [(["Shift"], "單按切換中英"), (["⌃", "，"], "打中文標點"), (["1–9"], "選字"), ([], "和目前的預設相同")],
+        values: ["shiftSwitch": .bool(true), "shiftToggle": .text(ShiftToggle.both.rawValue), "startInEnglish": .bool(false),
+                 "feature.controlPunctuation": .bool(true), "selectionKeys": .text(SelectionKeySet.digits.rawValue)],
         sources: ["https://support.microsoft.com/en-us/Windows/Hardware/Input-Devices/microsoft-traditional-chinese-ime"])
     static let mac = SettingsPreset(
         id: "mac", title: "macOS 注音的習慣",
-        lines: ["打完注音後按空白開啟候選字視窗", "Return 選取反白的字"],
-        values: ["spaceAction": .text(SpaceAction.openCandidates.rawValue)],
+        lines: [(["空白"], "開啟候選字視窗"), (["Caps Lock"], "切換中英"), (["Shift"], "不切換中英"), (["1–9"], "選字")],
+        values: ["spaceAction": .text(SpaceAction.openCandidates.rawValue), "shiftSwitch": .bool(false),
+                 "feature.capsLockEnglish": .bool(true), "feature.optionSymbols": .bool(true),
+                 "selectionKeys": .text(SelectionKeySet.digits.rawValue)],
         sources: ["https://support.apple.com/guide/chinese-input-method/cim12992/mac"])
     static let zhuyinType = SettingsPreset(
-        id: "default", title: "ZhuyinType 預設", lines: ["空白鍵送出並輸入空白", "⌃ 加符號鍵打中文標點", "單按 Shift 切換中英"],
+        id: "default", title: "ZhuyinType 預設",
+        lines: [(["空白"], "送出並輸入空白"), (["⌃", "，"], "打中文標點"), (["Shift"], "單按切換中英")],
         values: SettingsRegistry.defaults.values.filter { !$0.key.hasPrefix("keys.") && !$0.key.hasPrefix("feature.") }
             .merging(["shiftSwitch": .bool(true)]) { _, new in new })
-    static let custom = SettingsPreset(id: "custom", title: "自訂", lines: ["從目前的設定開始", "每一步自己選"], values: [:])
+    static let custom = SettingsPreset(id: "custom", title: "自訂", lines: [([], "從目前的設定開始"), ([], "每一步自己選")], values: [:])
 
     static let all = [windows, mac, zhuyinType, custom]
 }
@@ -182,12 +185,27 @@ struct PracticeOutcome {
     var events: [String] = []
     /// Candidates picked from a list, in order.
     var picks: [String] = []
+    // Filled in by the practice field (UI/Wizard/Practice) for the goals of PracticeGoal.
+    /// The sent text only, without the composition.
+    var sent: String = ""
+    /// Candidates picked in place of different text (a character changed through the list).
+    var corrected: [String] = []
+    /// How many candidates were picked from the corrections list.
+    var correctionPicks = 0
+    /// User phrases added while practising.
+    var phrases: [String] = []
 }
 
 struct PracticeTask {
     let prompt: String
     var hint: String?
     let isDone: (PracticeOutcome) -> Bool
+}
+
+/// What a lesson shows beside its choices: the real preview at a state, or one of the ⓘ demos.
+enum LessonDemo {
+    case preview(PreviewState)
+    case space, punctuation, typo, fuzzy, context, correctionLog
 }
 
 /// One step of the setup wizard: a feature (or a few), how to use it, the choices, and practice.
@@ -203,41 +221,55 @@ struct Lesson: Identifiable {
     let tasks: [PracticeTask]
     /// The version that added the lesson, for 「新功能導覽」.
     var since = "0.4.2"
+    /// The demo beside the choices: an ⓘ demo for the lessons that have one, otherwise the real preview.
+    var demo: LessonDemo? {
+        switch id {
+        case "typing": return .space
+        case "punctuation": return .punctuation
+        case "fuzzy": return .fuzzy
+        case "context": return .context
+        case "correctionLog": return .correctionLog
+        default: return preview.map(LessonDemo.preview)
+        }
+    }
 
     /// The lessons in order; 快速設定 takes the basic ones.
     static let all: [Lesson] = [
-        Lesson(id: "typing", title: "打字與空白鍵", detail: "打注音時空白是一聲；打完以後，空白依你的選擇送出或開啟候選字視窗。",
+        Lesson(id: "typing", title: "打字與空白鍵", detail: "打完字以後，空白鍵做什麼由你決定。",
                level: .basic, preview: .composing, groups: [Habits.space],
                tasks: [PracticeTask(prompt: "打出「今天天氣很好」", hint: "ㄐㄧㄣ ㄊㄧㄢ ㄊㄧㄢ ㄑㄧˋ ㄏㄣˇ ㄏㄠˇ") { $0.text.contains("今天天氣很好") }]),
-        Lesson(id: "punctuation", title: "標點", detail: "按住修飾鍵再按符號鍵打出標點。選一種按法，在下面試打。",
+        Lesson(id: "punctuation", title: "標點", detail: "按住修飾鍵，再按符號鍵打出標點。",
                level: .basic, groups: [Habits.punctuation],
                tasks: [PracticeTask(prompt: "打出「好，謝謝。」") { $0.text.contains("，") && $0.text.contains("。") }]),
-        Lesson(id: "modeSwitch", title: "中英切換", detail: "切換到英文打字，再切回中文；正在組的字會先送出。",
+        Lesson(id: "modeSwitch", title: "中英切換", detail: "切換時，正在組的字會先送出。",
                level: .basic, preview: .mode, groups: [Habits.modeSwitch],
                tasks: [PracticeTask(prompt: "切換到英文打「OK」，再切回中文打「好」") {
                    $0.text.contains("OK好") && $0.events.filter { $0 == "mode" }.count >= 2
                }]),
-        Lesson(id: "paging", title: "選字與翻頁", detail: "這些翻頁方式同時有效；不用的可以關掉。",
-               level: .basic, preview: .paging, groups: [Habits.layout, Habits.paging, Habits.selection],
+        Lesson(id: "selecting", title: "選字", detail: "候選字的排列，和用來選字的鍵。",
+               level: .basic, preview: .list, groups: [Habits.layout, Habits.selection],
+               tasks: [PracticeTask(prompt: "打 ㄇㄧㄥˊ，用選字鍵選「名」") { $0.picks.contains("名") }]),
+        Lesson(id: "paging", title: "翻頁", detail: "這些翻頁方式同時有效，不用的可以關掉。",
+               level: .basic, preview: .paging, groups: [Habits.paging],
                tasks: [PracticeTask(prompt: "打 ㄇㄧㄥˊ，翻到下一頁，選「暝」") { $0.picks.contains("暝") && $0.events.contains("page") }]),
-        Lesson(id: "editing", title: "改字", detail: "把游標移到要改的字旁邊，按 ↓ 列出其他的字。",
+        Lesson(id: "editing", title: "改字", detail: "按 ↓ 列出其他的字，選一個換掉。",
                level: .basic, preview: .list, groups: [Habits.anchor],
-               tasks: [PracticeTask(prompt: "把「我在家」改成「我再家」") { $0.text.contains("我再家") && $0.picks.contains("再") }]),
-        Lesson(id: "typo", title: "按錯鍵與修正清單", detail: "按到相鄰的鍵、多按或漏按時試著修正；修正的字也在修正清單中。",
+               tasks: [PracticeTask(prompt: "打「謝謝你」，再把「你」改成「妳」") { $0.text.contains("謝謝妳") && $0.picks.contains("妳") }]),
+        Lesson(id: "typo", title: "按錯鍵與修正清單", detail: "按到相鄰的鍵、多按或漏按時，試著修正。",
                level: .full, preview: .corrections, groups: [Habits.typo],
                tasks: [PracticeTask(prompt: "照提示按錯一個鍵，再用修正清單選到正確的字") { $0.events.contains("corrections") && !$0.picks.isEmpty }]),
-        Lesson(id: "fuzzy", title: "模糊音", detail: "容易混淆的兩個音互相通用；讀音完全符合的仍排在前面。",
+        Lesson(id: "fuzzy", title: "模糊音", detail: "容易混淆的兩個音互相通用。",
                level: .optional, groups: [Habits.fuzzy],
                tasks: [PracticeTask(prompt: "開啟「ㄙ 與 ㄕ」，用 ㄙㄨ ㄈㄨˊ 打出「舒服」") { $0.text.contains("舒服") }]),
-        Lesson(id: "context", title: "前文", detail: "參考游標前的文字選字；只在記憶體中，不會存下。",
+        Lesson(id: "context", title: "前文", detail: "參考游標前的文字選字，不會存下。",
                level: .full, groups: [Habits.context],
                tasks: [PracticeTask(prompt: "在「天氣」後面接著打出「很好」") { $0.text.contains("天氣很好") }]),
-        Lesson(id: "phrase", title: "加入自訂詞", detail: "選取 1 到 6 個字，再按 Return 加入自訂詞。",
+        Lesson(id: "phrase", title: "加入自訂詞", detail: "選取 1 到 6 個字，按 Return 加入。",
                level: .full, preview: .phrase, groups: [],
                tasks: [PracticeTask(prompt: "選取「王小明」，按 Return 加入") { $0.events.contains("phrase") }]),
-        Lesson(id: "look", title: "候選字視窗的樣子", detail: "字級、間距與位置；預覽就是真正的候選字視窗。",
+        Lesson(id: "look", title: "候選字視窗的樣子", detail: "預覽就是真正的候選字視窗。",
                level: .full, preview: .list, groups: [Habits.density, Habits.placement, Habits.selection], tasks: []),
-        Lesson(id: "correctionLog", title: "改字記錄", detail: "記下改字的過程，用來改進選字；只存在這台 Mac，可以隨時關閉或清除。",
+        Lesson(id: "correctionLog", title: "改字記錄", detail: "記下改字的過程來改進選字，只存在這台 Mac。",
                level: .advanced, groups: [Habits.correctionLog], tasks: []),
     ]
 }

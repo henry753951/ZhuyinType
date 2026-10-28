@@ -68,6 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--data", type=Path, default=paths.data("reranker"), help="directory with charlm.pt")
     p.add_argument("--format", choices=["coreml", "onnx"], required=True)
     p.add_argument("--out", type=Path)
+    p.add_argument("--target", choices=["macOS14", "macOS15"], default="macOS14", help="Core ML minimum macOS")
     a = p.parse_args(argv)
     torch.set_num_threads(1)
     checkpoint = torch.load(a.data / "charlm.pt", map_location="cpu", weights_only=False)
@@ -130,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
             traced,
             inputs=[ct.TensorType(name=name, shape=shape, dtype=np.int32) for name, shape in zip(names, shapes)],
             outputs=[ct.TensorType(name="logprob", dtype=np.float32)],
-            minimum_deployment_target=ct.target.macOS14,
+            minimum_deployment_target=getattr(ct.target, a.target),
             compute_precision=ct.precision.FLOAT16,
             convert_to="mlprogram",
             pass_pipeline=pipeline,
