@@ -2,7 +2,7 @@
 
 `tools/zt` 是 ZhuyinType 所有開發工具的進入點：資料、建置、檢查、評測、訓練與 GPU 主機。
 
-GitHub Actions 的 **Rebuild releases** 可手動重新建置並發布既有版本。`version` 填版本標籤（例如 `v0.4.7`），或填 `all` 依序重建所有正式版本；也可執行 `gh workflow run rebuild-releases.yml -f version=all`。各版沿用自己的原始碼、資料與建置流程，成功後替換該版附件與發布說明，只有最新版更新自動更新清單。
+GitHub Actions 的 **Rebuild releases** 可手動重新建置並發布既有版本。`version` 填版本標籤（例如 `v0.4.7`），或填 `all` 依序重建所有正式版本；也可執行 `gh workflow run rebuild-releases.yml -f version=all`。各版沿用自己的原始碼、資料與建置流程，成功後替換該版附件與發布說明，只有最新版更新自動更新清單。更新清單依系統需求保留最新可用版本，歷史安裝檔保留在發布頁面。
 
 ## 用途
 

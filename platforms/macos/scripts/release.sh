@@ -38,7 +38,7 @@ key_args=(--account zhuyintype)
     --download-url-prefix "https://github.com/$repository/releases/download/$tag/" \
     --link "https://github.com/$repository/releases/tag/$tag" \
     --full-release-notes-url "https://github.com/$repository/blob/main/docs/releases/$tag.md" \
-    --maximum-deltas 3 -o "$work/appcast.xml" "$work"
+    --maximum-versions 1 --maximum-deltas 3 -o "$work/appcast.xml" "$work"
 cp "$work/appcast.xml" appcast.xml
 cp "$work/ZhuyinType-$version.zip" "$out/"
 find "$work" -name "*.delta" -exec cp {} "$out/" \;
