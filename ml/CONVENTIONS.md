@@ -1,6 +1,6 @@
 # ml 的程式與文件慣例
 
-這份文件規定 `ml/` 底下 Python 工具、訓練流程與文件的寫法。新程式照這裡寫，舊程式在修改時順便改成這樣。整個版本庫的目錄與依賴方向見 [../AGENTS.md](../AGENTS.md)。
+這份文件規定 `ml/` 底下 Python 工具、訓練流程與文件的寫法。新程式照這裡寫，舊程式在修改時順便改成這樣。所有語言共用的設計、審查與改造規則見 [../docs/CODE_STANDARDS.md](../docs/CODE_STANDARDS.md)，整個版本庫的目錄與依賴方向見 [../AGENTS.md](../AGENTS.md)。
 
 ## 結構
 
@@ -26,6 +26,7 @@ remote/                  GPU 主機：同步、執行、取回；ONNX 匯出與�
 - 同一件事只寫一次：模型設定用 `EngineConfig`（`--config app` 會呼叫 `zhuyin-cli --models`，和 App 用同一份程式載入），評測集用名稱（`core/sets.py`），路徑用 `core/paths.py`，按鍵與讀音用 `core/zhuyin.py`。
 - 在本機或 GPU 主機執行的是同一個指令；任何指令前加 `zt --remote` 就在主機上跑。程式裡不寫死主機、使用者目錄或 SSH。
 - 評測結果是 `Report` 物件，存成 JSON；其他工具讀 JSON，不解析文字輸出。
+- 續跑與快取以輸入的指紋（資料、設定、版本）判斷，不只看輸出檔是否存在；輸出路徑在執行前確認不會互相覆蓋。
 
 ## Python
 

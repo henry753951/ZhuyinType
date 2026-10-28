@@ -13,6 +13,8 @@
 | 研發 | [ml/EVALUATION.md](ml/EVALUATION.md) | 評測集、評測工具與 ZhuyinBench |
 | | [../ml/README.md](../ml/README.md)、[../ml/CONVENTIONS.md](../ml/CONVENTIONS.md) | 資料、訓練、評測的程式與慣例 |
 | 規劃 | [ROADMAP.md](ROADMAP.md) | 開發階段、版本、接下來的工作與待決事項 |
+| 程式 | [CODE_STANDARDS.md](CODE_STANDARDS.md) | 所有語言共用的設計、審查與改造規則 |
+| | [reviews/](reviews/) | 依標準做的程式審查，每份記錄當天的程式 |
 | 研究 | [research/](research/) | 研究紀錄、相關工作、研究計畫、閱讀筆記 |
 | 成績 | [benchmarks/](benchmarks/) | 每個版本的 ZhuyinBench 與 [和其他注音輸入法的比較](benchmarks/competition.md) |
 | 發布 | [releases/](releases/) | 每個版本的發布說明 |

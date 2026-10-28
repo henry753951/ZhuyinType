@@ -47,7 +47,7 @@ tools/zt remote wait --timeout 540          # 等背景工作結束（不要自�
 platforms/macos/scripts/release.sh            # 發布流程執行的內容（pkg、Sparkle zip、差分更新、appcast）
 ```
 
-`make cli`、`make checks`、`make app`、`make install` 也可以用，它們會呼叫 `tools/zt`。程式與文件的寫法見 [ml/CONVENTIONS.md](ml/CONVENTIONS.md)。
+`make cli`、`make checks`、`make app`、`make install` 也可以用，它們會呼叫 `tools/zt`。所有程式的設計、審查與改造依 [docs/CODE_STANDARDS.md](docs/CODE_STANDARDS.md)；`ml/` 的程式與文件寫法見 [ml/CONVENTIONS.md](ml/CONVENTIONS.md)。
 
 建置需要 Rust（rustup；`engine/rust-toolchain.toml` 固定版本）與完整的 Xcode（SwiftUI macro）；`build-app.sh` 先以 cargo 建置引擎，並自動把 `DEVELOPER_DIR` 切到 Xcode。
 
