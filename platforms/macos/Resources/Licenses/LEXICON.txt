@@ -44,7 +44,28 @@ Copyright (c) 2011-2026 Mengjuei Hsieh et al., MIT License (full text in
 McBopomofo-MIT.txt); its phrases derive from libtabe tsi.src (BSD).
 https://github.com/openvanilla/McBopomofo
 
-The generated lexicon is distributed under CC BY-SA 4.0. Copies of that
+Reading channel (channel.bin, 0.4.3 and later): which other readings a
+character may be typed with, and how likely each is, so that 有邊讀邊, a
+neutral tone typed with its full tone and Taiwan readings inside words still
+find the word. channel.bin is compiled from tables ZhuyinType derives
+(ml/src/zhuyintype_ml/training/lexicon/channel.py) from CC-CEDICT, English
+Wiktionary via Wiktextract, CNS11643 and wordfreq (all credited above) and:
+
+Unicode Unihan 18.0.0 (kHanyuPinyin, kXHC1983, kTGHZ2013, kMandarin readings;
+kHanyuPinlu counts): Copyright Unicode, Inc. and contributors.
+https://www.unicode.org/Public/18.0.0/ucd/Unihan.zip
+Unicode License v3 (Unicode-3.0.txt): https://www.unicode.org/license.txt
+
+BabelStone IDS (Ideographic Description Sequences), file dated 2025-06-27:
+maintained by Andrew West (魏安); based on IDS data by Kawabata Taichi, John
+Knightley and Andrew West and on IRG encoding submissions. Only the first-level
+components of each character are used, to find its phonetic component. The
+maintainer states that IDS sequences are facts not eligible for copyright,
+that anyone may use them for personal or commercial purposes without asking
+permission or giving attribution, and waives copyright claims to the file's
+format. https://www.babelstone.co.uk/CJK/IDS.TXT
+
+The generated lexicon and the reading channel are distributed under CC BY-SA 4.0. Copies of that
 license and Unicode License v3 accompany this notice. The application code
 is separately licensed under GNU AGPL version 3 (AGPL-3.0-only). These licenses do not grant trademark
 rights. No warranty is provided; see the complete license texts.
