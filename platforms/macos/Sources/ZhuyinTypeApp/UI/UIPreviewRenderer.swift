@@ -9,6 +9,8 @@ import ZhuyinEngine
 enum UIPreviewRenderer {
     /// Rows whose trailing block was not centred on the leading block, by page; the render fails when any.
     private static var misaligned: [String] = []
+    /// Wizard pages whose content is taller than the window gives it (nothing scrolls, so it would be cut off).
+    private static var wizardOverflow: [String] = []
 
     /// Returns false when a page has a misaligned row.
     @discardableResult
@@ -106,6 +108,17 @@ enum UIPreviewRenderer {
             return false
         }
         print("Focus: ZhuyinType never became active and no window became key")
+        if only == nil || only == "wizard" {
+            if wizardOverflow.isEmpty {
+                print("Wizard fit: every page fits the window at \(Int(WizardLayout.minSize.width))×\(Int(WizardLayout.minSize.height)), "
+                      + "\(Int(WizardLayout.defaultSize.width))×\(Int(WizardLayout.defaultSize.height)) and "
+                      + "\(Int(WizardLayout.maxSize.width))×\(Int(WizardLayout.maxSize.height)) without scrolling")
+            } else {
+                print("FAIL wizard fit: \(wizardOverflow.count) pages taller than the window:")
+                wizardOverflow.forEach { print("  \($0)") }
+                return false
+            }
+        }
         if misaligned.isEmpty {
             print("Row geometry: every trailing block centred on its leading block; every card balanced")
             return true
@@ -674,10 +687,10 @@ enum UIPreviewRenderer {
                        name: "preview-mode-\(suffix)", at: [0, 100, 200, 400, 800, 1200, 1600],
                        before: { modeDirector.show(.mode, last: false) })
             let model = WizardModel(original: Preferences.shared, mode: .quick)
-            try sample(WizardView(model: model), size: NSSize(width: 760, height: 600), name: "wizard-welcome-\(suffix)",
-                       at: [0, 50, 100, 200, 300, 400, 600])
+            try sample(WizardView(model: model), size: WizardLayout.defaultSize, name: "wizard-welcome-\(suffix)",
+                       at: [0, 100, 200, 300, 450, 600, 800, 1100, 1600, 3000, 4500])
             let next = WizardModel(original: Preferences.shared, mode: .quick)
-            try sample(WizardView(model: next), size: NSSize(width: 760, height: 600), name: "wizard-next-\(suffix)",
+            try sample(WizardView(model: next), size: WizardLayout.defaultSize, name: "wizard-next-\(suffix)",
                        at: [0, 50, 100, 200, 300, 400, 600], before: {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.8))
                 next.next()
@@ -701,14 +714,23 @@ enum UIPreviewRenderer {
                 model.completed = ["paging"]
                 return model
             }
-            let steps: [(String, WizardStep)] = [("welcome", .welcome), ("preset", .preset), ("punctuation", .lesson("punctuation")),
-                                                 ("paging", .lesson("paging")), ("finish", .finish), ("keys", .keys)]
-            for (width, height, label) in [(CGFloat(760), CGFloat(600), ""), (720, 560, "-min"), (1000, 760, "-large")] {
-                for (stepName, step) in steps {
+            let steps: [(String, WizardStep, ((WizardModel) -> Void)?)] = [
+                ("welcome", .welcome, nil), ("preset", .preset, nil), ("typing", .lesson("typing"), nil),
+                ("punctuation", .lesson("punctuation"), nil), ("selecting", .lesson("selecting"), nil),
+                ("selecting-horizontal", .lesson("selecting"), { $0.sandbox.candidateLayout = .horizontal }),
+                ("paging", .lesson("paging"), nil), ("look", .lesson("look"), nil), ("finish", .finish, nil), ("keys", .keys, nil),
+            ]
+            let sizes = [(WizardLayout.defaultSize, ""), (WizardLayout.minSize, "-min"), (WizardLayout.maxSize, "-large")]
+            for (size, label) in sizes {
+                for (stepName, step, adjust) in steps {
                     let wizard = model()
+                    wizard.mode = .full
                     wizard.jump(to: step)
-                    try capture(swiftUI: WizardView(model: wizard).frame(width: width, height: height), width: width,
+                    adjust?(wizard)
+                    WizardFit.reset()
+                    try capture(swiftUI: WizardView(model: wizard).frame(width: size.width, height: size.height), width: size.width,
                                 to: directory.appendingPathComponent("\(stepName)\(label)-\(name).png"), settle: 0.3)
+                    wizardOverflow += WizardFit.overflows.map { "\(stepName)\(label)-\(name) \($0)" }
                 }
             }
             // preset → punctuation, frame by frame.
@@ -716,7 +738,8 @@ enum UIPreviewRenderer {
                 let wizard = model()
                 wizard.jump(to: .lesson("punctuation"))
                 DemoPinning.wizardTransition = (.preset, progress)
-                try capture(swiftUI: WizardView(model: wizard).frame(width: 760, height: 600), width: 760,
+                try capture(swiftUI: WizardView(model: wizard).frame(width: WizardLayout.defaultSize.width, height: WizardLayout.defaultSize.height),
+                            width: WizardLayout.defaultSize.width,
                             to: directory.appendingPathComponent("transition-\(Int(progress * 100))-\(name).png"), settle: 0.2)
             }
             DemoPinning.wizardTransition = nil

@@ -11,8 +11,7 @@ final class PracticeFieldView: NSView {
     let textView: PracticeTextView
     let candidates = CandidateContentView(frame: .zero)
     private(set) lazy var surface = InputSurface(content: candidates)
-    /// Holds the window: a window wider than the field (a long horizontal list) is drawn smaller, as a whole, as the
-    /// settings preview does, instead of squeezing its rows.
+    /// Holds the window, always at 100 % as on the screen, with the floating panel's shadow.
     let panelHost = PanelHost()
     private let badge = InputSurface.modeBadge()
     /// The type size of the field's text.
@@ -36,6 +35,8 @@ final class PracticeFieldView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: 480, height: 200))
         textView.field = self
         addSubview(textView)
+        surface.castsWindowShadow = true
+        badge.castsWindowShadow = true
         panelHost.isHidden = true
         panelHost.addSubview(surface)
         addSubview(panelHost)
@@ -119,20 +120,17 @@ final class PracticeFieldView: NSView {
                                      maxWidth: 4000, notice: panel.notice, zhuyinHint: panel.zhuyinHint)
         surface.fitContent()
         surface.setFrameOrigin(.zero)
-        let scale = min(1, max(1, bounds.width) / max(1, size.width))
-        let shown = NSSize(width: floor(size.width * scale), height: floor(size.height * scale))
         let caret = compositionRect()
-        let frame = InputPanelPlacement.frame(size: shown, caret: caret, visible: bounds,
-                                             textInset: candidates.candidateTextInset * scale,
+        let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: bounds,
+                                             textInset: candidates.candidateTextInset,
                                              previousX: appearing ? nil : panelHost.frame.minX, above: opensAbove)
-        panelHost.setFrameSize(shown)
-        panelHost.setBoundsSize(size)
+        panelHost.setFrameSize(size)
         panelHost.isHidden = false
         present(panelHost, origin: frame.origin, caret: caret, appearing: appearing)
         textView.panelChanged(panel)
     }
 
-    /// The window as placed (for the self-tests): its frame in the field, and the scale it is drawn at.
+    /// The window as placed (for the self-tests): its frame in the field, and the scale it is drawn at (always 1).
     var panelFrame: NSRect { panelHost.frame }
     var panelShown: Bool { !panelHost.isHidden }
     var panelScale: CGFloat { panelHost.bounds.width > 0 ? panelHost.frame.width / panelHost.bounds.width : 1 }
