@@ -717,7 +717,7 @@ enum ControllerCoreSelfTest {
             let copy = directory.appendingPathComponent("copy.jsonl")
             try log.export(to: copy)
             try expect((try? Data(contentsOf: copy)) == (try? Data(contentsOf: log.url)), "export differs")
-            log.clear {}
+            log.clear { _ in }
             log.flush()
             try expect(!FileManager.default.fileExists(atPath: log.url.path), "clear left the file")
         }
@@ -730,6 +730,51 @@ enum ControllerCoreSelfTest {
             core.stats = UsageStatsObserver(store: store)
             return (core, client, store)
         }
+        test("custom phrase: retry after invalid edit replaces the original") {
+            let testEngine = try Engine(lexiconURL: lexiconURL, userDataDirectory: nil)
+            try testEngine.addUserPhrase(word: "王小明", reading: "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ")
+            let controller = SettingsWindowController.shared
+            let previousEngine = controller.engine
+            let previousPreview = SettingsWindowController.isPreview
+            SettingsWindowController.isPreview = true
+            controller.engine = testEngine
+            let window = controller.makeWindow()
+            defer {
+                controller.discardWindow()
+                controller.engine = previousEngine
+                SettingsWindowController.isPreview = previousPreview
+            }
+            let old = ListItem(id: "old", title: "王小明", detail: "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ")
+            controller.model.phrases.list.onEdit?(old)
+            func waitForSheet() throws -> NSWindow {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+                guard let sheet = window.attachedSheet else { throw Failure(description: "missing edit sheet") }
+                return sheet
+            }
+            func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+            let first = try waitForSheet()
+            guard let root = first.contentView,
+                  let word = descendants(root).compactMap({ $0 as? NSTextField }).first(where: { $0.placeholderString == "例如：王小明" }) else {
+                throw Failure(description: "missing word field")
+            }
+            word.stringValue = ""
+            window.endSheet(first, returnCode: .alertFirstButtonReturn)
+            let error = try waitForSheet()
+            window.endSheet(error, returnCode: .alertFirstButtonReturn)
+            let retry = try waitForSheet()
+            guard let retryRoot = retry.contentView,
+                  let retryWord = descendants(retryRoot).compactMap({ $0 as? NSTextField }).first(where: { $0.placeholderString == "例如：王小明" }),
+                  let retryReading = descendants(retryRoot).compactMap({ $0 as? NSComboBox }).first else {
+                throw Failure(description: "missing retry fields")
+            }
+            retryWord.stringValue = "王小美"
+            retryReading.stringValue = "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄟˇ"
+            window.endSheet(retry, returnCode: .alertFirstButtonReturn)
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+            let words = testEngine.userPhrases().map(\.word)
+            try expect(words.contains("王小美") && !words.contains("王小明"), "retry did not replace the original: \(words)")
+        }
+
         test("usage stats: keys, characters, compositions, picks and corrections") {
             let (core, client, store) = statsSession()
             press("su3cl3<enter>", into: core)
@@ -760,6 +805,60 @@ enum ControllerCoreSelfTest {
             try expect(!file.unicodeScalars.contains { $0.value > 0x2E80 }, "CJK text in stats.json")
             try expect(store.data.totals.literalZhuyin == 1 && store.data.totals.undoLiteral == 1, "` and its undo \(store.data.totals)")
         }
+        test("usage stats: corrupt histogram lengths are rebuilt on load") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            guard let encoded = UsageStatsStore.encode(UsageData(since: Date())),
+                  var json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+                  var rhythm = json["rhythm"] as? [String: Any],
+                  var intervals = rhythm["intervals"] as? [String: Any],
+                  var pauses = rhythm["pauses"] as? [String: Any],
+                  var latency = json["latency"] as? [String: Any] else { throw Failure(description: "missing histogram") }
+            intervals["counts"] = []
+            pauses["counts"] = [0, 0]
+            latency["counts"] = []
+            rhythm["intervals"] = intervals
+            rhythm["pauses"] = pauses
+            json["rhythm"] = rhythm
+            json["latency"] = latency
+            try JSONSerialization.data(withJSONObject: json).write(to: directory.appendingPathComponent(UsageStatsStore.fileName))
+            let store = UsageStatsStore(directory: directory)
+            store.addInterval(seconds: 0.1)
+            store.addPause(seconds: 2)
+            store.addLatency(milliseconds: 1)
+            try expect(store.rhythm.intervals.total == 1 && store.rhythm.pauses.total == 1 && store.data.latency.total == 1,
+                       "damaged histograms were not rebuilt")
+        }
+        test("usage stats: a failed write stays pending") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try Data().write(to: directory)
+            let store = UsageStatsStore(directory: directory)
+            var count = UsageCounters()
+            count.keys = 1
+            store.add(count)
+            store.flush()
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            try FileManager.default.removeItem(at: directory)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            store.flush()
+            let url = directory.appendingPathComponent(UsageStatsStore.fileName)
+            try expect(FileManager.default.fileExists(atPath: url.path), "failed write was not retried")
+        }
+        test("usage stats: flush includes changes after a scheduled write") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeStats-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = UsageStatsStore(directory: directory)
+            var count = UsageCounters()
+            count.keys = 1
+            store.add(count)
+            store.saveIfNeeded()
+            store.add(count)
+            store.flush()
+            let loaded = UsageStatsStore(directory: directory)
+            try expect(loaded.data.totals.keys == 2, "flush lost changes after the snapshot")
+        }
         test("usage stats: nothing under secure input") {
             let (core, _, store) = statsSession()
             core.secureInput = { true }
@@ -769,7 +868,7 @@ enum ControllerCoreSelfTest {
         test("usage stats: clear starts over; off counts nothing") {
             let (core, _, store) = statsSession()
             press("su3<enter>", into: core)
-            store.clear()
+            try store.clear()
             try expect(store.data.totals.isZero && store.data.days.isEmpty && store.data.latency.total == 0, "clear left data")
             core.stats = nil
             press("su3<enter>", into: core)

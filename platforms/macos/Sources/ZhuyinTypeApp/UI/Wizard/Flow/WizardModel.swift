@@ -43,7 +43,7 @@ final class WizardModel: ObservableObject {
         didSet { observeSandbox() }
     }
     private var sandboxObserver: AnyCancellable?
-    @Published var mode: Mode
+    @Published private(set) var mode: Mode
     @Published private(set) var index = 0
     /// 1 going forward, -1 back: which way the step transition moves.
     @Published private(set) var direction = 1

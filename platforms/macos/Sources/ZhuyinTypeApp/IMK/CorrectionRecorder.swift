@@ -866,12 +866,16 @@ final class CorrectionLog {
         }
     }
 
-    func clear(_ completion: @escaping () -> Void) {
+    func clear(_ completion: @escaping (Error?) -> Void) {
         queue.async { [url] in
-            try? FileManager.default.removeItem(at: url)
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: Self.didChange, object: nil)
-                completion()
+            do {
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: Self.didChange, object: nil)
+                    completion(nil)
+                }
+            } catch {
+                DispatchQueue.main.async { completion(error) }
             }
         }
     }

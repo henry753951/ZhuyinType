@@ -59,7 +59,7 @@ public struct CandidateList: Equatable, Sendable {
     public var items: [Candidate]
     /// Highlighted index into `items`.
     public var selection: Int
-    public var pageSize: Int
+    public private(set) var pageSize: Int
 
     /// Whether the list shows typing corrections (true) or only words for the keys as typed (false); nil when the
     /// list cannot have corrections (punctuation, correction off).

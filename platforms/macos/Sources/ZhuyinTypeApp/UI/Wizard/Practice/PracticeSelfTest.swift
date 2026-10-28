@@ -59,6 +59,17 @@ enum PracticeSelfTest {
             return String(decoding: Array(p.text.utf16)[p.clauses[index]], as: UTF16.self)
         }
 
+        test("practice: distinct tasks with the same prompt reset the field") {
+            let first = PracticeTask.action("練習", .contains("甲"))
+            let second = PracticeTask.action("練習", .contains("乙"))
+            let model = field(first)
+            type("su3", model)
+            model.update(settings: quiet, task: first, initialText: "")
+            try expect(!model.session.presentation.isEmpty, "same task cleared the composition")
+            model.update(settings: quiet, task: second, initialText: "")
+            try expect(model.session.presentation.isEmpty && model.session.task.id == second.id, "new task was not installed")
+        }
+
         test("practice settings: the field's settings are a copy in memory that follows each new snapshot") {
             let before = realSettings()
             let snapshot = SettingsRegistry.defaults.with {

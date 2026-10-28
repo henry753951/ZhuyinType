@@ -27,13 +27,18 @@ struct AnalyticsPane: View {
                 // Cancelled when the page leaves the screen: no timer while it is hidden.
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    if !Task.isCancelled { tick &+= 1 }
+                    if !Task.isCancelled {
+                        tick &+= 1
+                        countWords()
+                    }
                 }
             }
         .onAppear(perform: countWords)
         .onChange(of: model.engine != nil) { _, _ in countWords() }
         .alert("要清除使用統計嗎？", isPresented: $confirmingClear) {
-            Button("清除", role: .destructive) { store.clear() }
+            Button("清除", role: .destructive) {
+                do { try store.clear() } catch { NSApp.presentError(error) }
+            }
             Button("取消", role: .cancel) {}
         } message: {
             Text("所有計數與每天的紀錄都會刪除，無法復原。")

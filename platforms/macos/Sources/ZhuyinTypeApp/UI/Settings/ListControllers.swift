@@ -88,7 +88,7 @@ final class PhraseListController: NSObject, NSTextFieldDelegate {
             alert.addButton(withTitle: "取消")
             alert.beginSheetModal(for: window) { [weak self] response in
                 if response == .alertFirstButtonReturn {
-                    DispatchQueue.main.async { self?.presentAddSheet(word: word, reading: reading) }
+                    DispatchQueue.main.async { self?.presentAddSheet(word: word, reading: reading, replacing: self?.editing) }
                 }
             }
         }
