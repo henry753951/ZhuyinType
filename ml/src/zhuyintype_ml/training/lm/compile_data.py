@@ -248,12 +248,13 @@ def compile_channel(source: Path, target: Path) -> None:
     )
     sid = {r: i for i, r in enumerate(syllables)}
     blob = bytearray()
-    syllable_records = []
+    syllable_records: list[tuple[int, int]] = []
     for r in syllables:
         b = r.encode()
         syllable_records.append((len(blob), len(b)))
         blob.extend(b)
-    characters, rows = [], []
+    characters: list[tuple[int, int, int, int]] = []
+    rows: list[tuple[float, int, int]] = []
     for char in sorted(by_char, key=str.encode):
         characters.append((ord(char), len(rows), len(by_char[char]), int(char in familiar)))
         rows.extend((logp, sid[r], kind) for r, kind, logp in by_char[char])

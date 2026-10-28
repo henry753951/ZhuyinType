@@ -163,7 +163,8 @@
 ## 引擎的做法（`reading_channel.rs`）
 
 - **開關。** `zhuyin-cli --channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`；沒有給時讀音通道關閉，輸出和沒有讀音通道的引擎逐位元相同。App 目前不開；C 介面的 `ZtEngineConfig.reading_channel` 與 EngineBench 的 `--channel` 用來量 App 的路徑。
-- **類別。** `channel.tsv` 的八類，加上 `taiwan-word`（`taiwan.tsv`）、`neutral`（輕聲打本調）與 `sandhi`（三聲變調），共十一類。每類可以關掉（`--channel-classes`）、加成本（`--channel-offset CLASS=NATS`）、改狀態（`--channel-state CLASS=accepted|correction`）。預設 `series` 是修正，其他是接受的讀音；成本超過 `--channel-max-cost`（預設 8）的不用。
+- **類別。** `channel.tsv` 的八類，加上 `taiwan-word`（`taiwan.tsv`）、`neutral`（輕聲打本調）與 `sandhi`（三聲變調），共十一類。每類可以開關（`--channel-classes`）、加成本（`--channel-offset CLASS=NATS`）、改狀態（`--channel-state CLASS=accepted|correction`）；單字詞另外用 `--channel-single-classes` 決定用哪些類別。`series` 是修正，其他是接受的讀音；成本超過 `--channel-max-cost`（預設 8）的不用。
+- **預設**（研究紀錄 2026-10-28，依開發集與 Mac 的每鍵 p95 選）：多字詞的 `series`、`neutral`、`taiwan-word`；單字詞不用變體；三聲變調不開（`--channel-classes ...,sandhi` 開啟，`--channel-sandhi forward` 只把打的二聲讀成詞庫的三聲）；v3 用 (b)；每個音節 4 個選項；`reading_margin` 4；各類成本不加。其他類別在開發集與讀音獨立的集合上都沒有改對，單字讀音與三聲變調改壞了一些，而且每開一類每鍵都慢一點。
 - **一個字的變體。** 詞庫的一列（詞，讀音）裡，位置 i 的字 c 讀 s 時：
   - 多字詞且 `taiwan.tsv` 有（c，s）：台灣讀音，標準讀音成本 0，其他 −log strength；
   - 多字詞且 s 是輕聲：c 的其他非輕聲、不同音的讀音 r，−log neutral − log(P(r) / 這些讀音的機率和)；
@@ -179,5 +180,5 @@
 - **三聲變調。** 打的音節是二聲或三聲、下一個打的音節是三聲時，另一個聲調也是選項，所有詞都可以，但「一」「不」在這個位置的不算（它們的變調是詞庫的列）。成本 −log m。比對的快取鍵因此包含範圍後面那一個音節。
 - **三種狀態。** 接受的讀音不標註、不算編輯、不是修正；修正標出詞庫讀音、算一次編輯，`SentenceWord.reading_corrected` 為真，重排時要贏過照按鍵打的最好整句 `reading_margin`（預設 4，`--reading-margin`）。同時有按錯鍵修正的詞照按錯鍵的 `exact_margin`。從讀音通道選字不記成按錯鍵的習慣。
 - **輕聲容忍。** 詞庫輕聲打成同音他調的 0.4、詞庫有聲調打成輕聲的 1.2 改為引擎參數（`--neutral-costs`），預設不變。
-- **v3。** 各位置候選字截斷時，變體字依不含變體成本的分數排序。只因變體進來、分數在同位置其他字的最好分數 3 nats 以內（`--v3-variant-window`）的字，依 `--v3-variants`：`standard`（第 7 點的 (a)：再呼叫一次 v3，該位置改用詞庫讀音）、`best`（該位置的最高分）、`zero`（第 7 點的 (b)）、`typed`（照打的讀音，給重訓後的 v3：修正依成本分桶，界線和按錯鍵相同）。
+- **v3。** 只因變體進來、不扣變體成本時分數在同位置其他字的最好分數 3 nats 以內（`--v3-variant-window`）的字，截斷時不扣變體成本（第 8 點），v3 分數依 `--v3-variants`：`zero`（第 7 點的 (b)，預設）、`standard`（(a)：再呼叫一次 v3，該位置改用詞庫讀音）、`best`（該位置的最高分）、`typed`（照打的讀音，給重訓後的 v3：修正依成本分桶，界線和按錯鍵相同）。(a) 和 (b) 在所有評測集上結果相同，(a) 的第二次呼叫讓 Mac 每鍵 p95 多約 10%，所以預設 (b)。
 - **除錯。** `zhuyin-cli --channel-report` 在每一鍵後印出每個走讀音通道的候選（範圍、詞、詞庫讀音、類別@位置:成本、是否修正與標註），整句的 n-best 也標出；`--batch` 時在每行輸出後加上一欄已送出的詞的類別與成本。`--channel-table` 印出整張變體表後結束。

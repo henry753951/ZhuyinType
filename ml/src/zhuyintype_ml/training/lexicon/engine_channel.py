@@ -35,6 +35,7 @@ from .channel import MECHANISMS, Channel, load
 
 CLASSES = (*MECHANISMS, "taiwan-word", "neutral", "sandhi")
 TIE = 0.01
+LONGEST = 8  # longer words (idioms, names) have no variants
 TONES = "ˊˇˋ˙"
 
 Row = tuple[str, str, int, str, str, str, float]  # reading, word, position, typed, class, state, cost
@@ -153,7 +154,7 @@ def table(channel: Channel, lexicon: list[tuple[str, str, float]], settings: Set
             continue
         seen.add((reading, word))
         syllables = [s for s in reading.split(" ") if s]
-        if len(word) != len(syllables) or not all(is_han(c) for c in word):
+        if len(word) != len(syllables) or len(word) > LONGEST or not all(is_han(c) for c in word):
             continue
         single = len(word) == 1
         if single and best[word][0] != reading:
