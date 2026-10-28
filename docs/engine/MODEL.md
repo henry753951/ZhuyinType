@@ -51,7 +51,7 @@ CC-CEDICT 把整筆標成台灣讀音的（「微」/Taiwan pr. [wei2]/），承
 很多人照實際發音打，所以詞庫另外收變調後的讀音。詞裡的「一」在四聲與輕聲前收 ㄧˊ，在其他聲調前收 ㄧˋ（一定 ㄧˊ ㄉㄧㄥˋ、一直 ㄧˋ ㄓˊ）。「不」在四聲前收 ㄅㄨˊ（不要 ㄅㄨˊ ㄧㄠˋ）。單獨的「一」「不」打變調時扣 2.5 分。
 
 ### 2.5 讀音通道（引擎）
-系統性的讀音變體由引擎在比對詞庫時處理，不展開成詞庫的列（`engine/crates/zhuyin-core/src/reading_channel.rs`；格式、成本與三種狀態見 [reading-channel.md](../../resources/formats/reading-channel.md)）。`zhuyin-cli --channel on` 開啟；App 目前不開。
+系統性的讀音變體由引擎在比對詞庫時處理，不展開成詞庫的列（`engine/crates/zhuyin-core/src/reading_channel.rs`；格式、成本與三種狀態見 [reading-channel.md](../../resources/formats/reading-channel.md)）。App 預設開啟，`channel.bin` 隨 App 一起出貨；「選字 › 按錯鍵 › 接受常見的其他讀法」可以關閉，關閉時比對和沒有讀音通道時逐位元相同。`zhuyin-cli --models` 照 App 開啟（`--channel off` 關閉），`--lexicon` 時用 `--channel on` 開啟。
 
 - **資料。** `channel.tsv`（每個字的讀音與 P(讀音 | 字)、類別）與 `taiwan.tsv`（詞裡的台灣讀音與強度），編成詞庫旁的 `channel.bin`。成本在載入時由參數計算。
 - **比對。** 詞庫的一個詞裡，某個字的讀音可以換成它的變體：打 ㄈㄢˋ ㄕㄡˋ（疇 照聲旁 壽 讀，有邊讀邊）也能打到 範疇，打 ㄕㄣˊ ㄇㄛˊ 也能打到 什麼（麼 在詞裡是輕聲 ㄇㄜ˙）。載入時依（詞庫讀音，位置，字）建索引，比對時只查得到的詞。每個詞最多一個音節走變體；每個打的音節最多 4 個詞庫音節；字和音節對不齊的詞沒有變體；詞庫已有那個讀音的列時以列為準。

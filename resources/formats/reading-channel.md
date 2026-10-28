@@ -185,7 +185,7 @@
 
 ## 引擎的做法（`reading_channel.rs`）
 
-- **開關。** `zhuyin-cli --channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`；沒有給時讀音通道關閉，輸出和沒有讀音通道的引擎逐位元相同。App 目前不開；C 介面的 `ZtEngineConfig.reading_channel` 與 EngineBench 的 `--channel` 用來量 App 的路徑。
+- **開關。** App 0.4.3 起預設開啟：載入 Resources（或模型資料夾）裡詞庫旁的 `channel.bin`，設定「選字 › 按錯鍵 › 接受常見的其他讀法」（`readingChannel`）在不重新載入的情況下開關（`Engine::set_reading_channel_enabled`，C 介面 `zt_engine_set_reading_channel_enabled`）；關閉時輸出和沒有讀音通道的引擎逐位元相同。`zhuyin-cli --models DIR` 與 EngineBench 照 App，在 `DIR/channel.bin` 存在時開啟，`--channel off` 關閉；只給 `--lexicon` 時用 `--channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`。C 介面的 `ZtEngineConfig` 只有字音表的路徑與類別的位元，App 用預設類別。
 - **類別。** `channel.tsv` 的八類，加上 `taiwan-word`（`taiwan.tsv`）、`neutral`（輕聲打本調）與 `sandhi`（三聲變調），共十一類。每類可以開關（`--channel-classes`）、加成本（`--channel-offset CLASS=NATS`）、改狀態（`--channel-state CLASS=accepted|correction`）；單字詞另外用 `--channel-single-classes` 決定用哪些類別。`series` 是修正，其他是接受的讀音；成本超過 `--channel-max-cost`（預設 8）的不用。
 - **預設**（研究紀錄 2026-10-28，依開發集與 Mac 的每鍵 p95 選）：多字詞的 `series`、`neutral`、`taiwan-word`；單字詞不用變體；三聲變調不開（`--channel-classes ...,sandhi` 開啟，`--channel-sandhi forward` 只把打的二聲讀成詞庫的三聲）；v3 用 (b)；每個音節 4 個選項；`reading_margin` 4；各類成本不加。其他類別在開發集與讀音獨立的集合上都沒有改對，單字讀音與三聲變調改壞了一些，而且每開一類每鍵都慢一點。
 - **一個字的變體。** 詞庫的一列（詞，讀音）裡，位置 i 的字 c 讀 s 時：
