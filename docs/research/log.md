@@ -75,6 +75,7 @@ ONNX（Linux，GPU 主機，單執行緒，v3 20 組／v2b 4 組的耗時；主�
 - 不採用：4 位元每個矩陣（變差）、6 位元每個矩陣（能耗多 40%，輸出和主機不同）、6 位元每 16 列（合計改對 9、改壞 21）、int8 每 32 欄（結果和每列相同，但較大、需要 macOS 15）。
 - Linux 之後用 int8 權重加 DequantizeLinear，ONNX 的 session 設定加上折疊（`engine/crates/zhuyin-models/src/onnx.rs`，這次沒有改）。動態 int8 快約 2 倍，但結果和 Mac 不同，不作為預設。
 - v3 正在以讀音雜訊重新訓練（`v3-reading-noise`）。新的檢查點出來後，以 `zt --remote train compress --option v3=<目錄>`、評測矩陣 `compress.json` 與 Mac 上的 `coreml`、`parity`、`measure` 重跑，再打包。
+- 發布 int8 時，`checkpoints` 元件也要換成 int8 的假量化檢查點（`compress/int8-channel/` 的 `charlm.pt`、`syllable.pt` 與新的 `test_vectors.json`），主機上的 App 設定評測與 ZhuyinBench 才是出貨的權重。`data-5` 只打包了 App 用的 `v3` 與 `reranker`。
 
 ### 評測在 GPU 主機上的速度
 
