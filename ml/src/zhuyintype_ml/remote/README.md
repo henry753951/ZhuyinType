@@ -52,6 +52,7 @@ zt models export --reranker reranker_v2c --v3 v3_new
 zt models parity --coreml                          # Mac：Core ML 的參考輸出
 zt models parity                                   # Linux：ONNX 對 PyTorch 與 Core ML
 zt models serve --device cuda -- eval conversion   # 指令裡所有 zhuyin-cli 行程經由 GPU 伺服器計算
+zt models serve --v3 v3_new -- eval sweep M.json    # 伺服器改用另一份 v3（或 --reranker）的檢查點
 zt data compile --quiet                            # 詞庫與語言模型的 mmap 檔，只重編過期的
 ```
 

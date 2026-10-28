@@ -166,8 +166,16 @@ def summary(stats: dict[str, Any]) -> str:
     )
 
 
-def run_with_server(argv: list[str], device: str = "cuda", memory_gb: float = 12, workers: int = 1) -> int:
-    """Runs a zt command with every zhuyin-cli process using the model server."""
-    with model_server(device, memory_gb, workers) as wrapper:
+def run_with_server(
+    argv: list[str],
+    device: str = "cuda",
+    memory_gb: float = 12,
+    workers: int = 1,
+    reranker: Path | None = None,
+    v3: Path | None = None,
+) -> int:
+    """Runs a zt command with every zhuyin-cli process using the model server (with these model directories, by
+    default the data directory's reranker/ and v3/)."""
+    with model_server(device, memory_gb, workers, reranker=reranker, v3=v3) as wrapper:
         env = dict(os.environ, ZT_CLI=str(wrapper))
         return subprocess.run([str(paths.ROOT / "tools" / "zt"), *argv], env=env).returncode

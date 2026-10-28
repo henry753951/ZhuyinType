@@ -2,18 +2,8 @@
  "evaluator": "rows",
  "configurations": [
   {
-   "name": "base",
+   "name": "app",
    "config": "app"
-  },
-  {
-   "name": "lexcov",
-   "config": "app",
-   "cli_args": [
-    "--lexicon",
-    "{data}/lexcov-s14/lexicon.tsv",
-    "--chat-lm",
-    "{data}/lexcov-s14/lm_chat"
-   ]
   }
  ],
  "sets": [

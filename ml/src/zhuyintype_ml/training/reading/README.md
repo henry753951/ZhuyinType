@@ -24,7 +24,7 @@ python -m zhuyintype_ml.training.reading.gap --lexicon L.tsv --misread DIR --out
 | `test` | 單元測試：各位置套用哪些列、狀態與分桶、上限、成對的列 | 任一 |
 | `gap` | `misread-dev` 的句子分別照標準讀音與變體讀音打，逐行對應，給 `zt eval stats` 比較兩者的差距 | 任一 |
 | `train` | 每個名稱訓練一次，每 500 步檢查一般開發集、在／再開發集與讀音開發集，選讀音開發集 NLL 最低且一般與在／再都在容許範圍內的檢查點 | GPU 主機（CUDA） |
-| `evaluate` | 每個候選（含起點）用 GPU 模型伺服器跑 `matrices/` 的三個矩陣：基本詞庫與詞庫涵蓋版的開發集、`misread-dev`、善解的列與 `gap` | GPU 主機 |
+| `evaluate` | 每個候選（含起點）用 GPU 模型伺服器跑 `matrices/` 的兩個矩陣：App 設定（data-4 詞庫）的開發集，以及 `misread-dev`、善解的列與 `gap` | GPU 主機 |
 | `export` | 選定的候選匯出 Core ML（沿用 homophone 的匯出：授權、來源聲明、20 組介面向量） | 只限 macOS |
 
 讀音開發集是 `v3_030` 的兩個開發集，每段只換一個位置的讀音（`ReadingNoise.one`），只在那個位置計分。它和字音表同源，只用來選檢查點與倍數；採用與否看引擎層級的成對比較。
@@ -37,7 +37,7 @@ python -m zhuyintype_ml.training.reading.gap --lexicon L.tsv --misread DIR --out
 
 - `v3_030/`（0.3.0 的 v3、詞庫、分片、開發集）、`homophone2/`（在／再微調的訓練資料與開發集）、`v3_homophone2/`（發布的 v3，訓練的起點）；
 - `lexicon_coverage/channel/`（`channel.tsv`、`channel.json`、`v3_noise.tsv`）、`lexicon_coverage/misread/`、`lexicon_coverage/eval/`（善解的列）；
-- 矩陣用的詞庫涵蓋版 `lexcov-s14/`（`lexicon.tsv`、`lm_chat/`）。
+- `lexicon.tsv`（data-4 起，台灣讀音是標準讀音）：`gap` 的標準讀音與矩陣的打字讀音。
 
 寫入：
 

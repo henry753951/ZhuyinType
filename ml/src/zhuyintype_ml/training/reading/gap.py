@@ -1,6 +1,6 @@
 """The same sentences typed two ways: misread-dev's variant readings and the lexicon's standard readings.
 
-    python -m zhuyintype_ml.training.reading.gap --lexicon data/build/lexcov-s14/lexicon.tsv \\
+    python -m zhuyintype_ml.training.reading.gap --lexicon data/build/lexicon.tsv \\
         --misread data/build/lexicon_coverage/misread --out data/build/v3_reading/gap
 
 For each misread-dev subset (`<subset>.rows.txt`, `context|truth|syllables`), writes `<subset>.variant.rows.txt`

@@ -2,7 +2,7 @@
  "evaluator": "conversion",
  "configurations": [
   {
-   "name": "base",
+   "name": "app",
    "config": "app"
   }
  ],
