@@ -4,9 +4,10 @@ The bundled lexicon.tsv is an adaptation combining Traditional forms and
 Taiwan-preferred readings from CC-CEDICT, Big5 readings from Unicode Unihan,
 and frequency scores from wordfreq. ZhuyinType converts readings to Zhuyin,
 filters entries and computes unigram log probabilities. No endorsement by
-the original authors is implied. Changes and build code: data/tools/ in
-the ZhuyinType source distribution. Source list: data/SOURCES.md (also
-included as Licenses/SOURCES.md).
+the original authors is implied. Changes and build code:
+ml/src/zhuyintype_ml/data/lexicon.py in the ZhuyinType source
+distribution. Source list: resources/SOURCES.md (also included as
+Licenses/SOURCES.md).
 
 CC-CEDICT: Copyright CC-CEDICT contributors, published by MDBG.
 CEDICT: Copyright (C) 1997, 1998 Paul Andrew Denisowski.

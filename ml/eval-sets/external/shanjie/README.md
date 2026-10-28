@@ -3,7 +3,7 @@
 來源：[Nanako0129/shanjie](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/eval)，commit `bd3b6095e170012e5675b15b9443786a04103790`。
 下表中的原始檔案為逐位元組複製。旁邊的 `*.clean.rows.txt` 檔案是評測輸入：已移除重疊的資料列；trap/daily 另外加上原始引擎的評測讀音。沒有匯入任何模型檔案或上游程式碼。
 
-授權依據：[LICENSES/data.md](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/LICENSES/data.md)。凍結的 dev302/typing76/probe/user-reported80/fw 快照沿用其來源資料列（eval/dev、eval/probe、eval/rerank）的 CC0 授權；快照的建構方式記錄在 tools/bench.py 與 docs/benchmark.md。
+授權依據：[LICENSES/data.md](https://github.com/Nanako0129/shanjie/blob/bd3b6095e170012e5675b15b9443786a04103790/LICENSES/data.md)。data.md 沒有逐檔列出 eval/bench/；凍結的 dev302/typing76/probe/user-reported80/fw 快照是從 eval/dev 最上層的 *.txt（不含子目錄）、eval/probe、eval/rerank 的資料列建構（tools/bench.py 第 38 行），表中的 CC0 是依這些來源檔案的授權推得，不是上游逐檔的標示；eval/dev 子目錄中標為 CC BY-SA 4.0 的 it、names、acg 檔案不在其中，也沒有引入；快照的建構方式記錄在 tools/bench.py 與 docs/benchmark.md。
 
 CC0 資料列：歸功於 shanjie 專案及其貢獻者（包括同意以 CC0 釋出其回報句子的使用者）。[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)。
 

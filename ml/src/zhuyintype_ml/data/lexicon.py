@@ -3,7 +3,7 @@
     zt data lexicon                 # reuse lexicon.tsv when it exists, else download the sources and build it
     zt data lexicon --rebuild       # build it again
 
-Inputs (downloaded by `fetch_sources` into data/raw/):
+Inputs (in data/raw/; `fetch_sources` downloads Unihan, CC-CEDICT is downloaded by hand, see CEDICT_PAGE):
   - CC-CEDICT (CC BY-SA 4.0): words, Traditional forms, readings (Taiwan readings preferred when noted)
   - Unicode Unihan (Unicode License v3): readings for Big5 characters missing from CC-CEDICT
   - wordfreq (CC BY-SA 4.0 data): word frequencies, looked up by Simplified form
@@ -33,8 +33,10 @@ from zhuyintype_ml.core import paths
 RAW = paths.ROOT / "data" / "raw"
 SOURCES = {
     "Unihan.zip": "https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip",
-    "cedict.txt.gz": "https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz",
 }
+# MDBG's site terms prohibit automated or scripted access, so CC-CEDICT is downloaded in a browser from this page.
+CEDICT_PAGE = "https://www.mdbg.net/chinese/dictionary?page=cc-cedict"
+CEDICT_FILE = "cedict_1_0_ts_utf-8_mdbg.txt.gz"
 
 # (traditional, simplified, reading, is Taiwan reading, is variant)
 CedictEntry = tuple[str, str, str, bool, bool]
@@ -45,15 +47,21 @@ def output() -> Path:
 
 
 def fetch_sources(raw: Path = RAW) -> None:
-    """Downloads CC-CEDICT and Unihan into data/raw/ (standard library only)."""
+    """Downloads Unihan into data/raw/ (standard library only) and unpacks the CC-CEDICT file downloaded by hand."""
     raw.mkdir(parents=True, exist_ok=True)
+    cedict = raw / CEDICT_FILE
+    if not cedict.exists():
+        raise SystemExit(
+            f"請用瀏覽器從 {CEDICT_PAGE} 下載 {CEDICT_FILE}，放到 {raw}/ 後再執行一次"
+            "（MDBG 的網站條款禁止以程式自動存取）。"
+        )
     for name, url in SOURCES.items():
         print(f"downloading {url}", flush=True)
         with urllib.request.urlopen(url) as response, open(raw / name, "wb") as out:
             shutil.copyfileobj(response, out, 1 << 20)
     with zipfile.ZipFile(raw / "Unihan.zip") as archive:
         archive.extractall(raw)
-    with gzip.open(raw / "cedict.txt.gz", "rb") as zipped, open(raw / "cedict.txt", "wb") as out:
+    with gzip.open(cedict, "rb") as zipped, open(raw / "cedict.txt", "wb") as out:
         shutil.copyfileobj(zipped, out)
 
 

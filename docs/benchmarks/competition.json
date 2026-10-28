@@ -337,7 +337,7 @@
     "models/select/model.onnx": "71af1f0e77b2752cc71cbc04bf19c8e8f2e765662246f766e65a2822bab4e66e"
    },
    "title": "靈犀注音（0c）",
-   "license": "程式 AGPL-3.0，模型 MIT",
+   "license": "程式 AGPL-3.0，模型 MIT，詞庫 CC BY-SA 4.0",
    "date": "2026-10-28T00:13:53",
    "seconds": 62.2,
    "host": "Linux x86_64"
@@ -367,7 +367,7 @@
     "eval/rerank/s7e-function-words.txt": "sj/bench/suite-v2/fw"
    },
    "title": "善解（shanjie）",
-   "license": "Apache-2.0；評測資料多為 CC0／CC BY-SA",
+   "license": "程式 Apache-2.0，語言模型 CC BY-SA 4.0，評測資料多為 CC0／CC BY-SA（另有 CC BY-ND 檔案）",
    "date": "2026-10-28T00:15:54",
    "seconds": 120.6,
    "host": "Linux x86_64"

@@ -78,7 +78,7 @@ ZEROC = Reference(
     "靈犀注音（0c）",
     "https://github.com/0c-biggo/0c-ime",
     "3fb091797d14f71e49a18ed3d58122bcb61f6ec5",
-    "程式 AGPL-3.0，模型 MIT",
+    "程式 AGPL-3.0，模型 MIT，詞庫 CC BY-SA 4.0",
     release="v0.2.6",
 )
 SHANJIE = Reference(
@@ -86,7 +86,7 @@ SHANJIE = Reference(
     "善解（shanjie）",
     "https://github.com/Nanako0129/shanjie",
     "bd3b6095e170012e5675b15b9443786a04103790",
-    "Apache-2.0；評測資料多為 CC0／CC BY-SA",
+    "程式 Apache-2.0，語言模型 CC BY-SA 4.0，評測資料多為 CC0／CC BY-SA（另有 CC BY-ND 檔案）",
 )
 REFERENCES = {r.name: r for r in (ZEROC, SHANJIE)}
 

@@ -73,7 +73,7 @@
 
 | | 靈犀注音（0c） | 善解（shanjie） | ZhuyinType |
 |---|---|---|---|
-| 授權 | 程式 AGPL-3.0，兩個模型 MIT | Apache-2.0；資料多為 CC0／CC BY-SA | MIT；詞庫 CC BY-SA 4.0 |
+| 授權 | 程式 AGPL-3.0，兩個模型 MIT，詞庫 CC BY-SA 4.0 | 程式 Apache-2.0，語言模型 CC BY-SA 4.0，評測資料多為 CC0／CC BY-SA（另有 CC BY-ND 檔案） | MIT；詞庫 CC BY-SA 4.0 |
 | 引擎 | Go；詞庫＋unigram／bigram＋Viterbi | Rust；詞 bigram＋類別模型＋KN，正式語體另有 trigram | Swift；聊天、百科兩個詞 bigram 依前文混合＋個人 n-gram |
 | 神經模型 | 因果 Transformer 8×512（3,261 萬參數），重排前 8 名；補標點的雙向編碼器 | 字級模型 6×384（1,440 萬參數，int8），重排前 8 名，只在不確定時出手 | 逐字模型 v3（前文＋雙向音節編碼器），分數直接進詞圖；整句重排 8×512，重排前 16 名 |
 | 前文 | 最多 64 字 | 最多 2 個漢字（64 字開發中） | 讀 App 的 128 字，模型用 255 字 |
