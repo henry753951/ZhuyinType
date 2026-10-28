@@ -31,16 +31,16 @@
       "size": 5210068
     },
     "reranker": {
-      "file": "zhuyintype-reranker-81400bfe8638.tar.gz",
-      "release": "data-1",
-      "sha256": "81400bfe8638338615ccdbcee52293e2a21a6d976543d94941be2238a8120d19",
-      "size": 115712744
+      "file": "zhuyintype-reranker-319775ba196e.tar.gz",
+      "release": "data-5",
+      "sha256": "319775ba196ea6c79bd1f94514e6aa8175b517387582b2531c57349ff90431fa",
+      "size": 54095267
     },
     "v3": {
-      "file": "zhuyintype-v3-13c33b64947a.tar.gz",
-      "release": "data-3",
-      "sha256": "13c33b64947a674f967f1b884531c6edf52ac965103e61acac7d2537cc70c1cb",
-      "size": 125215560
+      "file": "zhuyintype-v3-533962548bc5.tar.gz",
+      "release": "data-5",
+      "sha256": "533962548bc523d475d158dd3a01a58fcc65322fc0c824647612790b682e5a84",
+      "size": 51221902
     }
   },
   "repository": "henry753951/ZhuyinType"
