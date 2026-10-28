@@ -193,7 +193,7 @@ typedef struct {
   bool escape_clears_composition;
   // Learn from commits and picks.
   bool learning_enabled;
-  // Longest composition, in syllables.
+  // Longest composition, in syllables: a key that would make it longer first commits the head.
   size_t max_syllables;
   // One of `ZT_TYPO_*`.
   uint32_t typo_tolerance;
@@ -209,6 +209,8 @@ typedef struct {
   uint32_t character_forms;
   // One of `ZT_PUNCTUATION_*`.
   uint32_t punctuation_keys;
+  // 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
+  size_t early_commit_syllables;
 } ZtComposerOptions;
 
 // What a key did (Swift's `KeyResult`).
@@ -303,6 +305,19 @@ typedef struct {
   // Called once when the hook is replaced or the composer freed; may be NULL.
   void (*release)(void *context);
 } ZtCandidateScorerHook;
+
+// The commit hook: told the text a full composition commits by itself in the middle of a key, before the rest is
+// converted again, so the host's models can read it as text before the composition.  The same text also comes back
+// in the key's result (`ZtKeyResult::commit`), to insert as usual.
+typedef struct {
+  // Passed to `committed` and `release`.
+  void *context;
+  // Called with the committed text (UTF-8, valid during the call).  It must not call back into the composer.
+  // NULL removes the hook.
+  void (*committed)(void *context, const char *text);
+  // Called once when the hook is replaced or the composer freed; may be NULL.
+  void (*release)(void *context);
+} ZtCommitHook;
 
 // One syllable as the character model reads it.
 typedef struct {
@@ -617,6 +632,12 @@ void zt_composer_set_reranker(ZtComposer *composer, ZtRerankerHook hook);
 // # Safety
 // `composer` is a live handle; the hook follows the threading and ownership rules of the header.
 void zt_composer_set_candidate_scorer(ZtComposer *composer, ZtCandidateScorerHook hook);
+
+// Sets (or, with a NULL `committed`, removes) the commit hook.
+//
+// # Safety
+// `composer` is a live handle; the hook follows the threading and ownership rules of the header.
+void zt_composer_set_commit_hook(ZtComposer *composer, ZtCommitHook hook);
 
 // How many rows (syllables).
 //
