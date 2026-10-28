@@ -50,7 +50,8 @@ composer.app	11081	593b8e52d27db31b
 composer.standard-forms	11081	770574bc24d2a48d
 composer.legacy	11081	01baf30d9bcaac1d
 composer.other	11081	ff82eb14f41c8ce8
-composer.commit	11081	6f78ad7dcb07eea3
 composer.insert-space	11081	7442fc8175662cb5
 # Recorded from the Rust engine (behaviour the Swift engine never had):
 composer.edge-stays	11081	0f15fe2e0cf17efa
+# Recorded from the Rust engine, 0.4.2 (a key past max_syllables, 12 in this setup, commits the head of the composition):
+composer.commit	11081	5158494d12d5dfe2

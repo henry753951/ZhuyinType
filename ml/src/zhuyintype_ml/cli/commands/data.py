@@ -7,7 +7,8 @@ zt data pack data-4 v3            # archive changed components into dist/assets/
 zt data publish data-4            # upload them as a GitHub release (gh)
 zt data lexicon [--rebuild]       # build lexicon.tsv from CC-CEDICT, Unihan and wordfreq
 zt data compile [OUT]             # lexicon and language models as mmap binaries (lexicon.bin, lm/lm.bin, …),
-                                  # only what is out of date
+                                  # and the reading channel's channel.bin; only what is out of date
+zt data compile --no-channel OUT  # without channel.bin (the app's Resources)
 zt data corrections LOG --summary              # the app's correction log: most frequent retyped keys and changes
 zt data corrections LOG --rows rows.txt        # its replays as context|truth|syllables rows (zt eval rows)
 """
@@ -66,6 +67,9 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     )
     compile_.add_argument("--source", default=None, help="data directory to read (default: the data directory)")
     compile_.add_argument("--quiet", action="store_true", help="print only what is compiled")
+    compile_.add_argument(
+        "--no-channel", action="store_true", help="leave out channel.bin (the app does not use the reading channel yet)"
+    )
     compile_.set_defaults(func=compile_data)
 
     fixes = actions.add_parser(
@@ -116,6 +120,7 @@ def compile_data(args: argparse.Namespace) -> int:
         Path(args.source).resolve() if args.source else None,
         Path(args.output).resolve() if args.output else None,
         quiet=args.quiet,
+        channel=not args.no_channel,
     )
     return 0
 

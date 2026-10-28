@@ -52,6 +52,14 @@ final class ControllerCore {
     /// text when a composition starts, otherwise what was committed in this app within `contextWindow`.
     private(set) var recentText = ""
     private var recentTime = Date.distantPast
+    /// What a full composition committed by itself during the key being handled, not yet inserted: the models read it
+    /// after `recentText` while the rest is converted again.  Empty under secure input.
+    private var sentDuringKey = ""
+    /// The composition started under secure input (the composer's `learningSuspended`, kept here so the commit
+    /// listener need not ask the composer while it is busy).
+    private var secureComposition = false
+    /// The text before the composition, as the models read it.
+    private var modelContext: String { recentText + sentDuringKey }
     /// Read the app's text before the insertion point and remember commits per app (a setting).
     var usesPrecedingText = true
     /// How long what was committed in an app stays context once typing there stops.
@@ -69,10 +77,15 @@ final class ControllerCore {
         self.composer = Composer(engine: engine, options: options)
         self.client = client
         self.isEnglish = isEnglish
+        // A full composition commits its head before converting the rest: the head is text before the rest.
+        composer.commitListener = { [weak self] text in
+            guard let self, !self.secureComposition else { return }
+            self.sentDuringKey += text
+        }
         if let characterModel {
             composer.characterWeight = SyllableScorer.appWeight
             composer.characterScorer = { [weak self] syllables, candidates in
-                characterModel.scores(context: self?.recentText ?? "", syllables: syllables.map {
+                characterModel.scores(context: self?.modelContext ?? "", syllables: syllables.map {
                     SyllableScorer.Syllable(base: $0.base, tone: $0.tone, costBucket: $0.costBucket, implicit: $0.implicit)
                 }, candidates: candidates)
             }
@@ -80,13 +93,13 @@ final class ControllerCore {
         if let reranker {
             composer.rerankingCount = reranker.candidateCount
             composer.reranker = { [weak self] sentences in
-                let index = reranker.choose(sentences, context: self?.recentText ?? "")
+                let index = reranker.choose(sentences, context: self?.modelContext ?? "")
                 let shown = sentences.indices.contains(index) ? sentences[index] : sentences.first
                 self?.shownCorrected = shown?.corrected ?? false
                 return index
             }
             composer.candidateScorer = { [weak self] before, candidates in
-                reranker.candidateScores(context: (self?.recentText ?? "") + before, candidates: candidates)
+                reranker.candidateScores(context: (self?.modelContext ?? "") + before, candidates: candidates)
             }
         }
     }
@@ -214,8 +227,9 @@ final class ControllerCore {
     private func prepareContext() {
         // Secure input (a password field, or an app protecting what is typed): no text is read or remembered, and
         // nothing is learned from this composition.
-        composer.learningSuspended = secureInput()
-        if composer.learningSuspended {
+        secureComposition = secureInput()
+        composer.learningSuspended = secureComposition
+        if secureComposition {
             recentText = ""
             return
         }
@@ -366,6 +380,8 @@ final class ControllerCore {
         guard !rendering else { return }
         rendering = true
         defer { rendering = false }
+        // A head the composer committed by itself comes back as (the start of) `commit`: from here it is recentText.
+        sentDuringKey = ""
         if let commit, !commit.isEmpty {
             client.insertText(commit, replacementRange: insertionRange)
             recentText += commit

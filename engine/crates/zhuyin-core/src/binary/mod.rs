@@ -26,6 +26,8 @@ pub enum DataError {
     InvalidLexicon,
     /// The file is not a valid ZTLM/1 language model.
     InvalidLanguageModel,
+    /// The file is not a valid ZTCB/1 reading channel.
+    InvalidChannel,
 }
 
 impl fmt::Display for DataError {
@@ -34,6 +36,7 @@ impl fmt::Display for DataError {
             DataError::Io(error) => write!(f, "{error}"),
             DataError::InvalidLexicon => f.write_str("Invalid or truncated ZTLX/1 lexicon"),
             DataError::InvalidLanguageModel => f.write_str("Invalid or truncated ZTLM/1 language model"),
+            DataError::InvalidChannel => f.write_str("Invalid or truncated ZTCB/1 reading channel"),
         }
     }
 }

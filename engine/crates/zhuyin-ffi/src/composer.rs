@@ -7,7 +7,7 @@ use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput, KeyResult,
     PunctuationKeys, ScoredSentence, SpaceAction, TypoTolerance,
 };
-use zhuyin_core::composer::Composer;
+use zhuyin_core::composer::{Composer, VariantScores};
 
 use crate::ZtEngine;
 use crate::strings::{ZtStrings, borrowed, owned, owned_optional};
@@ -180,7 +180,7 @@ pub struct ZtComposerOptions {
     pub escape_clears_composition: bool,
     /// Learn from commits and picks.
     pub learning_enabled: bool,
-    /// Longest composition, in syllables.
+    /// Longest composition, in syllables: a key that would make it longer first commits the head.
     pub max_syllables: usize,
     /// One of `ZT_TYPO_*`.
     pub typo_tolerance: u32,
@@ -196,6 +196,8 @@ pub struct ZtComposerOptions {
     pub character_forms: u32,
     /// One of `ZT_PUNCTUATION_*`.
     pub punctuation_keys: u32,
+    /// 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
+    pub early_commit_syllables: usize,
 }
 
 static DEFAULT_SELECTION_KEYS: &[u8] = b"123456789\0";
@@ -217,6 +219,7 @@ pub extern "C" fn zt_composer_options_default() -> ZtComposerOptions {
         page_at_list_edge: options.page_at_list_edge,
         character_forms: options.character_forms as u32,
         punctuation_keys: options.punctuation_keys as u32,
+        early_commit_syllables: options.early_commit_syllables,
     }
 }
 
@@ -251,6 +254,7 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
         page_at_list_edge: o.page_at_list_edge,
         character_forms: CharacterForms::ALL[o.character_forms as usize],
         punctuation_keys: PunctuationKeys::ALL[o.punctuation_keys as usize],
+        early_commit_syllables: o.early_commit_syllables,
     })
 }
 
@@ -453,6 +457,23 @@ pub unsafe extern "C" fn zt_composer_set_character_weight(composer: *mut ZtCompo
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
         composer.character_weight = weight;
+    }
+}
+
+/// How the character scorer scores characters only a reading-channel variant brings: 0 by their lexicon reading
+/// (one more call), 1 the position's best, 2 nothing, 3 as typed; only those within `window` nats of the best other
+/// character at their position.  Other values leave the setting.
+///
+/// # Safety
+/// `composer` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_set_variant_scores(composer: *mut ZtComposer, mode: u8, window: f64) {
+    // SAFETY: live handle.
+    if let Some(composer) = unsafe { composer_mut(composer) } {
+        if let Some(&mode) = VariantScores::ALL.get(usize::from(mode)) {
+            composer.variant_scores = mode;
+        }
+        composer.variant_window = window;
     }
 }
 
@@ -780,6 +801,41 @@ pub unsafe extern "C" fn zt_composer_set_candidate_scorer(composer: *mut ZtCompo
         let ok = unsafe { score(context.get(), before.as_ptr(), &raw const view, scores.as_mut_ptr()) };
         ok.then_some(scores)
     }));
+}
+
+/// The commit hook: told the text a full composition commits by itself in the middle of a key, before the rest is
+/// converted again, so the host's models can read it as text before the composition.  The same text also comes back
+/// in the key's result (`ZtKeyResult::commit`), to insert as usual.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ZtCommitHook {
+    /// Passed to `committed` and `release`.
+    pub context: *mut c_void,
+    /// Called with the committed text (UTF-8, valid during the call).  It must not call back into the composer.
+    /// NULL removes the hook.
+    pub committed: Option<unsafe extern "C" fn(context: *mut c_void, text: *const c_char)>,
+    /// Called once when the hook is replaced or the composer freed; may be NULL.
+    pub release: Option<unsafe extern "C" fn(context: *mut c_void)>,
+}
+
+/// Sets (or, with a NULL `committed`, removes) the commit hook.
+///
+/// # Safety
+/// `composer` is a live handle; the hook follows the threading and ownership rules of the header.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_set_commit_hook(composer: *mut ZtComposer, hook: ZtCommitHook) {
+    let context = Context { context: hook.context, release: hook.release };
+    // SAFETY: live handle.
+    let Some(composer) = (unsafe { composer_mut(composer) }) else { return };
+    let Some(committed) = hook.committed else {
+        composer.set_commit_listener(None);
+        return;
+    };
+    composer.set_commit_listener(Some(Box::new(move |text: &str| {
+        let Ok(text) = std::ffi::CString::new(text) else { return };
+        // SAFETY: the host's callback with its own context and a string valid for the call.
+        unsafe { committed(context.get(), text.as_ptr()) };
+    })));
 }
 
 /// One syllable as the character model reads it.

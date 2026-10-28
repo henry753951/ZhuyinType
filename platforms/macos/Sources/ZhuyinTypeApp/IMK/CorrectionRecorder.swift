@@ -207,6 +207,9 @@ final class CorrectionRecorder {
         var selecting = false
         var literal: Int?
         var afterCommit: (deleted: String, previous: String)?
+        /// What the composition already committed by itself when it grew past its limit; the record's `committed`
+        /// and `shown` start with it, so `typing` still replays the whole record.
+        var sent = ""
 
         init(start: TimeInterval) { self.start = start }
     }
@@ -283,6 +286,13 @@ final class CorrectionRecorder {
         s.keys += label ?? "<?>"
         s.lastKey = time
         let t = milliseconds(time - s.start)
+        // A typing key that made the composition send its head first: the key is typing, and the record goes on.
+        let carried = committed != nil && !after.isEmpty ? committed : nil
+        if let carried {
+            var whole = after
+            whole.text = carried + after.text
+            endRetyping(s, after: whole)
+        }
 
         switch input {
         case .commit:
@@ -302,12 +312,17 @@ final class CorrectionRecorder {
                 if before.candidates != nil {
                     s.events.append(CorrectionEvent(type: "close_list", t: t, shown: after.text))
                 }
-                composingKey(s, key: key, label: label, before: before, after: after, committed: committed,
-                             handled: handled, t: t)
+                composingKey(s, key: key, label: label, before: before, after: after,
+                             committed: carried == nil ? committed : nil, handled: handled, t: t)
             }
         }
-        if let committed {
+        if let carried {
+            carry(s, committed: carried, after: after, t: t)
+        } else if let committed {
             finish(s, committed: committed, input: input, handled: handled, time: time, t: t)
+        } else if after.isEmpty, session === s, !s.sent.isEmpty {
+            // Part of it was sent already: the record ends here, with what was sent.
+            finish(s, committed: "", input: input, handled: handled, time: time, t: t)
         } else if after.isEmpty, session === s {
             // Emptied without a commit (Escape or Backspace): typing it again continues this record.
             s.literal = nil
@@ -600,17 +615,33 @@ final class CorrectionRecorder {
     }
 
     private func correction(_ s: Session, _ kind: String, shown: String) {
-        if s.shown == nil { s.shown = shown }
+        if s.shown == nil { s.shown = s.sent + shown }
         if !s.corrections.contains(kind) { s.corrections.append(kind) }
     }
 
     // MARK: Commit
 
-    private func finish(_ s: Session, committed: String, input: Input, handled: Bool, time: TimeInterval, t: Int) {
-        endRetyping(s, after: .empty)
-        var event = CorrectionEvent(type: "commit", t: t, shown: "")
+    /// The composition grew past its limit and sent its head (`committed`) by itself; `after` is the rest.  The record
+    /// goes on: its typing replays the head and the rest together (zhuyin-cli prints every commit of a line).
+    private func carry(_ s: Session, committed: String, after: Presentation, t: Int) {
+        var event = CorrectionEvent(type: "commit", t: t, shown: after.text)
         event.text = committed
         s.events.append(event)
+        s.sent += committed
+        // A deletion can no longer go back past the head: from here, deleting keys are recorded as typed.
+        if s.tracking { s.history = [(s.typing.count, Shape(after.text))] }
+    }
+
+    /// The record ends with `committed` (after what the composition sent by itself, if anything).
+    private func finish(_ s: Session, committed final: String, input: Input, handled: Bool, time: TimeInterval,
+                        t: Int) {
+        endRetyping(s, after: .empty)
+        if !final.isEmpty || s.sent.isEmpty {
+            var event = CorrectionEvent(type: "commit", t: t, shown: "")
+            event.text = final
+            s.events.append(event)
+        }
+        let committed = s.sent + final
         if let afterCommit = s.afterCommit, String(committed.prefix(afterCommit.deleted.count)) != afterCommit.deleted {
             correction(s, "delete_after_commit", shown: afterCommit.previous)
         }

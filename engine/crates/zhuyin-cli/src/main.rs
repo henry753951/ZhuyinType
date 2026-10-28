@@ -20,14 +20,15 @@ use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput,
     KeyResult, PunctuationKeys, SpaceAction, TypoTolerance,
 };
-use zhuyin_core::composer::Composer;
+use zhuyin_core::composer::{Composer, VariantScores};
 use zhuyin_core::engine::{Engine, EngineConfig};
 use zhuyin_core::key_decoder::Costs;
+use zhuyin_core::reading_channel::{ChannelClass, ChannelTable};
 use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -65,6 +66,12 @@ struct Settings {
     costs: Costs,
     models: Option<String>,
     given: HashSet<String>,
+    channel: Option<String>,
+    reading_margin: Option<f64>,
+    variant_scores: VariantScores,
+    variant_window: f64,
+    channel_report: bool,
+    channel_table: bool,
 }
 
 /// A positive integer with Swift `Int` syntax.
@@ -118,12 +125,85 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         costs: Costs::default(),
         models: None,
         given: HashSet::new(),
+        channel: None,
+        reading_margin: None,
+        variant_scores: VariantScores::default(),
+        variant_window: zhuyin_core::composer::VARIANT_WINDOW,
+        channel_report: false,
+        channel_table: false,
     };
     while let Some(option) = arguments.first().cloned().filter(|a| a.starts_with("--")) {
         s.given.insert(option.clone());
         let mut take = 2;
         match option.as_str() {
             "--models" => s.models = Some(next_value(&arguments).to_owned()),
+            "--channel" => s.channel = Some(next_value(&arguments).to_owned()).filter(|v| v != "off"),
+            "--channel-classes" | "--channel-single-classes" => {
+                let mut classes = 0;
+                for name in next_value(&arguments).split(',').filter(|n| !n.is_empty() && *n != "none") {
+                    let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
+                    classes |= 1 << (class as u16);
+                }
+                if option == "--channel-classes" {
+                    s.config.channel.classes = classes;
+                } else {
+                    s.config.channel.single_classes = classes;
+                }
+            }
+            "--channel-offset" | "--channel-state" => {
+                let value = next_value(&arguments);
+                let (name, setting) = value.split_once('=').unwrap_or_else(|| fail(USAGE));
+                let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
+                if option == "--channel-offset" {
+                    s.config.channel.offsets[class as usize] = parse_double(setting).unwrap_or_else(|| fail(USAGE));
+                } else {
+                    let correction = match setting {
+                        "correction" => true,
+                        "accepted" => false,
+                        _ => fail("--channel-state needs CLASS=accepted or CLASS=correction"),
+                    };
+                    s.config.channel.set_correction(class, correction);
+                }
+            }
+            "--channel-sandhi" => {
+                s.config.channel.sandhi_reverse = match next_value(&arguments) {
+                    "both" => true,
+                    "forward" => false,
+                    _ => fail("--channel-sandhi needs both or forward"),
+                };
+            }
+            "--channel-cap" => {
+                s.config.channel.options_per_syllable = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            "--channel-max-cost" => {
+                s.config.channel.max_cost = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            "--reading-margin" => {
+                s.reading_margin = Some(parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)));
+            }
+            "--v3-variants" => {
+                s.variant_scores = VariantScores::from_raw(next_value(&arguments))
+                    .unwrap_or_else(|| fail("--v3-variants needs one of: standard, best, zero, typed"));
+            }
+            "--v3-variant-window" => {
+                s.variant_window = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            "--neutral-costs" => {
+                let values: Vec<f64> = next_value(&arguments).split(',').filter_map(parse_double).collect();
+                if values.len() != 2 {
+                    fail("--neutral-costs needs two comma-separated numbers");
+                }
+                s.config.neutral_toned_cost = values[0];
+                s.config.neutral_untoned_cost = values[1];
+            }
+            "--channel-report" => {
+                s.channel_report = true;
+                take = 1;
+            }
+            "--channel-table" => {
+                s.channel_table = true;
+                take = 1;
+            }
             "--lexicon" => next_value(&arguments).clone_into(&mut s.lexicon),
             "--typo" => {
                 s.options.typo_tolerance =
@@ -264,6 +344,16 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
                 s.report_nbest = count;
             }
+            // The longest composition; a key past it first commits the head.
+            "--max-syllables" => {
+                s.options.max_syllables = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            // Past this many syllables, a typing key first commits the finished sentences (0: off, the default).
+            "--early-commit" => {
+                let value = next_value(&arguments);
+                s.options.early_commit_syllables =
+                    if value == "0" { 0 } else { positive(value).unwrap_or_else(|| fail(USAGE)) };
+            }
             "--sentence-boundaries" => s.config.sentence_boundaries = on_off(next_value(&arguments), USAGE),
             "--anchor" => {
                 s.options.candidate_anchor = match next_value(&arguments) {
@@ -297,10 +387,50 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         }
         arguments.drain(..take);
     }
-    if arguments.len() != usize::from(!s.batch) {
+    if arguments.len() != usize::from(!s.batch && !s.channel_table) {
         fail(USAGE);
     }
     (s, arguments)
+}
+
+fn channel_classes() -> String {
+    let names: Vec<&str> = ChannelClass::ALL.iter().map(|c| c.raw_value()).collect();
+    format!("reading-channel classes: {}", names.join(", "))
+}
+
+/// `--channel on`: `channel.bin` next to the lexicon.
+fn apply_channel(s: &mut Settings) {
+    s.config.reading_channel = s.channel.as_deref().map(|value| {
+        if value == "on" { Path::new(&s.lexicon).with_file_name("channel.bin") } else { PathBuf::from(value) }
+    });
+}
+
+/// `--channel-table`: every variant of every lexicon row, as the Python reference lists them; exits.
+fn print_channel_table(engine: &Engine, path: &Path) -> ! {
+    let table = ChannelTable::open(path).unwrap_or_else(|e| fail(&e.to_string()));
+    let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+    for row in engine.channel_variants(&table) {
+        let _ = writeln!(
+            out,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{:e}",
+            row.reading,
+            row.word,
+            row.position,
+            row.variant.typed,
+            row.variant.class.raw_value(),
+            if row.correction { "correction" } else { "accepted" },
+            row.variant.cost
+        );
+    }
+    let _ = out.flush();
+    std::process::exit(0);
+}
+
+/// The reading-channel variant a word took, as `--channel-report` prints it.
+fn channel_label(channel: Option<zhuyin_core::reading_channel::ChannelUse>) -> String {
+    channel.map_or_else(String::new, |c| {
+        format!("{}@{}:{:.3}{}", c.class.raw_value(), c.position, c.cost, if c.correction { ":correction" } else { "" })
+    })
 }
 
 /// `--models DIR`: everything the app loads from a data directory, set up the way the app sets it up; explicit
@@ -625,6 +755,9 @@ fn load_models(s: &Settings) -> Result<Models, String> {
             if let Some(margin) = s.exact_margin {
                 reranker.exact_margin = margin;
             }
+            if let Some(margin) = s.reading_margin {
+                reranker.reading_margin = margin;
+            }
             if let Some(gate) = s.rerank_gate {
                 reranker.gate_margin = gate;
             }
@@ -658,6 +791,11 @@ fn timed<T>(timing: bool, label: &str, body: impl FnOnce() -> T) -> T {
 /// the keys have committed so far).
 fn attach(composer: &mut Composer, models: &Models, s: &Settings, context: &Arc<Mutex<String>>) {
     composer.freezes_on_pick = s.freeze_on_pick;
+    // The head a full composition commits by itself is text before the rest, as in the app (in batch mode too).
+    let committed = context.clone();
+    composer.set_commit_listener(Some(Box::new(move |text| {
+        committed.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push_str(text);
+    })));
     if let Some(model) = &models.character {
         composer.character_weight = s.v3_weight;
         composer.character_scores_in_list = s.v3_in_list;
@@ -694,20 +832,28 @@ fn set(shared: &Arc<Mutex<String>>, text: &str) {
 fn main() {
     let (mut s, rest) = parse_arguments(std::env::args().skip(1).collect());
     apply_models(&mut s);
+    apply_channel(&mut s);
     let engine_start = Instant::now();
     let engine = Engine::open(Path::new(&s.lexicon), None, s.config.clone()).unwrap_or_else(|e| fail(&e.to_string()));
     if s.timing {
         let _ = writeln!(std::io::stderr(), "engine load: {:.3} ms", engine_start.elapsed().as_secs_f64() * 1000.0);
     }
     engine.set_fuzzy_sounds(s.fuzzy);
+    if s.channel_table {
+        let path = s.config.reading_channel.clone().unwrap_or_else(|| fail("--channel-table needs --channel"));
+        print_channel_table(&engine, &path);
+    }
     let engine = Arc::new(engine);
     let models = load_models(&s).unwrap_or_else(|e| fail(&e));
     // The text before the composition as the models see it: the context and what the keys have committed.  In batch
-    // mode Swift's `committed` is assigned after each line, so the models see the line's context alone.
+    // mode Swift's `committed` is assigned after each line, so the models see the line's context alone, followed by
+    // the heads a full composition commits by itself (the commit listener).
     let model_context = Arc::new(Mutex::new(s.context.clone()));
     let mut composer = Composer::new(engine.clone(), s.options.clone());
     attach(&mut composer, &models, &s, &model_context);
     composer.decoder_costs = s.costs;
+    composer.variant_scores = s.variant_scores;
+    composer.variant_window = s.variant_window;
     let mut typist = Typist { clock: 1000.0, timing: s.timing, key_times: vec![] };
     if s.batch {
         // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line
@@ -752,6 +898,14 @@ fn main() {
                     .join("\t");
                 composer.reset();
                 text
+            } else if s.channel_report {
+                let words: Vec<String> = composer
+                    .last_committed()
+                    .iter()
+                    .filter(|w| w.channel.is_some())
+                    .map(|w| format!("{}:{}", w.text, channel_label(w.channel)))
+                    .collect();
+                format!("{committed}\t{}", words.join(" "))
             } else {
                 committed
             };
@@ -775,16 +929,42 @@ fn main() {
     let wall_start = Instant::now();
     let keys = parse_keys(&rest[0]).unwrap_or_else(|e| fail(&e));
     let mut committed = String::new();
+    let report = s.channel_report;
     typist.typed(&keys, &mut composer, |label, result, composer| {
         print_step(label, result, composer, &mut committed);
+        if report {
+            for m in composer.channel_matches() {
+                println!(
+                    "  channel {}..<{} {} {} {} {}",
+                    m.range.start,
+                    m.range.end,
+                    m.entry.word,
+                    m.entry.reading.as_deref().unwrap_or(""),
+                    channel_label(m.channel),
+                    m.annotation.as_deref().map_or(String::new(), |a| format!("({a})"))
+                );
+            }
+        }
         set(&model_context, &(s.context.clone() + &committed));
     });
     let sentences = composer.n_best(s.nbest);
     let texts: Vec<String> = sentences.iter().map(zhuyin_core::api::ScoredSentence::text).collect();
     let neural = models.reranker.as_ref().and_then(|r| r.scores(&s.context, &texts));
     for (index, sentence) in sentences.iter().enumerate() {
-        let words: Vec<String> =
-            sentence.words.iter().map(|w| format!("{}:{}..<{}", w.text, w.range.start, w.range.end)).collect();
+        let words: Vec<String> = sentence
+            .words
+            .iter()
+            .map(|w| {
+                let channel = channel_label(w.channel);
+                format!(
+                    "{}:{}..<{}{}{channel}",
+                    w.text,
+                    w.range.start,
+                    w.range.end,
+                    if channel.is_empty() { "" } else { " " }
+                )
+            })
+            .collect();
         let rerank = neural.as_ref().map(|n| format!(" neural {:.3}", n[index])).unwrap_or_default();
         println!(
             "  nbest {}: {:.6}{rerank} {}{} [{}]",
