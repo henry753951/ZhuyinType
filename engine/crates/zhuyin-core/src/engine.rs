@@ -857,10 +857,13 @@ impl Engine {
     /// The words matching the syllables from `start` (at most six), as typed, with tone tolerance, corrections,
     /// fuzzy sounds and the reading channel; cached per keys.
     pub fn matches(&self, tokens: &[CompositionToken], start: usize, typo: TypoTolerance) -> Vec<Match> {
+        if start >= tokens.len() {
+            return Vec::new();
+        }
         let fuzzy = self.fuzzy_sounds();
         let mut span: Vec<&CompositionToken> = Vec::new();
         let mut key = format!("{}{}", typo.raw_value(), fuzzy.raw_value());
-        for token in &tokens[start..tokens.len().min(start + 6)] {
+        for token in &tokens[start..tokens.len().min(start.saturating_add(6))] {
             let CompositionToken::Syllable { keys, .. } = token else { break };
             span.push(token);
             key.push('\t');
@@ -1485,7 +1488,7 @@ impl Engine {
             if fields.len() != 3 || grapheme_count(&fields[0]) != 1 || grapheme_count(&fields[1]) != 1 {
                 return;
             }
-            let Some(n) = parse_double(&fields[2]).filter(|n| *n > 0.0) else { return };
+            let Some(n) = parse_double(&fields[2]).filter(|n| n.is_finite() && *n > 0.0) else { return };
             let key = format!("{}{}", fields[0], fields[1]);
             let old = state.typo_counts.get(&key).copied().unwrap_or(0.0);
             state.typo_counts.insert(key, swift_max(old, n));
@@ -1679,7 +1682,7 @@ impl Engine {
                 if fields.len() != 3 || grapheme_count(&fields[0]) != 1 || grapheme_count(&fields[1]) != 1 {
                     return;
                 }
-                if let Some(n) = parse_double(&fields[2]).filter(|n| *n > 0.0) {
+                if let Some(n) = parse_double(&fields[2]).filter(|n| n.is_finite() && *n > 0.0) {
                     state.typo_counts.insert(format!("{}{}", fields[0], fields[1]), n);
                 }
             });
@@ -1728,8 +1731,11 @@ impl Engine {
     }
 
     /// Writes pending personal data now: before another engine reads the same directory, or before exiting.
-    pub fn flush_personal_data(&self) {
-        self.writer.flush();
+    ///
+    /// # Errors
+    /// Returns an error if the data could not be written or the writer stopped.
+    pub fn flush_personal_data(&self) -> std::io::Result<()> {
+        self.writer.flush()
     }
 
     fn schedule_write(&self, state: &State) {

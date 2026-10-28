@@ -18,6 +18,9 @@ impl RerankerTree {
     /// Node identity is (parent, token), never just the token: siblings cannot share attention.
     #[must_use]
     pub fn new(prefix: &[i32], candidates: &[Vec<i32>]) -> Self {
+        if prefix.is_empty() {
+            return Self::default();
+        }
         let mut ids: Vec<i32> = prefix.to_vec();
         let mut positions: Vec<i32> = (0..prefix.len()).map(index).collect();
         let mut parents: Vec<usize> = (0..prefix.len()).map(|i| i.saturating_sub(1)).collect();
@@ -103,6 +106,13 @@ fn index(i: usize) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_prefix_is_empty() {
+        let tree = RerankerTree::new(&[], &[vec![3]]);
+        assert!(tree.packed().targets.is_empty());
+        assert_eq!(tree.scores(&[], 1.0), Some(vec![]));
+    }
 
     #[test]
     fn shared_prefixes_and_state_nodes() {

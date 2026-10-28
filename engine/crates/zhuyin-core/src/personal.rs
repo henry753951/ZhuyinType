@@ -235,7 +235,9 @@ impl PersonalLanguageModel {
 
     /// Replaces the model's constants.
     pub fn set_options(&self, options: Options) {
-        self.lock().options = options;
+        let mut state = self.lock();
+        state.options = options;
+        rebuild_totals(&mut state);
     }
 
     /// Whether anything has been learned.
@@ -576,5 +578,30 @@ impl<M: LanguageModel> LanguageModel for PersonalizedLanguageModel<M> {
     }
     fn score(&self, word_id: Option<u32>, history: LanguageModelHistory, unigram: f64) -> f64 {
         self.personal.adapt(self.base.score(word_id, history, unigram), word_id, history)
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn changing_half_life_rebuilds_totals() {
+        let clock = Arc::new(AtomicU64::new(0));
+        let model = PersonalLanguageModel::new();
+        let time = Arc::clone(&clock);
+        model.set_clock(move || time.load(Ordering::Relaxed) as f64);
+        model.learn(&[Word { id: 1, text: "一".into(), reading: "ㄧ".into(), picked: false }], 0);
+        clock.store(100, Ordering::Relaxed);
+        let mut options = model.options();
+        options.short_half_life = 20.0;
+        options.long_half_life = 30.0;
+        model.set_options(options);
+        let state = model.lock();
+        let entry = state.entries.get(&vec![1]).unwrap();
+        let total = state.totals.get(&vec![]).unwrap();
+        assert_eq!(total.0.value, entry.short.at(100.0, state.options.short_half_life));
+        assert_eq!(total.1.value, entry.long.at(100.0, state.options.long_half_life));
     }
 }

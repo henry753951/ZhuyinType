@@ -843,7 +843,7 @@ fn user_phrases_and_persistence_through_the_composer() {
     let index = index_of(&saving, "巴");
     saving.select_candidate(index);
     saving.commit_all();
-    persisted.flush_personal_data();
+    persisted.flush_personal_data().unwrap();
     let round_trip = engine_with(TINY, Some(temp.path()), None);
     assert!(
         round_trip.learned_entries().iter().any(|(k, _)| k.word == "巴") && round_trip.user_phrases().len() == 1,
@@ -1041,7 +1041,7 @@ fn recall_budget_backtick_and_hints() {
         "乙",
         "explicit typo recall outranks a much more frequent exact word"
     );
-    recall.flush_personal_data();
+    recall.flush_personal_data().unwrap();
     let reloaded = engine_with(lexicon, Some(temp.path()), None);
     assert_eq!(
         text(&composer_with(&reloaded, "wk3", ComposerOptions::default())),

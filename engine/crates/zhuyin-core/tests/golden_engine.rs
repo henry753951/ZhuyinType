@@ -469,7 +469,7 @@ fn learning_matches_swift() {
         lines.extend(engine.readings("不存在字"));
         lines.extend(engine.user_phrases().iter().map(|k| format!("{}\t{}", k.reading, k.word)));
         golden.check("learning.session", &lines);
-        engine.flush_personal_data();
+        engine.flush_personal_data().unwrap();
         let mut file_lines = vec![];
         for name in ["user_phrases.tsv", "learned.tsv", "excluded.tsv", "typos.tsv", "personal_ngrams.tsv"] {
             file_lines.push(format!("== {name}"));
