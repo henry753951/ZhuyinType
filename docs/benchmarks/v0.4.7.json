@@ -2,7 +2,7 @@
  "suite": "zhuyinbench-1",
  "version": "v0.4.7",
  "date": "2026-10-29",
- "commit": "8b8fca8",
+ "commit": "ce494ff",
  "host": "Linux x86_64",
  "n": 400,
  "results": {
