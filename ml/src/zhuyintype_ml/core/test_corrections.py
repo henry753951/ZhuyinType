@@ -26,6 +26,11 @@ class CorrectionLogTest(unittest.TestCase):
             bad.write_text("not json\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 corrections.load(bad)
+            # Text the user typed may hold U+2028, which JSON leaves unescaped: still one record per line.
+            separated = Path(directory) / "separated.jsonl"
+            first = FIXTURE.read_text(encoding="utf-8").split("\n")[0]
+            separated.write_text(first.rstrip()[:-1] + ', "note": "a\u2028b"}\n', encoding="utf-8")
+            self.assertEqual(corrections.load(separated)[0]["note"], "a\u2028b")
 
     def test_replay_items(self) -> None:
         pick, backspace, escape, cursor, retype = (corrections.replay_items(r) for r in self.records)

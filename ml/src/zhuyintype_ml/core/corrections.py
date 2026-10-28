@@ -51,7 +51,8 @@ MEDIALS = set("ㄧㄨㄩ")
 def load(path: Path | str) -> list[dict[str, Any]]:
     """Records of a correction log; blank lines are skipped, anything else invalid is an error."""
     records: list[dict[str, Any]] = []
-    for number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+    # One record per "\n": JSON may carry U+2028 and other separators that splitlines() would cut at.
+    for number, line in enumerate(Path(path).read_text(encoding="utf-8").split("\n"), 1):
         if not line.strip():
             continue
         try:
