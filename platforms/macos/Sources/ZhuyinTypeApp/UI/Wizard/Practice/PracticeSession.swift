@@ -1,8 +1,8 @@
 import AppKit
 import ZhuyinEngine
 
-/// The practice field's text, as `ControllerCore` sees an app's text field: sent text with the composition after it
-/// (the insertion point is always at the end), and the same calls the input method makes through InputMethodKit.
+/// The practice field's text, as `ControllerCore` sees an app's text field: sent text with an insertion point, the
+/// composition at the insertion point, and the same calls the input method makes through InputMethodKit.
 final class PracticeTextClient: TextClient {
     /// Never one of the user's apps, so the per-app context and 「在候選字視窗顯示組字的 App」 never apply.
     let bundleIdentifier = "org.zhuyintype.practice"
@@ -10,25 +10,34 @@ final class PracticeTextClient: TextClient {
     private(set) var marked = NSAttributedString()
     /// The selection inside the composition, as the core set it.
     private(set) var markedSelection = NSRange(location: 0, length: 0)
+    /// The insertion point in `text` (UTF-16): where the composition sits and sent text goes.  The arrows and clicks
+    /// move it, as in an app's text field.
+    private(set) var insertion = 0
     /// Where the composition starts, in the field's view (set by the view).
     var compositionRect: (() -> NSRect)?
-    /// After every change of the text or the composition.
+    /// After every change of the text, the composition or the insertion point.
     var changed: (() -> Void)?
     /// The longest text kept; the start is dropped beyond it, as a single-line field scrolls.
     static let maxLength = 400
 
-    private var end: Int { text.utf16.count }
-    var markedRange: NSRange { marked.length == 0 ? NSRange(location: NSNotFound, length: 0) : NSRange(location: end, length: marked.length) }
+    /// The text as shown: the sent text with the composition at the insertion point.
+    var shown: String {
+        let ns = text as NSString
+        return ns.substring(to: insertion) + marked.string + ns.substring(from: insertion)
+    }
+    var markedRange: NSRange {
+        marked.length == 0 ? NSRange(location: NSNotFound, length: 0) : NSRange(location: insertion, length: marked.length)
+    }
     var selectedRange: NSRange {
-        marked.length == 0 ? NSRange(location: end, length: 0)
-            : NSRange(location: end + markedSelection.location, length: markedSelection.length)
+        marked.length == 0 ? NSRange(location: insertion, length: 0)
+            : NSRange(location: insertion + markedSelection.location, length: markedSelection.length)
     }
     var hasInsertionPoint: Bool { true }
 
     func insertText(_ string: String, replacementRange: NSRange) {
         marked = NSAttributedString()
         markedSelection = NSRange(location: 0, length: 0)
-        append(string)
+        insert(string)
     }
 
     func setMarkedText(_ string: NSAttributedString, selectionRange: NSRange, replacementRange: NSRange) {
@@ -42,7 +51,7 @@ final class PracticeTextClient: TextClient {
     func textBeforeInsertion(maxLength: Int) -> String? {
         var result = ""
         var length = 0
-        for character in text.reversed() {
+        for character in (text as NSString).substring(to: insertion).reversed() {
             length += character.utf16.count
             guard length <= maxLength else { break }
             result.insert(character, at: result.startIndex)
@@ -50,23 +59,54 @@ final class PracticeTextClient: TextClient {
         return result
     }
 
-    // The field's own editing, for keys the input method gives to the app.
+    // The field's own editing, for keys and clicks the input method leaves to the app.
 
-    func append(_ string: String) {
-        text += string
-        if text.count > Self.maxLength { text = String(text.suffix(Self.maxLength)) }
+    /// Types `string` at the insertion point.
+    func insert(_ string: String) {
+        let ns = text as NSString
+        text = ns.substring(to: insertion) + string + ns.substring(from: insertion)
+        insertion += string.utf16.count
+        if text.count > Self.maxLength {
+            let dropped = text.prefix(text.count - Self.maxLength).utf16.count
+            text = String(text.suffix(Self.maxLength))
+            insertion = max(0, insertion - dropped)
+        }
         changed?()
     }
 
+    /// ⌫: the character before the insertion point.
     func deleteBackward() {
-        guard !text.isEmpty else { return }
-        text.removeLast()
+        guard insertion > 0 else { return }
+        let range = (text as NSString).rangeOfComposedCharacterSequence(at: insertion - 1)
+        text = (text as NSString).replacingCharacters(in: range, with: "")
+        insertion = range.location
         changed?()
     }
 
-    /// Starts over with `initial` and no composition.
+    /// ← and →: the insertion point moves over one character (`step` -1 or 1); it stays put at either end.
+    func moveInsertion(by step: Int) {
+        let ns = text as NSString
+        if step < 0, insertion > 0 {
+            moveInsertion(to: ns.rangeOfComposedCharacterSequence(at: insertion - 1).location)
+        } else if step > 0, insertion < ns.length {
+            moveInsertion(to: NSMaxRange(ns.rangeOfComposedCharacterSequence(at: insertion)))
+        }
+    }
+
+    /// Puts the insertion point at `offset` (UTF-16), inside the text and never in the middle of a character.
+    func moveInsertion(to offset: Int) {
+        let ns = text as NSString
+        var target = min(max(0, offset), ns.length)
+        if target < ns.length { target = ns.rangeOfComposedCharacterSequence(at: target).location }
+        guard target != insertion else { return }
+        insertion = target
+        changed?()
+    }
+
+    /// Starts over with `initial` and no composition, the insertion point at the end.
     func reset(to initial: String) {
         text = initial
+        insertion = initial.utf16.count
         marked = NSAttributedString()
         markedSelection = NSRange(location: 0, length: 0)
         changed?()
@@ -270,22 +310,50 @@ final class PracticeSession {
         return KeyMapping.input(keyCode: keyCode, modifiers: modifiers)
     }
 
-    /// Keys the input method gives to the app, in a single-line field whose insertion point stays at the end.
+    /// Keys the input method gives to the app, as a single-line text field takes them: ← → move the insertion point
+    /// over a character; ↑, Home and ⌘← to the start; ↓, End and ⌘→ to the end.
     private func typeIntoField(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, characters: String?) -> Bool {
-        if modifiers.contains(.command) { return false }
+        if modifiers.contains(.command) {
+            switch keyCode {
+            case 123, 126: client.moveInsertion(to: 0)
+            case 124, 125: client.moveInsertion(to: client.text.utf16.count)
+            default: return false
+            }
+            return true
+        }
+        // The core moves through its own composition; the insertion point stays with it.
+        if client.marked.length > 0, [115, 119, 123, 124, 125, 126].contains(keyCode) { return true }
         switch keyCode {
         case 51:
             client.deleteBackward()
         case 48:
             return false // Tab moves to the next control.
-        case 36, 76, 53, 115, 116, 119, 121, 123, 124, 125, 126:
-            break // Return, Esc and moving keys do nothing in a single line with the insertion point at the end.
+        case 123, 124:
+            client.moveInsertion(by: keyCode == 123 ? -1 : 1)
+        case 126, 115:
+            client.moveInsertion(to: 0)
+        case 125, 119:
+            client.moveInsertion(to: client.text.utf16.count)
+        case 36, 76, 53, 116, 121:
+            break // Return, Esc and the page keys do nothing in a single line.
         default:
             guard let text = Self.printable(characters) else { return false }
-            client.append(text)
+            client.insert(text)
         }
         check([])
         return true
+    }
+
+    /// A click in the field at `offset` of the text as shown (UTF-16): as InputMethodKit does when an app's text
+    /// field is clicked, the composition is sent (`commitComposition`), then the insertion point goes where the click
+    /// was, in the text as it is after sending.
+    func click(at offset: () -> Int) {
+        if let core, core.composer.isComposing {
+            perform(nil) { core.commit(); return true }
+        }
+        core?.breakContext()
+        client.moveInsertion(to: offset())
+        check([])
     }
 
     /// The text a key types, without control characters and function keys.
@@ -354,7 +422,7 @@ final class PracticeSession {
         pendingEvents = []
         var next = outcome
         next.sent = client.text
-        next.text = client.text + client.marked.string
+        next.text = client.shown
         for event in all {
             switch event {
             case .openedList: next.events.append(PracticeEventName.open)

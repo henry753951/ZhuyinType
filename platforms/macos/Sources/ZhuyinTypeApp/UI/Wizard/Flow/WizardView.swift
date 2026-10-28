@@ -513,33 +513,14 @@ private struct LessonStep: View {
         // A horizontal list is wide and short: the practice field takes the whole width under the choices.  A vertical
         // one is narrow and tall: the field takes the right column, the whole height.
         let wide = model.sandbox.candidateLayout == .horizontal && !lesson.tasks.isEmpty
+        // One layout that changes shape, so the demo stays the same view when 排列 changes: the practice field keeps
+        // its text and composition and shows the new window at once.
+        let layout = wide ? AnyLayout(VStackLayout(alignment: .leading, spacing: 18))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
         StepPage(name: "lesson-" + lesson.id) {
-            Group {
-                if wide {
-                    VStack(alignment: .leading, spacing: 18) {
-                        StepTitle(title: lesson.title, detail: lesson.detail).entrance(0, appeared)
-                        HStack(alignment: .top, spacing: 20) {
-                            ForEach(lesson.groups) { group in
-                                StyleGroupView(group: group, preferences: model.sandbox, across: lesson.groups.count == 1)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                            }
-                        }
-                        .entrance(1, appeared)
-                        demo.entrance(2, appeared)
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 20) {
-                            StepTitle(title: lesson.title, detail: lesson.detail, size: 24).entrance(0, appeared)
-                            VStack(alignment: .leading, spacing: 18) {
-                                ForEach(lesson.groups) { group in StyleGroupView(group: group, preferences: model.sandbox, across: false) }
-                            }
-                            .entrance(1, appeared)
-                        }
-                        .frame(width: 236, alignment: .topLeading)
-                        demo.frame(maxWidth: .infinity, alignment: .topLeading).entrance(2, appeared)
-                    }
-                }
+            layout {
+                choices(wide: wide)
+                demo.frame(maxWidth: .infinity, alignment: .topLeading).entrance(2, appeared)
             }
             .animation(WizardMotion.success, value: wide)
         } footer: {
@@ -553,6 +534,31 @@ private struct LessonStep: View {
             }
         }
         .modifier(Arrival(appeared: $appeared))
+    }
+
+    /// The title and the choices: above the demo across the page (`wide`), or in a column beside it.
+    @ViewBuilder private func choices(wide: Bool) -> some View {
+        if wide {
+            VStack(alignment: .leading, spacing: 18) {
+                StepTitle(title: lesson.title, detail: lesson.detail).entrance(0, appeared)
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach(lesson.groups) { group in
+                        StyleGroupView(group: group, preferences: model.sandbox, across: lesson.groups.count == 1)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                }
+                .entrance(1, appeared)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 20) {
+                StepTitle(title: lesson.title, detail: lesson.detail, size: 24).entrance(0, appeared)
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(lesson.groups) { group in StyleGroupView(group: group, preferences: model.sandbox, across: false) }
+                }
+                .entrance(1, appeared)
+            }
+            .frame(width: 236, alignment: .topLeading)
+        }
     }
 
     /// The one live demo: the practice field (with the real window), or for a lesson without practice its preview.
@@ -678,9 +684,9 @@ private struct PracticeArea: View {
                           if !Headless.isActive { NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now) }
                           complete()
                       })
-            .id(SettingsSnapshot(model.sandbox).values.hashValue)
-            // No box around it: the field is the box, and under it the room the real window opens in, as in a
-            // document.  Done, the field's border turns green and 「完成」 springs in beside the task.
+            // A changed choice reaches the same field (its text and composition stay), through `PracticeField`'s
+            // update.  No box around it: the field is the box, and under it the room the real window opens in, as in
+            // a document.  Done, the field's border turns green and 「完成」 springs in beside the task.
     }
 }
 

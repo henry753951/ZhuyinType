@@ -392,6 +392,74 @@ enum PracticeSelfTest {
             try expect(!session.keyDown(keyCode: 8, modifiers: .command, characters: "c", time: 4), "⌘C stayed in the field")
             try expect(session.client.text.isEmpty, "typed \(session.client.text)")
         }
+
+        test("practice: ← → move in the composition, and through the sent text with nothing composed; a click moves the insertion point") {
+            let model = field()
+            let client = model.session.client, textView = model.view.textView
+            func caret() -> Int { textView.accessibilitySelectedTextRange().location }
+            type("su3cl3", model)
+            press("left", model)
+            try expect(model.session.presentation.cursor == 1 && caret() == 1,
+                       "← in the composition: cursor \(model.session.presentation.cursor), caret \(caret())")
+            press("right", model)
+            press("return", model)
+            let sent = client.text
+            try expect(sent.count == 2 && client.insertion == sent.utf16.count, "sent \(sent), insertion \(client.insertion)")
+            press("left", model)
+            try expect(client.insertion == 1 && caret() == 1, "← with nothing composed: insertion \(client.insertion), caret \(caret())")
+            press("up", model)
+            press("left", model)
+            try expect(client.insertion == 0, "↑ then ← at the start: \(client.insertion)")
+            press("down", model)
+            try expect(client.insertion == sent.utf16.count, "↓: \(client.insertion)")
+            press("left", model, .command)
+            try expect(client.insertion == 0, "⌘←: \(client.insertion)")
+            press("right", model, .command)
+            try expect(client.insertion == sent.utf16.count, "⌘→: \(client.insertion)")
+
+            // Typing in the middle: the composition and the sent text go to the insertion point, and the text before
+            // it is what the core reads.
+            press("left", model)
+            let head = String(sent.prefix(1)), tail = String(sent.suffix(1))
+            try expect(client.textBeforeInsertion(maxLength: 10) == head, "text before the insertion point: \(client.textBeforeInsertion(maxLength: 10) ?? "nil")")
+            type("cl3", model)
+            let composed = client.marked.string
+            try expect(!composed.isEmpty && client.markedRange.location == head.utf16.count && client.shown == head + composed + tail
+                       && textView.accessibilityValue() as? String == client.shown && model.progress.outcome.text == client.shown,
+                       "composing in the middle: \(client.shown), marked at \(client.markedRange.location)")
+            try expect(model.view.compositionRect().minX > textView.frame.minX + 14, "the window is not at the composition: \(model.view.compositionRect())")
+            press("left", model)
+            press("right", model)
+            try expect(client.markedRange.location == head.utf16.count, "← → while composing moved the insertion point")
+            press("return", model)
+            try expect(client.text == head + composed + tail && client.insertion == (head + composed).utf16.count,
+                       "sent in the middle: \(client.text), insertion \(client.insertion)")
+            press("delete", model)
+            try expect(client.text == sent && client.insertion == head.utf16.count, "⌫ in the middle: \(client.text), insertion \(client.insertion)")
+
+            // A click sends the composition, as InputMethodKit does, then puts the insertion point where it was.
+            func click(_ x: CGFloat) {
+                let point = textView.convert(NSPoint(x: x, y: textView.bounds.midY), to: nil)
+                let event = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+                                               windowNumber: textView.window?.windowNumber ?? 0, context: nil, eventNumber: 0,
+                                               clickCount: 1, pressure: 1)!
+                textView.mouseDown(with: event)
+            }
+            press("up", model)
+            type("su3", model)
+            let start = client.marked.string
+            click(textView.bounds.maxX - 4)
+            try expect(client.marked.length == 0 && client.text == start + sent && client.insertion == client.text.utf16.count
+                       && !model.view.panelShown, "a click while composing: \(client.text), insertion \(client.insertion)")
+            guard let x = stride(from: CGFloat(0), to: textView.bounds.width, by: 1).first(where: { textView.offset(atX: $0) == 1 }) else {
+                throw Failure(description: "no place in the field for offset 1")
+            }
+            click(x)
+            try expect(client.insertion == 1 && caret() == 1, "a click after the first character: \(client.insertion)")
+            click(1)
+            try expect(client.insertion == 0, "a click at the start: \(client.insertion)")
+            try expect(!(model.view.window?.isKeyWindow ?? true) && !NSApp.isActive, "the click took the keyboard")
+        }
     }
 
     // MARK: The user's files and settings

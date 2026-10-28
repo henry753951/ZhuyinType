@@ -314,8 +314,16 @@ final class PracticeTextView: NSView {
         return true
     }
 
+    /// A click takes the keyboard and puts the insertion point where it was, after the composition is sent (as
+    /// InputMethodKit sends it when an app's text is clicked).
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        let x = convert(event.locationInWindow, from: nil).x
+        session.click { [weak self] in self?.offset(atX: x) ?? 0 }
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .iBeam)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -350,7 +358,7 @@ final class PracticeTextView: NSView {
 
     // MARK: Drawing
 
-    /// The sent text and the composition as one string, with the composition's own attributes.
+    /// The sent text with the composition at the insertion point, as one string, with the composition's own attributes.
     private func content() -> NSAttributedString {
         let base: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
         let result = NSMutableAttributedString(string: session.client.text, attributes: base)
@@ -359,15 +367,30 @@ final class PracticeTextView: NSView {
         marked.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: marked.length)) { value, range, _ in
             if value == nil { marked.addAttribute(.foregroundColor, value: NSColor.labelColor, range: range) }
         }
-        result.append(marked)
+        result.insert(marked, at: session.client.insertion)
         return result
     }
 
-    /// The caret's offset in the string: the core's cursor inside the composition, or the end.
+    /// The caret's offset in the string: the core's cursor inside the composition, or the insertion point.
     private var caretIndex: Int {
-        let sent = session.client.text.utf16.count
-        guard session.client.marked.length > 0 else { return sent }
-        return sent + min(max(0, session.presentation.cursor), session.client.marked.length)
+        let insertion = session.client.insertion
+        guard session.client.marked.length > 0 else { return insertion }
+        return insertion + min(max(0, session.presentation.cursor), session.client.marked.length)
+    }
+
+    /// The offset in the shown text nearest to `x` (in this view): the character boundary a click puts the caret at.
+    func offset(atX x: CGFloat) -> Int {
+        let string = content()
+        let target = x - Self.padding + scrollOffset
+        let text = string.string as NSString
+        var best = 0, bestDistance = abs(target)
+        var index = 0
+        while index < text.length {
+            index = NSMaxRange(text.rangeOfComposedCharacterSequence(at: index))
+            let distance = abs(width(string, upTo: index) - target)
+            if distance < bestDistance { best = index; bestDistance = distance }
+        }
+        return best
     }
 
     private func width(_ string: NSAttributedString, upTo index: Int) -> CGFloat {
@@ -379,7 +402,7 @@ final class PracticeTextView: NSView {
 
     /// The line at the composition's start, in this (flipped) view.
     func compositionLine() -> NSRect {
-        let x = Self.padding - scrollOffset + width(content(), upTo: session.client.text.utf16.count)
+        let x = Self.padding - scrollOffset + width(content(), upTo: session.client.insertion)
         return NSRect(x: x, y: lineTop, width: 0, height: lineHeight)
     }
 
@@ -392,7 +415,7 @@ final class PracticeTextView: NSView {
         if string.size().width <= room { scrollOffset = 0 }
         restartBlink()
         needsDisplay = true
-        setAccessibilityValue(session.client.text + session.client.marked.string)
+        setAccessibilityValue(session.client.shown)
         setAccessibilityNumberOfCharacters(string.length)
         setAccessibilitySelectedTextRange(NSRange(location: caretIndex, length: 0))
         NSAccessibility.post(element: self, notification: .valueChanged)
