@@ -103,7 +103,7 @@ enum EngineHost {
         loading = true
         let fingerprint = currentFingerprint()
         // The new engine reads the personal data the old one may still be about to write.
-        engine?.flushPersonalData()
+        flushPersonalData()
         DispatchQueue.global(qos: .userInitiated).async {
             let start = Date()
             do {
@@ -121,7 +121,7 @@ enum EngineHost {
                 let characters = sources.characters.flatMap(loadCharacterModel)
                 let charactersSeconds = characters == nil ? nil : Date().timeIntervalSince(charactersStart)
                 DispatchQueue.main.async {
-                    engine?.flushPersonalData()
+                    flushPersonalData()
                     loaded.readingChannelEnabled = Preferences.shared.readingChannel
                     engine = loaded
                     loadDurations = (engineSeconds, rerankerSeconds, charactersSeconds)
@@ -252,10 +252,17 @@ enum EngineHost {
         }
     }
 
+    /// Writes the engine's pending personal data; a failure keeps it pending and is logged.
+    static func flushPersonalData() {
+        if engine?.flushPersonalData() == false {
+            logger.error("Could not save personal data; it stays pending")
+        }
+    }
+
     /// Before the process ends for an update: write personal data and the correction log, and remember Chinese or
     /// English mode.
     static func prepareForExit() {
-        engine?.flushPersonalData()
+        flushPersonalData()
         CorrectionLog.shared.flush()
         UsageStatsStore.shared.flush()
         if let lastEnglishMode {

@@ -36,7 +36,7 @@
 | 共用設定 | `platforms/macos/Sources/ZhuyinTypeApp/Shared/` | `Preferences`（設定與預設值）、`Shortcuts`（可重新指定的快捷鍵） |
 | 自動更新 | `platforms/macos/Sources/ZhuyinTypeApp/Update/` | `Updater`（Sparkle） |
 | 引擎的 Swift 包裝 | `platforms/macos/Sources/ZhuyinEngine/` | 引擎的值型別（`KeyInput`、`ComposerOptions`、`Presentation` 等）、`Engine`、`Composer`（經 C 介面呼叫 Rust 引擎），以及 `NeuralReranker`、`SyllableScorer` 的 Core ML 推論（由 Rust 回呼）；`EngineBench`（`Sources/EngineBench/`）是不含 App 的引擎路徑，量延遲用 |
-| 核心 | `engine/crates/zhuyin-core/`（Rust） | `api`（按鍵、畫面與選項的介面）、`composer`（組字狀態）、`key_decoder`、`key_channel`（按鍵容錯）、`engine`（詞庫、比對、學習）、`binary`（mmap 詞庫與語言模型）、`conversion`（詞圖解碼）、`language_model`（bigram、混合）、`personal`（個人模型） |
+| 核心 | `engine/crates/zhuyin-core/`（Rust） | `api`（按鍵、畫面與選項的介面）、`composer`（組字狀態；`candidates` 候選字視窗、`scoring` 字模型分數）、`key_decoder`、`key_channel`（按鍵容錯）、`engine`（詞庫、比對、學習）、`personal_writer`（個人資料的背景寫入）、`binary`（mmap 詞庫與語言模型）、`conversion`（詞圖解碼）、`language_model`（bigram、混合）、`personal`（個人模型） |
 | 神經模型 | `engine/crates/zhuyin-models/`（Rust） | `NeuralReranker`（v2b 整句重排，`RerankerTree` 把候選句排成前綴樹）、`SyllableScorer`（v3 前文編碼器與音節對字編碼器）的判斷邏輯；推論在 macOS 由 App 以 Core ML 執行，在 Linux 由 `onnx` 模組以 ONNX Runtime 執行 |
 | C 介面 | `engine/crates/zhuyin-ffi/` | `include/zhuyin.h`：引擎、組字器、個人資料、模型的 hook 與主機提供的推論 |
 | 命令列 | `engine/crates/zhuyin-cli/` | 與 app 相同的引擎；評測、參數掃描、模型一致性檢查 |
@@ -97,7 +97,7 @@
 
 ### 5.1 組字狀態
 
-`Composer`（`engine/crates/zhuyin-core/src/composer.rs`）保存一段組字：
+`Composer`（`engine/crates/zhuyin-core/src/composer/`）保存一段組字：
 
 - `tokens`：已完成的音節（讀音與實際按的鍵）與標點、符號；
 - `buffer`：還沒完成的音節，分聲母、介音、韻母三格；
@@ -306,7 +306,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 ### 9.2 寫入
 
-個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`。改變後 150 毫秒在背景佇列以原子寫入更新；重新載入引擎與結束程序前會先寫完。
+個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`。改變後 150 毫秒在背景執行緒以原子寫入更新（`personal_writer`）；重新載入引擎與結束程序前會先寫完。寫入失敗時資料保留到下一次寫入，`flush_personal_data`（C 介面 `zt_engine_flush_personal_data`）回報失敗，App 記錄錯誤。
 
 設定的「記住的字詞」可以搜尋、移除、全部清除、把個別字詞設為不記住，也可以匯出、匯入成一個文字檔。「記住選過的字詞」關閉時不學習。
 

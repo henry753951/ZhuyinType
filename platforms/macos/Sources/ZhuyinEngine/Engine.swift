@@ -98,7 +98,8 @@ public final class Engine: @unchecked Sendable {
         set { zt_engine_set_reading_channel_enabled(handle, newValue) }
     }
 
-    public func flushPersonalData() { zt_engine_flush_personal_data(handle) }
+    /// Writes pending personal data now.  False when it could not be written; it stays pending for the next write.
+    @discardableResult public func flushPersonalData() -> Bool { zt_engine_flush_personal_data(handle) }
     public func forgetAllLearned() { zt_engine_forget_all_learned(handle) }
 
     private func phrases(_ list: UnsafeMutablePointer<ZtPhraseList>?) -> [(reading: String, word: String, count: Double)] {

@@ -317,7 +317,7 @@ Swift 引擎移除後的第一個新功能（2026-10-28，`reading-channel` 分�
 | 比對：每個音節的選項、一個詞一個變體、限定字的查詢、三聲變調 | `zhuyin_core::engine`（`build_matches`、`visit`、`push_matches`、`ChannelStep`） |
 | 修正的狀態 | `Match::reading_corrected`、`ConvertedWord`／`SentenceWord` 的 `channel` 與 `reading_corrected`、`ScoredSentence::reading_corrected_only` |
 | 重排的 `reading_margin` | `zhuyin_models::NeuralReranker::choose` |
-| v3 的過渡做法與截斷 | `zhuyin_core::composer`（`VariantScores`、`variant_window`、`score_variants`） |
+| v3 的過渡做法與截斷 | `zhuyin_core::composer`（`VariantScores`、`Tuning::variant_window`、`scoring` 的 `score_variants`） |
 | 編譯與 Python 參考實作 | `ml/src/zhuyintype_ml/training/lm/compile_data.py`（`compile_channel`）、`training/lexicon/engine_channel.py` |
 | C 介面 | `ZtEngineConfig` 的 `reading_channel`、`channel_*`；`zt_composer_set_variant_scores` |
 
