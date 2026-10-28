@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -135,6 +136,11 @@ class AgainstRust(unittest.TestCase):
             self.skipTest("no cargo")
         from zhuyintype_ml.core import paths
 
+        try:
+            cli = paths.cli()
+        except subprocess.CalledProcessError:
+            # The ML CI runner has cargo but no ONNX Runtime to link zhuyin-cli against; the Engine job builds it.
+            self.skipTest("zhuyin-cli cannot be built here")
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
             write_fixture(directory)
@@ -149,7 +155,7 @@ class AgainstRust(unittest.TestCase):
             ):
                 python = engine_channel.table(channel, lexicon, settings)
                 rust = engine_channel.rust_table(
-                    paths.cli(), directory / "lexicon.tsv", directory / "compiled" / "channel.bin", settings
+                    cli, directory / "lexicon.tsv", directory / "compiled" / "channel.bin", settings
                 )
                 self.assertEqual(engine_channel.compare(python, rust), [])
                 self.assertGreater(len(python), 2)
