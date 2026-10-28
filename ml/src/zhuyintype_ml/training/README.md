@@ -52,7 +52,7 @@ flowchart LR
 | `reading` | `v3_reading/`、`v3_reading_<名稱>/` | — | 從出貨的 v3 以讀音雜訊（字音表的台灣讀音、異讀、輕聲、變調）繼續訓練；候選，尚未採用 |
 | `base` | `base/` | — | 小麥注音詞庫與期望次數語言模型（研究，0.4.0 未採用） |
 | `memory` | `memory/binary/` | — | 記憶體量測與 mmap 二進位的驗證 |
-| `compress` | `compress/<方法>/` | 候選（`data-5`，未發布） | 不重新訓練的權重壓縮：int8、int4 與調色盤的 Core ML，ONNX Runtime 的 int8；適用任何 reranker 與 v3 檢查點 |
+| `compress` | `compress/<方法>/` | `v3/`、`reranker/`（int8，`data-5`） | 不重新訓練的權重壓縮：int8、int4 與調色盤的 Core ML，ONNX Runtime 的 int8；適用任何 reranker 與 v3 檢查點 |
 
 ## 共同規則
 

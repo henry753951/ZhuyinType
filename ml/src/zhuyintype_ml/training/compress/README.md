@@ -4,7 +4,7 @@
 
 ## 用途
 
-- App 的模型大小：v3 兩個 Core ML 模型 fp16 共 129 MB，reranker 每個 60 MB。
+- App 的模型大小：v3 兩個 Core ML 模型 fp16 共 129 MB，reranker 每個 60 MB。0.4.3 起出貨的是這裡的 `int8-channel`（`data-5`），v3 65 MB、reranker 30 MB；`checkpoints` 元件是同樣的權重，主機上的評測量的就是出貨的模型。
 - 每種壓縮方法先在 GPU 主機上以「假量化」評測：把權重壓縮再解壓縮，存成檢查點，匯出 fp32 ONNX，用 App 設定跑開發集。這些權重和 Core ML 解壓縮後的值逐位元相同（`parity` 檢查），所以主機上的數字就是這些權重的準確率。
 - Mac 只做 Core ML 的匯出、壓縮、編譯，一次性的一致性檢查，以及延遲、能耗與載入時間的量測。
 - 方法、數字與決定見 [docs/research/log.md](../../../../../docs/research/log.md) 2026-10-28「模型壓縮」與 [MODEL.md](../../../../../docs/engine/MODEL.md) §10、§11。
@@ -20,7 +20,7 @@ zt remote pull data/build/compress/onnx.json data/build/compress/int8-channel/co
 zt train compress quantize coreml parity measure --option methods=int8-channel   # Mac
 zt train compress measure --option methods=int8-channel --option rounds=3 \
     --option "base=$HOME/Library/Input Methods/ZhuyinType.app/Contents/Resources"
-ZT_DATA=data/build/compress/int8-channel zt data pack data-N v3 reranker          # 候選的資料版本
+ZT_DATA=data/build/compress/int8-channel zt data pack data-N v3 reranker checkpoints   # 資料版本（data-5）
 zt --remote train compress --option v3=v3_new             # 新的 v3 檢查點（資料目錄裡的 v3_new/）
 ```
 
