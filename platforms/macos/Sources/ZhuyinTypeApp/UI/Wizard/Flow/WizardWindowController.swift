@@ -18,11 +18,15 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
         window.title = mode == .keysOnly ? "你會用到的按鍵" : "設定嚮導"
         if case .newSince = mode { window.title = "新功能導覽" }
         self.window = window
+        window.center()
+        // Headless runs (self-tests) show it without taking the keyboard.
+        guard !Headless.isActive else { window.orderFrontRegardless(); return }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        window.center()
         window.makeKeyAndOrderFront(nil)
     }
+
+    var isOpen: Bool { window?.isVisible == true }
 
     /// The first opening of the settings after install also opens the wizard, once.
     func showOnFirstUse() {
@@ -31,11 +35,20 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
         DispatchQueue.main.async { self.show(.quick) }
     }
 
+    /// Closes the wizard only: the settings window, if it is open, stays where it was and comes back to the front.
     func close() {
         window?.orderOut(nil)
         window?.contentViewController = nil
         model = nil
-        NSApp.setActivationPolicy(.accessory)
+        returnToSettings()
+    }
+
+    private func returnToSettings() {
+        if let settings = SettingsWindowController.shared.visibleWindow {
+            if !Headless.isActive { settings.makeKeyAndOrderFront(nil) }
+        } else if !Headless.isActive {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     private func makeWindow() -> NSWindow {
@@ -49,6 +62,6 @@ final class WizardWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         model = nil
-        NSApp.setActivationPolicy(.accessory)
+        DispatchQueue.main.async { self.returnToSettings() }
     }
 }

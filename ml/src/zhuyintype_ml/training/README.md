@@ -51,6 +51,7 @@ flowchart LR
 | `homophone` | `homophone2/`、`v3_homophone2/` | `v3/` | 在／再等同音字的資料與評測；從 0.3.0 的 v3 繼續微調，以 `v3/` 發布 |
 | `base` | `base/` | — | 小麥注音詞庫與期望次數語言模型（研究，0.4.0 未採用） |
 | `memory` | `memory/binary/` | — | 記憶體量測與 mmap 二進位的驗證 |
+| `compress` | `compress/<方法>/` | 候選（`data-5`，未發布） | 不重新訓練的權重壓縮：int8、int4 與調色盤的 Core ML，ONNX Runtime 的 int8；適用任何 reranker 與 v3 檢查點 |
 
 ## 共同規則
 

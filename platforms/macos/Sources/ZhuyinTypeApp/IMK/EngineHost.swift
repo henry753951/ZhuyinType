@@ -85,6 +85,10 @@ enum EngineHost {
                 ?? exists(bundled?.appendingPathComponent("v3"), "chars.json"))
     }
 
+    /// The lexicon the input method loads (the models folder's, or the bundled one), for engines of their own such as
+    /// the setup wizard's practice field.
+    static func lexiconURL() -> URL? { sources()?.lexicon }
+
     /// Loads everything in the background and swaps it in on the main thread.  A request while loading runs once more
     /// afterwards.
     static func reload() {

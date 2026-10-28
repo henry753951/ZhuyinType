@@ -32,8 +32,11 @@ final class PreviewDirector: ObservableObject {
     @Published var hovered = false
     /// No autoplay until then: the user picked a tab or changed a setting.
     var heldUntil = Date.distantPast
+    /// Every candidate of a page (not the compact few) until then: 每頁的候選字 just changed.
+    @Published var fullPageUntil = Date.distantPast
+    var showsFullPage: Bool { Date() < fullPageUntil }
 
-    static let step: TimeInterval = 1.6
+    static var step: TimeInterval = 1.4
     static let hold: TimeInterval = 8
 
     /// Shows `state` (from its first moment, or its last, which shows the setting), and holds it a while.
@@ -46,31 +49,42 @@ final class PreviewDirector: ObservableObject {
         if animated { withAnimation(.easeInOut(duration: 0.3)) { apply() } } else { apply() }
     }
 
-    /// The next moment of the flow, or the next state.
+    /// The next moment of the flow; after its last, the next state, unless the user is looking at this one (a tab
+    /// picked or a setting changed a moment ago), which then plays its flow again.
     func advance(states: [PreviewState], frames: (PreviewState) -> Int) {
-        guard !hovered, Date() >= heldUntil, !states.isEmpty else { return }
+        guard !hovered, !states.isEmpty else { return }
         let count = frames(state)
         let current = min(frame, max(0, count - 1))
         if current + 1 < count {
-            frame = current + 1
+            withAnimation(.easeOut(duration: 0.25)) { frame = current + 1 }
+        } else if Date() < heldUntil {
+            withAnimation(.easeOut(duration: 0.25)) { frame = 0 }
         } else {
             let index = states.firstIndex(of: state).map { ($0 + 1) % states.count } ?? 0
-            withAnimation(.easeInOut(duration: 0.35)) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                 state = states[index]
                 frame = 0
             }
         }
+        ticks += 1
     }
+
+    /// How many moments have played (the self-tests check that the preview moves).
+    private(set) var ticks = 0
 }
 
 struct UnifiedPreview: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var director: PreviewDirector
+    /// The state tabs above the scene (the wizard's lessons show one state, without them).
+    var tabs = true
+    /// The scene's tallest; a larger window is drawn smaller as a whole.
+    var maxHeight: CGFloat = UnifiedPreview.defaultMaxHeight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var width: CGFloat = 520
 
     var body: some View {
-        let flows = PreviewFlows(preferences: preferences)
+        let flows = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
         let states = flows.states
         let shown = states.contains(director.state) ? director.state : .list
         let pinned = DemoPinning.previewState
@@ -78,33 +92,38 @@ struct UnifiedPreview: View {
         let frames = flows.frames(state)
         let frame = min(pinned?.frame ?? director.frame, frames.count - 1)
         VStack(alignment: .leading, spacing: 10) {
-            let scale = SceneLayout(scene: frames[frame], width: width, preferences: preferences, maxHeight: Self.maxHeight).scale
-            PreviewTabs(states: states, selected: state) { director.show($0, last: false) }
+            if tabs { PreviewTabs(states: states, selected: state) { director.show($0, last: false) } }
             GeometryReader { proxy in
-                let layout = SceneLayout(scene: frames[frame], width: proxy.size.width, preferences: preferences,
-                                         maxHeight: Self.maxHeight)
-                PreviewBlock(layout: layout.fitted(height: stageHeight(flows, states, width: proxy.size.width)),
-                             preferences: preferences, animated: false, showsTitle: false)
-                    .id(state)
-                    .transition(.opacity)
-                    .onAppear { width = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, now in width = now }
-            }
-            .frame(height: stageHeight(flows, states, width: width))
-            .overlay(alignment: .bottomTrailing) {
-                if scale < 0.99 {
-                    Text("縮小為 \(Int((scale * 100).rounded()))%").font(.caption2).foregroundStyle(.tertiary)
-                        .padding(8)
+                // The scene as wide as the window needs (a horizontal list takes the whole width); the state's
+                // description beside it in the room left.
+                let sceneWidth = sceneWidth(flows, states, in: proxy.size.width)
+                let layout = SceneLayout(scene: frames[frame], width: sceneWidth, preferences: preferences, maxHeight: maxHeight)
+                HStack(alignment: .top, spacing: 18) {
+                    PreviewBlock(layout: layout.fitted(height: stageHeight(flows, [state], width: sceneWidth)),
+                                 preferences: preferences, animated: !DemoPinning.still && !reduceMotion, showsTitle: false)
+                        .frame(width: sceneWidth)
+                        .id(state)
+                        .transition(.opacity)
+                    if proxy.size.width - sceneWidth > 150 {
+                        StateNote(state: state, preferences: preferences)
+                            .id("note-" + state.rawValue)
+                            .transition(.opacity)
+                    }
                 }
+                .onAppear { width = proxy.size.width }
+                .onChange(of: proxy.size.width) { _, now in width = now }
             }
+            // The box fits the state shown (a line and a badge, or the list), and grows or shrinks with it.
+            .frame(height: stageHeight(flows, [state], width: sceneWidth(flows, states, in: width)))
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
         .onHover { director.hovered = $0 }
         .task(id: reduceMotion) {
             // Autoplay; none under Reduce Motion (the tabs and the switch on a change still work, as a crossfade).
-            guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview else { return }
+            guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview || DemoPinning.live else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(PreviewDirector.step))
-                let current = PreviewFlows(preferences: preferences)
+                let current = PreviewFlows(preferences: preferences, pageLimit: director.showsFullPage ? nil : Self.pageLimit)
                 director.advance(states: current.states, frames: { current.frames($0).count })
             }
         }
@@ -112,14 +131,57 @@ struct UnifiedPreview: View {
         .accessibilityLabel("候選字視窗預覽：\(state.title)")
     }
 
-    /// The scene's tallest: a larger window (big type, many candidates) is drawn smaller as a whole.
-    static let maxHeight: CGFloat = 280
+    /// The candidates the preview lists a page: fewer than the window does, so the preview stays short; all of them
+    /// for a while after 每頁的候選字 changes.
+    static let pageLimit = 4
+    /// The scene's tallest: a larger window (big type) is drawn smaller as a whole.
+    static let defaultMaxHeight: CGFloat = 300
+
+    /// The width the scenes need: the widest window plus the line's inset, at most the room there is.
+    private func sceneWidth(_ flows: PreviewFlows, _ states: [PreviewState], in available: CGFloat) -> CGFloat {
+        guard preferences.candidateLayout == .vertical else { return available }
+        let needed = states.flatMap(flows.frames).compactMap { scene -> CGFloat? in
+            let layout = SceneLayout(scene: scene, width: available, preferences: preferences, maxHeight: maxHeight)
+            return layout.panel.map { $0.maxX + 16 }
+        }.max() ?? 300
+        return min(available, max(300, needed))
+    }
 
     /// One height for every state and moment, so the page never moves while the preview plays.
     private func stageHeight(_ flows: PreviewFlows, _ states: [PreviewState], width: CGFloat) -> CGFloat {
         states.flatMap(flows.frames)
-            .map { SceneLayout(scene: $0, width: width, preferences: preferences, maxHeight: Self.maxHeight).naturalHeight }
+            .map { SceneLayout(scene: $0, width: width, preferences: preferences, maxHeight: maxHeight).naturalHeight }
             .max() ?? 120
+    }
+}
+
+/// What the state shows, beside the scene: its name and the keys that lead to it, from the current settings.
+private struct StateNote: View {
+    let state: PreviewState
+    @ObservedObject var preferences: Preferences
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(state.title).font(.headline)
+            Text(Self.text(state, preferences)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 10)
+        .frame(maxWidth: 260, alignment: .leading)
+    }
+
+    static func text(_ state: PreviewState, _ p: Preferences) -> String {
+        let keys = CurrentKeys(p)
+        switch state {
+        case .list:
+            return "按 ↓\(p.spaceAction == .openCandidates ? "或空白" : "") 開啟；\(keys.selection) 選字，Return 選取反白的字。"
+        case .corrections:
+            return (keys.text(.correctionsList).map { "按 \($0) " } ?? "") + "列出按錯修正與模糊音的字" + (p.showsAnnotations ? "，修正的讀音以灰字標出。" : "。")
+        case .composing: return "打完一個注音就轉成中文，整句一起轉換；要改的字可以之後再選。"
+        case .paging:
+            let next = (p.bindings[.nextPage] ?? []).prefix(3).map(\.compact).joined(separator: "、")
+            return (next.isEmpty ? "清單中按空白翻頁" : "按 \(next) 翻到下一頁") + (p.panelAnimation ? "，舊的一頁移出、新的一頁移入。" : "。")
+        case .phrase: return "選取 1 到 6 個字，再按 Return 加入自訂詞。"
+        case .mode: return keys.modeKey.map { "按 \($0) 切換中英" + (p.showModeToast ? "，游標旁顯示「中」或「英」。" : "。") } ?? "沒有設定切換中英的按鍵。"
+        }
     }
 }
 
@@ -152,9 +214,9 @@ struct PreviewFlows {
     let scenes: PreviewScenes
     private let preferences: Preferences
 
-    init(preferences: Preferences) {
+    init(preferences: Preferences, pageLimit: Int? = nil) {
         self.preferences = preferences
-        scenes = PreviewScenes(preferences: preferences)
+        scenes = PreviewScenes(preferences: preferences, pageLimit: pageLimit)
     }
 
     /// The states the settings allow (a list whose key is turned off has no state).
@@ -197,7 +259,9 @@ struct PreviewFlows {
             before.badge = nil
             before.badgeOff = false
             before.keys = []
-            return [before, mode]
+            var back = mode
+            if mode.badge != nil { back.badge = "中" }
+            return [before, mode, back]
         }
     }
 
@@ -217,8 +281,10 @@ struct PreviewSettings: Equatable {
     var corrections: [String]
     var paging: [String]
     var mode: [String]
+    var perPage: Int
 
     init(_ p: Preferences) {
+        perPage = p.candidatesPerPage
         let keys = CurrentKeys(p)
         list = [p.candidateLayout.rawValue, "\(p.candidateFontSize)", p.candidateDensity.rawValue, "\(p.candidatesPerPage)",
                 p.selectionKeys.rawValue, "\(p.showsZhuyinHint)", "\(p.isEnabled(KeyFeature.zhuyinRowClick))", "\(p.candidatePlacement)",

@@ -38,6 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, default=paths.data("reranker"), help="directory with charlm.pt")
     parser.add_argument("--out", type=Path, help="package to write (default: <data>/Reranker.mlpackage)")
+    parser.add_argument(
+        "--target", choices=["macOS14", "macOS15"], default="macOS14", help="minimum macOS (default: macOS14)"
+    )
     args = parser.parse_args(argv)
     out = args.out or args.data / "Reranker.mlpackage"
     checkpoint = torch.load(os.path.join(args.data, "charlm.pt"), map_location="cpu")
@@ -56,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
             ct.TensorType(name="targets", shape=shape, dtype=np.int32),
         ],
         outputs=[ct.TensorType(name="logprob", dtype=np.float32)],
-        minimum_deployment_target=ct.target.macOS14,
+        minimum_deployment_target=getattr(ct.target, args.target),
         compute_precision=ct.precision.FLOAT16,
         convert_to="mlprogram",
     )
