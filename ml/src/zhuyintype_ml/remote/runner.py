@@ -332,18 +332,22 @@ class RemoteRunner(Runner):
         command's output files and any other paths (relative to the checkout)."""
         local = paths.data("remote_eval", workdir)
         local.mkdir(parents=True, exist_ok=True)
-        subprocess.run(self.host.rsync("-az", self.rsync_work(workdir, REMOTE_OUTPUTS) + "/", f"{local}/"), check=False)
+        # The default results directory is optional when the remote job failed before creating it.
+        if subprocess.run(
+            self.host.rsync("-az", self.rsync_work(workdir, REMOTE_OUTPUTS) + "/", f"{local}/"), check=False
+        ).returncode:
+            print("zt: optional results directory could not be retrieved", file=sys.stderr)
         for output in outputs or []:
             # Both paths end in the same name, so copying into the parent works for files and directories alike.
             output.local.parent.mkdir(parents=True, exist_ok=True)
             source = self.rsync_work(workdir, output.remote.rstrip("/"))
-            if subprocess.run(self.host.rsync("-az", source, f"{output.local.parent}/"), check=False).returncode == 0:
-                print(f"copied back {paths.relative(output.local)}")
+            subprocess.run(self.host.rsync("-az", source, f"{output.local.parent}/"), check=True)
+            print(f"copied back {paths.relative(output.local)}")
         for item in extra or []:
             target = paths.ROOT / item
             target.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(
-                self.host.rsync("-az", self.rsync_work(workdir, item.rstrip("/")), f"{target.parent}/"), check=False
+                self.host.rsync("-az", self.rsync_work(workdir, item.rstrip("/")), f"{target.parent}/"), check=True
             )
         print(f"results: {paths.relative(local)}")
 

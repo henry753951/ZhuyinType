@@ -42,6 +42,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -551,6 +552,55 @@ def assemble(label: str, names: list[str], tasks: list[Task], store: Store, n: i
     return record
 
 
+def check_run_fingerprint(store: Store, inputs: dict[str, Any]) -> None:
+    """Reject old or incompatible results before reading any cached cell."""
+    digest = hashlib.sha256(json.dumps(inputs, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    path = store.root / "run.json"
+    previous = store.read(path)
+    if previous is not None:
+        if previous.get("fingerprint") != digest:
+            raise SystemExit("zt bench compare: inputs changed; use a new label or delete the old run directory")
+    elif store.root.exists() and any(store.root.iterdir()):
+        raise SystemExit(
+            "zt bench compare: old run has no fingerprint; use a new label or delete the old run directory"
+        )
+    else:
+        store.write(path, {"fingerprint": digest})
+
+
+def run_inputs(
+    tasks: list[Task], names: list[str], n: int, typing_n: int, budget: int, workers: dict[str, int]
+) -> dict[str, Any]:
+    lexicon = EngineConfig("engine").reading_lexicon
+    systems = [registry.create(name, workers=workers.get(name, 1), jobs=workers.get(name, 1)) for name in names]
+    return {
+        "suite": SUITE,
+        "tasks": [{"id": task.id, **asdict(task)} for task in tasks],
+        "n": n,
+        "typing_n": typing_n,
+        "lexicon_sha256": hashlib.sha256(lexicon.read_bytes()).hexdigest(),
+        "assets_sha256": hashlib.sha256((paths.RESOURCES / "assets.json").read_bytes()).hexdigest(),
+        "commit": commit(),
+        "app_version": app_version(),
+        "budget": budget,
+        "workers": workers,
+        "systems": [
+            {
+                "name": system.name,
+                "label": system.label,
+                "family": system.family,
+                "capabilities": sorted(system.capabilities),
+                "description": {
+                    key: value
+                    for key, value in system.describe().items()
+                    if key not in ("startup", "cli_runs", "cli_rowstats_mismatches")
+                },
+            }
+            for system in systems
+        ],
+    }
+
+
 def run(
     label: str,
     names: list[str],
@@ -565,6 +615,7 @@ def run(
         raise SystemExit("zt bench compare: evaluations run on the GPU host (zt --remote bench compare)")
     store = Store(default_dir(label))
     tasks = build_tasks(n, typing_n)
+    check_run_fingerprint(store, run_inputs(tasks, names, n, typing_n, budget, workers or {}))
     pattern = re.compile(tasks_filter) if tasks_filter else None
     only: Callable[[Task], bool] = (lambda t: bool(pattern.search(t.id))) if pattern else (lambda _t: True)
     print(f"[{label}] {len(tasks)} tasks, {sum(len(t.cases) for t in tasks)} cases, systems: {', '.join(names)}")

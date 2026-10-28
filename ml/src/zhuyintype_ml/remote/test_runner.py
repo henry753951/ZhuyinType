@@ -6,10 +6,13 @@ zt check python --start src/zhuyintype_ml/remote
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
+from unittest.mock import patch
 
 from zhuyintype_ml.core import paths
 from zhuyintype_ml.data import assets
@@ -122,6 +125,20 @@ class AssetTests(unittest.TestCase):
 
     def test_every_pinned_component_is_known(self) -> None:
         self.assertEqual(set(assets.entries()), set(assets.COMPONENTS))
+
+
+class StandardsFixes(unittest.TestCase):
+    def test_required_pull_failure(self):
+        host = SimpleNamespace(rsync=lambda *args: ["rsync", *args], remote=lambda *args: ":".join(args))
+        remote = runner.RemoteRunner(host)
+        with tempfile.TemporaryDirectory() as d, patch.object(runner.paths, "data", return_value=Path(d)):
+            with patch.object(
+                runner.subprocess,
+                "run",
+                side_effect=[SimpleNamespace(returncode=0), subprocess.CalledProcessError(1, "rsync")],
+            ):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    remote.pull("w", outputs=[runner.Output("result", Path(d) / "result")])
 
 
 if __name__ == "__main__":

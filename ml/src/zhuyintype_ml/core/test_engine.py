@@ -5,7 +5,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
+from unittest.mock import patch
 
 from zhuyintype_ml.core.engine import EngineConfig, EnginePool
 
@@ -71,6 +73,20 @@ class EnginePoolTest(unittest.TestCase):
         cli = fake_cli(self.root, "line if line != 'bad' else sys.exit(3)")
         with self.assertRaises(RuntimeError):
             EnginePool(self.config, jobs=2, cli=cli).run(["good", "bad", "good"])
+
+
+class StandardsFixes(unittest.TestCase):
+    def test_worker_closes_on_failure_and_reports_close_failure(self):
+        process = SimpleNamespace(command=[], ask=lambda _: (_ for _ in ()).throw(ValueError("ask")))
+        process.close = unittest.mock.Mock(side_effect=RuntimeError("close"))
+        with tempfile.TemporaryDirectory() as d, patch("zhuyintype_ml.core.engine.EngineProcess", return_value=process):
+            pool = EnginePool(EngineConfig("engine", Path(d)), jobs=1, cli=Path("cli"))
+            with self.assertRaisesRegex(ValueError, "ask"):
+                pool.run(["x"])
+            process.close.assert_called_once()
+            process.ask = lambda _: "ok"
+            with self.assertRaisesRegex(RuntimeError, "close"):
+                pool.run(["x"])
 
 
 if __name__ == "__main__":

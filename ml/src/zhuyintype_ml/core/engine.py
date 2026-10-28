@@ -87,15 +87,19 @@ class EngineProcess:
     def __init__(self, command: list[str], env: dict[str, str]) -> None:
         self.command = command
         self.errors = tempfile.TemporaryFile()
-        self.process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self.errors,
-            env=env,
-            text=True,
-            encoding="utf-8",
-        )
+        try:
+            self.process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=self.errors,
+                env=env,
+                text=True,
+                encoding="utf-8",
+            )
+        except BaseException:
+            self.errors.close()
+            raise
 
     def failure(self) -> RuntimeError:
         self.process.kill()
@@ -116,17 +120,19 @@ class EngineProcess:
         return answer[:-1]
 
     def close(self) -> None:
-        if self.process.poll() is None and self.process.stdin:
-            try:
-                self.process.stdin.close()
-            except BrokenPipeError:
-                pass
-        code = self.process.wait()
-        if self.process.stdout:
-            self.process.stdout.close()
-        if code:
-            raise self.failure()
-        self.errors.close()
+        try:
+            if self.process.stdin:
+                try:
+                    self.process.stdin.close()
+                except BrokenPipeError:
+                    pass
+            code = self.process.wait()
+            if code:
+                raise self.failure()
+        finally:
+            if self.process.stdout:
+                self.process.stdout.close()
+            self.errors.close()
 
 
 @dataclass
@@ -223,19 +229,23 @@ class EnginePool:
                         chosen.next += 1
                     if chosen is not batch or process is None:
                         if process is not None:
-                            process.close()
+                            old, process = process, None
+                            old.close()
                         process = process_for(chosen.command)
                         batch = chosen
                     chosen.outputs[index] = process.ask(chosen.lines[index])
             except BaseException as error:
                 failures.append(error)
-                process = None
-            if process is not None:
-                if self.keep:
-                    with lock:
-                        self.idle.append(process)
-                else:
-                    process.close()
+            finally:
+                if process is not None:
+                    try:
+                        if self.keep and not failures:
+                            with lock:
+                                self.idle.append(process)
+                        else:
+                            process.close()
+                    except BaseException as error:
+                        failures.append(error)
 
         threads = [threading.Thread(target=worker, daemon=True) for _ in range(min(self.jobs, total))]
         for thread in threads:

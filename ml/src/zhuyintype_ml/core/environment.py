@@ -37,7 +37,8 @@ def _version(command: list[str]) -> str:
         done = subprocess.run(command, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired):
         return ""
-    return (done.stdout or done.stderr).strip().splitlines()[0] if done.returncode == 0 else ""
+    lines = (done.stdout or done.stderr).strip().splitlines()
+    return lines[0] if done.returncode == 0 and lines else ""
 
 
 def check_uv() -> Check:

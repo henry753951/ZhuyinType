@@ -40,9 +40,10 @@ def checkpoint_files(reranker: Path, v3: Path) -> list[Path]:
     return [reranker / "charlm.pt", v3 / "context.pt", v3 / "syllable.pt"]
 
 
-def outputs(reranker: Path, v3: Path, tree: bool) -> list[Path]:
+def outputs(reranker: Path, v3: Path, tree: bool, fp16: bool = False) -> list[Path]:
     files = [reranker / "Reranker.onnx", v3 / "ContextEncoder.onnx", v3 / "SyllableEncoder.onnx"]
-    return files + ([reranker / "RerankerTree.onnx"] if tree else [])
+    files += [reranker / "RerankerTree.onnx"] if tree else []
+    return files + ([p.with_suffix(".fp16.onnx") for p in files] if fp16 else [])
 
 
 def export_digest(reranker: Path, v3: Path, tree: bool, fp16: bool) -> str:
@@ -70,7 +71,7 @@ def export(
     stamp = reranker / STAMP
     digest = export_digest(reranker, v3, tree, fp16)
     current = stamp.exists() and stamp.read_text().strip() == digest
-    if current and not force and all(p.exists() for p in outputs(reranker, v3, tree)):
+    if current and not force and all(p.exists() for p in outputs(reranker, v3, tree, fp16)):
         print(f"ONNX models are current ({paths.relative(reranker)}, {paths.relative(v3)})")
         return False
     args = ["--reranker", str(reranker), "--v3", str(v3), *(["--tree"] if tree else []), *(["--fp16"] if fp16 else [])]

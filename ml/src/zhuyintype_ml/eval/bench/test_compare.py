@@ -73,6 +73,45 @@ class Bookkeeping(unittest.TestCase):
         self.assertEqual(len(cell["outputs"]), len(cases))
         self.assertNotIn("unsupported", cell)
 
+    def test_resume_requires_matching_fingerprint(self):
+        inputs = {"tasks": [{"id": "plain/x", "cases": ["one"]}], "n": 1, "typing_n": 2, "version": "v1"}
+        compare.check_run_fingerprint(self.store, inputs)
+        compare.check_run_fingerprint(self.store, inputs)
+        for key, value in (("tasks", []), ("n", 3), ("typing_n", 4), ("version", "v2")):
+            with self.subTest(key=key), self.assertRaisesRegex(SystemExit, "new label"):
+                compare.check_run_fingerprint(self.store, {**inputs, key: value})
+        self.assertEqual(self.store.read(self.store.root / "run.json")["fingerprint"].__len__(), 64)
+
+    def test_run_inputs_capture_task_lexicon_and_system_configuration(self):
+        root = self.store.root / "inputs"
+        root.mkdir()
+        (root / "lexicon.tsv").write_text("first", encoding="utf-8")
+        (root / "assets.json").write_text("{}", encoding="utf-8")
+        tasks = [Task("x", "plain", "zhuyintype", [case(0, "甲")])]
+        system = Fake("example", {})
+        with (
+            unittest.mock.patch.object(compare.paths, "RESOURCES", root),
+            unittest.mock.patch.object(compare, "EngineConfig") as config,
+            unittest.mock.patch.object(compare.registry, "create", return_value=system),
+            unittest.mock.patch.object(compare, "commit", return_value="c1"),
+            unittest.mock.patch.object(compare, "app_version", return_value="v1"),
+        ):
+            config.return_value.reading_lexicon = root / "lexicon.tsv"
+            inputs = compare.run_inputs(tasks, ["example"], 1, 2, 4, {})
+            store = compare.Store(self.store.root / "run")
+            compare.check_run_fingerprint(store, inputs)
+            (root / "lexicon.tsv").write_text("second", encoding="utf-8")
+            changed = compare.run_inputs(tasks, ["example"], 1, 2, 4, {})
+            with self.assertRaisesRegex(SystemExit, "new label"):
+                compare.check_run_fingerprint(store, changed)
+            self.assertEqual(inputs["tasks"][0]["cases"][0]["reference"], "甲")
+            self.assertEqual(inputs["systems"][0]["name"], "example")
+
+    def test_legacy_run_is_rejected(self):
+        self.store.write(self.store.root / "cells" / "old.json", {})
+        with self.assertRaisesRegex(SystemExit, "no fingerprint"):
+            compare.check_run_fingerprint(self.store, {})
+
     def test_budget(self):
         budget = compare.Budget(16, ["zhuyintype-app", "shanjie-chat", "0c-full"])
         # 0c's model servers count once they run, two processes each; the others share the rest by weight.

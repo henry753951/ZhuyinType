@@ -30,6 +30,10 @@ class Rows(unittest.TestCase):
         self.assertEqual(summary["shanjie"], {"top1": 1.0, "cer": 0.0, "oracle16": 1.0})
         self.assertEqual(summary["raw"]["cer"], 0.5)
 
+    def test_normalized_distance(self):
+        row = rows.score_row({"truth": "她好"}, "他壞", [], rows.normalizer())
+        self.assertEqual(row["errors_shanjie"], 1)
+
     def test_files_and_engine(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

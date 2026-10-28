@@ -15,9 +15,12 @@ def pipelines() -> dict[str, Pipeline]:
     for module in pkgutil.iter_modules(zhuyintype_ml.training.__path__):
         if not module.ispkg:
             continue
+        name = f"zhuyintype_ml.training.{module.name}.pipeline"
         try:
-            pipeline = importlib.import_module(f"zhuyintype_ml.training.{module.name}.pipeline").PIPELINE
-        except ModuleNotFoundError:
+            pipeline = importlib.import_module(name).PIPELINE
+        except ModuleNotFoundError as error:
+            if error.name != name:
+                raise
             continue
         found[pipeline.name] = pipeline
     return found

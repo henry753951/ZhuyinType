@@ -84,6 +84,13 @@ def run(args: argparse.Namespace) -> int:
     matrix = load_matrix(args.matrix)
     evaluator = registry.get(matrix.get("evaluator", "conversion"))
     output = args.output or paths.data("eval", "sweeps", args.matrix.stem)
+    targets = [
+        output / f"{configuration['name']}-{entry['name']}.json"
+        for configuration in matrix["configurations"]
+        for entry in matrix["sets"]
+    ]
+    if len(targets) != len(set(targets)):
+        raise SystemExit("zt eval sweep: report paths collide")
     output.mkdir(parents=True, exist_ok=True)
     table = []
     for configuration in matrix["configurations"]:

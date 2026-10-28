@@ -8,7 +8,7 @@ its context, committed, and the engine's 16 best checked.
 Three ways to count a row right: raw (the same characters), shanjie (善解's folds of eight common characters, plus
 its variants dictionary when --shanjie-variants is given; an unmodified evaluation-time file, never training data)
 and variants (our interchangeable forms, as in `zt eval conversion`).  For each: top-1 (the committed text is right),
-CER (善解's rowstats rule: zero for a row right under the normalization, otherwise the raw Levenshtein distance,
+CER (善解's rowstats rule: zero for a row right under the normalization, otherwise the normalized Levenshtein distance,
 over raw truth characters) and oracle@16 (a right sentence is among the engine's 16 best).  Each item is one row,
 with the per-normalization outcomes `zt eval stats` pairs (id: SHA-256 of the row).
 """
@@ -109,7 +109,6 @@ def score_row(
 ) -> dict[str, Any]:
     """The row with its prediction, 16 best and, per normalization, ok_*, errors_* and oracle16_*."""
     result = {**row, "prediction": predicted, "nbest": candidates, "gold_len": len(row["truth"])}
-    distance = edit_distance(row["truth"], predicted)
     folds: tuple[tuple[str, Callable[[str], str]], ...] = (
         ("raw", str),
         ("shanjie", normalize),
@@ -117,9 +116,10 @@ def score_row(
     )
     for name, fold in folds:
         gold = fold(row["truth"])
-        ok = fold(predicted) == gold
+        prediction = fold(predicted)
+        ok = prediction == gold
         result["ok_" + name] = int(ok)
-        result["errors_" + name] = 0 if ok else distance
+        result["errors_" + name] = edit_distance(gold, prediction)
         result["oracle16_" + name] = int(any(fold(s) == gold for s in candidates[:ORACLE]))
     return result
 

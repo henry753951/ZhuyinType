@@ -99,6 +99,7 @@ class Pipeline:
             if marker.exists() and not force and not names:
                 context.log(f"{self.name}/{step.name}: done earlier, skipped")
                 continue
+            marker.unlink(missing_ok=True)
             context.log(f"{self.name}/{step.name}: {step.help}")
             started = time.time()
             step.run(context)
