@@ -85,8 +85,8 @@ fn rust_line(composer: &Composer) -> String {
     let clauses: Vec<String> = p.clauses.iter().map(|c| format!("{}-{}", c.start, c.end)).collect();
     let index = |v: Option<usize>| v.map_or(-1, |v| v as isize);
     let list = p.candidates.as_ref().map_or("-".to_owned(), |l| {
-        let items: Vec<&str> = l.items.iter().map(|c| c.text.as_str()).collect();
-        format!("{}/{}/{}/{}", l.selection, l.page_size, l.tolerant.map_or(-1, i8::from), items.join(","))
+        let items: Vec<&str> = l.items().iter().map(|c| c.text.as_str()).collect();
+        format!("{}/{}/{}/{}", l.selection(), l.page_size(), l.tolerant().map_or(-1, i8::from), items.join(","))
     });
     format!(
         "{}|{}|{}|{}|{}|{}",

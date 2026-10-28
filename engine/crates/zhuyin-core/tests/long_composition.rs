@@ -315,7 +315,7 @@ fn head_learns_and_continues_the_context() {
 fn secure_input_learns_nothing() {
     let engine = engine();
     let mut composer = Composer::new(engine.clone(), options(KeyDecoderMethod::Timed, TypoTolerance::Standard));
-    composer.learning_suspended = true;
+    composer.set_learning_suspended(true);
     let mut text = String::new();
     let mut expected = String::new();
     for index in 0..130 {

@@ -49,7 +49,7 @@ fn text(c: &Composer) -> String {
 }
 
 fn items(c: &Composer) -> Vec<String> {
-    c.presentation().candidates.as_ref().map(|l| l.items.iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
+    c.presentation().candidates.as_ref().map(|l| l.items().iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
 }
 
 /// Keys for a reading on the standard layout (Space after a first tone).
@@ -139,7 +139,7 @@ fn real_lexicon_behaviour() {
     let mut listing = composer_with(&real, "ji3ap7", unlearned.clone());
     listing.handle(KeyInput::Home);
     listing.handle(KeyInput::Down);
-    let full = listing.presentation().candidates.clone().unwrap().items;
+    let full = listing.presentation().candidates.clone().unwrap().items().to_vec();
     let first_correction = full.iter().position(|i| i.annotation.is_some()).unwrap_or(full.len());
     assert!(
         full[first_correction..].iter().all(|i| i.annotation.is_some())
@@ -151,14 +151,14 @@ fn real_lexicon_behaviour() {
         "the full list has phrases and characters"
     );
     listing.handle(KeyInput::ShiftDown);
-    let single = listing.presentation().candidates.clone().unwrap().items;
+    let single = listing.presentation().candidates.clone().unwrap().items().to_vec();
     assert!(
         single.iter().all(|i| i.text.chars().count() == 1 && i.annotation.is_none()) && single[0].text == "我",
         "Shift-↓ in the window lists only the character, for the keys as typed"
     );
     listing.handle(KeyInput::ShiftDown);
     assert_eq!(
-        listing.presentation().candidates.clone().unwrap().items,
+        listing.presentation().candidates.clone().unwrap().items().to_vec(),
         full,
         "Shift-↓ again returns to the full list"
     );

@@ -422,7 +422,7 @@ pub unsafe extern "C" fn zt_composer_is_composing(composer: *mut ZtComposer) -> 
 pub unsafe extern "C" fn zt_composer_set_learning_suspended(composer: *mut ZtComposer, suspended: bool) {
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
-        composer.learning_suspended = suspended;
+        composer.set_learning_suspended(suspended);
     }
 }
 
@@ -433,7 +433,7 @@ pub unsafe extern "C" fn zt_composer_set_learning_suspended(composer: *mut ZtCom
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zt_composer_learning_suspended(composer: *mut ZtComposer) -> bool {
     // SAFETY: live handle.
-    unsafe { composer_mut(composer) }.is_some_and(|c| c.learning_suspended)
+    unsafe { composer_mut(composer) }.is_some_and(|c| c.learning_suspended())
 }
 
 /// How many sentences the reranker hook chooses among.
@@ -456,7 +456,9 @@ pub unsafe extern "C" fn zt_composer_set_reranking_count(composer: *mut ZtCompos
 pub unsafe extern "C" fn zt_composer_set_character_weight(composer: *mut ZtComposer, weight: f64) {
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
-        composer.character_weight = weight;
+        let mut tuning = composer.tuning();
+        tuning.character_weight = weight;
+        composer.set_tuning(tuning);
     }
 }
 
@@ -470,10 +472,12 @@ pub unsafe extern "C" fn zt_composer_set_character_weight(composer: *mut ZtCompo
 pub unsafe extern "C" fn zt_composer_set_variant_scores(composer: *mut ZtComposer, mode: u8, window: f64) {
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
+        let mut tuning = composer.tuning();
         if let Some(&mode) = VariantScores::ALL.get(usize::from(mode)) {
-            composer.variant_scores = mode;
+            tuning.variant_scores = mode;
         }
-        composer.variant_window = window;
+        tuning.variant_window = window;
+        composer.set_tuning(tuning);
     }
 }
 
@@ -485,7 +489,9 @@ pub unsafe extern "C" fn zt_composer_set_variant_scores(composer: *mut ZtCompose
 pub unsafe extern "C" fn zt_composer_set_character_scores_in_list(composer: *mut ZtComposer, in_list: bool) {
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
-        composer.character_scores_in_list = in_list;
+        let mut tuning = composer.tuning();
+        tuning.character_scores_in_list = in_list;
+        composer.set_tuning(tuning);
     }
 }
 
@@ -497,7 +503,7 @@ pub unsafe extern "C" fn zt_composer_set_character_scores_in_list(composer: *mut
 pub unsafe extern "C" fn zt_composer_set_freezes_on_pick(composer: *mut ZtComposer, freezes: bool) {
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
-        composer.freezes_on_pick = freezes;
+        composer.set_freezes_on_pick(freezes);
     }
 }
 
@@ -580,7 +586,7 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
     let clause_count = clauses.len();
     let candidates = p.candidates.as_ref().map_or(std::ptr::null_mut(), |list| {
         let items: Box<[ZtCandidate]> = list
-            .items
+            .items()
             .iter()
             .map(|c| ZtCandidate { text: owned(&c.text), annotation: owned_optional(c.annotation.as_deref()) })
             .collect();
@@ -588,10 +594,10 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
         Box::into_raw(Box::new(ZtCandidateList {
             items: Box::into_raw(items).cast(),
             count,
-            selection: list.selection,
-            page_size: list.page_size,
-            tolerant: list.tolerant.map_or(-1, i8::from),
-            single_character: list.single_character,
+            selection: list.selection(),
+            page_size: list.page_size(),
+            tolerant: list.tolerant().map_or(-1, i8::from),
+            single_character: list.single_character(),
         }))
     });
     Box::into_raw(Box::new(ZtPresentation {
@@ -790,17 +796,17 @@ pub unsafe extern "C" fn zt_composer_set_candidate_scorer(composer: *mut ZtCompo
     // SAFETY: live handle.
     let Some(composer) = (unsafe { composer_mut(composer) }) else { return };
     let Some(score) = hook.score else {
-        composer.candidate_scorer = None;
+        composer.set_candidate_scorer(None);
         return;
     };
-    composer.candidate_scorer = Some(Box::new(move |before: &str, candidates: &[String]| {
+    composer.set_candidate_scorer(Some(Box::new(move |before: &str, candidates: &[String]| {
         let before = std::ffi::CString::new(before).ok()?;
         let view = ZtStrings::new(candidates);
         let mut scores = vec![0.0; candidates.len()];
         // SAFETY: the host's callback with its own context, a view valid for the call and room for every score.
         let ok = unsafe { score(context.get(), before.as_ptr(), &raw const view, scores.as_mut_ptr()) };
         ok.then_some(scores)
-    }));
+    })));
 }
 
 /// The commit hook: told the text a full composition commits by itself in the middle of a key, before the rest is

@@ -183,8 +183,10 @@ fn model_calls(mode: VariantScores, window: f64, keys: &str) -> Vec<(Vec<Charact
     let engine = Arc::new(engine(ChannelSettings::every_class()));
     let options = ComposerOptions { typo_tolerance: TypoTolerance::Off, ..ComposerOptions::default() };
     let mut composer = Composer::new(engine, options);
-    composer.variant_scores = mode;
-    composer.variant_window = window;
+    let mut tuning = composer.tuning();
+    tuning.variant_scores = mode;
+    tuning.variant_window = window;
+    composer.set_tuning(tuning);
     let calls = Calls::default();
     let record = calls.clone();
     composer.set_character_scorer(Some(Box::new(move |syllables, lists| {

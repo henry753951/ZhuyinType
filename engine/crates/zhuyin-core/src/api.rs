@@ -101,16 +101,16 @@ pub struct Candidate {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CandidateList {
     /// Every candidate, over all pages.
-    pub items: Vec<Candidate>,
+    items: Vec<Candidate>,
     /// Highlighted index into `items`.
-    pub selection: usize,
+    selection: usize,
     /// Candidates per page; at least 1.
-    pub page_size: usize,
+    page_size: usize,
     /// Whether the list shows typing corrections (true) or only words for the keys as typed (false); `None` when
     /// the list cannot have corrections (punctuation, correction off).
-    pub tolerant: Option<bool>,
+    tolerant: Option<bool>,
     /// Only the one character at the target (Shift-↓), not every span from it.
-    pub single_character: bool,
+    single_character: bool,
 }
 
 impl CandidateList {
@@ -123,7 +123,39 @@ impl CandidateList {
         tolerant: Option<bool>,
         single_character: bool,
     ) -> Self {
-        Self { items, selection, page_size: page_size.max(1), tolerant, single_character }
+        Self {
+            selection: selection.min(items.len().saturating_sub(1)),
+            items,
+            page_size: page_size.max(1),
+            tolerant,
+            single_character,
+        }
+    }
+
+    /// Every candidate.
+    #[must_use]
+    pub fn items(&self) -> &[Candidate] {
+        &self.items
+    }
+    /// Highlighted candidate index, or zero for an empty list.
+    #[must_use]
+    pub fn selection(&self) -> usize {
+        self.selection
+    }
+    /// Number of candidates per page.
+    #[must_use]
+    pub fn page_size(&self) -> usize {
+        self.page_size
+    }
+    /// Correction mode, if available.
+    #[must_use]
+    pub fn tolerant(&self) -> Option<bool> {
+        self.tolerant
+    }
+    /// Whether the list contains single-character choices.
+    #[must_use]
+    pub fn single_character(&self) -> bool {
+        self.single_character
     }
 
     /// The page of the highlighted candidate.

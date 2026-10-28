@@ -95,7 +95,6 @@ fn on_off(value: &str, message: &str) -> bool {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
     // The engine's own forms by default, so results compare with the evaluation text; the app writes 台.
     let options = ComposerOptions { character_forms: CharacterForms::Standard, ..ComposerOptions::default() };
@@ -136,272 +135,301 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
     };
     while let Some(option) = arguments.first().cloned().filter(|a| a.starts_with("--")) {
         s.given.insert(option.clone());
-        let mut take = 2;
-        match option.as_str() {
-            "--models" => s.models = Some(next_value(&arguments).to_owned()),
-            "--channel" => s.channel = Some(next_value(&arguments).to_owned()).filter(|v| v != "off"),
-            "--channel-classes" | "--channel-single-classes" => {
-                let mut classes = 0;
-                for name in next_value(&arguments).split(',').filter(|n| !n.is_empty() && *n != "none") {
-                    let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
-                    classes |= 1 << (class as u16);
-                }
-                if option == "--channel-classes" {
-                    s.config.channel.classes = classes;
-                } else {
-                    s.config.channel.single_classes = classes;
-                }
-            }
-            "--channel-offset" | "--channel-state" => {
-                let value = next_value(&arguments);
-                let (name, setting) = value.split_once('=').unwrap_or_else(|| fail(USAGE));
-                let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
-                if option == "--channel-offset" {
-                    s.config.channel.offsets[class as usize] = parse_double(setting).unwrap_or_else(|| fail(USAGE));
-                } else {
-                    let correction = match setting {
-                        "correction" => true,
-                        "accepted" => false,
-                        _ => fail("--channel-state needs CLASS=accepted or CLASS=correction"),
-                    };
-                    s.config.channel.set_correction(class, correction);
-                }
-            }
-            "--channel-sandhi" => {
-                s.config.channel.sandhi_reverse = match next_value(&arguments) {
-                    "both" => true,
-                    "forward" => false,
-                    _ => fail("--channel-sandhi needs both or forward"),
-                };
-            }
-            "--channel-cap" => {
-                s.config.channel.options_per_syllable = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--channel-max-cost" => {
-                s.config.channel.max_cost = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--reading-margin" => {
-                s.reading_margin = Some(parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)));
-            }
-            "--v3-variants" => {
-                s.variant_scores = VariantScores::from_raw(next_value(&arguments))
-                    .unwrap_or_else(|| fail("--v3-variants needs one of: standard, best, zero, typed"));
-            }
-            "--v3-variant-window" => {
-                s.variant_window = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--neutral-costs" => {
-                let values: Vec<f64> = next_value(&arguments).split(',').filter_map(parse_double).collect();
-                if values.len() != 2 {
-                    fail("--neutral-costs needs two comma-separated numbers");
-                }
-                s.config.neutral_toned_cost = values[0];
-                s.config.neutral_untoned_cost = values[1];
-            }
-            "--channel-report" => {
-                s.channel_report = true;
-                take = 1;
-            }
-            "--channel-table" => {
-                s.channel_table = true;
-                take = 1;
-            }
-            "--lexicon" => next_value(&arguments).clone_into(&mut s.lexicon),
-            "--typo" => {
-                s.options.typo_tolerance =
-                    TypoTolerance::from_raw(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--punctuation" => {
-                s.options.punctuation_keys =
-                    PunctuationKeys::from_raw(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--batch" => {
-                s.batch = true;
-                take = 1;
-            }
-            "--keep-memory" => {
-                s.keep_memory = true;
-                take = 1;
-            }
-            "--model-server" => s.model_server = Some(next_value(&arguments).to_owned()),
-            "--reranker" => s.reranker = Some(next_value(&arguments).to_owned()),
-            "--rerank-count" => {
-                let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-                s.rerank_count = count;
-            }
-            "--forms" => {
-                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
-                s.options.character_forms =
-                    CharacterForms::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
-                        fail(&format!(
-                            "--forms needs one of: {}",
-                            CharacterForms::ALL.map(CharacterForms::raw_value).join(", ")
-                        ))
-                    });
-            }
-            "--decoder" => {
-                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
-                s.options.key_decoder =
-                    KeyDecoderMethod::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
-                        fail(&format!(
-                            "--decoder needs one of: {}",
-                            KeyDecoderMethod::ALL.map(KeyDecoderMethod::raw_value).join(", ")
-                        ))
-                    });
-            }
-            "--space" => {
-                // What Space does with no unfinished syllable (the app's 空白鍵 setting).
-                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
-                s.options.space_action =
-                    SpaceAction::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
-                        fail(&format!(
-                            "--space needs one of: {}",
-                            SpaceAction::ALL.map(SpaceAction::raw_value).join(", ")
-                        ))
-                    });
-            }
-            "--decoder-costs" => {
-                // implicit,overwrite,swap,skip,swapTogether,skipTogether,swapApart,skipApart
-                let values: Vec<f64> = if arguments.len() >= 2 {
-                    arguments[1].split(',').filter(|p| !p.is_empty()).filter_map(parse_double).collect()
-                } else {
-                    vec![]
-                };
-                if values.len() != 8 {
-                    fail("--decoder-costs needs 8 comma-separated numbers");
-                }
-                s.costs.implicit_boundary = values[0];
-                s.costs.overwrite = values[1];
-                s.costs.swap = values[2];
-                s.costs.skip = values[3];
-                s.costs.swap_together = values[4];
-                s.costs.skip_together = values[5];
-                s.costs.swap_apart = values[6];
-                s.costs.skip_apart = values[7];
-            }
-            "--late-initial" => {
-                s.costs.late_initial = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            "--together-gap" => {
-                s.costs.together_gap = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)) / 1000.0;
-            }
-            "--split-margin" => {
-                s.split_margin = Some(parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)));
-            }
-            "--check-v3" => {
-                // Compares the v3 models with ml/src/zhuyintype_ml/training/v3's golden outputs, then exits.
-                check_v3(Path::new(next_value(&arguments)), s.model_server.as_deref());
-            }
-            "--v3" => s.v3 = Some(next_value(&arguments).to_owned()),
-            "--rerank-gate" | "--rerank-switch" | "--freeze-on-pick" => {
-                // τ and δ of the reranker; freezing the other words after a pick (on/off).
-                if arguments.len() < 2 {
-                    fail(&format!("{option} needs a value"));
-                }
-                if option == "--freeze-on-pick" {
-                    s.freeze_on_pick = arguments[1] != "off";
-                } else if let Some(value) = parse_double(&arguments[1]) {
-                    if option == "--rerank-gate" {
-                        s.rerank_gate = Some(if value.is_finite() { value } else { f64::INFINITY });
-                    } else {
-                        s.rerank_switch = Some(value);
-                    }
-                } else {
-                    fail(&format!("{option} needs a number"));
-                }
-            }
-            "--report-list" => {
-                s.report_list = true;
-                take = 1;
-            }
-            "--v3-list" => {
-                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
-                if arguments.len() < 2 || !matches!(value, "on" | "off") {
-                    fail("--v3-list needs on or off");
-                }
-                s.v3_in_list = value == "on";
-            }
-            "--v3-boundaries" => {
-                // Whether the character model is told which syllables ended without a tone key or Space.
-                let value = arguments.get(1).map(String::as_str).unwrap_or_default();
-                if arguments.len() < 2 || !matches!(value, "on" | "off") {
-                    fail("--v3-boundaries needs on or off");
-                }
-                s.v3_boundaries = value == "on";
-            }
-            "--v3-weight" | "--domain-scale" | "--domain-centre" | "--exact-margin" | "--rerank-weight" => {
-                let value = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-                match option.as_str() {
-                    "--domain-scale" => s.config.domain_evidence_scale = value,
-                    "--domain-centre" => s.config.domain_evidence_centre = value,
-                    "--v3-weight" => s.v3_weight = value,
-                    "--exact-margin" => s.exact_margin = Some(value),
-                    _ => s.rerank_weight = value,
-                }
-            }
-            "--chat-lm" => s.config.chat_model_directory = Some(PathBuf::from(next_value(&arguments))),
-            "--end-share" => {
-                let value = parse_double(next_value(&arguments)).filter(|&v| v > 0.0 && v <= 1.0);
-                s.config.sentence_end_share = value.unwrap_or_else(|| fail(USAGE));
-            }
-            "--chat-prior" => {
-                let value = parse_double(next_value(&arguments)).filter(|&v| v > 0.0 && v < 1.0);
-                s.config.chat_prior = value.unwrap_or_else(|| fail(USAGE));
-            }
-            "--hotspot" => s.config.hotspot = on_off(next_value(&arguments), USAGE),
-            // Moving the highlight past a page's edge turns the page (the app's 到頁底時 ↓ 翻到下一頁).
-            "--page-at-list-edge" => s.options.page_at_list_edge = on_off(next_value(&arguments), USAGE),
-            "--report-nbest" => {
-                let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-                s.report_nbest = count;
-            }
-            // The longest composition; a key past it first commits the head.
-            "--max-syllables" => {
-                s.options.max_syllables = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-            }
-            // Past this many syllables, a typing key first commits the finished sentences (0: off, the default).
-            "--early-commit" => {
-                let value = next_value(&arguments);
-                s.options.early_commit_syllables =
-                    if value == "0" { 0 } else { positive(value).unwrap_or_else(|| fail(USAGE)) };
-            }
-            "--sentence-boundaries" => s.config.sentence_boundaries = on_off(next_value(&arguments), USAGE),
-            "--anchor" => {
-                s.options.candidate_anchor = match next_value(&arguments) {
-                    "after" => CandidateAnchor::AfterCursor,
-                    "before" => CandidateAnchor::BeforeCursor,
-                    _ => fail(USAGE),
-                };
-            }
-            "--context" => next_value(&arguments).clone_into(&mut s.context),
-            "--timing" => {
-                s.timing = true;
-                take = 1;
-            }
-            "--fuzzy" => {
-                for name in next_value(&arguments).split(',').filter(|p| !p.is_empty()) {
-                    s.fuzzy.insert(match name {
-                        "zh" => FuzzySounds::Z_ZH,
-                        "ch" => FuzzySounds::C_CH,
-                        "sh" => FuzzySounds::S_SH,
-                        "en" => FuzzySounds::EN_ENG,
-                        "an" => FuzzySounds::AN_ANG,
-                        _ => fail(USAGE),
-                    });
-                }
-            }
-            "--nbest" => {
-                let count = positive(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
-                s.nbest = count;
-            }
-            _ => fail(USAGE),
-        }
+        let take = parse_channel_option(&mut s, &option, &arguments)
+            .or_else(|| parse_input_option(&mut s, &option, &arguments))
+            .or_else(|| parse_model_option(&mut s, &option, &arguments))
+            .or_else(|| parse_misc_option(&mut s, &option, &arguments))
+            .unwrap_or_else(|| fail(USAGE));
         arguments.drain(..take);
     }
     if arguments.len() != usize::from(!s.batch && !s.channel_table) {
         fail(USAGE);
     }
     (s, arguments)
+}
+
+fn parse_channel_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
+    let mut take = 2;
+    match option {
+        "--models" => s.models = Some(next_value(arguments).to_owned()),
+        "--channel" => s.channel = Some(next_value(arguments).to_owned()).filter(|v| v != "off"),
+        "--channel-classes" | "--channel-single-classes" => {
+            let mut classes = 0;
+            for name in next_value(arguments).split(',').filter(|n| !n.is_empty() && *n != "none") {
+                let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
+                classes |= 1 << (class as u16);
+            }
+            if option == "--channel-classes" {
+                s.config.channel.classes = classes;
+            } else {
+                s.config.channel.single_classes = classes;
+            }
+        }
+        "--channel-offset" | "--channel-state" => {
+            let value = next_value(arguments);
+            let (name, setting) = value.split_once('=').unwrap_or_else(|| fail(USAGE));
+            let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
+            if option == "--channel-offset" {
+                s.config.channel.offsets[class as usize] = parse_double(setting).unwrap_or_else(|| fail(USAGE));
+            } else {
+                let correction = match setting {
+                    "correction" => true,
+                    "accepted" => false,
+                    _ => fail("--channel-state needs CLASS=accepted or CLASS=correction"),
+                };
+                s.config.channel.set_correction(class, correction);
+            }
+        }
+        "--channel-sandhi" => {
+            s.config.channel.sandhi_reverse = match next_value(arguments) {
+                "both" => true,
+                "forward" => false,
+                _ => fail("--channel-sandhi needs both or forward"),
+            };
+        }
+        "--channel-cap" => {
+            s.config.channel.options_per_syllable = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--channel-max-cost" => {
+            s.config.channel.max_cost = parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--reading-margin" => {
+            s.reading_margin = Some(parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE)));
+        }
+        "--v3-variants" => {
+            s.variant_scores = VariantScores::from_raw(next_value(arguments))
+                .unwrap_or_else(|| fail("--v3-variants needs one of: standard, best, zero, typed"));
+        }
+        "--v3-variant-window" => {
+            s.variant_window = parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--neutral-costs" => {
+            let values: Vec<f64> = next_value(arguments).split(',').filter_map(parse_double).collect();
+            if values.len() != 2 {
+                fail("--neutral-costs needs two comma-separated numbers");
+            }
+            s.config.neutral_toned_cost = values[0];
+            s.config.neutral_untoned_cost = values[1];
+        }
+        "--channel-report" => {
+            s.channel_report = true;
+            take = 1;
+        }
+        "--channel-table" => {
+            s.channel_table = true;
+            take = 1;
+        }
+        _ => return None,
+    }
+    Some(take)
+}
+
+fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
+    let mut take = 2;
+    match option {
+        "--lexicon" => next_value(arguments).clone_into(&mut s.lexicon),
+        "--typo" => {
+            s.options.typo_tolerance = TypoTolerance::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--punctuation" => {
+            s.options.punctuation_keys =
+                PunctuationKeys::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--batch" => {
+            s.batch = true;
+            take = 1;
+        }
+        "--keep-memory" => {
+            s.keep_memory = true;
+            take = 1;
+        }
+        "--model-server" => s.model_server = Some(next_value(arguments).to_owned()),
+        "--reranker" => s.reranker = Some(next_value(arguments).to_owned()),
+        "--rerank-count" => {
+            let count = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+            s.rerank_count = count;
+        }
+        "--forms" => {
+            let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+            s.options.character_forms =
+                CharacterForms::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
+                    fail(&format!(
+                        "--forms needs one of: {}",
+                        CharacterForms::ALL.map(CharacterForms::raw_value).join(", ")
+                    ))
+                });
+        }
+        "--decoder" => {
+            let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+            s.options.key_decoder =
+                KeyDecoderMethod::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
+                    fail(&format!(
+                        "--decoder needs one of: {}",
+                        KeyDecoderMethod::ALL.map(KeyDecoderMethod::raw_value).join(", ")
+                    ))
+                });
+        }
+        "--space" => {
+            // What Space does with no unfinished syllable (the app's 空白鍵 setting).
+            let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+            s.options.space_action =
+                SpaceAction::from_raw(value).filter(|_| arguments.len() >= 2).unwrap_or_else(|| {
+                    fail(&format!("--space needs one of: {}", SpaceAction::ALL.map(SpaceAction::raw_value).join(", ")))
+                });
+        }
+        "--decoder-costs" => {
+            // implicit,overwrite,swap,skip,swapTogether,skipTogether,swapApart,skipApart
+            let values: Vec<f64> = if arguments.len() >= 2 {
+                arguments[1].split(',').filter(|p| !p.is_empty()).filter_map(parse_double).collect()
+            } else {
+                vec![]
+            };
+            if values.len() != 8 {
+                fail("--decoder-costs needs 8 comma-separated numbers");
+            }
+            s.costs.implicit_boundary = values[0];
+            s.costs.overwrite = values[1];
+            s.costs.swap = values[2];
+            s.costs.skip = values[3];
+            s.costs.swap_together = values[4];
+            s.costs.skip_together = values[5];
+            s.costs.swap_apart = values[6];
+            s.costs.skip_apart = values[7];
+        }
+        "--late-initial" => {
+            s.costs.late_initial = parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--together-gap" => {
+            s.costs.together_gap = parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE)) / 1000.0;
+        }
+        "--split-margin" => {
+            s.split_margin = Some(parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE)));
+        }
+        _ => return None,
+    }
+    Some(take)
+}
+
+fn parse_model_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
+    let mut take = 2;
+    match option {
+        "--check-v3" => {
+            // Compares the v3 models with ml/src/zhuyintype_ml/training/v3's golden outputs, then exits.
+            check_v3(Path::new(next_value(arguments)), s.model_server.as_deref());
+        }
+        "--v3" => s.v3 = Some(next_value(arguments).to_owned()),
+        "--rerank-gate" | "--rerank-switch" | "--freeze-on-pick" => {
+            // τ and δ of the reranker; freezing the other words after a pick (on/off).
+            if arguments.len() < 2 {
+                fail(&format!("{option} needs a value"));
+            }
+            if option == "--freeze-on-pick" {
+                s.freeze_on_pick = arguments[1] != "off";
+            } else if let Some(value) = parse_double(&arguments[1]) {
+                if option == "--rerank-gate" {
+                    s.rerank_gate = Some(if value.is_finite() { value } else { f64::INFINITY });
+                } else {
+                    s.rerank_switch = Some(value);
+                }
+            } else {
+                fail(&format!("{option} needs a number"));
+            }
+        }
+        "--report-list" => {
+            s.report_list = true;
+            take = 1;
+        }
+        "--v3-list" => {
+            let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+            if arguments.len() < 2 || !matches!(value, "on" | "off") {
+                fail("--v3-list needs on or off");
+            }
+            s.v3_in_list = value == "on";
+        }
+        "--v3-boundaries" => {
+            // Whether the character model is told which syllables ended without a tone key or Space.
+            let value = arguments.get(1).map(String::as_str).unwrap_or_default();
+            if arguments.len() < 2 || !matches!(value, "on" | "off") {
+                fail("--v3-boundaries needs on or off");
+            }
+            s.v3_boundaries = value == "on";
+        }
+        "--v3-weight" | "--domain-scale" | "--domain-centre" | "--exact-margin" | "--rerank-weight" => {
+            let value = parse_double(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+            match option {
+                "--domain-scale" => s.config.domain_evidence_scale = value,
+                "--domain-centre" => s.config.domain_evidence_centre = value,
+                "--v3-weight" => s.v3_weight = value,
+                "--exact-margin" => s.exact_margin = Some(value),
+                _ => s.rerank_weight = value,
+            }
+        }
+        _ => return None,
+    }
+    Some(take)
+}
+
+fn parse_misc_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
+    let mut take = 2;
+    match option {
+        "--chat-lm" => s.config.chat_model_directory = Some(PathBuf::from(next_value(arguments))),
+        "--end-share" => {
+            let value = parse_double(next_value(arguments)).filter(|&v| v > 0.0 && v <= 1.0);
+            s.config.sentence_end_share = value.unwrap_or_else(|| fail(USAGE));
+        }
+        "--chat-prior" => {
+            let value = parse_double(next_value(arguments)).filter(|&v| v > 0.0 && v < 1.0);
+            s.config.chat_prior = value.unwrap_or_else(|| fail(USAGE));
+        }
+        "--hotspot" => s.config.hotspot = on_off(next_value(arguments), USAGE),
+        // Moving the highlight past a page's edge turns the page (the app's 到頁底時 ↓ 翻到下一頁).
+        "--page-at-list-edge" => s.options.page_at_list_edge = on_off(next_value(arguments), USAGE),
+        "--report-nbest" => {
+            let count = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+            s.report_nbest = count;
+        }
+        // The longest composition; a key past it first commits the head.
+        "--max-syllables" => {
+            s.options.max_syllables = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        // Past this many syllables, a typing key first commits the finished sentences (0: off, the default).
+        "--early-commit" => {
+            let value = next_value(arguments);
+            s.options.early_commit_syllables =
+                if value == "0" { 0 } else { positive(value).unwrap_or_else(|| fail(USAGE)) };
+        }
+        "--sentence-boundaries" => s.config.sentence_boundaries = on_off(next_value(arguments), USAGE),
+        "--anchor" => {
+            s.options.candidate_anchor = match next_value(arguments) {
+                "after" => CandidateAnchor::AfterCursor,
+                "before" => CandidateAnchor::BeforeCursor,
+                _ => fail(USAGE),
+            };
+        }
+        "--context" => next_value(arguments).clone_into(&mut s.context),
+        "--timing" => {
+            s.timing = true;
+            take = 1;
+        }
+        "--fuzzy" => {
+            for name in next_value(arguments).split(',').filter(|p| !p.is_empty()) {
+                s.fuzzy.insert(match name {
+                    "zh" => FuzzySounds::Z_ZH,
+                    "ch" => FuzzySounds::C_CH,
+                    "sh" => FuzzySounds::S_SH,
+                    "en" => FuzzySounds::EN_ENG,
+                    "an" => FuzzySounds::AN_ANG,
+                    _ => fail(USAGE),
+                });
+            }
+        }
+        "--nbest" => {
+            let count = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+            s.nbest = count;
+        }
+        _ => return None,
+    }
+    Some(take)
 }
 
 fn channel_classes() -> String {
@@ -647,10 +675,10 @@ fn print_step(label: &str, result: &KeyResult, composer: &Composer, committed: &
             .map(|index| {
                 format!(
                     "{}{}:{}{}",
-                    if index == list.selection { ">" } else { "" },
-                    index - list.page() * list.page_size + 1,
-                    list.items[index].text,
-                    if list.items[index].annotation.is_none() { "" } else { "*" }
+                    if index == list.selection() { ">" } else { "" },
+                    index - list.page() * list.page_size() + 1,
+                    list.items()[index].text,
+                    if list.items()[index].annotation.is_none() { "" } else { "*" }
                 )
             })
             .collect();
@@ -805,15 +833,17 @@ fn timed<T>(timing: bool, label: &str, body: impl FnOnce() -> T) -> T {
 /// Gives the composer the models; they read the text before the composition from `context` (the context plus what
 /// the keys have committed so far).
 fn attach(composer: &mut Composer, models: &Models, s: &Settings, context: &Arc<Mutex<String>>) {
-    composer.freezes_on_pick = s.freeze_on_pick;
+    composer.set_freezes_on_pick(s.freeze_on_pick);
     // The head a full composition commits by itself is text before the rest, as in the app (in batch mode too).
     let committed = context.clone();
     composer.set_commit_listener(Some(Box::new(move |text| {
         committed.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push_str(text);
     })));
     if let Some(model) = &models.character {
-        composer.character_weight = s.v3_weight;
-        composer.character_scores_in_list = s.v3_in_list;
+        let mut tuning = composer.tuning();
+        tuning.character_weight = s.v3_weight;
+        tuning.character_scores_in_list = s.v3_in_list;
+        composer.set_tuning(tuning);
         let (model, context, boundaries) = (model.clone(), context.clone(), s.v3_boundaries);
         composer.set_character_scorer(Some(Box::new(move |syllables, candidates| {
             let syllables: Vec<CharacterModelSyllable> = syllables
@@ -833,10 +863,10 @@ fn attach(composer: &mut Composer, models: &Models, s: &Settings, context: &Arc<
         Some(timed(timing, &format!("rerank {}", sentences.len()), || chooser.choose(sentences, &context)))
     })));
     let (scorer, score_context) = (reranker.clone(), context.clone());
-    composer.candidate_scorer = Some(Box::new(move |before, candidates| {
+    composer.set_candidate_scorer(Some(Box::new(move |before, candidates| {
         let context = score_context.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone() + before;
         timed(timing, &format!("candidates {}", candidates.len()), || scorer.candidate_scores(&context, candidates))
-    }));
+    })));
 }
 
 fn set(shared: &Arc<Mutex<String>>, text: &str) {
@@ -866,12 +896,14 @@ fn main() {
     let model_context = Arc::new(Mutex::new(s.context.clone()));
     let mut composer = Composer::new(engine.clone(), s.options.clone());
     attach(&mut composer, &models, &s, &model_context);
-    composer.decoder_costs = s.costs;
+    let mut tuning = composer.tuning();
+    tuning.decoder_costs = s.costs;
     if let Some(margin) = s.split_margin {
-        composer.split_margin = margin;
+        tuning.split_margin = margin;
     }
-    composer.variant_scores = s.variant_scores;
-    composer.variant_window = s.variant_window;
+    tuning.variant_scores = s.variant_scores;
+    tuning.variant_window = s.variant_window;
+    composer.set_tuning(tuning);
     let mut typist = Typist { clock: 1000.0, timing: s.timing, key_times: vec![] };
     if s.batch {
         // One line is one stretch of typing: what it commits is the context of the rest of the line.  A line
@@ -880,7 +912,7 @@ fn main() {
         let usage_start = usage::Usage::now();
         let wall_start = Instant::now();
         for line in std::io::stdin().lock().split(b'\n') {
-            let Ok(line) = line else { break };
+            let line = line.unwrap_or_else(|error| fail(&format!("cannot read batch input: {error}")));
             let mut line = String::from_utf8_lossy(&line).into_owned();
             if line.ends_with('\r') {
                 line.pop();
@@ -903,7 +935,7 @@ fn main() {
                     .presentation()
                     .candidates
                     .as_ref()
-                    .map(|l| l.items.iter().map(|c| c.text.as_str()).collect::<Vec<_>>().join("\t"))
+                    .map(|l| l.items().iter().map(|c| c.text.as_str()).collect::<Vec<_>>().join("\t"))
                     .unwrap_or_default();
                 composer.reset();
                 text

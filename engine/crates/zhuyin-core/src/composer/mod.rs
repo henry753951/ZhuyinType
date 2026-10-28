@@ -4,6 +4,10 @@
 //! the conversion is the engine's lattice decoding, optionally reranked by a sentence model and adjusted by a
 //! character model, both supplied by the client as callbacks.
 
+mod candidates;
+mod scoring;
+
+use candidates::CandidateWindow;
 use std::collections::{BTreeSet, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
@@ -117,7 +121,7 @@ impl VariantScores {
     }
 }
 
-/// The default [`Composer::variant_window`].
+/// The default [`Tuning::variant_window`].
 pub const VARIANT_WINDOW: f64 = 3.0;
 
 /// A character only a reading-channel variant put at a position: its lexicon syllable, and the variant's state and
@@ -138,6 +142,39 @@ const SENTENCE_ENDS: &str = "。！？…．!?";
 /// Closing brackets and quotes that stay with the punctuation before them.
 const CLOSERS: &str = "」』）〉》】〕”’\"')]";
 
+/// Settings that affect conversion and candidate ordering.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tuning {
+    /// Character model weight.
+    pub character_weight: f64,
+    /// Include character scores in candidate ordering.
+    pub character_scores_in_list: bool,
+    /// Number of candidates scored.
+    pub candidate_scoring_count: usize,
+    /// Keyboard decoder costs.
+    pub decoder_costs: Costs,
+    /// Maximum split cost difference.
+    pub split_margin: f64,
+    /// How variant characters are scored.
+    pub variant_scores: VariantScores,
+    /// Variant scoring window.
+    pub variant_window: f64,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self {
+            character_weight: 1.0,
+            character_scores_in_list: true,
+            candidate_scoring_count: 24,
+            decoder_costs: Costs::default(),
+            split_margin: SPLIT_MARGIN,
+            variant_scores: VariantScores::default(),
+            variant_window: VARIANT_WINDOW,
+        }
+    }
+}
+
 struct LastCommit {
     words: Vec<ConvertedWord>,
     leading: LanguageModelHistory,
@@ -150,6 +187,7 @@ struct LastCommit {
 #[allow(clippy::struct_excessive_bools)]
 pub struct Composer {
     options: ComposerOptions,
+    tuning: Tuning,
     engine: Arc<Engine>,
     tokens: Vec<CompositionToken>,
     cursor: usize,
@@ -160,12 +198,7 @@ pub struct Composer {
     conversion_cache: Option<ConversionCache>,
     conversion_dirty: bool,
     conversion_revision: u64,
-    choices: Vec<FixedWord>,
-    candidate_selection: usize,
-    single_character_list: bool,
-    tolerant_list: bool,
-    literal_list: bool,
-    list_target: usize,
+    candidate_window: CandidateWindow,
     selection_anchor: Option<usize>,
     notice: Option<String>,
     key_time: Option<f64>,
@@ -182,28 +215,13 @@ pub struct Composer {
     reranker: Option<Reranker>,
     reranking_count: usize,
     /// Scores added to the best candidates of a span when the window opens.
-    pub candidate_scorer: Option<CandidateScorer>,
+    candidate_scorer: Option<CandidateScorer>,
     character_scorer: Option<CharacterScorer>,
-    /// How much the character model's scores count in the lattice.
-    pub character_weight: f64,
     /// After a pick from the candidate list, keep every other shown word as it is.
-    pub freezes_on_pick: bool,
+    freezes_on_pick: bool,
     /// Learning paused for now (secure input); the setting itself is unchanged.
-    pub learning_suspended: bool,
-    /// Also order the candidate list by the character model's scores at each position.
-    pub character_scores_in_list: bool,
+    learning_suspended: bool,
     character_scores: Option<CharacterScores>,
-    /// How many of a span's best-scoring candidates the scorer reorders.
-    pub candidate_scoring_count: usize,
-    /// The key decoder's costs (Swift's shared `KeyDecoder.costs`).
-    pub decoder_costs: Costs,
-    /// How much costlier than the cheapest a split may be and still be judged by the language model.
-    pub split_margin: f64,
-    /// How the character model scores characters only a reading-channel variant brings.
-    pub variant_scores: VariantScores,
-    /// Only variant characters whose prior (without the variant's cost) is within this many nats of the best other
-    /// character at their position get [`VariantScores`]; the rest keep the model's score as typed.
-    pub variant_window: f64,
     presentation: Presentation,
     /// Text committed by the key being handled before what it composes (a full composition's head).
     sent: String,
@@ -275,12 +293,7 @@ impl Composer {
             conversion_cache: None,
             conversion_dirty: true,
             conversion_revision: 0,
-            choices: vec![],
-            candidate_selection: 0,
-            single_character_list: false,
-            tolerant_list: false,
-            literal_list: false,
-            list_target: 0,
+            candidate_window: CandidateWindow::default(),
             selection_anchor: None,
             notice: None,
             key_time: None,
@@ -294,18 +307,12 @@ impl Composer {
             deleted_words: vec![],
             reranker: None,
             reranking_count: 8,
+            tuning: Tuning::default(),
             candidate_scorer: None,
             character_scorer: None,
-            character_weight: 1.0,
             freezes_on_pick: true,
             learning_suspended: false,
-            character_scores_in_list: true,
             character_scores: None,
-            candidate_scoring_count: 24,
-            decoder_costs: Costs::default(),
-            split_margin: SPLIT_MARGIN,
-            variant_scores: VariantScores::default(),
-            variant_window: VARIANT_WINDOW,
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,
@@ -354,6 +361,43 @@ impl Composer {
             self.close_candidates();
             self.refresh();
         }
+    }
+
+    /// Returns the conversion settings.
+    #[must_use]
+    pub fn tuning(&self) -> Tuning {
+        self.tuning
+    }
+
+    /// Replaces conversion settings and invalidates derived state when they change.
+    pub fn set_tuning(&mut self, tuning: Tuning) {
+        if self.tuning != tuning {
+            self.tuning = tuning;
+            self.conversion_dirty = true;
+            self.close_candidates();
+            self.refresh();
+        }
+    }
+
+    /// Sets whether a pick freezes other words.
+    pub fn set_freezes_on_pick(&mut self, value: bool) {
+        self.freezes_on_pick = value;
+    }
+
+    /// Suspends or resumes learning.
+    pub fn set_learning_suspended(&mut self, value: bool) {
+        self.learning_suspended = value;
+    }
+
+    /// Returns whether learning is suspended.
+    #[must_use]
+    pub fn learning_suspended(&self) -> bool {
+        self.learning_suspended
+    }
+
+    /// Sets the candidate scorer.
+    pub fn set_candidate_scorer(&mut self, scorer: Option<CandidateScorer>) {
+        self.candidate_scorer = scorer;
     }
 
     /// Sets the sentence reranker.
@@ -452,6 +496,13 @@ impl Composer {
         result
     }
 
+    // An open candidate window has a valid selection and target; fixed ranges stay within the composition.
+    fn invariants_hold(&self) -> bool {
+        self.cursor <= self.tokens.len()
+            && self.fixed.iter().all(|word| word.range.start <= word.range.end && word.range.end <= self.tokens.len())
+            && (self.candidate_window.is_closed() || (self.candidate_window.valid_for(self.tokens.len())))
+    }
+
     /// Handles a key.
     pub fn handle(&mut self, key: KeyInput) -> KeyResult {
         let mut result = self.process(key);
@@ -464,6 +515,7 @@ impl Composer {
         if !result.handled && (key != KeyInput::Backspace || !self.follow_deletion()) {
             self.forget_context();
         }
+        debug_assert!(self.invariants_hold());
         result
     }
 
@@ -538,13 +590,11 @@ impl Composer {
         self.conversion_dirty = true;
     }
 
-    // One branch per key, as Swift's `process`.
-    #[allow(clippy::too_many_lines)]
     fn process(&mut self, key: KeyInput) -> KeyResult {
         self.notice = None;
         if let Some((before, after)) = self.literal_undo.take()
             && (key == KeyInput::Char('`') || key == KeyInput::Escape)
-            && self.choices.is_empty()
+            && self.candidate_window.is_closed()
             && self.snapshot() == after
         {
             self.restore(before);
@@ -555,9 +605,118 @@ impl Composer {
         if !self.continues_run(key) {
             self.settle_run();
         }
+        if let Some(result) = self.selection_key(key) {
+            return result;
+        }
+        if self.candidate_window.is_open()
+            && let Some(result) = self.handle_candidate_key(key)
+        {
+            return result;
+        }
+        let result: KeyResult;
+        if key == KeyInput::Char('`') {
+            result = self.key_literal(before_key);
+        } else if let Some(literal) = keyboard::literal(key, self.options.punctuation_keys) {
+            result = self.key_punctuation(literal);
+        } else {
+            match key {
+                KeyInput::Char(c) if self.decodes_run() && is_zhuyin_key(c) => result = self.type_into_run(c),
+                KeyInput::Space if self.decodes_run() && self.has_buffer() => result = self.type_into_run(' '),
+                KeyInput::Backspace if self.decodes_run() && self.has_buffer() && !self.run.is_empty() => {
+                    result = self.erase_from_run();
+                }
+                KeyInput::Char(c) => result = self.key_character(c),
+                KeyInput::Space => {
+                    let (space_result, committed) = self.key_space();
+                    if committed {
+                        return space_result;
+                    }
+                    result = space_result;
+                }
+                KeyInput::ShiftSpace => result = self.key_shift_space(),
+                KeyInput::Enter | KeyInput::ShiftEnter => return self.key_commit(key == KeyInput::Enter),
+                KeyInput::Backspace => result = self.key_backspace(),
+                KeyInput::OptionBackspace => result = self.key_option_backspace(),
+                KeyInput::ForwardDelete => result = self.key_forward_delete(),
+                KeyInput::Left | KeyInput::Right => result = self.key_horizontal(key),
+                KeyInput::Home | KeyInput::End => result = self.key_boundary(key),
+                KeyInput::Down | KeyInput::ShiftDown | KeyInput::ShiftUp => result = self.key_open_window(key),
+                KeyInput::Up | KeyInput::PageUp | KeyInput::PageDown | KeyInput::Tab | KeyInput::ShiftTab => {
+                    result = self.key_if_composing();
+                }
+                KeyInput::Escape => result = self.key_escape(),
+                KeyInput::ControlChar(_) => return self.key_commit(false),
+                KeyInput::ShiftedChar(_) | KeyInput::Printed(_) | KeyInput::ShiftLeft | KeyInput::ShiftRight => {
+                    result = KeyResult::PASS_THROUGH;
+                }
+            }
+        }
+        self.refresh();
+        result
+    }
+
+    fn key_punctuation(&mut self, literal: String) -> KeyResult {
+        self.finish_buffer("", ' ', true, true);
+        self.insert(CompositionToken::Literal(literal.into()));
+        KeyResult::CONSUMED
+    }
+
+    fn key_space(&mut self) -> (KeyResult, bool) {
+        if self.has_buffer() {
+            self.finish_buffer("", ' ', false, true);
+            (KeyResult::CONSUMED, false)
+        } else if self.has_composition() {
+            match self.options.space_action {
+                SpaceAction::OpenCandidates => {
+                    self.open_candidates(false, false);
+                    (KeyResult::CONSUMED, false)
+                }
+                SpaceAction::Commit => (KeyResult::new(true, Some(self.commit_all())), true),
+                SpaceAction::CommitAndSpace => (KeyResult::new(false, Some(self.commit_all())), true),
+                SpaceAction::InsertSpace => {
+                    self.insert_space();
+                    (KeyResult::CONSUMED, false)
+                }
+            }
+        } else {
+            (KeyResult::PASS_THROUGH, false)
+        }
+    }
+
+    fn key_commit(&mut self, handled: bool) -> KeyResult {
+        if self.has_composition() { KeyResult::new(handled, Some(self.commit_all())) } else { KeyResult::PASS_THROUGH }
+    }
+
+    fn key_if_composing(&self) -> KeyResult {
+        if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH }
+    }
+
+    fn key_literal(&mut self, before_key: Snapshot) -> KeyResult {
+        let result: KeyResult;
+        if self.has_buffer() {
+            let text = self.buffer_text();
+            self.clear_buffer();
+            self.insert(CompositionToken::Literal(text.into()));
+            self.literal_undo = Some((before_key, self.snapshot()));
+            result = KeyResult::CONSUMED;
+        } else if self.cursor > 0
+            && let Some(reading) = self.tokens[self.cursor - 1].reading().map(str::to_owned)
+        {
+            let target = self.cursor - 1;
+            self.delete(target..self.cursor);
+            self.insert(CompositionToken::Literal(keyboard::plain(&reading).into()));
+            self.literal_undo = Some((before_key, self.snapshot()));
+            result = KeyResult::CONSUMED;
+        } else {
+            result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        }
+        result
+    }
+
+    fn selection_key(&mut self, key: KeyInput) -> Option<KeyResult> {
         if key == KeyInput::ShiftLeft || key == KeyInput::ShiftRight {
             if !self.has_composition() {
-                return KeyResult::PASS_THROUGH;
+                return Some(KeyResult::PASS_THROUGH);
             }
             self.finish_buffer("", ' ', false, true);
             self.close_candidates();
@@ -572,7 +731,7 @@ impl Composer {
                 };
             }
             self.refresh();
-            return KeyResult::CONSUMED;
+            return Some(KeyResult::CONSUMED);
         }
         if let Some(range) = self.selection()
             && key == KeyInput::Enter
@@ -593,201 +752,157 @@ impl Composer {
                 self.notice = Some("自訂詞需為 1 到 6 個字".to_owned());
             }
             self.refresh();
-            return KeyResult::CONSUMED;
+            return Some(KeyResult::CONSUMED);
         }
         if self.selection_anchor.is_some() {
             self.selection_anchor = None;
             if key == KeyInput::Escape {
                 self.refresh();
-                return KeyResult::CONSUMED;
+                return Some(KeyResult::CONSUMED);
             }
         }
-        if !self.choices.is_empty()
-            && let Some(result) = self.handle_candidate_key(key)
-        {
-            return result;
-        }
+        None
+    }
+
+    fn key_character(&mut self, c: char) -> KeyResult {
         let result: KeyResult;
-        if key == KeyInput::Char('`') {
-            if self.has_buffer() {
-                let text = self.buffer_text();
-                self.clear_buffer();
-                self.insert(CompositionToken::Literal(text.into()));
-                self.literal_undo = Some((before_key, self.snapshot()));
-                result = KeyResult::CONSUMED;
-            } else if self.cursor > 0
-                && let Some(reading) = self.tokens[self.cursor - 1].reading().map(str::to_owned)
-            {
-                let target = self.cursor - 1;
-                self.delete(target..self.cursor);
-                self.insert(CompositionToken::Literal(keyboard::plain(&reading).into()));
-                self.literal_undo = Some((before_key, self.snapshot()));
-                result = KeyResult::CONSUMED;
-            } else {
-                result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        if let Some(symbol) = keyboard::symbol(c)
+            && let Some(slot) = keyboard::slot(symbol)
+        {
+            if !self.has_buffer() {
+                // A new syllable at the cursor.
+                self.make_room(self.syllable_count() + 1);
             }
-        } else if let Some(literal) = keyboard::literal(key, self.options.punctuation_keys) {
-            self.finish_buffer("", ' ', true, true);
-            self.insert(CompositionToken::Literal(literal.into()));
+            self.buffer[slot] = Some(symbol);
+            self.buffer_keys.push(c);
+            result = KeyResult::CONSUMED;
+        } else if let Some(tone) = keyboard::tone(c) {
+            self.finish_buffer(tone, c, false, true);
             result = KeyResult::CONSUMED;
         } else {
-            match key {
-                KeyInput::Char(c) if self.decodes_run() && is_zhuyin_key(c) => result = self.type_into_run(c),
-                KeyInput::Space if self.decodes_run() && self.has_buffer() => result = self.type_into_run(' '),
-                KeyInput::Backspace if self.decodes_run() && self.has_buffer() && !self.run.is_empty() => {
-                    result = self.erase_from_run();
-                }
-                KeyInput::Char(c) => {
-                    if let Some(symbol) = keyboard::symbol(c)
-                        && let Some(slot) = keyboard::slot(symbol)
-                    {
-                        if !self.has_buffer() {
-                            // A new syllable at the cursor.
-                            self.make_room(self.syllable_count() + 1);
-                        }
-                        self.buffer[slot] = Some(symbol);
-                        self.buffer_keys.push(c);
-                        result = KeyResult::CONSUMED;
-                    } else if let Some(tone) = keyboard::tone(c) {
-                        self.finish_buffer(tone, c, false, true);
-                        result = KeyResult::CONSUMED;
-                    } else {
-                        result = KeyResult::PASS_THROUGH;
-                    }
-                }
-                KeyInput::Space => {
-                    if self.has_buffer() {
-                        self.finish_buffer("", ' ', false, true);
-                        result = KeyResult::CONSUMED;
-                    } else if self.has_composition() {
-                        match self.options.space_action {
-                            SpaceAction::OpenCandidates => {
-                                self.open_candidates(false, false);
-                                result = KeyResult::CONSUMED;
-                            }
-                            SpaceAction::Commit => return KeyResult::new(true, Some(self.commit_all())),
-                            SpaceAction::CommitAndSpace => return KeyResult::new(false, Some(self.commit_all())),
-                            SpaceAction::InsertSpace => {
-                                self.insert_space();
-                                result = KeyResult::CONSUMED;
-                            }
-                        }
-                    } else {
-                        result = KeyResult::PASS_THROUGH;
-                    }
-                }
-                KeyInput::ShiftSpace => {
-                    if self.has_composition() {
-                        self.insert_space();
-                        result = KeyResult::CONSUMED;
-                    } else {
-                        result = KeyResult::PASS_THROUGH;
-                    }
-                }
-                KeyInput::Enter | KeyInput::ShiftEnter => {
-                    if !self.has_composition() {
-                        return KeyResult::PASS_THROUGH;
-                    }
-                    return KeyResult::new(key == KeyInput::Enter, Some(self.commit_all()));
-                }
-                KeyInput::Backspace => {
-                    if self.has_buffer() {
-                        if let Some(last) = self.buffer.iter().rposition(Option::is_some) {
-                            self.buffer[last] = None;
-                            self.buffer_keys.retain(|k| keyboard::symbol(k).and_then(keyboard::slot) != Some(last));
-                        }
-                        result = KeyResult::CONSUMED;
-                    } else if self.cursor > 0 {
-                        self.delete(self.cursor - 1..self.cursor);
-                        result = KeyResult::CONSUMED;
-                    } else {
-                        result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    }
-                }
-                KeyInput::OptionBackspace => {
-                    if self.has_buffer() {
-                        self.clear_buffer();
-                        result = KeyResult::CONSUMED;
-                    } else if self.cursor > 0 {
-                        let target = self.cursor - 1;
-                        let range = self
-                            .conversion
-                            .iter()
-                            .find(|w| w.range.contains(&target))
-                            .map_or(target..self.cursor, |w| w.range.clone());
-                        self.delete(range);
-                        result = KeyResult::CONSUMED;
-                    } else {
-                        result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    }
-                }
-                KeyInput::ForwardDelete => {
-                    result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    if !self.has_buffer() && self.cursor < self.tokens.len() {
-                        self.delete(self.cursor..self.cursor + 1);
-                    }
-                }
-                KeyInput::Left | KeyInput::Right => {
-                    result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    if self.has_composition() && !self.has_buffer() {
-                        self.cursor = if key == KeyInput::Left {
-                            self.cursor.saturating_sub(1)
-                        } else {
-                            (self.cursor + 1).min(self.tokens.len())
-                        };
-                    }
-                }
-                KeyInput::Home | KeyInput::End => {
-                    result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    if self.has_composition() {
-                        self.cursor = if key == KeyInput::Home { 0 } else { self.tokens.len() };
-                    }
-                }
-                KeyInput::Down | KeyInput::ShiftDown | KeyInput::ShiftUp => {
-                    result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                    if self.has_composition() {
-                        self.finish_buffer("", ' ', false, true);
-                        self.refresh();
-                        let tolerant = key == KeyInput::ShiftUp && self.corrections_available();
-                        self.open_candidates(key == KeyInput::ShiftDown, tolerant);
-                    }
-                }
-                KeyInput::Up | KeyInput::PageUp | KeyInput::PageDown | KeyInput::Tab | KeyInput::ShiftTab => {
-                    result = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
-                }
-                KeyInput::Escape => {
-                    if self.has_buffer() {
-                        self.clear_buffer();
-                        result = KeyResult::CONSUMED;
-                    } else if self.has_composition() {
-                        if self.options.escape_clears_composition {
-                            self.reset();
-                        }
-                        result = KeyResult::CONSUMED;
-                    } else {
-                        result = KeyResult::PASS_THROUGH;
-                    }
-                }
-                KeyInput::ControlChar(_) => {
-                    // A Control combination with no punctuation (Control+[, Control+/) is the app's: send what is
-                    // composed first.
-                    if !self.has_composition() {
-                        return KeyResult::PASS_THROUGH;
-                    }
-                    return KeyResult::new(false, Some(self.commit_all()));
-                }
-                KeyInput::ShiftedChar(_) | KeyInput::Printed(_) | KeyInput::ShiftLeft | KeyInput::ShiftRight => {
-                    result = KeyResult::PASS_THROUGH;
-                }
-            }
+            result = KeyResult::PASS_THROUGH;
         }
-        self.refresh();
+
+        result
+    }
+
+    fn key_shift_space(&mut self) -> KeyResult {
+        let result: KeyResult = if self.has_composition() {
+            self.insert_space();
+            KeyResult::CONSUMED
+        } else {
+            KeyResult::PASS_THROUGH
+        };
+
+        result
+    }
+
+    fn key_backspace(&mut self) -> KeyResult {
+        let result: KeyResult = if self.has_buffer() {
+            if let Some(last) = self.buffer.iter().rposition(Option::is_some) {
+                self.buffer[last] = None;
+                self.buffer_keys.retain(|k| keyboard::symbol(k).and_then(keyboard::slot) != Some(last));
+            }
+            KeyResult::CONSUMED
+        } else if self.cursor > 0 {
+            self.delete(self.cursor - 1..self.cursor);
+            KeyResult::CONSUMED
+        } else if self.has_composition() {
+            KeyResult::CONSUMED
+        } else {
+            KeyResult::PASS_THROUGH
+        };
+
+        result
+    }
+
+    fn key_option_backspace(&mut self) -> KeyResult {
+        let result: KeyResult = if self.has_buffer() {
+            self.clear_buffer();
+            KeyResult::CONSUMED
+        } else if self.cursor > 0 {
+            let target = self.cursor - 1;
+            let range = self
+                .conversion
+                .iter()
+                .find(|w| w.range.contains(&target))
+                .map_or(target..self.cursor, |w| w.range.clone());
+            self.delete(range);
+            KeyResult::CONSUMED
+        } else if self.has_composition() {
+            KeyResult::CONSUMED
+        } else {
+            KeyResult::PASS_THROUGH
+        };
+
+        result
+    }
+
+    fn key_forward_delete(&mut self) -> KeyResult {
+        let result: KeyResult = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        if !self.has_buffer() && self.cursor < self.tokens.len() {
+            self.delete(self.cursor..self.cursor + 1);
+        }
+
+        result
+    }
+
+    fn key_horizontal(&mut self, key: KeyInput) -> KeyResult {
+        let result: KeyResult = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        if self.has_composition() && !self.has_buffer() {
+            self.cursor = if key == KeyInput::Left {
+                self.cursor.saturating_sub(1)
+            } else {
+                (self.cursor + 1).min(self.tokens.len())
+            };
+        }
+
+        result
+    }
+
+    fn key_boundary(&mut self, key: KeyInput) -> KeyResult {
+        let result: KeyResult = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        if self.has_composition() {
+            self.cursor = if key == KeyInput::Home { 0 } else { self.tokens.len() };
+        }
+
+        result
+    }
+
+    fn key_open_window(&mut self, key: KeyInput) -> KeyResult {
+        let result: KeyResult = if self.has_composition() { KeyResult::CONSUMED } else { KeyResult::PASS_THROUGH };
+        if self.has_composition() {
+            self.finish_buffer("", ' ', false, true);
+            self.refresh();
+            let tolerant = key == KeyInput::ShiftUp && self.corrections_available();
+            self.open_candidates(key == KeyInput::ShiftDown, tolerant);
+        }
+
+        result
+    }
+
+    fn key_escape(&mut self) -> KeyResult {
+        let result: KeyResult = if self.has_buffer() {
+            self.clear_buffer();
+            KeyResult::CONSUMED
+        } else if self.has_composition() {
+            if self.options.escape_clears_composition {
+                self.reset();
+            }
+            KeyResult::CONSUMED
+        } else {
+            KeyResult::PASS_THROUGH
+        };
+
         result
     }
 
     /// Picks candidate `index` of the open list.
     pub fn select_candidate(&mut self, index: usize) -> KeyResult {
-        let Some(choice) = self.choices.get(index).cloned() else { return KeyResult::CONSUMED };
+        let Some(choice) = self.candidate_window.get(index).cloned() else {
+            debug_assert!(self.invariants_hold());
+            return KeyResult::CONSUMED;
+        };
         if choice.reading.is_empty() {
             self.fixed.retain(|f| !overlaps(&f.range, &choice.range));
             self.tokens[choice.range.start] = CompositionToken::Literal(choice.text.clone());
@@ -870,6 +985,7 @@ impl Composer {
         self.conversion_dirty = true;
         self.close_candidates();
         self.refresh();
+        debug_assert!(self.invariants_hold());
         KeyResult::CONSUMED
     }
 
@@ -1023,7 +1139,7 @@ impl Composer {
         self.options.key_decoder != KeyDecoderMethod::Slots
             && self.cursor == self.tokens.len()
             && self.selection_anchor.is_none()
-            && self.choices.is_empty()
+            && self.candidate_window.is_closed()
     }
 
     /// Keys that extend the run: Zhuyin and tone keys, Space finishing a syllable, Backspace inside the unfinished
@@ -1058,215 +1174,6 @@ impl Composer {
     /// `CHARACTER_CANDIDATES` of them.  A reading-channel variant's character ranks without the variant's cost, so
     /// the model sees it ([`VariantScores`] says how it is scored).
     // One function, as in Swift, with the reading channel's additions in place.
-    #[allow(clippy::too_many_lines)]
-    fn score_characters(&mut self) -> Option<CharacterScores> {
-        self.character_scorer.as_ref()?;
-        if !self.tokens.iter().any(|t| t.reading().is_some()) {
-            return None;
-        }
-        let count = self.tokens.len();
-        // Each character's best prior, and whether some match puts it there without a reading-channel variant.
-        let mut candidates: Vec<HashMap<String, (f64, bool)>> = vec![HashMap::new(); count];
-        let mut variants: Vec<HashMap<String, VariantCharacter>> = vec![HashMap::new(); count];
-        let mut plain_best: Vec<f64> = vec![f64::NEG_INFINITY; count];
-        for start in 0..count {
-            if self.tokens[start].reading().is_none() {
-                continue;
-            }
-            for m in self.engine.matches(&self.tokens, start, self.options.typo_tolerance) {
-                let prior = m.entry.logp + m.entry.reading_prior - m.entry.penalty;
-                for (offset, character) in graphemes(&m.entry.word).into_iter().enumerate() {
-                    if start + offset >= count {
-                        continue;
-                    }
-                    let value = prior;
-                    let through = m.channel.filter(|c| c.position == offset);
-                    if let Some(channel) = through {
-                        // Ranked without the variant's cost, if it is competitive (below).
-                        let free = prior + channel.cost;
-                        let syllable = m
-                            .entry
-                            .reading
-                            .as_deref()
-                            .and_then(|r| r.split(' ').nth(offset))
-                            .unwrap_or_default()
-                            .to_owned();
-                        let seen = variants[start + offset].entry(character.to_owned()).or_insert(VariantCharacter {
-                            prior: f64::NEG_INFINITY,
-                            syllable: String::new(),
-                            correction: false,
-                            cost: 0.0,
-                        });
-                        if free > seen.prior {
-                            *seen = VariantCharacter {
-                                prior: free,
-                                syllable,
-                                correction: channel.correction,
-                                cost: channel.cost,
-                            };
-                        }
-                    }
-                    let slot =
-                        candidates[start + offset].entry(character.to_owned()).or_insert((f64::NEG_INFINITY, false));
-                    slot.0 = swift_max(slot.0, value);
-                    slot.1 |= through.is_none();
-                    if through.is_none() {
-                        plain_best[start + offset] = plain_best[start + offset].max(value);
-                    }
-                }
-            }
-        }
-        for word in &self.fixed {
-            for (offset, character) in graphemes(&word.text).into_iter().enumerate() {
-                if word.range.start + offset < count {
-                    candidates[word.range.start + offset].insert(character.to_owned(), (0.0, true));
-                    plain_best[word.range.start + offset] = plain_best[word.range.start + offset].max(0.0);
-                }
-            }
-        }
-        // Characters only a variant brings, within the window of the best other character: ranked without the
-        // variant's cost, so the cut keeps them for the model (rule 8); the others keep their cost and the model's
-        // score as typed.  As typed, a correction outside the window still carries its cost bucket, as in v3's
-        // training noise (`VariantScores::Typed`).
-        let typed = self.variant_scores == VariantScores::Typed;
-        let mut outside: Vec<HashMap<String, VariantCharacter>> = vec![HashMap::new(); count];
-        for (position, seen) in variants.iter_mut().enumerate() {
-            let floor = plain_best[position] - self.variant_window;
-            let kept = &mut outside[position];
-            seen.retain(|character, v| {
-                let only = candidates[position].get(character).is_none_or(|c| !c.1);
-                if only && typed && v.correction && v.prior < floor {
-                    kept.insert(character.clone(), v.clone());
-                }
-                only && v.prior >= floor
-            });
-            for (character, v) in seen.iter() {
-                if let Some(slot) = candidates[position].get_mut(character) {
-                    slot.0 = swift_max(slot.0, v.prior);
-                }
-            }
-        }
-        for (seen, kept) in variants.iter_mut().zip(outside) {
-            seen.extend(kept);
-        }
-        // Equal priors by character, so the cut does not depend on the table's order.
-        let lists: Vec<Vec<String>> = candidates
-            .into_iter()
-            .map(|position| {
-                let mut entries: Vec<(String, f64)> = position.into_iter().map(|(c, (v, _))| (c, v)).collect();
-                entries.sort_by(|a, b| {
-                    if a.1 == b.1 {
-                        a.0.as_bytes().cmp(b.0.as_bytes())
-                    } else if a.1 > b.1 {
-                        std::cmp::Ordering::Less
-                    } else {
-                        std::cmp::Ordering::Greater
-                    }
-                });
-                entries.into_iter().take(CHARACTER_CANDIDATES).map(|e| e.0).collect()
-            })
-            .collect();
-        let syllables: Vec<CharacterModelSyllable> = self
-            .tokens
-            .iter()
-            .map(|token| match token {
-                CompositionToken::Literal(_) => {
-                    CharacterModelSyllable { base: None, tone: 0, cost_bucket: 0, implicit: false }
-                }
-                CompositionToken::Syllable { reading, keys, implicit } => {
-                    let mut bucket = 0;
-                    if !self.engine.is_valid_syllable(reading) {
-                        let cost = self.engine.alternatives(keys).first().map_or(f64::INFINITY, |a| a.cost);
-                        bucket = cost_bucket(cost);
-                    }
-                    model_syllable(reading, bucket, *implicit)
-                }
-            })
-            .collect();
-        let model = self.character_scorer.as_mut()?;
-        let scores = model(&syllables, &lists)?;
-        let mut positions: Vec<HashMap<String, f64>> = vec![HashMap::new(); count];
-        for (index, list) in lists.iter().enumerate() {
-            let Some(row) = scores.get(index) else { continue };
-            for (column, character) in list.iter().enumerate() {
-                if let Some(&score) = row.get(column) {
-                    positions[index].insert(character.clone(), score);
-                }
-            }
-        }
-        if variants.iter().any(|v| !v.is_empty()) {
-            self.score_variants(&syllables, &lists, &variants, &mut positions);
-        }
-        Some(CharacterScores::new(positions, self.character_weight))
-    }
-
-    /// Replaces the scores of characters only a reading-channel variant put in the lists ([`VariantScores`]).
-    fn score_variants(
-        &mut self,
-        syllables: &[CharacterModelSyllable],
-        lists: &[Vec<String>],
-        variants: &[HashMap<String, VariantCharacter>],
-        positions: &mut [HashMap<String, f64>],
-    ) {
-        let count = lists.len();
-        let best: Vec<f64> = positions.iter().map(|p| p.values().copied().fold(f64::NEG_INFINITY, swift_max)).collect();
-        // The listed variant characters at each position, best prior first (the list's order).
-        let listed: Vec<Vec<(&String, &VariantCharacter)>> =
-            (0..count).map(|i| lists[i].iter().filter_map(|c| variants[i].get(c).map(|v| (c, v))).collect()).collect();
-        let mode = self.variant_scores;
-        let mut again: Option<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)> = None;
-        if matches!(mode, VariantScores::Standard | VariantScores::Typed) {
-            let mut changed = syllables.to_vec();
-            let mut asked: Vec<Vec<String>> = vec![vec![]; count];
-            for (i, characters) in listed.iter().enumerate() {
-                if mode == VariantScores::Standard {
-                    // The lexicon syllable of the best of them; the others with that syllable are asked too.
-                    let Some((_, first)) = characters.first() else { continue };
-                    changed[i] = model_syllable(&first.syllable, 0, false);
-                    asked[i] = characters
-                        .iter()
-                        .filter(|(_, v)| v.syllable == first.syllable)
-                        .map(|(c, _)| (*c).clone())
-                        .collect();
-                } else {
-                    let corrections: Vec<&(&String, &VariantCharacter)> =
-                        characters.iter().filter(|(_, v)| v.correction).collect();
-                    let Some(cheapest) = corrections.iter().map(|(_, v)| v.cost).reduce(f64::min) else { continue };
-                    changed[i].cost_bucket = cost_bucket(cheapest);
-                    asked[i] = corrections.iter().map(|(c, _)| (*c).clone()).collect();
-                }
-            }
-            if asked.iter().any(|a| !a.is_empty()) {
-                again = Some((changed, asked));
-            }
-        }
-        let extra = match (&again, self.character_scorer.as_mut()) {
-            (Some((changed, asked)), Some(model)) => model(changed, asked),
-            _ => None,
-        };
-        for (i, characters) in listed.iter().enumerate() {
-            for (character, variant) in characters {
-                let from_extra = again.as_ref().zip(extra.as_ref()).and_then(|((_, asked), rows)| {
-                    let column = asked[i].iter().position(|c| c == *character)?;
-                    rows.get(i)?.get(column).copied()
-                });
-                let score = match mode {
-                    VariantScores::Standard => from_extra.unwrap_or(best[i]),
-                    VariantScores::Best => best[i],
-                    VariantScores::Zero => 0.0,
-                    VariantScores::Typed => {
-                        if variant.correction {
-                            from_extra.unwrap_or(best[i])
-                        } else {
-                            continue;
-                        }
-                    }
-                };
-                positions[i].insert((*character).clone(), score);
-            }
-        }
-    }
-
     /// The run's split: the decoder's cheapest, unless another split of the same shape (as many syllables, the same
     /// unfinished part) close in cost reads better to the language model.
     fn best_split(&self) -> Option<DecodeResult> {
@@ -1279,7 +1186,7 @@ impl Composer {
             self.options.key_decoder
         };
         let engine = &self.engine;
-        let decoder = KeyDecoder::new(method, self.decoder_costs, |reading: &str, keys: &str| {
+        let decoder = KeyDecoder::new(method, self.tuning.decoder_costs, |reading: &str, keys: &str| {
             if engine.is_valid_syllable(reading) {
                 return Some(0.0);
             }
@@ -1297,7 +1204,7 @@ impl Composer {
             .iter()
             .filter(|s| {
                 s.cost.is_finite()
-                    && s.cost <= cheapest.cost + self.split_margin
+                    && s.cost <= cheapest.cost + self.tuning.split_margin
                     && s.syllables.len() == cheapest.syllables.len()
                     && s.buffer_keys.is_empty() == cheapest.buffer_keys.is_empty()
             })
@@ -1545,14 +1452,12 @@ impl Composer {
     }
 
     fn close_candidates(&mut self) {
-        self.choices.clear();
-        self.candidate_selection = 0;
+        self.candidate_window.close();
     }
 
     fn handle_candidate_key(&mut self, key: KeyInput) -> Option<KeyResult> {
         let page_size = self.options.selection_keys.len().max(1);
-        let page = self.candidate_selection / page_size;
-        let page_count = self.choices.len().div_ceil(page_size);
+        let page = self.candidate_window.selection() / page_size;
         if let KeyInput::Char(c) = key
             && c != '`'
             && let Some(number) = self.options.selection_keys.iter().position(|&k| k == c)
@@ -1561,49 +1466,25 @@ impl Composer {
         }
         let vertical = self.options.vertical_list;
         match key {
-            KeyInput::Char('`') => {
-                let range = self.choices[self.candidate_selection].range.clone();
-                if !self.tokens[range.clone()].iter().all(|t| t.reading().is_some()) {
-                    self.close_candidates();
-                    self.refresh();
-                    return Some(KeyResult::CONSUMED);
-                }
-                let text = keyboard::plain(&self.readings(&range).join(" "));
-                let before = self.snapshot();
-                self.delete(range.clone());
-                self.cursor = range.start;
-                self.insert(CompositionToken::Literal(text.into()));
-                self.close_candidates();
-                self.literal_undo = Some((before, self.snapshot()));
-            }
-            KeyInput::Enter => return Some(self.select_candidate(self.candidate_selection)),
-            KeyInput::ShiftDown => self.open_candidates(!self.single_character_list, self.tolerant_list),
-            KeyInput::ShiftUp => {
-                if self.literal_list || !self.corrections_available() {
-                    return Some(KeyResult::CONSUMED);
-                }
-                self.open_candidates(self.single_character_list, !self.tolerant_list);
-            }
+            KeyInput::Char('`') if self.candidate_literal() => return Some(KeyResult::CONSUMED),
+            KeyInput::Enter => return Some(self.select_candidate(self.candidate_window.selection())),
+            KeyInput::ShiftDown => self.candidate_toggle_single(),
+            KeyInput::ShiftUp if self.candidate_toggle_corrections() => return Some(KeyResult::CONSUMED),
+            KeyInput::Char('`') | KeyInput::ShiftUp => {}
             KeyInput::Escape | KeyInput::Backspace => self.close_candidates(),
             KeyInput::Left if vertical => self.move_list_target(false),
             KeyInput::Right if vertical => self.move_list_target(true),
-            KeyInput::PageUp | KeyInput::ShiftTab => self.candidate_selection = page.saturating_sub(1) * page_size,
-            KeyInput::Up if !vertical => self.candidate_selection = page.saturating_sub(1) * page_size,
-            KeyInput::PageDown | KeyInput::Tab => {
-                self.candidate_selection = (page_count - 1).min(page + 1) * page_size;
-            }
-            KeyInput::Down if !vertical => self.candidate_selection = (page_count - 1).min(page + 1) * page_size,
+            KeyInput::PageUp | KeyInput::ShiftTab => self.candidate_window.move_page(page_size, false, false),
+            KeyInput::Up if !vertical => self.candidate_window.move_page(page_size, false, false),
+            KeyInput::PageDown | KeyInput::Tab => self.candidate_window.move_page(page_size, true, false),
+            KeyInput::Down if !vertical => self.candidate_window.move_page(page_size, true, false),
             KeyInput::Up | KeyInput::Left => {
-                if self.options.page_at_list_edge || !self.candidate_selection.is_multiple_of(page_size) {
-                    self.candidate_selection = self.candidate_selection.saturating_sub(1);
-                }
+                self.candidate_window.move_selection(page_size, false, self.options.page_at_list_edge);
             }
             KeyInput::Down | KeyInput::Right => {
-                if self.options.page_at_list_edge || self.candidate_selection % page_size != page_size - 1 {
-                    self.candidate_selection = (self.choices.len() - 1).min(self.candidate_selection + 1);
-                }
+                self.candidate_window.move_selection(page_size, true, self.options.page_at_list_edge);
             }
-            KeyInput::Space => self.candidate_selection = ((page + 1) % page_count) * page_size,
+            KeyInput::Space => self.candidate_window.move_page(page_size, true, true),
             _ => {
                 self.close_candidates();
                 return None;
@@ -1613,15 +1494,41 @@ impl Composer {
         Some(KeyResult::CONSUMED)
     }
 
+    fn candidate_toggle_single(&mut self) {
+        self.open_candidates(!self.candidate_window.single_character(), self.candidate_window.tolerant());
+    }
+
+    // Returns true when the unavailable correction action must leave the display untouched.
+    fn candidate_toggle_corrections(&mut self) -> bool {
+        if self.candidate_window.literal() || !self.corrections_available() {
+            return true;
+        }
+        self.open_candidates(self.candidate_window.single_character(), !self.candidate_window.tolerant());
+        false
+    }
+
+    fn candidate_literal(&mut self) -> bool {
+        let range = self.candidate_window.selected().expect("candidate window is open").range.clone();
+        if !self.tokens[range.clone()].iter().all(|t| t.reading().is_some()) {
+            self.close_candidates();
+            self.refresh();
+            return true;
+        }
+        let text = keyboard::plain(&self.readings(&range).join(" "));
+        let before = self.snapshot();
+        self.delete(range.clone());
+        self.cursor = range.start;
+        self.insert(CompositionToken::Literal(text.into()));
+        self.close_candidates();
+        self.literal_undo = Some((before, self.snapshot()));
+        false
+    }
+
     /// The open list moves to the previous or next character, in the same mode.
     fn move_list_target(&mut self, forward: bool) {
-        let last = self.tokens.len().saturating_sub(1);
-        let target = if forward { (self.list_target + 1).min(last) } else { self.list_target.saturating_sub(1) };
-        if target == self.list_target {
-            return;
-        }
+        let Some(target) = self.candidate_window.target(self.tokens.len(), forward) else { return };
         self.cursor = if self.options.candidate_anchor == CandidateAnchor::AfterCursor { target } else { target + 1 };
-        self.open_candidates(self.single_character_list, self.tolerant_list);
+        self.open_candidates(self.candidate_window.single_character(), self.candidate_window.tolerant());
     }
 
     /// The converted text over `range`, in the lexicon's own forms.
@@ -1703,10 +1610,10 @@ impl Composer {
 
     /// Switches the open candidate window between words for the keys as typed and typing corrections.
     pub fn toggle_corrections(&mut self) {
-        if self.choices.is_empty() || self.literal_list || !self.corrections_available() {
+        if self.candidate_window.is_closed() || self.candidate_window.literal() || !self.corrections_available() {
             return;
         }
-        self.open_candidates(self.single_character_list, !self.tolerant_list);
+        self.open_candidates(self.candidate_window.single_character(), !self.candidate_window.tolerant());
         self.refresh();
     }
 
@@ -1722,17 +1629,12 @@ impl Composer {
         if self.tokens.is_empty() || self.has_buffer() {
             return;
         }
-        self.single_character_list = single_character;
-        self.tolerant_list = tolerant;
-        self.literal_list = false;
         let cursor = self.cursor;
         let count = self.tokens.len();
         let forward = cursor == 0 || (self.options.candidate_anchor == CandidateAnchor::AfterCursor && cursor < count);
         let target = if forward { cursor } else { cursor - 1 };
-        self.list_target = target;
         if let CompositionToken::Literal(text) = &self.tokens[target] {
-            self.literal_list = true;
-            self.choices = keyboard::alternatives(text)
+            let choices = keyboard::alternatives(text)
                 .into_iter()
                 .map(|text| FixedWord {
                     range: target..target + 1,
@@ -1744,7 +1646,7 @@ impl Composer {
                     frozen: false,
                 })
                 .collect();
-            self.candidate_selection = 0;
+            self.candidate_window.open(choices, target, single_character, tolerant, true);
             return;
         }
         let mut ranges: Vec<Range<usize>> = vec![];
@@ -1791,7 +1693,7 @@ impl Composer {
                     std::cmp::Ordering::Greater
                 }
             };
-            if self.character_scores_in_list
+            if self.tuning.character_scores_in_list
                 && let Some(scores) = &self.character_scores
             {
                 for item in &mut ranked {
@@ -1800,13 +1702,13 @@ impl Composer {
             }
             ranked.sort_by(compare);
             if ranked.len() > 1 && self.candidate_scorer.is_some() {
-                let head_count = ranked.len().min(self.candidate_scoring_count);
+                let head_count = ranked.len().min(self.tuning.candidate_scoring_count);
                 let before: String =
                     self.conversion.iter().filter(|w| w.range.end <= range.start).map(|w| &*w.text).collect();
                 let words: Vec<String> = ranked[..head_count].iter().map(|r| r.0.entry.word.to_string()).collect();
                 if let Some(scorer) = self.candidate_scorer.as_mut()
                     && let Some(extra) = scorer(&before, &words)
-                    && extra.len() == head_count
+                    && scoring::valid_scores(&extra, head_count)
                 {
                     for (item, extra) in ranked[..head_count].iter_mut().zip(extra) {
                         item.1 += extra;
@@ -1863,8 +1765,7 @@ impl Composer {
                 choices.push(word);
             }
         }
-        self.choices = choices;
-        self.candidate_selection = 0;
+        self.candidate_window.open(choices, target, single_character, tolerant, false);
     }
 
     fn refresh(&mut self) {
@@ -1882,7 +1783,12 @@ impl Composer {
             self.conversion_dirty = false;
             self.conversion_revision = revision;
         }
-        self.present();
+        if let Some(range) = self.selection()
+            && self.notice.is_none()
+        {
+            self.notice = Some(format!("Enter 加入自訂詞：{}", self.shown(&range)));
+        }
+        self.presentation = self.present();
     }
 
     /// Words the user picked in this place before stay: the reranker chooses among the sentences that keep them.
@@ -1944,10 +1850,11 @@ impl Composer {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn present(&mut self) {
-        let focus_range = self
-            .selection()
-            .or_else(|| (!self.choices.is_empty()).then(|| self.choices[self.candidate_selection].range.clone()));
+    fn present(&self) -> Presentation {
+        let focus_range = self.selection().or_else(|| {
+            (self.candidate_window.is_open())
+                .then(|| self.candidate_window.selected().expect("candidate window is open").range.clone())
+        });
         let forms = self.options.character_forms;
         let mut text = String::new();
         let mut length = 0usize; // UTF-16 units of `text`
@@ -2016,29 +1923,29 @@ impl Composer {
         }
         let sorted: Vec<usize> = boundaries.into_iter().collect();
         let clauses: Vec<Range<usize>> = sorted.windows(2).filter(|w| w[0] < w[1]).map(|w| w[0]..w[1]).collect();
-        if let Some(range) = self.selection()
-            && self.notice.is_none()
-        {
-            self.notice = Some(format!("Enter 加入自訂詞：{}", self.shown(&range)));
-        }
-        let candidates = (!self.choices.is_empty()).then(|| {
+        let candidates = (self.candidate_window.is_open()).then(|| {
             CandidateList::new(
-                self.choices
+                self.candidate_window
+                    .choices()
                     .iter()
                     .map(|c| Candidate {
                         text: forms.apply(&c.text),
                         annotation: c.annotation.as_deref().map(str::to_owned),
                     })
                     .collect(),
-                self.candidate_selection,
+                self.candidate_window.selection(),
                 self.options.selection_keys.len().max(1),
-                if self.literal_list || !self.corrections_available() { None } else { Some(self.tolerant_list) },
-                self.single_character_list,
+                if self.candidate_window.literal() || !self.corrections_available() {
+                    None
+                } else {
+                    Some(self.candidate_window.tolerant())
+                },
+                self.candidate_window.single_character(),
             )
         });
-        let zhuyin = (!self.choices.is_empty())
+        let zhuyin = (self.candidate_window.is_open())
             .then(|| {
-                let range = &self.choices[self.candidate_selection].range;
+                let range = &self.candidate_window.selected().expect("candidate window is open").range;
                 let parts: Vec<Option<&str>> =
                     self.tokens[range.clone()].iter().map(CompositionToken::reading).collect();
                 parts
@@ -2047,7 +1954,7 @@ impl Composer {
                     .then(|| keyboard::plain(&parts.into_iter().flatten().collect::<Vec<_>>().join(" ")))
             })
             .flatten();
-        self.presentation = Presentation {
+        Presentation {
             text,
             cursor: caret,
             focused_clause: focus.and_then(|f| clauses.iter().position(|c| *c == f)),
@@ -2056,7 +1963,7 @@ impl Composer {
             candidates,
             notice: self.notice.clone(),
             zhuyin_hint: zhuyin,
-        };
+        }
     }
 }
 

@@ -93,7 +93,7 @@ fn text(c: &Composer) -> &str {
 }
 
 fn items(c: &Composer) -> Vec<String> {
-    c.presentation().candidates.as_ref().map(|l| l.items.iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
+    c.presentation().candidates.as_ref().map(|l| l.items().iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
 }
 
 fn index_of(c: &Composer, word: &str) -> usize {
@@ -600,12 +600,12 @@ fn candidate_window() {
     let mut paging = composer_with(&tiny, "18 ", two_keys.clone());
     paging.handle(KeyInput::Down);
     let list = |c: &Composer| c.presentation().candidates.clone().unwrap();
-    assert_eq!(list(&paging).page_size, 2, "page size from selection keys");
+    assert_eq!(list(&paging).page_size(), 2, "page size from selection keys");
     paging.handle(KeyInput::Up);
-    assert_eq!(list(&paging).selection, 0, "up clamps at start");
+    assert_eq!(list(&paging).selection(), 0, "up clamps at start");
     paging.handle(KeyInput::Down);
     paging.handle(KeyInput::Down);
-    assert!(list(&paging).selection == 2 && list(&paging).page() == 1, "down crosses page");
+    assert!(list(&paging).selection() == 2 && list(&paging).page() == 1, "down crosses page");
     paging.handle(KeyInput::PageUp);
     assert_eq!(list(&paging).page(), 0, "page up previous page");
     for key in [KeyInput::PageDown, KeyInput::Tab] {
@@ -621,11 +621,11 @@ fn candidate_window() {
     for _ in 0..30 {
         paging.handle(KeyInput::Down);
     }
-    assert_eq!(list(&paging).selection, list(&paging).items.len() - 1, "down clamps at final item");
+    assert_eq!(list(&paging).selection(), list(&paging).items().len() - 1, "down clamps at final item");
     paging.handle(KeyInput::Space);
     assert_eq!(list(&paging).page(), 0, "space wraps to first page");
     paging.handle(KeyInput::Right);
-    let highlighted = list(&paging).items[list(&paging).selection].text.clone();
+    let highlighted = list(&paging).items()[list(&paging).selection()].text.clone();
     paging.handle(KeyInput::Enter);
     assert!(text(&paging) == highlighted && paging.presentation().candidates.is_none(), "enter picks highlighted");
     tiny.forget_all_learned();
@@ -673,12 +673,12 @@ fn candidate_window() {
     moving.handle(KeyInput::Home);
     moving.handle(KeyInput::ShiftDown);
     assert!(
-        list(&moving).single_character && focused_range(&moving) == Some(0..1),
+        list(&moving).single_character() && focused_range(&moving) == Some(0..1),
         "single list at the first character"
     );
     moving.handle(KeyInput::Right);
     assert!(
-        focused_range(&moving) == Some(1..2) && list(&moving).single_character,
+        focused_range(&moving) == Some(1..2) && list(&moving).single_character(),
         "→ moves the list to the next character"
     );
     moving.handle(KeyInput::Right);
@@ -689,7 +689,7 @@ fn candidate_window() {
     let mut sideways = composer_with(&tiny, "18 ", horizontal);
     sideways.handle(KeyInput::Down);
     sideways.handle(KeyInput::Right);
-    assert_eq!(list(&sideways).selection, 1, "horizontal → moves the highlight");
+    assert_eq!(list(&sideways).selection(), 1, "horizontal → moves the highlight");
     sideways.handle(KeyInput::Down);
     assert_eq!(list(&sideways).page(), 1, "horizontal ↓ turns the page");
     sideways.handle(KeyInput::Up);
@@ -893,7 +893,7 @@ fn caches_unicode_and_stress() {
     let zero_keys = ComposerOptions { selection_keys: vec![], ..ComposerOptions::default() };
     let mut zero = composer_with(&tiny, "18 ", zero_keys);
     zero.handle(KeyInput::Down);
-    assert_eq!(zero.presentation().candidates.as_ref().unwrap().page_size, 1, "empty selection keys safe");
+    assert_eq!(zero.presentation().candidates.as_ref().unwrap().page_size(), 1, "empty selection keys safe");
     zero.handle(KeyInput::Space);
     zero.handle(KeyInput::Enter);
     assert!(zero.presentation().candidates.is_none(), "empty selection keys navigation still works");
@@ -945,7 +945,7 @@ fn keyboard_channel_through_the_composer() {
         .candidates
         .as_ref()
         .unwrap()
-        .items
+        .items()
         .iter()
         .find(|i| i.text == "特")
         .and_then(|i| i.annotation.clone());
@@ -965,7 +965,7 @@ fn keyboard_channel_through_the_composer() {
         .candidates
         .as_ref()
         .unwrap()
-        .items
+        .items()
         .iter()
         .find(|i| i.text == "特")
         .and_then(|i| i.annotation.clone());
@@ -1032,7 +1032,7 @@ fn recall_budget_backtick_and_hints() {
     pick.handle(KeyInput::Down);
     assert!(!items(&pick).iter().any(|t| t == "乙"), "the list starts with words for the keys as typed");
     pick.toggle_corrections();
-    assert_eq!(pick.presentation().candidates.as_ref().unwrap().tolerant, Some(true), "toggling lists corrections");
+    assert_eq!(pick.presentation().candidates.as_ref().unwrap().tolerant(), Some(true), "toggling lists corrections");
     let index = index_of(&pick, "乙");
     pick.select_candidate(index);
     pick.commit_all();
@@ -1065,7 +1065,7 @@ fn recall_budget_backtick_and_hints() {
             .presentation()
             .candidates
             .as_ref()
-            .is_some_and(|l| l.items.iter().any(|i| i.text == word && i.annotation.is_some()));
+            .is_some_and(|l| l.items().iter().any(|i| i.text == word && i.annotation.is_some()));
         assert_eq!(found, allowed, "{length}-token span correction budget");
     }
 
@@ -1168,26 +1168,26 @@ fn page_at_list_edge_off() {
     let mut stay = composer_with(&tiny, "18 ", options.clone());
     stay.handle(KeyInput::Down);
     stay.handle(KeyInput::Down);
-    assert_eq!(list(&stay).selection, 1, "↓ moves within the page");
+    assert_eq!(list(&stay).selection(), 1, "↓ moves within the page");
     stay.handle(KeyInput::Down);
-    assert!(list(&stay).selection == 1 && list(&stay).page() == 0, "↓ at the page's last candidate stays");
+    assert!(list(&stay).selection() == 1 && list(&stay).page() == 0, "↓ at the page's last candidate stays");
     stay.handle(KeyInput::Tab);
-    assert_eq!(list(&stay).selection, 2, "the page keys still turn pages");
+    assert_eq!(list(&stay).selection(), 2, "the page keys still turn pages");
     stay.handle(KeyInput::Up);
-    assert_eq!(list(&stay).selection, 2, "↑ at the page's first candidate stays");
+    assert_eq!(list(&stay).selection(), 2, "↑ at the page's first candidate stays");
     let horizontal = ComposerOptions { vertical_list: false, ..options };
     let mut sideways = composer_with(&tiny, "18 ", horizontal);
     sideways.handle(KeyInput::Down);
     sideways.handle(KeyInput::Right);
     sideways.handle(KeyInput::Right);
-    assert_eq!(list(&sideways).selection, 1, "horizontal → at the page's edge stays");
+    assert_eq!(list(&sideways).selection(), 1, "horizontal → at the page's edge stays");
     sideways.handle(KeyInput::Down);
     assert_eq!(list(&sideways).page(), 1, "horizontal ↓ still turns the page");
     sideways.handle(KeyInput::Left);
-    assert_eq!(list(&sideways).selection, 2, "horizontal ← at the page's first candidate stays");
+    assert_eq!(list(&sideways).selection(), 2, "horizontal ← at the page's first candidate stays");
     let mut across = composer_with(&tiny, "18 ", ComposerOptions { selection_keys: vec!['1', '2'], ..legacy() });
     across.handle(KeyInput::Down);
     across.handle(KeyInput::Down);
     across.handle(KeyInput::Down);
-    assert!(list(&across).selection == 2 && list(&across).page() == 1, "on (the default): ↓ crosses the page");
+    assert!(list(&across).selection() == 2 && list(&across).page() == 1, "on (the default): ↓ crosses the page");
 }

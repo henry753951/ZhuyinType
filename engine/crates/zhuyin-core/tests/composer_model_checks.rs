@@ -57,7 +57,7 @@ fn text(c: &Composer) -> String {
 }
 
 fn items(c: &Composer) -> Vec<String> {
-    c.presentation().candidates.as_ref().map(|l| l.items.iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
+    c.presentation().candidates.as_ref().map(|l| l.items().iter().map(|i| i.text.clone()).collect()).unwrap_or_default()
 }
 
 fn index_of(c: &Composer, word: &str) -> usize {

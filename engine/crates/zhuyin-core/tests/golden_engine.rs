@@ -577,17 +577,17 @@ fn presentation_line(p: &Presentation) -> String {
     ];
     match &p.candidates {
         Some(list) => {
-            let tolerant = list.tolerant.map_or("-", |t| if t { "1" } else { "0" });
+            let tolerant = list.tolerant().map_or("-", |t| if t { "1" } else { "0" });
             let items: Vec<String> = list
-                .items
+                .items()
                 .iter()
                 .map(|i| format!("{}{}", i.text, i.annotation.as_ref().map_or(String::new(), |a| format!("*{a}"))))
                 .collect();
             parts.push(format!(
                 "{}/{}/{tolerant}/{}/{}",
-                list.selection,
-                list.page_size,
-                u8::from(list.single_character),
+                list.selection(),
+                list.page_size(),
+                u8::from(list.single_character()),
                 items.join(",")
             ));
         }
