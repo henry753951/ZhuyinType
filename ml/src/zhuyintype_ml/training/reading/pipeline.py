@@ -27,6 +27,15 @@ from zhuyintype_ml.training.pipeline import Context, Pipeline, Step
 
 MODULE = "zhuyintype_ml.training.reading"
 MATRICES = paths.PACKAGE / "training" / "reading" / "matrices"
+# Appended to the homophone export's NOTICE.md: the reading channel the noise came from (resources/SOURCES.md).
+NOTICE = (
+    "\nReading-noise continuation (ml/src/zhuyintype_ml/training/reading): the model above, continued with readings "
+    "typed another way, drawn from ZhuyinType's reading channel. Only character readings and their rates are taken "
+    "from: CC-CEDICT (CC BY-SA 4.0); Unicode Unihan 18.0.0 (Unicode License v3); English Wiktionary via Wiktextract "
+    "(CC BY-SA 4.0, Wiktionary contributors and Tatu Ylonen); CNS11643 (Open Government Data License, version 1.0: "
+    "provided by the National Development Council); BabelStone IDS (Andrew West; facts, no rights claimed). "
+    "See resources/SOURCES.md.\n"
+)
 
 
 def tests(ctx: Context) -> None:
@@ -93,6 +102,8 @@ def export(ctx: Context) -> None:
     run.mkdir(parents=True, exist_ok=True)
     (run / "choice2.json").write_text(json.dumps({"checkpoint": digest(model / "syllable.pt")}) + "\n")
     ctx.python("zhuyintype_ml.training.homophone.export", "--model", str(model), "--run", str(run), group="export")
+    with open(model / "NOTICE.md", "a", encoding="utf-8") as notice:
+        notice.write(NOTICE)
     shutil.copy2(ctx.out / f"{name}.json", model / "training.json")
 
 

@@ -15,7 +15,9 @@
 ```sh
 zt --remote --nice 10 --detach train reading test gap train evaluate        # GPU 主機
 zt --remote train reading train --option runs=s10,r10 --option tolerance=0.005
-zt train reading export --option candidate=r10                              # Mac：Core ML、編譯、介面向量
+zt --remote --nice 10 train reading evaluate --option candidates=start,s3 --option matrices=dev --option n=2000
+zt train reading export --option candidate=s3                               # Mac：Core ML、編譯、介面向量
+zt --remote train compress --option v3=v3_reading_s3 --option methods=fp16,int8-channel   # 之後照 compress 的流程
 python -m zhuyintype_ml.training.reading.gap --lexicon L.tsv --misread DIR --out DIR
 ```
 
@@ -24,8 +26,8 @@ python -m zhuyintype_ml.training.reading.gap --lexicon L.tsv --misread DIR --out
 | `test` | 單元測試：各位置套用哪些列、狀態與分桶、上限、成對的列 | 任一 |
 | `gap` | `misread-dev` 的句子分別照標準讀音與變體讀音打，逐行對應，給 `zt eval stats` 比較兩者的差距 | 任一 |
 | `train` | 每個名稱訓練一次，每 500 步檢查一般開發集、在／再開發集與讀音開發集，選讀音開發集 NLL 最低且一般與在／再都在容許範圍內的檢查點 | GPU 主機（CUDA） |
-| `evaluate` | 每個候選（含起點）用 GPU 模型伺服器跑 `matrices/` 的兩個矩陣：App 設定（data-4 詞庫）的開發集，以及 `misread-dev`、善解的列與 `gap` | GPU 主機 |
-| `export` | 選定的候選匯出 Core ML（沿用 homophone 的匯出：授權、來源聲明、20 組介面向量） | 只限 macOS |
+| `evaluate` | 每個候選（含起點）用 GPU 模型伺服器跑 `matrices/` 的矩陣：App 設定（data-4 詞庫）的開發集（`dev`）、維基有前文與口語接續（`modes`），以及 `misread-dev`、善解的列與 `gap`（`rows`）；`--option candidates=…`、`matrices=…`、`n=…` 只跑一部分或改段數 | GPU 主機 |
+| `export` | 選定的候選匯出 Core ML（沿用 homophone 的匯出：授權、來源聲明、20 組介面向量），來源聲明加上字音表的來源 | 只限 macOS |
 
 讀音開發集是 `v3_030` 的兩個開發集，每段只換一個位置的讀音（`ReadingNoise.one`），只在那個位置計分。它和字音表同源，只用來選檢查點與倍數；採用與否看引擎層級的成對比較。
 
@@ -54,7 +56,8 @@ python -m zhuyintype_ml.training.reading.gap --lexicon L.tsv --misread DIR --out
 | `noise.py` | 讀 `v3_noise.tsv` 與 `channel.json`，決定每個位置可以換成哪些讀音 |
 | `train.py` | 從發布的 v3 繼續訓練與檢查點選擇 |
 | `gap.py` | 同一批句子照標準讀音與變體讀音打的成對列 |
-| `matrices/` | `zt eval sweep` 的矩陣 |
+| `matrices/` | `evaluate` 的 `zt eval sweep` 矩陣 |
+| `compress.json` | 候選與它的 int8 版和出貨模型比較的矩陣（`compress.json` 的三組設定，`zt --remote --backend cpu --export eval sweep`） |
 | `test_reading.py` | 單元測試 |
 
 ## 相關文件

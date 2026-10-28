@@ -1,0 +1,63 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "current",
+   "config": "app"
+  },
+  {
+   "name": "fp16",
+   "config": "app",
+   "cli_args": [
+    "--reranker",
+    "{data}/compress/fp16/reranker",
+    "--v3",
+    "{data}/compress/fp16/v3"
+   ]
+  },
+  {
+   "name": "int8-channel",
+   "config": "app",
+   "cli_args": [
+    "--reranker",
+    "{data}/compress/int8-channel/reranker",
+    "--v3",
+    "{data}/compress/int8-channel/v3"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  },
+  {
+   "name": "context",
+   "set": "wiki-dev",
+   "options": [
+    "--context",
+    "line"
+   ]
+  },
+  {
+   "name": "continue",
+   "set": "colloquial-dev",
+   "options": [
+    "--split",
+    "continue"
+   ]
+  },
+  {
+   "name": "zai",
+   "set": "zai-dev"
+  }
+ ]
+}
