@@ -75,6 +75,21 @@ TAIWAN_HEADER = "# ZTRT/1 char\tword reading\tTaiwan reading\tlog strength\tstan
 NOISE_HEADER = "# char\treading in the text\treading typed\tclass\tprobability\tstate\tcost bucket\n"
 WORDS_HEADER = "# ZTRW/1 word\tword reading\tposition\treading typed\tclass\tlog P\tstate\n"
 WORD_CLASSES = ("taiwan", "loan")
+NOTICE = """# 讀音通道的字音表
+
+channel.tsv、taiwan.tsv、words.tsv、familiar.txt 與 channel.json 由 ZhuyinType 的 `zt train lexicon channel` 從下列資料
+推得（格式見 resources/formats/reading-channel.md，來源見 resources/SOURCES.md）：
+
+- CC-CEDICT（CC BY-SA 4.0）的詞與讀音；
+- Unicode Unihan 18.0.0（Unicode License v3）的讀音與 kHanyuPinlu 次數；
+- 英文 Wiktionary（CC BY-SA 4.0，Wiktionary 貢獻者），經 Wiktextract 取得的華語、台灣讀音與台語讀音；
+- CNS11643 中文標準交換碼全字庫（政府資料開放授權條款第 1 版）：
+  本資料由國家發展委員會提供，依政府資料開放授權條款進行公眾釋出；
+- BabelStone IDS（Andrew West）的字形部件；
+- wordfreq（CC BY-SA 4.0）的詞頻，經基本詞庫。
+
+這些表依 CC BY-SA 4.0 釋出。
+"""
 # A Taiwan pair weaker than this goes into words.tsv for the words Wiktionary gives it for, not into taiwan.tsv: the
 # engine applies taiwan.tsv to every word with the character (弟 ㄉㄧˋ -> ㄉㄧˇ, strength 0.04, made 底子 弟子).
 WORD_LEVEL_TAIWAN = 0.5
@@ -361,6 +376,7 @@ class Channel:
             ):
                 handle.write(f"{word}\t{reading}\t{i}\t{typed}\t{kind}\t{logp:.4f}\t{state(kind)}\n")
         (out / "familiar.txt").write_text("".join(sorted(self.familiar)) + "\n", encoding="utf-8")
+        (out / "NOTICE.md").write_text(NOTICE, encoding="utf-8")
         self.write_noise(out / "v3_noise.tsv")
         counts = collections.Counter(m for m in self.mechanism.values())
         summary = dict(self.rates)

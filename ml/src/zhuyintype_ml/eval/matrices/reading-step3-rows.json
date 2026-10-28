@@ -6,6 +6,14 @@
    "config": "app"
   },
   {
+   "name": "d4",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/d4/lexicon.tsv"
+   ]
+  },
+  {
    "name": "old",
    "config": "app",
    "cli_args": [

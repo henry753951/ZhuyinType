@@ -6,7 +6,7 @@
 | [Unicode Unihan](https://www.unicode.org/charts/unihan.html) | Big5 字元與讀音 | Unicode License v3 |
 | [wordfreq](https://github.com/rspeer/wordfreq) | 詞頻 | 資料 CC BY-SA 4.0 |
 
-詞庫涵蓋流程（`ml/src/zhuyintype_ml/training/lexicon/`）另外使用以下資料，版本與 SHA-256 固定在 `sources.py`。data-4 起，App 的詞庫含其中的讀音資料（台灣標準讀音、全字庫的單字讀音、Wiktionary 與小麥注音的詞層級讀音），署名見 [LEXICON.txt](../platforms/macos/Resources/Licenses/LEXICON.txt)：
+詞庫涵蓋流程（`ml/src/zhuyintype_ml/training/lexicon/`）另外使用以下資料，版本與 SHA-256 固定在 `sources.py`。data-4 起，App 的詞庫含其中的讀音資料（台灣標準讀音、全字庫的單字讀音、Wiktionary 與小麥注音的詞層級讀音），署名見 [LEXICON.txt](../platforms/macos/Resources/Licenses/LEXICON.txt)。data-7 起，`lexicon` 元件也帶讀音通道的字音表 `channel/`（署名在其中的 `NOTICE.md`），給引擎的讀音通道與評測用；App 目前不帶 `channel.bin`：
 
 | 資料 | 用途 | 授權 |
 |---|---|---|

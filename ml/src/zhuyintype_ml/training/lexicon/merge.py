@@ -59,9 +59,9 @@ from .channel import Channel, load, mandarin_readings, read_rows, variants
 from .phonology import bopomofo, split
 
 MECHANISMS = ("standard", "char", "taiwan", "marked", "mcbopomofo", "neutral", "sandhi", "variants", "loan", "misread")
-# The classes the engine's reading channel is to take over (resources/formats/reading-channel.md); a data-only build
-# keeps the others.
-ENGINE_CLASSES = ("neutral", "sandhi", "loan", "misread")
+# The classes the engine's reading channel takes over (resources/formats/reading-channel.md); a data-only build keeps
+# the others.  Hokkien loan readings are word-level (words.tsv), which the engine does not read: they stay rows.
+ENGINE_CLASSES = ("neutral", "sandhi", "misread")
 ENGINE_CHARACTER_MECHANISMS = ("series", "interjection")
 TIE = 0.01  # a variant never ties with the word's best reading, even when a source gives it the whole share
 HEADER = (
@@ -315,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--data-only",
         action="store_true",
-        help="the merge candidate without the engine's classes: no neutral, sandhi, loan or misread rows, and "
+        help="the merge candidate without the engine's classes: no neutral, sandhi or misread rows, and "
         "character rows only for readings CNS11643 lists (Taiwan's official readings); the rest of the character "
         "table goes to the engine's reading channel",
     )
