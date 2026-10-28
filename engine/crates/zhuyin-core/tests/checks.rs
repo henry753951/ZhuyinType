@@ -393,6 +393,15 @@ fn key_run_decoding() {
     assert_ne!(decode(&set, KeyDecoderMethod::Boundaries, "jia3p7g4", &[]), ["ㄨㄛˇ", "ㄇㄣ˙", "ㄕˋ"]);
     assert_eq!(decode(&set, KeyDecoderMethod::Reorder, "jia3p7g4", &[]), ["ㄨㄛˇ", "ㄇㄣ˙", "ㄕˋ"]);
     assert_eq!(decode(&set, KeyDecoderMethod::Timed, "suc3l3", &[(3, 0.006)]), ["ㄋㄧˇ", "ㄏㄠˇ"]);
+    // An initial typed after its final, then the tone: one syllable, not the final with that tone and the initial
+    // left over (a swap across the tone key typed last).
+    let bare = syllables_of("ㄚ\t啊\t-2\nㄅㄚ˙\t吧\t-2\nㄋㄧˇ\t你\t-2\nㄧ\t一\t-2\nㄉㄥˋ\t鄧\t-2\nㄉㄧㄥˋ\t定\t-2\n");
+    // Timed: an initial typed after its medial joins that syllable rather than closing the medial as a first tone.
+    assert_eq!(decode(&bare, KeyDecoderMethod::Timed, "u2/4", &[]), ["ㄉㄧㄥˋ"]);
+    for method in [KeyDecoderMethod::Reorder, KeyDecoderMethod::Timed] {
+        assert_eq!(decode(&bare, method, "817", &[]), ["ㄅㄚ˙"], "{method:?}");
+        assert_eq!(decode(&bare, method, "817su3", &[]), ["ㄅㄚ˙", "ㄋㄧˇ"], "{method:?}");
+    }
 
     // Costs: an implicit boundary costs 4; a run with no keys is one empty split.
     let decoder =
@@ -435,11 +444,11 @@ fn equal_cost_splits_rank_in_the_order_first_reached() {
         first,
         [
             "ㄅㄚ/18 ,ㄅㄚ/18  0",
-            "ㄅㄚ/18 ,ㄅ/1  10",
             "ㄅㄚ/18 ,ㄅ/1  13",
             "ㄅㄚ/18 ,ㄚ/8  13",
             "ㄅ/1 ,ㄅㄚ/18  13",
             "ㄚ/8 ,ㄅㄚ/18  13",
+            "ㄅㄚ/18 ,ㄚ/8 ,ㄅ/1  14",
         ]
     );
     assert_eq!(first, splits(&KeyDecoder::new(KeyDecoderMethod::Reorder, Costs::default(), closing)));

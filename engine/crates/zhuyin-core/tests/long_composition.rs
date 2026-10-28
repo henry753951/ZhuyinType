@@ -360,3 +360,36 @@ fn early_commit_at_sentence_ends() {
     }
     assert!(typist.commits.is_empty(), "no early commit by default");
 }
+
+#[test]
+fn keys_out_of_order_inside_a_syllable_join_it_in_a_long_run() {
+    // `ㄚ ㄅ ˙`: the initial typed after the final.  `ㄚ` alone is a syllable, so until the tone key the run may read
+    // `ㄚ` and an unfinished `ㄅ`; the tone key and what follows must still make it `ㄅㄚ˙`, wherever the run settles.
+    let lexicon = format!("{LEXICON}\nㄚ\t啊\t-2\nㄅㄚ˙\t吧\t-2");
+    let engine = Arc::new(Engine::from_text(&lexicon, None, None, EngineConfig::default()));
+    for method in [KeyDecoderMethod::Reorder, KeyDecoderMethod::Timed] {
+        for before in 0..24 {
+            let mut composer = Composer::new(engine.clone(), options(method, TypoTolerance::Standard));
+            let mut expected = String::new();
+            for index in 0..before {
+                let (reading, character) = CYCLE[index % CYCLE.len()];
+                expected.push_str(character);
+                for key in keys(reading) {
+                    composer.handle(key);
+                }
+            }
+            for key in ['8', '1', '7'] {
+                composer.handle(KeyInput::Char(key));
+            }
+            assert!(
+                composer.presentation().text.ends_with('吧'),
+                "{method:?} after {before}: the tone key joins ㄅ to ㄚ"
+            );
+            for key in keys("ㄋㄧˇ") {
+                composer.handle(key);
+            }
+            expected.push_str("吧你");
+            assert_eq!(composer.commit_all(), expected, "{method:?} after {before} syllables");
+        }
+    }
+}

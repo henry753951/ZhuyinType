@@ -14,7 +14,7 @@ use crate::api::{
 };
 use crate::conversion::{CharacterScores, CompositionToken, ConversionCache, ConvertedWord, FixedWord, Request};
 use crate::engine::{CommittedWord, Engine, Match};
-use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder};
+use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder, Syllable};
 use crate::keyboard;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
 use crate::lexicon::swift_max;
@@ -35,6 +35,33 @@ pub const CORRECTION_WINDOW: f64 = 30.0;
 pub const CHARACTER_CANDIDATES: usize = 64;
 /// How much costlier than the cheapest a split may be and still be judged by the language model.
 pub const SPLIT_MARGIN: f64 = 6.0;
+/// Keys in the decoder's run past which its head is settled.
+const RUN_KEYS: usize = 48;
+/// Finished syllables a settled run keeps, so the keys after them can still change how they were split.
+const RUN_OPEN_SYLLABLES: usize = 4;
+
+/// The run's head to settle, as (syllables, keys): the most syllables that leave `RUN_OPEN_SYLLABLES` in the run and
+/// were taken from exactly the run's first keys.  A head whose last syllable took a key from after it (two keys
+/// swapped across the cut) or that skipped a key is no place to cut: the cut would fix that repair for good.
+fn settled_head(run: &[Key], syllables: &[Syllable]) -> Option<(usize, usize)> {
+    let mut taken: Vec<char> = Vec::new();
+    let mut best = None;
+    for (count, syllable) in syllables.iter().take(syllables.len().saturating_sub(RUN_OPEN_SYLLABLES)).enumerate() {
+        // An implicit syllable records the Space no one typed.
+        let keys =
+            if syllable.implicit { syllable.keys.strip_suffix(' ').unwrap_or(&syllable.keys) } else { &syllable.keys };
+        taken.extend(keys.chars());
+        let Some(typed) = run.get(..taken.len()) else { break };
+        let mut typed: Vec<char> = typed.iter().map(|k| k.character).collect();
+        let mut sorted = taken.clone();
+        typed.sort_unstable();
+        sorted.sort_unstable();
+        if typed == sorted {
+            best = Some((count + 1, taken.len()));
+        }
+    }
+    best
+}
 
 /// The character model's cost bucket for a correction of this cost: the keyboard channel's and the reading
 /// channel's corrections share the bounds (`resources/formats/reading-channel.md`, `v3_noise.tsv`).
@@ -170,6 +197,8 @@ pub struct Composer {
     pub candidate_scoring_count: usize,
     /// The key decoder's costs (Swift's shared `KeyDecoder.costs`).
     pub decoder_costs: Costs,
+    /// How much costlier than the cheapest a split may be and still be judged by the language model.
+    pub split_margin: f64,
     /// How the character model scores characters only a reading-channel variant brings.
     pub variant_scores: VariantScores,
     /// Only variant characters whose prior (without the variant's cost) is within this many nats of the best other
@@ -274,6 +303,7 @@ impl Composer {
             character_scores: None,
             candidate_scoring_count: 24,
             decoder_costs: Costs::default(),
+            split_margin: SPLIT_MARGIN,
             variant_scores: VariantScores::default(),
             variant_window: VARIANT_WINDOW,
             presentation: Presentation::default(),
@@ -1267,7 +1297,7 @@ impl Composer {
             .iter()
             .filter(|s| {
                 s.cost.is_finite()
-                    && s.cost <= cheapest.cost + SPLIT_MARGIN
+                    && s.cost <= cheapest.cost + self.split_margin
                     && s.syllables.len() == cheapest.syllables.len()
                     && s.buffer_keys.is_empty() == cheapest.buffer_keys.is_empty()
             })
@@ -1333,10 +1363,16 @@ impl Composer {
         self.run_tokens = decoded.syllables.len();
         self.buffer = decoded.buffer;
         self.buffer_keys = decoded.buffer_keys;
-        // A long run is settled except for its unfinished syllable, which keeps the search short.
-        if self.run.len() > 48 {
-            self.run = self.buffer_keys.chars().map(|c| Key::new(c, None)).collect();
-            self.run_tokens = 0;
+        // A long run settles its head, which keeps the search short.  The last syllables stay in the run, so the
+        // next keys can still change how they were split.
+        if self.run.len() > RUN_KEYS {
+            if let Some((syllables, keys)) = settled_head(&self.run, &decoded.syllables) {
+                self.run.drain(..keys);
+                self.run_tokens -= syllables;
+            } else {
+                self.run = self.buffer_keys.chars().map(|c| Key::new(c, None)).collect();
+                self.run_tokens = 0;
+            }
         }
         true
     }

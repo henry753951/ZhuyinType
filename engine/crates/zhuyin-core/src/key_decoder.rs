@@ -77,6 +77,9 @@ pub struct Costs {
     pub swap_apart: f64,
     /// For `Timed`: an extra key typed apart.
     pub skip_apart: f64,
+    /// For `Timed`: an initial typed apart after the medial or final of its own syllable.  Below the implicit
+    /// boundary, so `ㄧㄉㄥˋ` is `ㄉㄧㄥˋ` rather than `ㄧ` and `ㄉㄥˋ` (the commonest slip in the app's correction log).
+    pub late_initial: f64,
     /// For `Timed`: seconds within which two key-downs count as pressed together.
     pub together_gap: f64,
 }
@@ -93,6 +96,7 @@ impl Default for Costs {
             skip_together: 4.0,
             swap_apart: 12.0,
             skip_apart: 15.0,
+            late_initial: 3.0,
             together_gap: 0.035,
         }
     }
@@ -216,8 +220,14 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                     skipped.cost += self.skip_cost(keys, index);
                     levels[index + 1].offer(skipped);
                 }
-                // Take the next two keys in the other order.
-                if index + 1 < keys.len() && keys[index].character != keys[index + 1].character {
+                // Take the next two keys in the other order.  Not a Zhuyin key past the tone key or Space typed last:
+                // that leaves the key alone in a syllable no later key confirms, and ties with the same key read out
+                // of order inside its own syllable (`ㄚ ㄅ ˙` as `ㄚ˙` and `ㄅ` instead of `ㄅㄚ˙`).  The next key
+                // decodes the run again, so the swap stays possible once something follows it.
+                if index + 1 < keys.len()
+                    && keys[index].character != keys[index + 1].character
+                    && !(index + 2 == keys.len() && closes_syllable(keys[index + 1].character))
+                {
                     swapped_first.clear();
                     self.take(state, keys[index + 1], false, &mut swapped_first);
                     for first in &swapped_first {
@@ -272,7 +282,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                     if pressed_with_previous {
                         self.costs.swap_together
                     } else {
-                        self.costs.swap_apart
+                        self.costs.late_initial
                     }
                 }
                 KeyDecoderMethod::Slots => 0.0,
@@ -341,6 +351,11 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                 && key_channel::are_neighbours(keys[index + 1].character, character));
         if near { self.costs.skip_together } else { self.costs.skip_apart }
     }
+}
+
+/// A tone key or Space: it ends the syllable being typed.
+fn closes_syllable(character: char) -> bool {
+    character == ' ' || keyboard::tone(character).is_some()
 }
 
 /// A state as a result: its syllables materialized in order.

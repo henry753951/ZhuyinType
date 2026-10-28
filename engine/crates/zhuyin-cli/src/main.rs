@@ -28,7 +28,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -64,6 +64,7 @@ struct Settings {
     options: ComposerOptions,
     config: EngineConfig,
     costs: Costs,
+    split_margin: Option<f64>,
     models: Option<String>,
     given: HashSet<String>,
     channel: Option<String>,
@@ -123,6 +124,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         options,
         config: EngineConfig::default(),
         costs: Costs::default(),
+        split_margin: None,
         models: None,
         given: HashSet::new(),
         channel: None,
@@ -276,6 +278,15 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
                 s.costs.skip_together = values[5];
                 s.costs.swap_apart = values[6];
                 s.costs.skip_apart = values[7];
+            }
+            "--late-initial" => {
+                s.costs.late_initial = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE));
+            }
+            "--together-gap" => {
+                s.costs.together_gap = parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)) / 1000.0;
+            }
+            "--split-margin" => {
+                s.split_margin = Some(parse_double(next_value(&arguments)).unwrap_or_else(|| fail(USAGE)));
             }
             "--check-v3" => {
                 // Compares the v3 models with ml/src/zhuyintype_ml/training/v3's golden outputs, then exits.
@@ -856,6 +867,9 @@ fn main() {
     let mut composer = Composer::new(engine.clone(), s.options.clone());
     attach(&mut composer, &models, &s, &model_context);
     composer.decoder_costs = s.costs;
+    if let Some(margin) = s.split_margin {
+        composer.split_margin = margin;
+    }
     composer.variant_scores = s.variant_scores;
     composer.variant_window = s.variant_window;
     let mut typist = Typist { clock: 1000.0, timing: s.timing, key_times: vec![] };
