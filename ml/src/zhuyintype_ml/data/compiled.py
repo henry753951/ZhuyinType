@@ -46,7 +46,9 @@ def channel_source(source: Path) -> Path | None:
     return None
 
 
-def compile_all(source: Path | None = None, output: Path | None = None, quiet: bool = False) -> Path:
+def compile_all(
+    source: Path | None = None, output: Path | None = None, quiet: bool = False, channel: bool = True
+) -> Path:
     """Compiles lexicon.tsv and each language model that has a bigram.tsv, unless already current; returns the output
     directory."""
     from zhuyintype_ml.training.lm.compile_data import CHANNEL_SOURCES, compile_channel, compile_lexicon, compile_lm
@@ -64,12 +66,12 @@ def compile_all(source: Path | None = None, output: Path | None = None, quiet: b
             print(f"no {model}/bigram.tsv; {model} skipped")
     if not current(output / "lexicon.bin", {"lexicon.tsv": source / "lexicon.tsv"}):
         compile_lexicon(source / "lexicon.tsv", output)
-    channel = channel_source(source)
-    if channel is not None:
-        tables = {name: channel / name for name in CHANNEL_SOURCES}
+    tables_directory = channel_source(source) if channel else None
+    if tables_directory is not None:
+        tables = {name: tables_directory / name for name in CHANNEL_SOURCES}
         if not current(output / "channel.bin", tables):
-            compile_channel(channel, output)
-    elif not quiet:
+            compile_channel(tables_directory, output)
+    elif channel and not quiet:
         print("no channel/channel.tsv; channel.bin skipped")
     if not quiet:
         print(f"compiled into {paths.relative(output)}")
