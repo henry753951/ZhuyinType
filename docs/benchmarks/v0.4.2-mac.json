@@ -1,0 +1,154 @@
+{
+ "tool": "latency",
+ "config": {
+  "name": "app",
+  "data": "dist/ZhuyinType.app/Contents/Resources",
+  "options": []
+ },
+ "options": {
+  "set": [
+   "latency"
+  ],
+  "n": 10,
+  "seed": 7
+ },
+ "sections": [
+  {
+   "name": "latency",
+   "metrics": {
+    "machine": "arm64",
+    "macos": "27.0.1",
+    "configuration": [
+     "--models",
+     "/Users/runner/work/ZhuyinType/ZhuyinType/dist/ZhuyinType.app/Contents/Resources"
+    ],
+    "median": {
+     "p50_ms": 6.55,
+     "p95_ms": 26.15,
+     "max_ms": 33.75,
+     "cpu_ms_per_key": 8.85,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 14.0
+    }
+   },
+   "items": [
+    {
+     "id": 0,
+     "sentence": "今天晚上要不要一起吃飯",
+     "syllables": 11,
+     "p50_ms": 5.8,
+     "p95_ms": 37.0,
+     "max_ms": 122.6,
+     "cpu_ms_per_key": 7.9,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 71.0
+    },
+    {
+     "id": 1,
+     "sentence": "我再一次跟你說",
+     "syllables": 7,
+     "p50_ms": 4.5,
+     "p95_ms": 19.4,
+     "max_ms": 20.8,
+     "cpu_ms_per_key": 6.9,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 11.0
+    },
+    {
+     "id": 2,
+     "sentence": "你在哪裡",
+     "syllables": 4,
+     "p50_ms": 1.2,
+     "p95_ms": 12.3,
+     "max_ms": 12.3,
+     "cpu_ms_per_key": 3.6,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 9.0
+    },
+    {
+     "id": 3,
+     "sentence": "明天下午三點開會",
+     "syllables": 8,
+     "p50_ms": 2.6,
+     "p95_ms": 13.9,
+     "max_ms": 20.1,
+     "cpu_ms_per_key": 4.4,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 10.0
+    },
+    {
+     "id": 4,
+     "sentence": "這個問題我們晚點再討論",
+     "syllables": 11,
+     "p50_ms": 7.3,
+     "p95_ms": 23.3,
+     "max_ms": 29.4,
+     "cpu_ms_per_key": 8.8,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 13.0
+    },
+    {
+     "id": 5,
+     "sentence": "我們明天下午三點在公司門口集合然後一起去吃晚餐好嗎",
+     "syllables": 25,
+     "p50_ms": 11.7,
+     "p95_ms": 50.6,
+     "max_ms": 64.1,
+     "cpu_ms_per_key": 16.1,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 20.0
+    },
+    {
+     "id": 6,
+     "sentence": "根據氣象局的預報這個週末北部地區會有短暫陣雨",
+     "syllables": 22,
+     "p50_ms": 14.8,
+     "p95_ms": 43.8,
+     "max_ms": 62.7,
+     "cpu_ms_per_key": 17.1,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 22.0
+    },
+    {
+     "id": 7,
+     "sentence": "請把上週的會議紀錄寄給我",
+     "syllables": 12,
+     "p50_ms": 10.3,
+     "p95_ms": 31.6,
+     "max_ms": 33.4,
+     "cpu_ms_per_key": 11.0,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 15.0
+    },
+    {
+     "id": 8,
+     "sentence": "台北市政府今天宣布新的交通政策",
+     "syllables": 15,
+     "p50_ms": 9.4,
+     "p95_ms": 25.2,
+     "max_ms": 34.1,
+     "cpu_ms_per_key": 11.1,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 15.0
+    },
+    {
+     "id": 9,
+     "sentence": "他說他已經到了正在找停車位",
+     "syllables": 13,
+     "p50_ms": 4.9,
+     "p95_ms": 27.1,
+     "max_ms": 37.0,
+     "cpu_ms_per_key": 8.9,
+     "energy_mj_per_key": 0.0,
+     "memory_mb": 12.0
+    }
+   ],
+   "examples": []
+  }
+ ],
+ "environment": {
+  "date": "2026-10-28T01:23:40",
+  "platform": "Darwin arm64",
+  "commit": "b6c9b48"
+ }
+}
