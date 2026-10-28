@@ -33,7 +33,7 @@
 | [小麥注音](https://github.com/openvanilla/McBopomofo) `data.txt` | 詞庫涵蓋流程只取讀音（見上表），data-4 起在 app 的詞庫裡；`ml/src/zhuyintype_ml/training/base/` 的研究（0.4.0 未採用）不在 app 裡 | MIT（全文 `Licenses/McBopomofo-MIT.txt`）；片語源自 libtabe `tsi.src`（BSD） |
 | [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) 產生的台灣口語句子 | 口語語料（整句重排、v3 的訓練）；0.4.0 的聊天語言模型不含 | 模型權重 Apache-2.0 |
 
-產生的詞庫（`data/build/lexicon.tsv`）採 CC BY-SA 4.0 授權，程式碼採 AGPL-3.0-only 授權。轉換流程包含讀音轉注音、篩選詞條與計算 unigram log 機率；來源署名與完整授權見 [Resources/Licenses](../platforms/macos/Resources/Licenses)。
+產生的詞庫（`data/build/lexicon.tsv`）採 CC BY-SA 4.0 授權，程式碼採 GNU AGPL 3.0（AGPL-3.0-only）授權。轉換流程包含讀音轉注音、篩選詞條與計算 unigram log 機率；來源署名與完整授權見 [Resources/Licenses](../platforms/macos/Resources/Licenses)。
 
 在專案根目錄執行以下指令，可沿用現有詞庫，或下載來源並產生詞庫：
 

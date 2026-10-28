@@ -36,6 +36,7 @@ cp -X platforms/macos/Resources/Assets.car platforms/macos/Resources/AppIcon.icn
 cp -R -X platforms/macos/Resources/*.lproj "$contents/Resources/"
 cp -R -X platforms/macos/Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"
+cp -X NOTICE "$contents/Resources/Licenses/NOTICE.txt"
 cp -X resources/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
 if [[ -f data/build/reranker/vocab.json && ( -d data/build/reranker/RerankerTree.mlmodelc || -d data/build/reranker/Reranker.mlmodelc ) ]]; then
     mkdir -p "$contents/Resources/reranker"

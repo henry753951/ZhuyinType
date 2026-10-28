@@ -408,7 +408,7 @@ def notice(receipt: dict[str, Any]) -> str:
         "CC-CEDICT https://www.mdbg.net/chinese/dictionary?page=cc-cedict (CC BY-SA 4.0), "
         "Unicode Unihan https://www.unicode.org/charts/unihan.html (Unicode License v3), and "
         "wordfreq https://github.com/rspeer/wordfreq (data CC BY-SA 4.0). "
-        "Original seed notice remains in lexicon_tw.tsv. Scripts are AGPL-3.0-only. "
+        "Original seed notice remains in lexicon_tw.tsv. Scripts are AGPL-3.0-only licensed. "
         "Retain this notice and the article attribution manifest when redistributing outputs.\n"
     )
 

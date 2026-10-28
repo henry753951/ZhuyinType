@@ -215,6 +215,11 @@ enum CorrectionLogActions {
 struct AboutPane: View {
     @ObservedObject private var updater = Updater.shared
 
+    private var sourceURL: URL {
+        let ref = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String).map { "v\($0)" } ?? "main"
+        return URL(string: "https://github.com/henry753951/ZhuyinType/tree/\(ref)")!
+    }
+
     private var version: String {
         let info = Bundle.main.infoDictionary
         guard let short = info?["CFBundleShortVersionString"] as? String else { return "開發版" }
@@ -258,10 +263,20 @@ struct AboutPane: View {
                 }
             }
             SettingsSection {
-                SettingRow(title: "程式授權", value: "AGPL 3.0")
+                SettingRow(title: "開發者") {
+                    Link("Henry753951", destination: URL(string: "https://github.com/henry753951")!)
+                }
+                SettingRow(title: "程式授權") {
+                    Link("AGPL 3.0", destination: Bundle.main.resourceURL?.appendingPathComponent("Licenses/AGPL-3.0.txt")
+                         ?? URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!)
+                }
+                SettingRow(title: "原始碼") {
+                    Link("查看此版本", destination: sourceURL)
+                }
                 SettingRow(title: "詞庫授權", value: "CC BY-SA 4.0")
                 SettingRow(title: "詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
             }
+            FooterText("Copyright © 2026 Henry753951 與 ZhuyinType 貢獻者。軟體依現況提供，不提供擔保；可依 AGPL 3.0 條款修改與再散布。")
         }
     }
 }

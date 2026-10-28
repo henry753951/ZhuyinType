@@ -509,7 +509,7 @@ ZhuyinType/
 
 ## 6. 授權
 
-- 程式碼：AGPL-3.0-only。
+- 程式碼：GNU AGPL 3.0（AGPL-3.0-only）；作者 Henry753951。設定的「關於」頁提供授權全文與對應版本的原始碼連結。
 - 詞庫：CC BY-SA 4.0。只使用允許再散布的開放資料，每個來源記錄在 `resources/SOURCES.md`（網址、版本、授權、署名）。
 - 模型：訓練資料與各自的授權列在 `resources/SOURCES.md`，條款隨模型一起放進 app（`Contents/Resources/lm_chat/` 等）。
 

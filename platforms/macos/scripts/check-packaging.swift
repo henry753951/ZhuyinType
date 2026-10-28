@@ -72,10 +72,17 @@ precondition(stray.isEmpty, "AppleDouble files in the bundle: \(stray.prefix(3))
 precondition(NSImage(contentsOf: resources.appendingPathComponent("AppIcon.icns")) != nil)
 precondition(FileManager.default.fileExists(atPath: resources.appendingPathComponent("lexicon.bin").path)
              || FileManager.default.fileExists(atPath: resources.appendingPathComponent("lexicon.tsv").path), "lexicon")
-for name in ["Licenses/AGPL-3.0.txt", "Licenses/LEXICON.txt", "Licenses/CC-BY-SA-4.0.txt", "Licenses/Unicode-3.0.txt", "Licenses/wordfreq-NOTICE.txt", "Licenses/SOURCES.md"] {
+for name in ["Licenses/AGPL-3.0.txt", "Licenses/NOTICE.txt", "Licenses/LEXICON.txt", "Licenses/CC-BY-SA-4.0.txt", "Licenses/Unicode-3.0.txt", "Licenses/wordfreq-NOTICE.txt", "Licenses/SOURCES.md"] {
     let data = try Data(contentsOf: resources.appendingPathComponent(name))
     precondition(!data.isEmpty, name)
 }
+let bundledLicense = try Data(contentsOf: resources.appendingPathComponent("Licenses/AGPL-3.0.txt"))
+let programLicense = try Data(contentsOf: root.appendingPathComponent("LICENSE"))
+precondition(bundledLicense == programLicense, "bundled program license")
+let bundledNotice = try Data(contentsOf: resources.appendingPathComponent("Licenses/NOTICE.txt"))
+let programNotice = try Data(contentsOf: root.appendingPathComponent("NOTICE"))
+precondition(bundledNotice == programNotice, "bundled attribution")
+precondition((plist["NSHumanReadableCopyright"] as? String)?.contains("Henry753951") == true, "author attribution")
 let pkgInfo = try Data(contentsOf: contents.appendingPathComponent("PkgInfo"))
 precondition(pkgInfo == Data("APPL????".utf8))
 let status = Process()

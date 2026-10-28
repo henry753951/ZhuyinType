@@ -221,6 +221,8 @@ tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 
 ## 資料與授權
 
-程式碼採 [GNU AGPL 3.0 授權](LICENSE)（`AGPL-3.0-only`）；產生的詞庫採 CC BY-SA 4.0。
+程式碼採 [GNU AGPL 3.0 授權](LICENSE)（`AGPL-3.0-only`），作者為 [Henry753951](https://github.com/henry753951) 與 ZhuyinType 貢獻者。再散布時須保留適用的著作權與授權聲明，並依條款提供對應原始碼；修改後透過網路提供互動服務時，亦須依條款向使用者提供對應原始碼。AGPL 允許商業使用。
+
+著作權與授權聲明見 [NOTICE](NOTICE)。產生的詞庫採 CC BY-SA 4.0。
 詞庫使用 CC-CEDICT、Unicode Unihan 與 wordfreq；語言模型與神經模型另外使用維基百科、立法院公報、維基百科討論頁、Common Voice 與 Qwen3-8B 產生的句子。來源、處理方式與署名見 [資料來源](resources/SOURCES.md) 及 [授權文字](platforms/macos/Resources/Licenses)。
 發布修改過的詞庫或模型時，請保留來源、修改說明與各自的授權。
