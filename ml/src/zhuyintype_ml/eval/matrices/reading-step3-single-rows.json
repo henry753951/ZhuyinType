@@ -1,0 +1,175 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "off",
+   "config": "app"
+  },
+  {
+   "name": "old",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on"
+   ]
+  },
+  {
+   "name": "B",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "Bc",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bc/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "Bl",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv"
+   ]
+  },
+  {
+   "name": "B-single",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "taiwan,word",
+    "--channel-single-classes",
+    "taiwan,word"
+   ]
+  },
+  {
+   "name": "B-single2",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/B/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "taiwan,word",
+    "--channel-single-classes",
+    "taiwan,word",
+    "--channel-offset",
+    "taiwan=2",
+    "--channel-offset",
+    "word=2"
+   ]
+  },
+  {
+   "name": "Bl-def",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  },
+  {
+   "name": "Bl-full",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "series,neutral,taiwan-word,taiwan,word",
+    "--channel-single-classes",
+    "taiwan,word"
+   ]
+  },
+  {
+   "name": "Bl-full2",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Bl/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin",
+    "--channel-classes",
+    "series,neutral,taiwan-word,taiwan,word",
+    "--channel-single-classes",
+    "taiwan,word",
+    "--channel-offset",
+    "taiwan=2",
+    "--channel-offset",
+    "word=2"
+   ]
+  },
+  {
+   "name": "Blc-def",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/step3/Blc/lexicon.tsv",
+    "--channel",
+    "{data}/step3/chan/channel.bin"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "sj-neutral",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--dev--neutral--words.txt"
+  },
+  {
+   "name": "sj-moedict",
+   "set": "data/build/lexicon_coverage/eval/sj-eval--sets--moedict.txt"
+  },
+  {
+   "name": "user-examples",
+   "set": "misread-dev-examples"
+  },
+  {
+   "name": "sj-reported",
+   "set": "shanjie-reported"
+  },
+  {
+   "name": "sj-trap",
+   "set": "shanjie-trap"
+  },
+  {
+   "name": "sj-daily",
+   "set": "shanjie-daily"
+  },
+  {
+   "name": "misread-taiwan",
+   "set": "misread-dev-taiwan"
+  },
+  {
+   "name": "misread-mainland",
+   "set": "misread-dev-mainland"
+  },
+  {
+   "name": "misread-neutral",
+   "set": "misread-dev-neutral"
+  },
+  {
+   "name": "misread-colloquial",
+   "set": "misread-dev-colloquial"
+  },
+  {
+   "name": "misread-misread",
+   "set": "misread-dev-misread"
+  },
+  {
+   "name": "misread-interjection",
+   "set": "misread-dev-interjection"
+  }
+ ]
+}

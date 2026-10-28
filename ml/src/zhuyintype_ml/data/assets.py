@@ -38,7 +38,16 @@ DATA_NOTES = (
 
 # Paths relative to the data directory.  "app" components are what the macOS app bundles; the rest serve evaluation.
 COMPONENTS: dict[str, list[str]] = {
-    "lexicon": ["lexicon.tsv"],
+    # The reading channel's tables go with the lexicon: `zt data compile` makes channel.bin from channel/.
+    "lexicon": [
+        "lexicon.tsv",
+        "channel/channel.tsv",
+        "channel/taiwan.tsv",
+        "channel/words.tsv",
+        "channel/familiar.txt",
+        "channel/channel.json",
+        "channel/NOTICE.md",
+    ],
     "lm": ["lm/unigram.tsv", "lm/bigram.tsv", "lm/backoff.tsv", "lm/NOTICE.md"],
     "lm_chat": [
         "lm_chat/unigram.tsv",

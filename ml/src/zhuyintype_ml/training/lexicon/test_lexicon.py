@@ -117,15 +117,30 @@ class Merge(unittest.TestCase):
         self.assertNotIn(("ㄎㄜ ㄗˇ ㄐㄧㄢ", "蚵仔煎"), builder.rows)
 
     def test_attested_loan_variant(self):
-        builder = merge.Builder(self.base, toy_channel(), max_cost=3.0)
-        builder.syllables |= {"ㄚ"}
         facts = [("蚵仔煎", "hokkien", "ô-á-tsian", ["Taiwan"]), ("蚵仔煎", "class", "taiwanese-mandarin", [])]
-        builder.words(facts)
-        # The Mandarin tone of a Hokkien syllable is unknown: every tone at log m - log 5.
+        best = {"蚵仔煎": "ㄜˊ ㄗˇ ㄐㄧㄢ", "阿": "ㄚ"}
+        loans = channel.loan_readings(best, facts, 0.01)
+        # The Mandarin tone of a Hokkien syllable is unknown: every tone at log m - log 5, a correction.
+        self.assertEqual({typed for (_, i, typed) in loans if i == 1}, {"ㄚ", "ㄚˊ", "ㄚˇ", "ㄚˋ", "ㄚ˙"})
+        c = toy_channel()
+        c.words = [(w, r, i, typed, kind, logp) for (w, i, typed), (r, kind, logp) in loans.items()]
+        builder = merge.Builder(self.base, c, max_cost=3.0)
+        builder.words([])
         for tone in ("", "ˊ", "ˇ", "ˋ", "˙"):
             self.assertAlmostEqual(
                 builder.rows[(f"ㄜˊ ㄚ{tone} ㄐㄧㄢ", "蚵仔煎")], -19.0 + math.log(0.01) - math.log(5)
             )
+        self.assertEqual(channel.state("loan"), "correction")
+
+    def test_marked_taiwan_reading_is_word_level(self):
+        c = toy_channel()
+        c.share["騎"] = {"ㄑㄧˊ": 0.9, "ㄐㄧˋ": 0.1}
+        c.words = [("坐騎", "ㄗㄨㄛˋ ㄑㄧˊ", 1, "ㄐㄧˋ", "taiwan", math.log(channel.MARKED))]
+        base = [("ㄗㄨㄛˋ ㄑㄧˊ", "坐騎", -14.0), ("ㄑㄧˊ ㄕㄨˋ", "騎術", -15.0)]
+        builder = merge.Builder(base, c, mechanisms=merge.MECHANISMS[:4], offsets={"marked": 2.0})
+        builder.words([])
+        self.assertAlmostEqual(builder.rows[("ㄗㄨㄛˋ ㄐㄧˋ", "坐騎")], -16.0 + math.log(channel.MARKED) - merge.TIE)
+        self.assertNotIn(("ㄐㄧˋ ㄕㄨˋ", "騎術"), builder.rows)  # only the word Wiktionary gives it for
 
     def test_taiwan_reading_propagates_into_words(self):
         c = toy_channel()
@@ -187,6 +202,28 @@ class Format(unittest.TestCase):
         self.assertAlmostEqual(again.share["蚵"]["ㄎㄜ"], 0.1, places=4)
         self.assertEqual(again.evidence[("蚵", "ㄎㄜ")], "wiktionary,cns")
         self.assertIn(("期", "ㄑㄧ"), again.standard)
+
+    def test_words_table_validates_and_loads_back(self):
+        c = toy_channel()
+        c.words = [
+            ("坐騎", "ㄗㄨㄛˋ ㄑㄧˊ", 1, "ㄐㄧˋ", "taiwan", math.log(0.5)),
+            ("蚵仔煎", "ㄜˊ ㄗˇ ㄐㄧㄢ", 1, "ㄚˇ", "loan", math.log(0.002)),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            c.write(Path(tmp))
+            self.assertEqual(channel.validate(Path(tmp)), [])
+            lines = Path(tmp, "words.tsv").read_text(encoding="utf-8").splitlines()
+            again = channel.load(Path(tmp))
+            Path(tmp, "words.tsv").write_text(
+                channel.WORDS_HEADER + "坐騎\tㄗㄨㄛˋ ㄑㄧˊ\t1\tㄑㄧˊ\ttaiwan\t-0.7\taccepted\n"
+                "蚵仔煎\tㄜˊ ㄗˇ ㄐㄧㄢ\t1\tㄚˇ\tloan\t-6.2\taccepted\n",
+                encoding="utf-8",
+            )
+            problems = channel.validate(Path(tmp))
+        self.assertEqual(lines[0], channel.WORDS_HEADER.rstrip("\n"))
+        self.assertEqual(lines[2], "蚵仔煎\tㄜˊ ㄗˇ ㄐㄧㄢ\t1\tㄚˇ\tloan\t-6.2146\tcorrection")
+        self.assertEqual(sorted(w[:5] for w in again.words), sorted(w[:5] for w in c.words))
+        self.assertEqual(len(problems), 2)  # the typed reading is the word's own; a loan reading is a correction
 
     def test_noise_states_and_cost_buckets(self):
         c = toy_channel()

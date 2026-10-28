@@ -119,9 +119,6 @@ def build(
     lexicon = Lexicon(rows=rows)
     facts = wiktionary.read(facts_path)
     mandarin = mandarin_readings(facts)
-    builder = Builder([], channel)
-    syllables = {split(s)[0] for r in lexicon.reading.values() for s in r.split()}
-    builder.syllables = syllables
     summary = json.loads((channel_dir / "channel.json").read_text(encoding="utf-8"))
     interjections = set(summary.get("interjections", ""))
     out: dict[str, list[tuple[str, str]]] = {s: [] for s in SUBSETS}
