@@ -32,14 +32,19 @@ Two word-level tables come with it:
   taiwan.tsv  (char, the reading CC-CEDICT's words use, Taiwan's reading, log strength): of the words with the
               character that Wiktionary gives a reading for, the share whose Taiwan reading changes the first to the
               second (期 ㄑㄧ -> ㄑㄧˊ in 期中); plus CC-CEDICT's own Taiwan readings of single characters (危 ㄨㄟ ->
-              ㄨㄟˊ) at the median strength of the pairs both sources have; merge.py puts the Taiwan reading into
-              every word with the character
+              ㄨㄟˊ) at the median strength of the pairs both sources have.  The engine and merge.py put the Taiwan
+              reading into every word with the character, so a pair weaker than WORD_LEVEL_TAIWAN (騎 ㄑㄧˊ -> ㄐㄧˋ
+              holds in 坐騎, not in 騎術) is left out unless it is the standard, and goes to words.tsv instead
+  words.tsv   (word, its reading, position, reading typed, class, log P, state): readings that hold for one word
+              only, the engine's channel cannot derive them from a character.  `taiwan`: the Taiwan reading
+              Wiktionary gives the word where taiwan.tsv has no such pair (坐騎 ㄐㄧˋ), at log MARKED.  `loan`: a
+              word Taiwan Mandarin took from Taiwanese Hokkien, one character typed as the Mandarin syllable nearest
+              its Hokkien syllable (蚵仔煎 ㄚ), every tone at log m - log 5, a correction
   rates       m: of the character positions in Wiktionary's multi-character words, how many carry a recorded variant,
               colloquial or misreading reading; the neutral rate: of Wiktionary's neutral-tone syllables, how many
               have a recorded full-tone variant
 
-All rates and counts are in channel.json; the app's correction log can later replace them.  Taiwanese Hokkien
-readings are word-level only (merge.py): they apply to the words Wiktionary gives a Hokkien reading for.
+All rates and counts are in channel.json; the app's correction log can later replace them.
 """
 
 from __future__ import annotations
@@ -57,7 +62,7 @@ from zhuyintype_ml.data import lexicon as base_lexicon
 
 from . import sources, wiktionary
 from .corpora import corpus_lines
-from .phonology import bopomofo, split
+from .phonology import TONE_MARKS, bopomofo, split, tailo_syllables, tailo_to_zhuyin
 from .wiktionary import INTERJECTION
 
 UNIHAN_FIELDS = ("kHanyuPinyin", "kXHC1983", "kTGHZ2013", "kMandarin")
@@ -68,6 +73,12 @@ GROUPS = ("cedict-unihan", "wiktionary", "cns", "ids", "rule")
 CHANNEL_HEADER = "# ZTRC/1 char\treading\tclass\tlog P(reading | char)\tsource groups\n"
 TAIWAN_HEADER = "# ZTRT/1 char\tword reading\tTaiwan reading\tlog strength\tstandard\n"
 NOISE_HEADER = "# char\treading in the text\treading typed\tclass\tprobability\tstate\tcost bucket\n"
+WORDS_HEADER = "# ZTRW/1 word\tword reading\tposition\treading typed\tclass\tlog P\tstate\n"
+WORD_CLASSES = ("taiwan", "loan")
+# A Taiwan pair weaker than this goes into words.tsv for the words Wiktionary gives it for, not into taiwan.tsv: the
+# engine applies taiwan.tsv to every word with the character (弟 ㄉㄧˋ -> ㄉㄧˇ, strength 0.04, made 底子 弟子).
+WORD_LEVEL_TAIWAN = 0.5
+MARKED = 0.5  # P(the Taiwan reading | a word Wiktionary gives it for): as likely as the word's other reading
 # The engine's reading states (resources/formats/reading-channel.md, 三種狀態): a correction is shown with the reading
 # it replaces and must beat exact typing by a margin; every other reading is accepted, typed as freely as the standard.
 CORRECTIONS = ("series", "loan")
@@ -241,21 +252,21 @@ def variants(readings: dict[str, set[str]]) -> list[tuple[str, str]]:
 
 
 def hokkien_readings(facts: list[tuple[str, str, str, list[str]]]) -> dict[str, list[str]]:
-    """Taiwanese Mandarin words -> their Taiwanese Hokkien readings in Tâi-lô.  Wiktionary gives a Hokkien reading for
-    almost every common word (成熟 sîng-sio̍k); a typist uses the Hokkien sound only in words Taiwan Mandarin took
-    from Hokkien, so only words in Wiktionary's Taiwanese Mandarin category or marked (Tw)/Taiwanese by CC-CEDICT
-    count."""
-    taiwanese = {w for w, kind, value, _ in facts if kind == "class" and value == "taiwanese-mandarin"}
-    taiwanese |= cedict_taiwanese()
+    """Words Taiwan Mandarin took from Taiwanese Hokkien -> their Hokkien readings in Tâi-lô.  Wiktionary gives a
+    Hokkien reading for almost every common word (成熟 sîng-sio̍k) and its Taiwanese Mandarin category is mostly Taiwan
+    usage (公車, 便當), so a word counts only when CC-CEDICT says it comes from Taiwanese (代誌 tāi-tsì, 囝仔 gín-á), or
+    it is in that category and has 仔, the suffix typists most often type by its Hokkien sound (á)."""
+    category = {w for w, kind, value, _ in facts if kind == "class" and value == "taiwanese-mandarin"}
+    loans = cedict_taiwanese() | {w for w in category if "仔" in w}
     result: dict[str, list[str]] = collections.defaultdict(list)
     for word, kind, value, tags in facts:
-        if kind == "hokkien" and "Taiwan" in tags and word in taiwanese and value not in result[word]:
+        if kind == "hokkien" and "Taiwan" in tags and word in loans and value not in result[word]:
             result[word].append(value)
     return result
 
 
 def cedict_taiwanese() -> set[str]:
-    """Words CC-CEDICT marks as Taiwan usage or as taken from Taiwanese."""
+    """Words CC-CEDICT says come from Taiwanese Hokkien ("from Taiwanese", "(Taiwanese, Tai-lo pr. ...)")."""
     found: set[str] = set()
     path = base_lexicon.RAW / "cedict.txt"
     if not path.exists():
@@ -263,7 +274,7 @@ def cedict_taiwanese() -> set[str]:
     with open(path, encoding="utf-8") as lines:
         for line in lines:
             m = re.match(r"^(\S+) \S+ \[[^\]]*\] /(.*)/\s*$", line)
-            if m and ("(Tw)" in m.group(2) or "Taiwanese" in m.group(2)):
+            if m and re.search(r"from Taiwanese|\(Taiwanese, Tai-lo", m.group(2)):
                 found.add(m.group(1))
     return found
 
@@ -278,6 +289,8 @@ class Channel:
     taiwan: dict[tuple[str, str], tuple[str, float]] = field(default_factory=dict)
     evidence: dict[tuple[str, str], str] = field(default_factory=dict)  # (char, reading) -> source groups
     standard: set[tuple[str, str]] = field(default_factory=set)  # Taiwan pairs strong enough to be the standard
+    # words.tsv: (word, its reading, position, reading typed, class, log P)
+    words: list[tuple[str, str, int, str, str, float]] = field(default_factory=list)
     misread: float = 0.0  # m: the share of character positions typed with another reading of the character
     neutral: float = 0.0
     rates: dict[str, object] = field(default_factory=dict)
@@ -341,6 +354,12 @@ class Channel:
             for (char, mainland), (taiwan, strength) in sorted(self.taiwan.items()):
                 standard = int((char, mainland) in self.standard)
                 handle.write(f"{char}\t{mainland}\t{taiwan}\t{math.log(strength):.4f}\t{standard}\n")
+        with open(out / "words.tsv", "w", encoding="utf-8") as handle:
+            handle.write(WORDS_HEADER)
+            for word, reading, i, typed, kind, logp in sorted(
+                self.words, key=lambda x: (x[0].encode(), x[2], x[3].encode(), x[4])
+            ):
+                handle.write(f"{word}\t{reading}\t{i}\t{typed}\t{kind}\t{logp:.4f}\t{state(kind)}\n")
         (out / "familiar.txt").write_text("".join(sorted(self.familiar)) + "\n", encoding="utf-8")
         self.write_noise(out / "v3_noise.tsv")
         counts = collections.Counter(m for m in self.mechanism.values())
@@ -353,6 +372,7 @@ class Channel:
                 "characters": len(self.share),
                 "familiar_characters": len(self.familiar),
                 "taiwan_pairs": len(self.taiwan),
+                "word_readings": dict(collections.Counter(kind for *_, kind, _ in self.words)),
             }
         )
         (out / "channel.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
@@ -443,6 +463,7 @@ def estimate(
 
     # Taiwan readings of characters inside words: Wiktionary's Taiwan reading of a word against the base's reading.
     changed: collections.Counter[tuple[str, str, str]] = collections.Counter()
+    taiwan_words: list[tuple[str, int, str, str, str]] = []  # (word, position, char, base reading, Taiwan reading)
     for word, readings in mandarin.items():
         if len(word) < 2 or word not in best_reading:
             continue
@@ -451,9 +472,10 @@ def estimate(
             continue
         ours = best_reading[word].split()
         theirs = taiwan_word[0].split()
-        for ch, a, b in zip(word, ours, theirs):
+        for i, (ch, a, b) in enumerate(zip(word, ours, theirs)):
             if a != b and not b.endswith("˙") and not a.endswith("˙"):
                 changed[(ch, a, b)] += 1
+                taiwan_words.append((word, i, ch, a, b))
     # Wiktionary labels a reading Taiwan only where Taiwan differs, so every word with a Wiktionary reading counts in
     # the denominator: a word without a Taiwan label reads the character the same way.
     seen: collections.Counter[tuple[str, str]] = collections.Counter()
@@ -582,10 +604,19 @@ def estimate(
         if b in listed and votes >= 2:
             standard_pairs.add((ch, a))
 
+    # Weak pairs hold in the words Wiktionary gives them for, not in every word with the character.
+    kept = {k: v for k, v in taiwan_pairs.items() if v[1] >= WORD_LEVEL_TAIWAN or k in standard_pairs}
+    words = {
+        (word, i, b): (best_reading[word], "taiwan", math.log(MARKED))
+        for word, i, ch, a, b in taiwan_words
+        if kept.get((ch, a), ("", 0.0))[0] != b and len(best_reading[word].split()) == len(word)
+    }
+    words.update(loan_readings(best_reading, facts, misread))
     channel = Channel(
         familiar=familiar,
-        taiwan=taiwan_pairs,
+        taiwan=kept,
         standard=standard_pairs,
+        words=[(w, r, i, typed, kind, logp) for (w, i, typed), (r, kind, logp) in words.items()],
         misread=misread,
         neutral=(neutral_counts[0] + 0.5) / (neutral_counts[1] + 1.0),
     )
@@ -602,6 +633,8 @@ def estimate(
         "series_characters": sum(1 for c in phonetic if c not in familiar),
         "interjections": "".join(sorted(interjections)),
         "cedict_taiwan_pairs": len(cedict_pairs),
+        "word_level_taiwan": WORD_LEVEL_TAIWAN,
+        "taiwan_pairs_word_level": len(taiwan_pairs) - len(kept),
         "standard_taiwan_pairs": len(standard_pairs),
         "cns_characters": len(cns),
         "cedict_taiwan_strength": cedict_strength,
@@ -677,11 +710,40 @@ def estimate(
     return channel
 
 
+def loan_readings(
+    best_reading: dict[str, str], facts: list[tuple[str, str, str, list[str]]], misread: float
+) -> dict[tuple[str, int, str], tuple[str, str, float]]:
+    """words.tsv's `loan` rows: {(word, position, reading typed): (word reading, "loan", log P)} for each character
+    of a Taiwanese Mandarin word whose Hokkien syllable maps to another Mandarin syllable than the word's reading.
+    No source gives the Mandarin tone a typist uses for a Hokkien syllable, so each of the five gets log m - log 5."""
+    syllables = {split(s)[0] for reading in best_reading.values() for s in reading.split()}
+    value = math.log(misread) - math.log(1 + len(TONE_MARKS))
+    found: dict[tuple[str, int, str], tuple[str, str, float]] = {}
+    for word, values in hokkien_readings(facts).items():
+        reading = best_reading.get(word)
+        if reading is None or len(word) < 2:
+            continue
+        syls = reading.split()
+        if len(syls) != len(word):
+            continue
+        for text in values:
+            tailo = tailo_syllables(text)
+            if len(tailo) != len(word):
+                continue
+            for i, (syl, neutral) in enumerate(tailo):
+                zy = tailo_to_zhuyin(syl, neutral, syllables)
+                if not zy or split(zy)[0] == split(syls[i])[0]:
+                    continue
+                for tone in ("", *TONE_MARKS):
+                    found[(word, i, split(zy)[0] + tone)] = (reading, "loan", value)
+    return found
+
+
 SYLLABLE = re.compile(r"[ㄅ-ㄩ]{1,3}[ˊˇˋ˙]?")
 
 
 def validate(directory: Path) -> list[str]:
-    """Problems with channel.tsv and taiwan.tsv against resources/formats/reading-channel.md (empty when valid).
+    """Problems with the tables against resources/formats/reading-channel.md (empty when valid).
     The engine's reader checks the same rules."""
     problems: list[str] = []
     lines = (directory / "channel.tsv").read_text(encoding="utf-8").splitlines()
@@ -720,6 +782,28 @@ def validate(directory: Path) -> list[str]:
             problems.append(f"taiwan.tsv:{number}: bad row")
         elif float(parts[3]) > 1e-9 or parts[4] not in ("0", "1"):
             problems.append(f"taiwan.tsv:{number}: bad strength or standard flag")
+    words = directory / "words.tsv"
+    lines = words.read_text(encoding="utf-8").splitlines() if words.exists() else [WORDS_HEADER.rstrip("\n")]
+    if lines[0] != WORDS_HEADER.rstrip("\n"):
+        problems.append("words.tsv: missing ZTRW/1 header")
+    for number, line in enumerate(lines[1:], 2):
+        parts = line.split("\t")
+        if len(parts) != 7:
+            problems.append(f"words.tsv:{number}: {len(parts)} fields")
+            continue
+        word, reading, position, typed, kind, logp, row_state = parts
+        syls = reading.split()
+        if (
+            len(syls) != len(word)
+            or not all(SYLLABLE.fullmatch(s) for s in syls)
+            or not position.isdigit()
+            or int(position) >= len(word)
+            or not SYLLABLE.fullmatch(typed)
+            or typed == syls[int(position)]
+        ):
+            problems.append(f"words.tsv:{number}: bad word, reading, position or typed reading")
+        elif kind not in WORD_CLASSES or row_state != state(kind) or float(logp) > 1e-9:
+            problems.append(f"words.tsv:{number}: bad class, state or log P")
     noise = directory / "v3_noise.tsv"
     lines = noise.read_text(encoding="utf-8").splitlines() if noise.exists() else [NOISE_HEADER.rstrip("\n")]
     if lines[0] != NOISE_HEADER.rstrip("\n"):
@@ -734,7 +818,7 @@ def validate(directory: Path) -> list[str]:
 
 
 def load(directory: Path) -> Channel:
-    """Reads channel.tsv, taiwan.tsv, familiar.txt and channel.json back."""
+    """Reads channel.tsv, taiwan.tsv, words.tsv (when there is one), familiar.txt and channel.json back."""
     channel = Channel()
     with open(directory / "channel.tsv", encoding="utf-8") as lines:
         for line in lines:
@@ -751,6 +835,13 @@ def load(directory: Path) -> Channel:
                 channel.taiwan[(char, mainland)] = (taiwan, math.exp(float(strength)))
                 if rest and rest[0] == "1":
                     channel.standard.add((char, mainland))
+    words = directory / "words.tsv"
+    if words.exists():
+        with open(words, encoding="utf-8") as lines:
+            for line in lines:
+                if not line.startswith("#"):
+                    word, reading, i, typed, kind, logp, _state = line.rstrip("\n").split("\t")
+                    channel.words.append((word, reading, int(i), typed, kind, float(logp)))
     channel.familiar = set((directory / "familiar.txt").read_text(encoding="utf-8").strip())
     summary = json.loads((directory / "channel.json").read_text(encoding="utf-8"))
     channel.misread = summary["misread"]

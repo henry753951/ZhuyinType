@@ -58,7 +58,7 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 寫入 `lexicon_coverage/`：
 
 - `base.tsv`、`wiktionary.tsv`；
-- `channel/`：`channel.tsv`（字、讀音、類別、log P、來源組；ZTRC/1）、`taiwan.tsv`（ZTRT/1）、`familiar.txt`、`v3_noise.tsv`、`channel.json`（估計出的比例與次數）；`channel.validate` 檢查格式；
+- `channel/`：`channel.tsv`（字、讀音、類別、log P、來源組；ZTRC/1）、`taiwan.tsv`（ZTRT/1，強度至少 0.5 或標準讀音的改寫）、`words.tsv`（ZTRW/1，只對個別的詞成立的台灣讀音與台語音）、`familiar.txt`、`v3_noise.tsv`、`channel.json`（估計出的比例與次數）；`channel.validate` 檢查格式；
 - `misread/`、`wiki-new/`：評測集；
 - `mined/`：`<語料>.ngrams.tsv`、`<語料>.mined.tsv`、`<語料>.json`（門檻與數量）；
 - `packs/<語料>.tsv` 與 `vocabulary.json`；

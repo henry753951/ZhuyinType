@@ -18,6 +18,8 @@ Rows are added for (the class names are what --mechanisms and --offset take):
               reading (蚵 ㄎㄜ, 熟 ㄕㄡˊ)
   taiwan      a word with a character whose CC-CEDICT reading Wiktionary's Taiwan readings change (期 ㄑㄧ -> ㄑㄧˊ):
               the word with the Taiwan reading, at log strength (期中 ㄑㄧˊ ㄓㄨㄥ); every subset of such characters
+  marked      the Taiwan reading Wiktionary gives one word where taiwan.tsv has no pair for every word (坐騎 ㄗㄨㄛˋ
+              ㄐㄧˋ; channel.py words.tsv), at log MARKED; every subset of such characters
   neutral     a neutral-tone syllable typed with another reading of its character (什麼 ㄕㄣˊ ㄇㄛˊ): the neutral rate
               times that reading's share among the character's other readings (the same syllable with a tone is the
               engine's neutral-tone tolerance already)
@@ -29,7 +31,7 @@ Rows are added for (the class names are what --mechanisms and --offset take):
               pronounced tone, so the cost starts at the general misreading rate and is set by --offset
   variants    Wiktionary's variant, colloquial and misreading readings of the word, at log m per changed character
   loan        a word Wiktionary gives a Taiwanese Hokkien reading for, with one character typed as the Mandarin
-              syllable nearest its Hokkien syllable (phonology.tailo_to_zhuyin).  No source gives the Mandarin tone
+              syllable nearest its Hokkien syllable (channel.py words.tsv).  No source gives the Mandarin tone
               (仔 á is typed ㄚˇ by some, ㄚ or ㄚ˙ by others), so every tone gets log m − log 5
   misread     an unfamiliar character (channel.py) typed with another of its readings, its phonetic series included:
               log m + log P(r | char, not the word's reading), kept down to --max-cost (蚵仔煎 ㄎㄜ ㄗˇ ㄐㄧㄢ)
@@ -53,10 +55,10 @@ from pathlib import Path
 from zhuyintype_ml.data.lexicon import HAN
 
 from . import sources, wiktionary
-from .channel import Channel, hokkien_readings, load, mandarin_readings, read_rows, variants
-from .phonology import TONE_MARKS, bopomofo, split, tailo_syllables, tailo_to_zhuyin
+from .channel import Channel, load, mandarin_readings, read_rows, variants
+from .phonology import bopomofo, split
 
-MECHANISMS = ("standard", "char", "taiwan", "mcbopomofo", "neutral", "sandhi", "variants", "loan", "misread")
+MECHANISMS = ("standard", "char", "taiwan", "marked", "mcbopomofo", "neutral", "sandhi", "variants", "loan", "misread")
 # The classes the engine's reading channel is to take over (resources/formats/reading-channel.md); a data-only build
 # keeps the others.
 ENGINE_CLASSES = ("neutral", "sandhi", "loan", "misread")
@@ -93,13 +95,18 @@ class Builder:
         self.char_classes = set(char_classes) if char_classes is not None else None
         self.engine_character: tuple[str, ...] = ()
         self.channel = channel
+        # words.tsv by word: class -> [(position, the word's syllable there, reading typed, log P)]
+        self.word_readings: dict[str, dict[str, list[tuple[int, str, str, float]]]] = collections.defaultdict(
+            lambda: collections.defaultdict(list)
+        )
+        for word, reading, i, typed, kind, logp in channel.words:
+            self.word_readings[word][kind].append((i, reading.split()[i], typed, logp))
         self.max_cost = max_cost
         self.mechanisms = set(mechanisms)
         self.offsets = offsets or {}
         self.rows: dict[tuple[str, str], float] = {}
         self.standard: dict[str, list[str]] = {}  # each word's Taiwan and McBopomofo readings (sandhi applies to them)
         self.kind: dict[tuple[str, str], str] = {}
-        self.syllables = {split(s)[0] for reading, _, _ in base for s in reading.split()}
         for reading, word, logp in base:
             self.put(reading, word, logp, "base")
         self.best: dict[str, tuple[str, float]] = {}
@@ -114,7 +121,7 @@ class Builder:
             return
         self.rows[key] = logp
         self.kind[key] = kind
-        if kind in ("taiwan", "mcbopomofo"):
+        if kind in ("taiwan", "marked", "mcbopomofo"):
             self.standard.setdefault(word, []).append(reading)
 
     def cost(self, kind: str, value: float) -> float:
@@ -164,14 +171,7 @@ class Builder:
                 if p < top and kind not in self.engine_character and official and wanted:
                     self.put(r, char, logp + self.cost("char", math.log(p / top)), "char")
 
-    def word(
-        self,
-        word: str,
-        reading: str,
-        logp: float,
-        attested: Iterable[str] = (),
-        hokkien: Iterable[str] = (),
-    ) -> None:
+    def word(self, word: str, reading: str, logp: float, attested: Iterable[str] = ()) -> None:
         """The variants of one word (every class the builder uses)."""
         syls = reading.split()
         rate = math.log(self.channel.misread)
@@ -193,6 +193,18 @@ class Builder:
                         new[i] = taiwan
                         value += math.log(strength) - TIE
                     self.put(" ".join(new), word, logp + self.cost("taiwan", value), "taiwan")
+        if "marked" in self.mechanisms:
+            # Only where the word still reads the character the way words.tsv saw it (not made standard since).
+            marked = [(i, t, v) for i, s, t, v in self.word_readings.get(word, {}).get("taiwan", []) if syls[i] == s]
+            for size in range(1, len(marked) + 1):
+                for subset in itertools.combinations(marked, size):
+                    if len({i for i, _, _ in subset}) < size:
+                        continue
+                    new = list(syls)
+                    for i, typed, _ in subset:
+                        new[i] = typed
+                    value = sum(v for _, _, v in subset) - TIE
+                    self.put(" ".join(new), word, logp + self.cost("marked", value), "marked")
         for i, (char, syl) in enumerate(zip(word, syls)):
             if syl.endswith("˙") and "neutral" in self.mechanisms:
                 shares = self.channel.share.get(char, {})
@@ -226,34 +238,17 @@ class Builder:
                 if changed and len(variant.split()) == len(syls):
                     self.put(variant, word, logp + self.cost("variants", rate * changed), "variants")
         if "loan" in self.mechanisms:
-            for i, base, tones in self.loan_syllables(word, syls, hokkien):
-                for tone in tones:
-                    value = rate - math.log(len(tones))
-                    self.put(replace(i, base + tone), word, logp + self.cost("loan", value), "loan")
-
-    def loan_syllables(self, word: str, syls: list[str], values: Iterable[str]) -> list[tuple[int, str, list[str]]]:
-        """(position, Mandarin syllable without tone, its tones) for each character whose Hokkien syllable maps to
-        another Mandarin syllable than the word's reading."""
-        out = []
-        for value in values:
-            tailo = tailo_syllables(value)
-            if len(tailo) != len(word):
-                continue
-            for i, (syl, neutral) in enumerate(tailo):
-                zy = tailo_to_zhuyin(syl, neutral, self.syllables)
-                if not zy or split(zy)[0] == split(syls[i])[0]:
-                    continue
-                out.append((i, split(zy)[0], ["", *TONE_MARKS]))
-        return out
+            for i, _, typed, value in self.word_readings.get(word, {}).get("loan", []):
+                if split(syls[i])[0] != split(typed)[0]:
+                    self.put(replace(i, typed), word, logp + self.cost("loan", value), "loan")
 
     def words(self, facts: list[tuple[str, str, str, list[str]]]) -> None:
         mandarin = mandarin_readings(facts)
-        hokkien = hokkien_readings(facts)
         for word, (reading, logp) in list(self.best.items()):
             if len(word) < 2:
                 continue
             attested = [v for _, v in variants(mandarin.get(word, {}))]
-            self.word(word, reading, logp, attested, hokkien.get(word, []))
+            self.word(word, reading, logp, attested)
 
     def pack(self, path: Path) -> int:
         """Adds a pack (reading, word, log P rows) and its variants; returns how many words it brought."""
