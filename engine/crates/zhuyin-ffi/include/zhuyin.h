@@ -747,7 +747,7 @@ uint32_t zt_engine_fuzzy_sounds(const ZtEngine *engine);
 //
 // # Safety
 // `engine` is a live handle.
-void zt_engine_flush_personal_data(const ZtEngine *engine);
+bool zt_engine_flush_personal_data(const ZtEngine *engine);
 
 // Forgets everything learned (user phrases stay).
 //

@@ -262,11 +262,15 @@ pub unsafe extern "C" fn zt_reranker_choose(
     reranker.reranker.choose(sentences, context)
 }
 
-fn write(values: &[f64], out: *mut f64) {
-    if !values.is_empty() && !out.is_null() {
+fn write(values: &[f64], out: *mut f64) -> bool {
+    if !values.is_empty() && out.is_null() {
+        return false;
+    }
+    if !values.is_empty() {
         // SAFETY: callers pass room for `values.len()` scores (documented per function).
         unsafe { std::ptr::copy_nonoverlapping(values.as_ptr(), out, values.len()) };
     }
+    true
 }
 
 /// log P(candidate | context) for `count` candidates, written to `scores`; false when the model cannot score them.
@@ -287,10 +291,7 @@ pub unsafe extern "C" fn zt_reranker_scores(
     };
     // SAFETY: NULL or a C string.
     let context = unsafe { borrowed(context) }.unwrap_or_default();
-    reranker.reranker.scores(context, &candidates).is_some_and(|values| {
-        write(&values, scores);
-        true
-    })
+    reranker.reranker.scores(context, &candidates).is_some_and(|values| write(&values, scores))
 }
 
 /// `weight` × log P(candidate | context) for candidate-list order, for `count` candidates; false when the model
@@ -312,10 +313,7 @@ pub unsafe extern "C" fn zt_reranker_candidate_scores(
     };
     // SAFETY: NULL or a C string.
     let context = unsafe { borrowed(context) }.unwrap_or_default();
-    reranker.reranker.candidate_scores(context, &candidates).is_some_and(|values| {
-        write(&values, scores);
-        true
-    })
+    reranker.reranker.candidate_scores(context, &candidates).is_some_and(|values| write(&values, scores))
 }
 
 /// [`zt_reranker_candidate_scores`] for the view passed to a candidate scorer hook.
@@ -336,10 +334,7 @@ pub unsafe extern "C" fn zt_reranker_candidate_scores_view(
     };
     // SAFETY: NULL or a C string; the view is live during the hook.
     let (context, candidates) = unsafe { (borrowed(context).unwrap_or_default(), candidates.slice()) };
-    reranker.reranker.candidate_scores(context, candidates).is_some_and(|values| {
-        write(&values, scores);
-        true
-    })
+    reranker.reranker.candidate_scores(context, candidates).is_some_and(|values| write(&values, scores))
 }
 
 /// The character model's inputs: `count` syllables, each with `width` candidate IDs (row-major, padded with 0).
@@ -495,7 +490,10 @@ unsafe fn rust_syllables(syllables: *const ZtSyllable, count: usize) -> Option<V
         .collect()
 }
 
-fn write_rows(rows: &[Vec<f64>], candidates: &[Vec<String>], scores: *mut f64, lengths: *mut usize) {
+fn write_rows(rows: &[Vec<f64>], candidates: &[Vec<String>], scores: *mut f64, lengths: *mut usize) -> bool {
+    if (!rows.is_empty() && lengths.is_null()) || (rows.iter().any(|row| !row.is_empty()) && scores.is_null()) {
+        return false;
+    }
     let mut start = 0;
     for (index, (row, list)) in rows.iter().zip(candidates).enumerate() {
         // SAFETY: callers pass room for every candidate's score and one length per row.
@@ -507,6 +505,7 @@ fn write_rows(rows: &[Vec<f64>], candidates: &[Vec<String>], scores: *mut f64, l
         }
         start += list.len();
     }
+    true
 }
 
 /// [`zt_syllable_scorer_scores`] for the view passed to a character scorer hook (the hook's `scores` and `lengths`
@@ -534,8 +533,7 @@ pub unsafe extern "C" fn zt_syllable_scorer_scores_rows(
     // SAFETY: NULL or a C string; the view is live during the hook.
     let (context, candidates) = (unsafe { borrowed(context) }.unwrap_or_default(), unsafe { rows.slice() });
     let Some(result) = handle.scorer.scores(context, &syllables, candidates) else { return false };
-    write_rows(&result, candidates, scores, lengths);
-    true
+    write_rows(&result, candidates, scores, lengths)
 }
 
 /// For each of `count` syllables, log P over its candidate characters: row `i`'s candidates are the C strings
@@ -575,8 +573,7 @@ pub unsafe extern "C" fn zt_syllable_scorer_scores(
     // SAFETY: NULL or a C string.
     let context = unsafe { borrowed(context) }.unwrap_or_default();
     let Some(result) = handle.scorer.scores(context, &syllables, &rows) else { return false };
-    write_rows(&result, &rows, scores, lengths);
-    true
+    write_rows(&result, &rows, scores, lengths)
 }
 
 /// The result of [`zt_syllable_scorer_check_vectors`].
@@ -622,5 +619,24 @@ pub unsafe extern "C" fn zt_syllable_scorer_check_vectors(
             unsafe { set_error(error, &e.to_string()) };
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::{write, write_rows};
+
+    #[test]
+    fn missing_output_is_rejected() {
+        assert!(!write(&[1.0], std::ptr::null_mut()));
+        assert!(write(&[], std::ptr::null_mut()));
+        let mut length = 0;
+        let mut score = 0.0;
+        let rows = vec![vec![1.0]];
+        let candidates = vec![vec![String::from("a")]];
+        assert!(!write_rows(&rows, &candidates, std::ptr::null_mut(), &raw mut length));
+        assert!(!write_rows(&rows, &candidates, &raw mut score, std::ptr::null_mut()));
+        assert!(write_rows(&rows, &candidates, &raw mut score, &raw mut length));
+        assert_eq!((score, length), (1.0, 1));
     }
 }

@@ -335,7 +335,7 @@ impl ChannelTable {
         if sections[5] != data.len()
             || sections[0] != HEADER
             || !sections.windows(2).all(|w| w[0] <= w[1])
-            || !(0..4).all(|i| sections[i] + lengths[i] <= sections[i + 1])
+            || !(0..4).all(|i| sections[i].checked_add(lengths[i]).is_some_and(|end| end <= sections[i + 1]))
             || !(misread > 0.0 && misread < 1.0 && neutral > 0.0 && neutral < 1.0)
         {
             return None;

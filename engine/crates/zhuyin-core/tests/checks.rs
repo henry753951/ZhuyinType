@@ -25,7 +25,7 @@ fn alternatives(set: &SyllableSet, keys: &str) -> Vec<ReadingAlternative> {
 /// The syllables of a TSV lexicon, as the engine builds them.
 fn syllables_of(lexicon: &str) -> SyllableSet {
     let parsed = TextLexicon::parse(lexicon.as_bytes(), |_| None);
-    SyllableSet::from_readings(parsed.entries.keys().map(String::as_str))
+    SyllableSet::from_readings(parsed.readings())
 }
 
 #[test]

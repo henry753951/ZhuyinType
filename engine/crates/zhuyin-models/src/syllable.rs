@@ -238,6 +238,10 @@ pub fn check_vectors(scorer: &SyllableScorer, directory: &Path) -> Result<Vector
                     continue;
                 }
                 let got = got.get(r).and_then(|row| row.get(c)).copied().ok_or_else(invalid)?;
+                if !got.is_finite() {
+                    ok = false;
+                    continue;
+                }
                 let difference = (got - value).abs();
                 check.worst = check.worst.max(difference);
                 if difference > 0.002 + 0.002 * value.abs() {

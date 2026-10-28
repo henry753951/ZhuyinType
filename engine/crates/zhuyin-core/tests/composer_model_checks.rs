@@ -461,7 +461,7 @@ fn anchors_groups_and_selections() {
         text(&selected) == "你好啊八" && selected.presentation().notice.is_none(),
         "saved notice lasts until next key; fixed phrase survives edit"
     );
-    selection_engine.flush_personal_data();
+    selection_engine.flush_personal_data().unwrap();
     let loaded = engine(&group_lexicon, Some(temp.path()), None);
     assert!(loaded.user_phrases().iter().any(|k| k.word == "你好啊"), "quick phrase persisted");
     let mut c = composer(&loaded, "su3cl38 ");

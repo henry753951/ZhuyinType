@@ -59,17 +59,29 @@ impl WordEntry {
     }
 }
 
+type EntryIndex = HashMap<String, Vec<WordEntry>>;
+type ReverseIndex = HashMap<String, Vec<(String, f64)>>;
+
 /// `lexicon.tsv` read into memory: `reading<TAB>word<TAB>log P(word, reading)` per line.
 #[derive(Clone, Debug, Default)]
 pub struct TextLexicon {
     /// Entries by reading, in file order.  A word with several readings has `logp` set to its best reading's score
     /// and `reading_prior` to the difference.
-    pub entries: HashMap<String, Vec<WordEntry>>,
+    entries: HashMap<String, Vec<WordEntry>>,
     /// Every (reading, original score) of each word, in file order.
-    pub reverse: HashMap<String, Vec<(String, f64)>>,
+    reverse: HashMap<String, Vec<(String, f64)>>,
 }
 
 impl TextLexicon {
+    /// The readings in the lexicon.
+    pub fn readings(&self) -> impl Iterator<Item = &str> {
+        self.entries.keys().map(String::as_str)
+    }
+
+    pub(crate) fn into_indexes(self) -> (EntryIndex, ReverseIndex) {
+        (self.entries, self.reverse)
+    }
+
     /// Parses the text.  `resolve` gives each row's word its ID, called once per accepted row in file order (the
     /// engine hands out personal IDs in that order).
     ///

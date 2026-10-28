@@ -473,3 +473,9 @@ fn host_character_model_through_the_composer() {
         zt_engine_free(engine);
     }
 }
+
+#[test]
+fn flush_rejects_null_engine() {
+    // SAFETY: null is explicitly checked by the API.
+    assert!(!unsafe { zt_engine_flush_personal_data(std::ptr::null()) });
+}

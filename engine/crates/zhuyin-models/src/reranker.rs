@@ -17,6 +17,8 @@ struct LastChoice {
     context: String,
     texts: Vec<String>,
     neural: Vec<f64>,
+    context_length: usize,
+    unknown_penalty: f64,
 }
 
 /// Each candidate sentence is scored as log P(candidate | text before it) by one model call; the choice is the
@@ -122,7 +124,7 @@ impl NeuralReranker {
         let mut model = self.model.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if model.has_tree() && candidates.len() <= 32 {
             let tree = RerankerTree::new(&prefix, &encoded);
-            if let Ok(logprob) = model.tree_logprob(&tree.packed)
+            if let Ok(logprob) = model.tree_logprob(tree.packed())
                 && let Some(result) = tree.scores(&logprob, self.unknown_penalty)
             {
                 return Some(result);
@@ -178,7 +180,14 @@ impl NeuralReranker {
         let texts: Vec<String> = sentences.iter().map(ScoredSentence::text).collect();
         let cached = {
             let last = self.last_choice.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            last.as_ref().filter(|l| l.context == context && l.texts == texts).map(|l| l.neural.clone())
+            last.as_ref()
+                .filter(|l| {
+                    l.context == context
+                        && l.texts == texts
+                        && l.context_length == self.context_length
+                        && l.unknown_penalty == self.unknown_penalty
+                })
+                .map(|l| l.neural.clone())
         };
         if sentences.len() <= 1 {
             return 0;
@@ -186,8 +195,13 @@ impl NeuralReranker {
         let was_cached = cached.is_some();
         let Some(neural) = cached.or_else(|| self.scores(context, &texts)) else { return 0 };
         if !was_cached {
-            *self.last_choice.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-                Some(LastChoice { context: context.to_owned(), texts, neural: neural.clone() });
+            *self.last_choice.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(LastChoice {
+                context: context.to_owned(),
+                texts,
+                neural: neural.clone(),
+                context_length: self.context_length,
+                unknown_penalty: self.unknown_penalty,
+            });
         }
         let totals: Vec<f64> = sentences.iter().zip(&neural).map(|(s, n)| s.score + self.weight * n).collect();
         let mut best = first_max(totals.iter().copied().enumerate()).unwrap_or(0);

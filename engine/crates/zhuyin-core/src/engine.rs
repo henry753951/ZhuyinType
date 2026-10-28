@@ -9,10 +9,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+
+#[path = "personal_writer.rs"]
+mod personal_writer;
+use personal_writer::{Snapshot, Writer};
 
 use crate::api::{FuzzySounds, TypoTolerance};
 use crate::binary::{DataError, MappedLexicon};
@@ -327,111 +328,6 @@ struct State {
     fuzzy: FuzzySounds,
 }
 
-/// The texts of the personal data files.
-struct Snapshot {
-    phrases: String,
-    learned: String,
-    excluded: String,
-    typos: String,
-    personal: String,
-}
-
-enum Job {
-    Write(PathBuf, Snapshot),
-    Flush(mpsc::Sender<()>),
-}
-
-/// Writes personal data on its own thread, 150 ms after the last change.
-struct Writer {
-    sender: Option<mpsc::Sender<Job>>,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Writer {
-    fn new() -> Self {
-        let (sender, receiver) = mpsc::channel::<Job>();
-        let thread = std::thread::Builder::new()
-            .name("zhuyin-personal-data".into())
-            .spawn(move || {
-                let mut pending: Option<(Instant, PathBuf, Snapshot)> = None;
-                loop {
-                    let job = match &pending {
-                        Some((deadline, _, _)) => {
-                            match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                                Ok(job) => Some(job),
-                                Err(mpsc::RecvTimeoutError::Timeout) => None,
-                                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                                    if let Some((_, directory, snapshot)) = pending.take() {
-                                        write_files(&directory, &snapshot);
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-                        None => match receiver.recv() {
-                            Ok(job) => Some(job),
-                            Err(_) => return,
-                        },
-                    };
-                    match job {
-                        Some(Job::Write(directory, snapshot)) => {
-                            pending = Some((Instant::now() + Duration::from_millis(150), directory, snapshot));
-                        }
-                        Some(Job::Flush(done)) => {
-                            if let Some((_, directory, snapshot)) = pending.take() {
-                                write_files(&directory, &snapshot);
-                            }
-                            let _ = done.send(());
-                        }
-                        None => {
-                            if let Some((_, directory, snapshot)) = pending.take() {
-                                write_files(&directory, &snapshot);
-                            }
-                        }
-                    }
-                }
-            })
-            .expect("personal data thread");
-        Self { sender: Some(sender), thread: Some(thread) }
-    }
-
-    fn send(&self, job: Job) {
-        if let Some(sender) = &self.sender {
-            let _ = sender.send(job);
-        }
-    }
-}
-
-impl Drop for Writer {
-    fn drop(&mut self) {
-        self.sender = None;
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
-    }
-}
-
-/// Replaces `path` with `contents` atomically (a temporary file renamed over it).
-fn write_atomically(path: &Path, contents: &str) -> std::io::Result<()> {
-    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
-    std::fs::write(&temporary, contents)?;
-    std::fs::rename(&temporary, path)
-}
-
-fn write_files(directory: &Path, snapshot: &Snapshot) {
-    let result = (|| {
-        std::fs::create_dir_all(directory)?;
-        write_atomically(&directory.join("user_phrases.tsv"), &snapshot.phrases)?;
-        write_atomically(&directory.join("learned.tsv"), &snapshot.learned)?;
-        write_atomically(&directory.join("excluded.tsv"), &snapshot.excluded)?;
-        write_atomically(&directory.join("typos.tsv"), &snapshot.typos)?;
-        write_atomically(&directory.join(PersonalLanguageModel::FILE_NAME), &snapshot.personal)
-    })();
-    if let Err(error) = result {
-        eprintln!("ZhuyinCore: could not save personal data: {error}");
-    }
-}
-
 /// Why an operation on personal data was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineError {
@@ -597,8 +493,7 @@ impl Engine {
             });
             state.word_ids = word_ids;
             state.next_personal_id = next;
-            state.lexicon = text.entries;
-            state.reverse = text.reverse;
+            (state.lexicon, state.reverse) = text.into_indexes();
         }
         let mut engine = Engine {
             config,
@@ -962,10 +857,13 @@ impl Engine {
     /// The words matching the syllables from `start` (at most six), as typed, with tone tolerance, corrections,
     /// fuzzy sounds and the reading channel; cached per keys.
     pub fn matches(&self, tokens: &[CompositionToken], start: usize, typo: TypoTolerance) -> Vec<Match> {
+        if start >= tokens.len() {
+            return Vec::new();
+        }
         let fuzzy = self.fuzzy_sounds();
         let mut span: Vec<&CompositionToken> = Vec::new();
         let mut key = format!("{}{}", typo.raw_value(), fuzzy.raw_value());
-        for token in &tokens[start..tokens.len().min(start + 6)] {
+        for token in &tokens[start..tokens.len().min(start.saturating_add(6))] {
             let CompositionToken::Syllable { keys, .. } = token else { break };
             span.push(token);
             key.push('\t');
@@ -1590,7 +1488,7 @@ impl Engine {
             if fields.len() != 3 || grapheme_count(&fields[0]) != 1 || grapheme_count(&fields[1]) != 1 {
                 return;
             }
-            let Some(n) = parse_double(&fields[2]).filter(|n| *n > 0.0) else { return };
+            let Some(n) = parse_double(&fields[2]).filter(|n| n.is_finite() && *n > 0.0) else { return };
             let key = format!("{}{}", fields[0], fields[1]);
             let old = state.typo_counts.get(&key).copied().unwrap_or(0.0);
             state.typo_counts.insert(key, swift_max(old, n));
@@ -1784,7 +1682,7 @@ impl Engine {
                 if fields.len() != 3 || grapheme_count(&fields[0]) != 1 || grapheme_count(&fields[1]) != 1 {
                     return;
                 }
-                if let Some(n) = parse_double(&fields[2]).filter(|n| *n > 0.0) {
+                if let Some(n) = parse_double(&fields[2]).filter(|n| n.is_finite() && *n > 0.0) {
                     state.typo_counts.insert(format!("{}{}", fields[0], fields[1]), n);
                 }
             });
@@ -1833,10 +1731,11 @@ impl Engine {
     }
 
     /// Writes pending personal data now: before another engine reads the same directory, or before exiting.
-    pub fn flush_personal_data(&self) {
-        let (done, wait) = mpsc::channel();
-        self.writer.send(Job::Flush(done));
-        let _ = wait.recv();
+    ///
+    /// # Errors
+    /// Returns an error if the data could not be written or the writer stopped.
+    pub fn flush_personal_data(&self) -> std::io::Result<()> {
+        self.writer.flush()
     }
 
     fn schedule_write(&self, state: &State) {
@@ -1848,7 +1747,7 @@ impl Engine {
             typos: typo_text(&state.typo_counts),
             personal: self.personal.serialized(),
         };
-        self.writer.send(Job::Write(directory.clone(), snapshot));
+        self.writer.write(directory.clone(), snapshot);
     }
 }
 

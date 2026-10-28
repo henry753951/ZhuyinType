@@ -265,11 +265,9 @@ pub unsafe extern "C" fn zt_engine_fuzzy_sounds(engine: *const ZtEngine) -> u32 
 /// # Safety
 /// `engine` is a live handle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn zt_engine_flush_personal_data(engine: *const ZtEngine) {
+pub unsafe extern "C" fn zt_engine_flush_personal_data(engine: *const ZtEngine) -> bool {
     // SAFETY: live handle.
-    if let Some(engine) = unsafe { engine_ref(engine) } {
-        engine.flush_personal_data();
-    }
+    unsafe { engine_ref(engine) }.is_some_and(|engine| engine.flush_personal_data().is_ok())
 }
 
 /// Forgets everything learned (user phrases stay).

@@ -213,13 +213,13 @@ fn user_phrases_and_persistence() {
     let picked =
         CommittedWord { range: 0..1, text: "巴".into(), reading: "ㄅㄚ".into(), word_id: None, picked: true };
     persisted.learn(&[picked], 1, &[]);
-    persisted.flush_personal_data();
+    persisted.flush_personal_data().unwrap();
     let reloaded = Engine::from_text(TINY, Some(temp.path()), None, EngineConfig::default());
     assert!(reloaded.learned_entries().iter().any(|(k, _)| k.word == "巴") && reloaded.user_phrases().len() == 1);
     assert_eq!(convert(&reloaded, "18 "), "巴", "persisted boost used");
     persisted.forget_all_learned();
     persisted.remove_user_phrase("媽八", "ㄇㄚ ㄅㄚ");
-    persisted.flush_personal_data();
+    persisted.flush_personal_data().unwrap();
     let forgotten = Engine::from_text(TINY, Some(temp.path()), None, EngineConfig::default());
     assert!(forgotten.learned_entries().is_empty() && forgotten.user_phrases().is_empty());
 
@@ -331,4 +331,12 @@ fn personal_model_settles_its_own_context() {
     assert_eq!(convert(&engine, "ji3su3a8 "), "我你嗎");
     let fresh = text(lexicon, Some(&lm));
     assert_eq!(convert(&fresh, "hl4su3a8 "), "肏你嗎", "empty memory leaves conversions unchanged");
+}
+
+#[test]
+fn matches_rejects_out_of_bounds_start() {
+    let engine = text(TINY, None);
+    let tokens = tokens("18 ");
+    assert!(engine.matches(&tokens, tokens.len(), TypoTolerance::Off).is_empty());
+    assert!(engine.matches(&tokens, usize::MAX, TypoTolerance::Off).is_empty());
 }
