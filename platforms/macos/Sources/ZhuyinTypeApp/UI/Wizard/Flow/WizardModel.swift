@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 // The setup wizard's state: which steps it goes through, where it is, and the sandbox it changes.  Everything the
@@ -36,8 +37,12 @@ final class WizardModel: ObservableObject {
 
     /// The user's settings; written only by `apply()`.
     let original: Preferences
-    /// A copy in memory the steps change.
-    @Published private(set) var sandbox: Preferences
+    /// A copy in memory the steps change.  Its changes are the model's changes too: a view that observes only the
+    /// model (the practice field, the lesson's layout, the list of changes) follows every choice at once.
+    @Published private(set) var sandbox: Preferences {
+        didSet { observeSandbox() }
+    }
+    private var sandboxObserver: AnyCancellable?
     @Published var mode: Mode
     @Published private(set) var index = 0
     /// 1 going forward, -1 back: which way the step transition moves.
@@ -55,6 +60,11 @@ final class WizardModel: ObservableObject {
         sandbox = original.sandbox()
         self.mode = mode
         if mode == .keysOnly { index = 0 }
+        observeSandbox()
+    }
+
+    private func observeSandbox() {
+        sandboxObserver = sandbox.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     var lessons: [Lesson] {
@@ -125,7 +135,6 @@ final class WizardModel: ObservableObject {
 
     /// 改回 one change in the sandbox.
     func revert(_ change: SettingChange) {
-        objectWillChange.send()
         change.revert(in: sandbox)
     }
 

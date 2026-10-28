@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import ZhuyinEngine
 
@@ -1317,6 +1318,66 @@ enum ControllerCoreSelfTest {
 
         // The setup wizard's practice field (UI/Wizard/Practice).
         PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
+
+        test("wizard: a choice reaches the practice field on its page at once — the same field, its composition kept") {
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            // A change inside the sandbox is a change of the model, also after a preset gave it a new sandbox: the
+            // views that observe only the model (the practice field, the lesson's layout, 原本 → 改成) follow it.
+            var published = 0
+            let observer = model.objectWillChange.sink { _ in published += 1 }
+            defer { observer.cancel() }
+            model.sandbox.candidatesPerPage = 7
+            try expect(published == 1, "a change in the sandbox was published \(published) times")
+            model.choosePreset(.windows)
+            published = 0
+            model.sandbox.candidateLayout = .vertical
+            try expect(published == 1, "after a preset, a change in the new sandbox was published \(published) times")
+
+            model.jump(to: .lesson("selecting"))
+            let size = WizardLayout.defaultSize
+            let window = HeadlessWindow(size: size)
+            window.contentView = NSHostingView(rootView: WizardView(model: model).frame(width: size.width, height: size.height))
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil); window.contentView = nil; window.close() }
+            func field() -> PracticeFieldView? {
+                func find(_ view: NSView) -> PracticeFieldView? {
+                    (view as? PracticeFieldView) ?? view.subviews.lazy.compactMap(find).first
+                }
+                return window.contentView.flatMap(find)
+            }
+            func wait(_ seconds: TimeInterval, until done: () -> Bool) {
+                let deadline = Date(timeIntervalSinceNow: seconds)
+                while Date() < deadline, !done() { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05)) }
+            }
+            wait(60) { field()?.session.isReady == true }
+            guard let view = field(), view.session.isReady else { throw Failure(description: "no practice field on 選字") }
+            for key in "su3" { view.textView.keyDown(with: PracticeKeys.keyDown(key)) }
+            view.textView.keyDown(with: PracticeKeys.keyDown(named: "down"))
+            let composed = view.session.client.marked.string
+            try expect(view.panelShown && view.panelFrame.height > view.panelFrame.width, "no vertical list: \(view.panelFrame)")
+
+            // 排列 → 橫式, as the step's choice sets it.
+            model.sandbox.candidateLayout = .horizontal
+            wait(2) { view.session.preferences.candidateLayout == .horizontal }
+            try expect(field() === view, "a new field replaced the one being typed in")
+            try expect(view.session.preferences.candidateLayout == .horizontal && view.session.core?.composer.options.verticalList == false,
+                       "the field's list is still vertical")
+            try expect(view.session.client.marked.string == composed && view.panelShown
+                       && view.panelFrame.width > view.panelFrame.height * 2, "the window is not horizontal: \(view.panelFrame)")
+            // The other choices too, every one at once: the field's settings are the sandbox's.
+            model.sandbox.selectionKeys = .homeRow
+            model.sandbox.candidateFontSize = 22
+            model.sandbox.panelAnimation = false
+            wait(2) { SettingsSnapshot(view.session.preferences) == SettingsSnapshot(model.sandbox) }
+            try expect(SettingsSnapshot(view.session.preferences) == SettingsSnapshot(model.sandbox),
+                       "differs: \(SettingsSnapshot(view.session.preferences).changes(to: SettingsSnapshot(model.sandbox)).map(\.id))")
+            try expect(view.session.panel?.keys.first == "a", "selection keys \(String(view.session.panel?.keys ?? []))")
+            try expect(!(window.isKeyWindow) && !NSApp.isActive, "the wizard took the keyboard")
+        }
 
         test("live: the 視窗與提示 preview plays — moments and states change over time, and the 中英 badge appears") {
             _ = NSApplication.shared
