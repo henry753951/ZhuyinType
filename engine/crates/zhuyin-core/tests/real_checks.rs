@@ -287,11 +287,6 @@ fn real_lexicon_behaviour() {
             "real conversion {word} [{keys}]"
         );
     }
-    for keys in ["su3cl38 ", "rup wu0 wu0 fu4cp3cl3"] {
-        let mut c = composer_with(&real, keys, ComposerOptions::default());
-        c.handle(KeyInput::Down);
-        assert!(items(&c).len() <= 60, "real candidate list capped at 60");
-    }
     let mut real_end = composer_with(&real, "cp3cl3", legacy());
     real_end.handle(KeyInput::Down);
     assert_eq!(items(&real_end)[..3], ["很好", "好", "郝"], "real end-cursor phrase candidates");

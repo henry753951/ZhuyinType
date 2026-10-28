@@ -100,6 +100,58 @@ fn index_of(c: &Composer, word: &str) -> usize {
     items(c).iter().position(|t| t == word).unwrap_or_else(|| panic!("{word} not in {:?}", items(c)))
 }
 
+#[test]
+fn candidates_past_sixty_remain_selectable() {
+    use std::fmt::Write;
+
+    let mut lexicon = String::new();
+    for i in 0..80 {
+        writeln!(lexicon, "ㄅㄚ\t{}\t-{i}", char::from_u32(0x4e00 + i).unwrap()).unwrap();
+    }
+    let mut c = composer(&engine(&lexicon), "18 ");
+    c.handle(KeyInput::Down);
+    let list = c.presentation().candidates.as_ref().unwrap();
+    assert_eq!(list.items().len(), 80);
+    let pages = list.page_count();
+    let final_word = list.items().last().unwrap().text.clone();
+    for _ in 1..pages {
+        c.handle(KeyInput::PageDown);
+    }
+    let list = c.presentation().candidates.as_ref().unwrap();
+    assert_eq!(list.page(), pages - 1);
+    assert!(list.page_range().contains(&79));
+    c.select_candidate(79);
+    assert_eq!(c.commit_all(), final_word);
+}
+
+#[test]
+fn candidates_keep_registered_readings() {
+    let words = engine(concat!(
+        "ㄓㄨㄥ\t中\t-1\n",
+        "ㄗㄞˇ\t宰\t-12\nㄗㄞˇ\t載\t-19\nㄗㄞˋ\t載\t-10\n",
+        "ㄅㄛˋ\t播\t-12\nㄅㄛˋ\t薄\t-19\nㄅㄛˊ\t薄\t-10\n",
+        "ㄅㄟ\t杯\t-12\nㄅㄟ\t背\t-19\nㄅㄟˋ\t背\t-10\n",
+    ));
+    for tolerance in [TypoTolerance::Off, TypoTolerance::Standard, TypoTolerance::Aggressive] {
+        for (keys, word) in [("y93", "載"), ("1i4", "薄"), ("1o ", "背")] {
+            for prefix in ["", "5j/ "] {
+                let mut c = composer_with(
+                    &words,
+                    &format!("{prefix}{keys}"),
+                    ComposerOptions { typo_tolerance: tolerance, ..legacy() },
+                );
+                c.handle(KeyInput::Down);
+                let list = c.presentation().candidates.as_ref().unwrap();
+                let index = index_of(&c, word);
+                assert!(list.items()[index].annotation.is_none(), "{word} belongs in the normal list");
+                assert_eq!(list.items().iter().filter(|i| i.text == word).count(), 1);
+                c.select_candidate(index);
+                assert_eq!(c.commit_all(), format!("{}{word}", if prefix.is_empty() { "" } else { "中" }));
+            }
+        }
+    }
+}
+
 fn focused_range(c: &Composer) -> Option<std::ops::Range<usize>> {
     c.presentation().focused_clause.map(|i| c.presentation().clauses[i].clone())
 }

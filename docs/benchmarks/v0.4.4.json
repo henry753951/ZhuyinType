@@ -1,0 +1,288 @@
+{
+ "suite": "zhuyinbench-1",
+ "version": "v0.4.4",
+ "date": "2026-10-28",
+ "commit": "3175d28",
+ "host": "Linux x86_64",
+ "n": 400,
+ "results": {
+  "conversion/app": {
+   "test_sentences.txt": {
+    "runs": 400,
+    "character": 97.7,
+    "whole": 82.8,
+    "variant_equal": 82.8
+   },
+   "test_colloquial.txt": {
+    "runs": 400,
+    "character": 97.3,
+    "whole": 84.0,
+    "variant_equal": 84.0
+   },
+   "colloquial_smoke.txt": {
+    "runs": 68,
+    "character": 100.0,
+    "whole": 100.0,
+    "variant_equal": 100.0
+   },
+   "test_chat_tt.txt": {
+    "runs": 400,
+    "character": 96.3,
+    "whole": 73.8,
+    "variant_equal": 85.0
+   }
+  },
+  "conversion/engine": {
+   "test_sentences.txt": {
+    "runs": 400,
+    "character": 95.2,
+    "whole": 67.8,
+    "variant_equal": 69.2
+   },
+   "test_colloquial.txt": {
+    "runs": 400,
+    "character": 95.2,
+    "whole": 74.2,
+    "variant_equal": 76.5
+   },
+   "colloquial_smoke.txt": {
+    "runs": 68,
+    "character": 98.7,
+    "whole": 92.6,
+    "variant_equal": 92.6
+   },
+   "test_chat_tt.txt": {
+    "runs": 400,
+    "character": 94.3,
+    "whole": 67.2,
+    "variant_equal": 71.2
+   }
+  },
+  "context/app": {
+   "test_sentences.txt": {
+    "runs": 400,
+    "character": 98.3,
+    "whole": 87.0,
+    "variant_equal": 87.0
+   }
+  },
+  "split/app": {
+   "test_colloquial.txt": {
+    "runs": 400,
+    "character": 96.5,
+    "whole": 80.0,
+    "variant_equal": 80.0
+   },
+   "test_sentences.txt": {
+    "runs": 400,
+    "character": 96.4,
+    "whole": 73.8,
+    "variant_equal": 73.8
+   }
+  },
+  "habits/app": {
+   "test_colloquial.txt": {
+    "clean": {
+     "runs": 400,
+     "shown": 84.0,
+     "recall16": 98.0
+    },
+    "sandhi": {
+     "runs": 52,
+     "shown": 90.4,
+     "recall16": 98.1
+    },
+    "neutral": {
+     "runs": 140,
+     "shown": 85.0,
+     "recall16": 97.1
+    },
+    "nospace": {
+     "runs": 308,
+     "shown": 63.3,
+     "recall16": 74.0
+    },
+    "typo5": {
+     "runs": 400,
+     "shown": 70.8,
+     "recall16": 84.2
+    }
+   },
+   "test_sentences.txt": {
+    "clean": {
+     "runs": 400,
+     "shown": 82.8,
+     "recall16": 95.5
+    },
+    "sandhi": {
+     "runs": 33,
+     "shown": 87.9,
+     "recall16": 90.9
+    },
+    "neutral": {
+     "runs": 133,
+     "shown": 83.5,
+     "recall16": 98.5
+    },
+    "nospace": {
+     "runs": 331,
+     "shown": 58.3,
+     "recall16": 67.4
+    },
+    "typo5": {
+     "runs": 400,
+     "shown": 66.8,
+     "recall16": 79.2
+    }
+   }
+  },
+  "candidates/app": {
+   "test_sentences.txt": {
+    "runs": 400,
+    "wrong": 92,
+    "first": 39.1,
+    "first_page": 96.7,
+    "listed": 100.0,
+    "mean_rank": 2.42
+   },
+   "test_colloquial.txt": {
+    "runs": 400,
+    "wrong": 82,
+    "first": 51.2,
+    "first_page": 93.9,
+    "listed": 100.0,
+    "mean_rank": 3.15
+   },
+   "colloquial_smoke.txt": {
+    "runs": 68,
+    "wrong": 0,
+    "first": 0.0,
+    "first_page": 0.0,
+    "listed": 0.0,
+    "mean_rank": 0.0
+   },
+   "test_chat_tt.txt": {
+    "runs": 400,
+    "wrong": 121,
+    "first": 65.3,
+    "first_page": 98.3,
+    "listed": 100.0,
+    "mean_rank": 1.78
+   }
+  },
+  "external/app": {
+   "dev302": {
+    "n": 266,
+    "top1": 88.72,
+    "cer": 1.85,
+    "oracle16": 96.62
+   },
+   "typing76": {
+    "n": 49,
+    "top1": 95.92,
+    "cer": 0.42,
+    "oracle16": 100.0
+   },
+   "reported": {
+    "n": 77,
+    "top1": 70.13,
+    "cer": 5.77,
+    "oracle16": 96.1
+   },
+   "fw": {
+    "n": 159,
+    "top1": 94.97,
+    "cer": 0.73,
+    "oracle16": 100.0
+   },
+   "trap": {
+    "n": 56,
+    "top1": 87.5,
+    "cer": 3.02,
+    "oracle16": 96.43
+   },
+   "daily": {
+    "n": 32,
+    "top1": 96.88,
+    "cer": 0.86,
+    "oracle16": 96.88
+   }
+  },
+  "external/engine": {
+   "dev302": {
+    "n": 266,
+    "top1": 68.05,
+    "cer": 5.54,
+    "oracle16": 95.49
+   },
+   "typing76": {
+    "n": 49,
+    "top1": 77.55,
+    "cer": 3.82,
+    "oracle16": 93.88
+   },
+   "reported": {
+    "n": 77,
+    "top1": 31.17,
+    "cer": 13.51,
+    "oracle16": 89.61
+   },
+   "fw": {
+    "n": 159,
+    "top1": 66.04,
+    "cer": 5.95,
+    "oracle16": 96.23
+   },
+   "trap": {
+    "n": 56,
+    "top1": 71.43,
+    "cer": 6.53,
+    "oracle16": 96.43
+   },
+   "daily": {
+    "n": 32,
+    "top1": 75.0,
+    "cer": 4.72,
+    "oracle16": 96.88
+   }
+  },
+  "repick/app": {
+   "test_sentences.txt": {
+    "runs": 400,
+    "picks0": 82.8,
+    "picks1": 96.2,
+    "picks2": 99.8,
+    "picks3": 100.0,
+    "mean_picks": 0.21,
+    "broke": 0.0
+   },
+   "test_colloquial.txt": {
+    "runs": 400,
+    "picks0": 84.0,
+    "picks1": 98.5,
+    "picks2": 99.8,
+    "picks3": 99.8,
+    "mean_picks": 0.17,
+    "broke": 0.2
+   },
+   "colloquial_smoke.txt": {
+    "runs": 68,
+    "picks0": 100.0,
+    "picks1": 100.0,
+    "picks2": 100.0,
+    "picks3": 100.0,
+    "mean_picks": 0.0,
+    "broke": 0.0
+   },
+   "test_chat_tt.txt": {
+    "runs": 400,
+    "picks0": 73.8,
+    "picks1": 96.0,
+    "picks2": 99.2,
+    "picks3": 100.0,
+    "mean_picks": 0.31,
+    "broke": 1.0
+   }
+  }
+ }
+}

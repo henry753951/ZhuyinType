@@ -1,12 +1,94 @@
+<div align="center">
+
+<img src="docs/assets/icon.png" width="128" height="128" alt="ZhuyinType 圖示">
+
 # ZhuyinType 注音
 
-開源、在本機運作的 macOS 注音輸入法。
+開源、在本機運作的 macOS 注音輸入法。<br>
+整句選字、修正按錯的鍵、依前文調整用語，所有輸入都在這台 Mac 上處理。
 
-目前版本為 0.4.1，需要 macOS 14 或更新版本。各版本的變更見 [發布說明](docs/releases/)。
+[![最新版本](https://img.shields.io/github/v/release/henry753951/ZhuyinType?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases/latest)
+[![下載次數](https://img.shields.io/github/downloads/henry753951/ZhuyinType/total?label=%E4%B8%8B%E8%BC%89&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#安裝)
+[![授權](https://img.shields.io/github/license/henry753951/ZhuyinType?label=%E6%8E%88%E6%AC%8A)](LICENSE)
+<br>
+[![Engine](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/engine.yml?branch=main&label=Engine&logo=rust)](https://github.com/henry753951/ZhuyinType/actions/workflows/engine.yml)
+[![macOS](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/macos.yml?branch=main&label=macOS&logo=swift&logoColor=white)](https://github.com/henry753951/ZhuyinType/actions/workflows/macos.yml)
+[![ML](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/ml.yml?branch=main&label=ML&logo=python&logoColor=white)](https://github.com/henry753951/ZhuyinType/actions/workflows/ml.yml)
+[![ZhuyinBench](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/benchmark.yml?label=ZhuyinBench)](docs/benchmarks/)
+
+[下載](https://github.com/henry753951/ZhuyinType/releases/latest) · [發布說明](docs/releases/) · [每版成績](docs/benchmarks/) · [文件](docs/README.md) · [規劃](docs/ROADMAP.md)
+
+</div>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/wizard-welcome.png" alt="設定嚮導的歡迎畫面與候選字清單"></td>
+    <td width="50%"><img src="docs/assets/screenshots/wizard-preset.png" alt="選擇 Windows 或 macOS 注音的習慣"></td>
+  </tr>
+  <tr>
+    <td align="center">第一次使用時，設定嚮導帶你選好打法並試打</td>
+    <td align="center">沿用 Windows 或 macOS 注音的按鍵習慣</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/wizard-look.png" alt="調整候選字視窗的間距、位置與選字鍵"></td>
+    <td width="50%"><img src="docs/assets/screenshots/wizard-keys.png" alt="依設定產生的按鍵表"></td>
+  </tr>
+  <tr>
+    <td align="center">調整候選字視窗，預覽即時套用</td>
+    <td align="center">依你的設定產生按鍵表</td>
+  </tr>
+</table>
+
+## 特色
+
+- **整句輸入**：一句話連續打完，依整句的讀音與前後文選出最通順的寫法；一聲可以不按空白。
+- **按錯鍵也能打對**：相鄰鍵、多按、漏按、順序打反與聲調打錯都會試著修正，並記住你常按錯的鍵。
+- **依前文選字**：參考游標前的文字，聊天時偏向口語，寫文章時偏向書面語。
+- **記住你的用法**：選過的字詞與常一起出現的詞會越打越順，也可以新增自訂詞。
+- **在本機處理**：選字不連網路，前文只放在記憶體中，密碼欄位裡暫停讀取前文與學習。
+
+## 安裝
+
+從 [GitHub Releases](https://github.com/henry753951/ZhuyinType/releases/latest) 下載 `ZhuyinType-<版本>.pkg`，開啟後依指示安裝，需要 macOS 14 或更新版本與管理員權限。套件會安裝到 `/Library/Input Methods/ZhuyinType.app`。
+
+第一次使用時：
+
+1. 開啟「系統設定 → 鍵盤 → 輸入方式 → 編輯」（部分版本顯示為「文字輸入」）。
+2. 按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。已加入時可直接進行下一步。
+3. 從選單列的輸入法選單選擇「注音 ZhuyinType」，或按 Control-Space 切換（依系統快捷鍵設定）。
+
+清單尚未出現時，請登出再登入。每個帳號各自加入輸入方式。
+
+之後的版本會在你停止打字後自動更新（設定 → 關於 → 更新），更新檔都經過簽章驗證，正在使用的輸入法會在組字結束後換成新版，不需要登出或重新選擇輸入法。
+
+> [!NOTE]
+> 目前 app 採 ad-hoc 簽章，pkg 的簽署與公證尚待完成，套件使用建置機的架構。若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」查看開啟選項。曾從原始碼安裝者，請先移除 `~/Library/Input Methods/ZhuyinType.app`，再使用 pkg 版本。
+
+## 基本按鍵
+
+以下為預設設定；完整的按鍵表見 [產品設計 §2.1](docs/product/DESIGN.md#21-組字與按鍵)，「設定 → 快捷鍵」可重新指定。
+
+| 按鍵 | 操作 |
+|---|---|
+| 注音鍵、聲調鍵（6 3 4 7） | 輸入注音與聲調，連續輸入整句；空白是一聲 |
+| 空白 | 打完注音後送出整段並輸入空白（可在設定改成開啟候選字清單） |
+| ↓ | 開啟候選字清單；清單開著時，空白翻下一頁 |
+| 1–9 | 選取候選字 |
+| ↑ ↓ | 在清單裡移動 |
+| ← → | 在組字中移動游標；直式清單開著時改前一個或後一個字 |
+| ⇧↓／⇧↑ | 清單只列單字／列出按錯修正與模糊音 |
+| Return | 送出整段；清單開著時選取目前的候選字 |
+| ⌫ | 刪掉一個注音符號或游標前的字；清單開著時先關閉清單 |
+| Esc | 關閉清單；再按清除注音，再按清空組字 |
+| 單按 Shift | 中英切換 |
 
 ## 功能
 
-### 整句輸入
+<details>
+<summary>展開完整的功能說明</summary>
+
+#### 整句輸入
 
 - 一句話連續打完，不必逐字選字。ZhuyinType 依整句的讀音與前後文選出最通順的寫法，打字時即時更新。
 - 一聲可以不按空白：音節已完整、下一鍵是聲母時，自動在這裡斷開。
@@ -14,7 +96,7 @@
 - 多音字依台灣讀音計分，例如「說」打 ㄕㄨㄟˋ 時「睡」排在前面。
 - 「台」與「臺」可在設定擇一，候選字清單把兩種寫法合併成一項。
 
-### 按錯鍵也能打對
+#### 按錯鍵也能打對
 
 - 按到相鄰的鍵、多按一鍵、漏按一鍵、兩鍵順序打反，ZhuyinType 會試著修正，修正後的結果要明顯比照打的通順才會採用，打對的鍵優先。
 - 會參考按鍵的時間：35 毫秒內幾乎同時按下的兩鍵，比較可能是順序打反或誤觸。
@@ -23,7 +105,7 @@
 - 「設定」的「按錯鍵修正」可選關閉、標準或積極。
 - 從候選字清單選了修正過的字時，ZhuyinType 會記住你把哪個鍵按成哪個鍵，下次同樣的錯誤更容易修正。
 
-### 依前文選字
+#### 依前文選字
 
 - 開始組字時，讀取游標前最多 128 個字作為前文，選字時參考。
 - 依前文自動調整用語：前面是聊天，偏向口語；前面是文章，偏向書面語。
@@ -31,14 +113,14 @@
 - App 不提供游標前的文字時，改用你在同一個 App 裡 10 分鐘內送出的字，換輸入框也接得上。
 - 前文只放在記憶體中，不寫入磁碟。可在設定關閉；在密碼欄位中一律不讀取。
 
-### 候選字與改字
+#### 候選字與改字
 
 - ↓ 開啟候選字清單，長詞在前、單字在後，同一長度依前文排序。空白鍵預設送出並輸入空白，也可改成在組字中輸入空白（不送出）或開啟候選字視窗；清單開著時，空白翻頁。
 - ⇧↓ 只列單字，⇧↑ 列出按錯修正與模糊音的字。
 - 選字後，其他已顯示的字保持不變；選到詞中間的字時，同一個詞在它前面的字也不變。
 - 候選字視窗可調整排列（橫式、直式）、字級、每頁的候選字數、選字鍵、間距、位置（游標下方或上方）、外觀與動畫，設定頁的預覽會即時播放打字的過程。
 
-### 記住你的用法
+#### 記住你的用法
 
 - 選過的字詞，下次打同樣的讀音時直接採用。
 - 常一起出現的詞會越來越順：個人的一、二、三連詞統計分成短期（約一天內）與長期（約幾個月）兩層。
@@ -47,7 +129,7 @@
 - 可新增自訂詞，把個別字詞設為不記住，並匯出、匯入、清除個人資料。
 - 在密碼欄位中暫停學習。
 
-### 其他
+#### 其他
 
 - 標點按法可在設定選擇：
   - Windows（預設）：和 Windows 的微軟注音相同，Shift 加符號鍵打出鍵上的符號（例如 `<`、`_`），Control 加符號鍵打出中文標點（Control 加逗號是「，」）。
@@ -58,6 +140,8 @@
 - 設定的「分析」頁回顧打了多少字、改了幾次字，以及輸入法每個按鍵的反應時間；只記錄次數與時間，存在這台 Mac，可以關閉或清除。
 - 不常用的按鍵功能（打出注音本身、單字與修正清單、⌃ 與 ⌥ 的符號、Caps Lock 打英文等）可以個別關閉，按鍵交給 App；每個功能最多可以指定三個按鍵。
 - 所有輸入都在本機處理，不連網路選字。
+
+</details>
 
 ## 運作方式
 
@@ -77,40 +161,18 @@
 
 詞庫與語言模型以 mmap 載入，常駐記憶體約 29 MB。兩個神經模型以 Core ML 在 CPU 上執行。
 
-## 安裝
+## 準確率
 
-從 [GitHub Releases](https://github.com/henry753951/ZhuyinType/releases/latest) 下載 `ZhuyinType-<版本>.pkg`，開啟後依指示安裝。之後的版本會自動更新（設定 → 關於 → 更新），更新檔都經過簽章驗證，在組字結束後換上。
-套件安裝到 `/Library/Input Methods/ZhuyinType.app`，需要管理員權限。
-目前套件使用建置機的架構；app 採 ad-hoc 簽章，pkg 的簽署與公證尚待完成。
-若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」查看開啟選項。
-安裝新版後，正在使用的 ZhuyinType 會在目前的組字結束後自動換成新版，不需要登出或重新選擇輸入法。
+每次發布後，CI 會在同一套評測（ZhuyinBench）上測量整句全對率。以下為 [0.4.4 的結果](docs/benchmarks/v0.4.4.md)，沒有前文、每組最多 400 段，括號內把「台／臺」等寫法視為相同：
 
-第一次使用時：
-
-1. 開啟「系統設定 → 鍵盤 → 輸入方式 → 編輯」（部分版本顯示為「文字輸入」）。
-2. 按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。已加入時可直接進行下一步。
-3. 從選單列的輸入法選單選擇「注音 ZhuyinType」，或按 Control-Space 切換（依系統快捷鍵設定）。
-
-清單尚未出現時，請登出再登入。每個帳號各自加入輸入方式。
-曾從原始碼安裝者，請先移除 `~/Library/Input Methods/ZhuyinType.app`，再使用 pkg 版本。
-
-## 基本按鍵
-
-以下為預設設定；完整的按鍵表見 [產品設計 §2.1](docs/product/DESIGN.md#21-組字與按鍵)，「設定 → 快捷鍵」可重新指定。
-
-| 按鍵 | 操作 |
+| 測試集 | 整句全對率 |
 |---|---|
-| 注音鍵、聲調鍵（6 3 4 7） | 輸入注音與聲調，連續輸入整句；空白是一聲 |
-| 空白 | 打完注音後送出整段並輸入空白（可在設定改成開啟候選字清單） |
-| ↓ | 開啟候選字清單；清單開著時，空白翻下一頁 |
-| 1–9 | 選取候選字 |
-| ↑ ↓ | 在清單裡移動 |
-| ← → | 在組字中移動游標；直式清單開著時改前一個或後一個字 |
-| ⇧↓／⇧↑ | 清單只列單字／列出按錯修正與模糊音 |
-| Return | 送出整段；清單開著時選取目前的候選字 |
-| ⌫ | 刪掉一個注音符號或游標前的字；清單開著時先關閉清單 |
-| Esc | 關閉清單；再按清除注音，再按清空組字 |
-| 單按 Shift | 中英切換 |
+| 維基 | 82.8% |
+| 口語 | 84.0% |
+| 日常短句 | 100.0% |
+| Taiwan Tongues | 73.8%（85.0%） |
+
+前文、按錯鍵與候選字排序的結果，以及其他版本，見 [每版成績](docs/benchmarks/)；和其他注音輸入法在相同條件下的比較見 [這份文件](docs/benchmarks/competition.md)。
 
 ## 從原始碼建置
 

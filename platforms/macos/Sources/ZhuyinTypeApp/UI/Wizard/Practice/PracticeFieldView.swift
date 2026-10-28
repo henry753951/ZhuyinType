@@ -116,18 +116,37 @@ final class PracticeFieldView: NSView {
         }
         let appearing = panelHost.isHidden
         surface.appearance = preferences.panelAppearance.appearance
-        let size = candidates.update(list: panel.list, preview: panel.preview, keys: panel.keys, style: preferences.candidateStyle,
-                                     maxWidth: 4000, notice: panel.notice, zhuyinHint: panel.zhuyinHint)
+        let visible = panelRoom()
+        // A horizontal page too wide for the wizard drops the 單字／修正 buttons (as 顯示切換按鈕 off does; a list
+        // switched on still shows its button, and ⇧↓ ⇧↑ still work) before its candidates are squeezed.
+        var style = preferences.candidateStyle
+        if style.layout == .horizontal, style.showsListSwitches,
+           PanelMeasure.measure(list: panel.list, keys: panel.keys, style: style, notice: panel.notice,
+                                zhuyinHint: panel.zhuyinHint).size.width > visible.width {
+            style.showsListSwitches = false
+        }
+        let size = candidates.update(list: panel.list, preview: panel.preview, keys: panel.keys, style: style,
+                                     maxWidth: visible.width, notice: panel.notice, zhuyinHint: panel.zhuyinHint)
         surface.fitContent()
         surface.setFrameOrigin(.zero)
         let caret = compositionRect()
-        let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: bounds,
+        let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: visible,
                                              textInset: candidates.candidateTextInset,
                                              previousX: appearing ? nil : panelHost.frame.minX, above: opensAbove)
         panelHost.setFrameSize(size)
         panelHost.isHidden = false
         present(panelHost, origin: frame.origin, caret: caret, appearing: appearing)
         textView.panelChanged(panel)
+    }
+
+    /// Where the window may go, as the screen's visible frame is for the floating one: across the wizard window, over
+    /// whatever is beside the field (a horizontal list is wider than a field in a column), and up and down only the
+    /// room the field keeps for it.
+    private func panelRoom() -> NSRect {
+        guard let content = window?.contentView else { return bounds }
+        let across = convert(content.bounds, from: content).insetBy(dx: 12, dy: 0)
+        let minX = min(bounds.minX, across.minX), maxX = max(bounds.maxX, across.maxX)
+        return NSRect(x: minX, y: bounds.minY, width: maxX - minX, height: bounds.height)
     }
 
     /// The window as placed (for the self-tests): its frame in the field, and the scale it is drawn at (always 1).

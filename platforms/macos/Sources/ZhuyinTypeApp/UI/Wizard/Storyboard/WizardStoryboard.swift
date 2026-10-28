@@ -37,11 +37,17 @@ struct WizardStoryboard: View {
     }
 
     @ViewBuilder private var header: some View {
-        HStack(spacing: 12) {
-            if frame != .welcome {
-                Button { } label: { Label("上一步", systemImage: "chevron.left") }.buttonStyle(.borderless)
+        ZStack {
+            HStack(spacing: 12) {
+                if frame != .welcome {
+                    Button { } label: { Label("上一步", systemImage: "chevron.left") }.buttonStyle(.borderless)
+                }
+                Spacer()
+                if frame != .finish && frame != .keys {
+                    Button("全部跳過") { }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                }
             }
-            Spacer()
+            .padding(.horizontal, 20)
             if let step {
                 HStack(spacing: 6) {
                     ForEach(1...step.count, id: \.self) { index in
@@ -51,12 +57,7 @@ struct WizardStoryboard: View {
                     }
                 }
             }
-            Spacer()
-            if frame != .finish && frame != .keys {
-                Button("全部跳過") { }.buttonStyle(.borderless).foregroundStyle(.secondary)
-            }
         }
-        .padding(.horizontal, 20)
         .frame(height: 44)
     }
 

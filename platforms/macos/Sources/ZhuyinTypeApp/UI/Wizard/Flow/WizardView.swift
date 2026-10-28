@@ -68,21 +68,23 @@ struct WizardView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            if model.step != .welcome, model.index > 0, model.step != .keys {
-                Button { model.back() } label: { Label("上一步", systemImage: "chevron.left") }
-                    .buttonStyle(.borderless)
-                    .keyboardShortcut("[", modifiers: .command)
+        // The progress sits on the window's centre line whichever side buttons a step has; the side buttons line up
+        // with the content's edges (the title bar above holds the traffic lights).
+        ZStack {
+            HStack(spacing: 12) {
+                if model.step != .welcome, model.index > 0, model.step != .keys {
+                    Button { model.back() } label: { Label("上一步", systemImage: "chevron.left") }
+                        .buttonStyle(.borderless)
+                        .keyboardShortcut("[", modifiers: .command)
+                }
+                Spacer()
+                if model.step != .finish, model.step != .keys {
+                    Button("全部跳過") { model.skipAll() }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                }
             }
-            Spacer()
+            .padding(.horizontal, WizardLayout.margin)
             if model.step != .welcome, model.progress.count > 1 { WizardProgressBar(model: model) }
-            Spacer()
-            if model.step != .finish, model.step != .keys {
-                Button("全部跳過") { model.skipAll() }.buttonStyle(.borderless).foregroundStyle(.secondary)
-            }
         }
-        .padding(.leading, 84)
-        .padding(.trailing, 24)
         .frame(height: WizardLayout.headerHeight)
     }
 
@@ -247,7 +249,7 @@ private struct StepFooter<Leading: View, Trailing: View>: View {
             trailing()
         }
         .controlSize(.large)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, WizardLayout.margin)
         .frame(height: StepFooterMetrics.height)
     }
 }
