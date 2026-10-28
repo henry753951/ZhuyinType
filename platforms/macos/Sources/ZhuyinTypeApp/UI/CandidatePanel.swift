@@ -598,81 +598,86 @@ final class CandidateContentView: InputMaterialView {
         let activeRows = rows.prefix(indices.count)
         let gaps = CGFloat(max(0, indices.count - 1)) * spacing
         let naturalRowWidth = activeRows.reduce(0) { $0 + $1.preferredWidth }
-        if layout == .vertical { width = max(width, (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2) }
-        else { width = max(width, naturalRowWidth + gaps + padding * 2 + footerWidth) }
-        width = max(width, footerWidth + padding * 2)
-        // Pages of one list keep the widest width seen, so the window does not jump as pages turn.
-        width = min(maxWidth, ceil(max(width, steadySize.width)))
-        noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
-        previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
-        var x: CGFloat = 0
-        let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? footerWidth : 0))
-        let scale = min(1, availableWidth / max(1, naturalRowWidth))
-        // The rows' area: a vertical list with pages keeps room for a full page, so the last page is the same height.
-        let slots = layout == .vertical && hasPages ? max(indices.count, list?.pageSize ?? 0) : indices.count
-        let rowsTop = y
-        let rowsArea = NSRect(x: padding, y: rowsTop, width: max(0, width - padding * 2 - (layout == .horizontal ? footerWidth : 0)),
-                              height: listOpen ? (layout == .vertical ? CGFloat(slots) * rowHeight : rowHeight) : 0)
-        var rowY: CGFloat = 0
-        for row in activeRows {
-            let rowWidth = layout == .vertical ? width - padding * 2 : floor(row.preferredWidth * scale)
-            row.frame = NSRect(x: x, y: rowY, width: max(0, rowWidth), height: rowHeight)
-            if layout == .vertical { rowY += rowHeight } else { x += rowWidth + spacing }
+        func calculateWidth() -> CGFloat {
+            let rowsWidth = layout == .vertical ? (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2
+                : naturalRowWidth + gaps + padding * 2 + footerWidth
+            // Pages of one list keep the widest width seen, so the window does not jump as pages turn.
+            return min(maxWidth, ceil(max(width, rowsWidth, footerWidth + padding * 2, steadySize.width)))
         }
-        rowClip.frame = rowsArea
-        rowClip.isHidden = !listOpen
-        if let selected = activeRows.first(where: { $0.isSelectedRow }) {
-            highlight.radius = selected.cornerRadius
-            highlight.frame = selected.frame
-            highlightOrigin = selected.frame.origin
-            highlight.isHidden = false
-            highlight.needsDisplay = true
-        } else {
-            highlight.isHidden = true
-        }
-        layoutIsVertical = layout == .vertical
-        if layout == .vertical { y += rowsArea.height }
-        let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
-        if layout == .horizontal && listOpen { y += rowHeight }
-        candidateTextInset = listOpen ? padding + (activeRows.first?.textInset ?? 29) : 14
-        pageLabel.isHidden = !hasFooter
-        previous.isHidden = !hasFooter
-        next.isHidden = !hasFooter
-        zhuyinButton.isHidden = !hasHint
-        correctionButton.isHidden = !hasToggle
-        singleButton.isHidden = !hasSingle
-        if hasHint {
-            zhuyinButton.frame = NSRect(x: padding + 4, y: hintY + (compact ? 1 : 2),
-                                        width: min(ceil(zhuyinButton.preferredWidth), width - padding * 2 - 8), height: 22)
-        }
-        if hasFooter {
-            let footerX = layout == .horizontal ? width - footerWidth : padding + 4
-            singleButton.frame = NSRect(x: footerX, y: pageY, width: max(0, singleWidth - 8), height: 22)
-            correctionButton.frame = NSRect(x: footerX + singleWidth, y: pageY, width: max(0, toggleWidth - 8), height: 22)
-        }
-        if hasFooter, let list {
-            let pageText = "\(list.page + 1) / \(list.pageCount)"
-            if direction != 0, pageText != pageLabel.stringValue, animates, window?.isVisible == true {
-                let fade = CATransition()
-                fade.type = .fade
-                fade.duration = PageMotion.duration
-                fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                pageLabel.layer?.add(fade, forKey: "page")
+        width = calculateWidth()
+        func applyLayoutAndAnimation() -> NSSize {
+            noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
+            previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
+            var x: CGFloat = 0
+            let availableWidth = max(0, width - padding * 2 - gaps - (layout == .horizontal ? footerWidth : 0))
+            let scale = min(1, availableWidth / max(1, naturalRowWidth))
+            // The rows' area: a vertical list with pages keeps room for a full page, so the last page is the same height.
+            let slots = layout == .vertical && hasPages ? max(indices.count, list?.pageSize ?? 0) : indices.count
+            let rowsTop = y
+            let rowsArea = NSRect(x: padding, y: rowsTop, width: max(0, width - padding * 2 - (layout == .horizontal ? footerWidth : 0)),
+                                  height: listOpen ? (layout == .vertical ? CGFloat(slots) * rowHeight : rowHeight) : 0)
+            var rowY: CGFloat = 0
+            for row in activeRows {
+                let rowWidth = layout == .vertical ? width - padding * 2 : floor(row.preferredWidth * scale)
+                row.frame = NSRect(x: x, y: rowY, width: max(0, rowWidth), height: rowHeight)
+                if layout == .vertical { rowY += rowHeight } else { x += rowWidth + spacing }
             }
-            pageLabel.stringValue = pageText
-            pageLabel.frame = NSRect(x: width - 65, y: pageY + 3, width: 40, height: 16)
-            previous.frame = NSRect(x: width - 89, y: pageY, width: 22, height: 22)
-            next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
-            previous.isEnabled = list.page > 0
-            next.isEnabled = list.page + 1 < list.pageCount
-            if layout == .vertical { y += footerHeight }
+            rowClip.frame = rowsArea
+            rowClip.isHidden = !listOpen
+            if let selected = activeRows.first(where: { $0.isSelectedRow }) {
+                highlight.radius = selected.cornerRadius
+                highlight.frame = selected.frame
+                highlightOrigin = selected.frame.origin
+                highlight.isHidden = false
+                highlight.needsDisplay = true
+            } else {
+                highlight.isHidden = true
+            }
+            layoutIsVertical = layout == .vertical
+            if layout == .vertical { y += rowsArea.height }
+            let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
+            if layout == .horizontal && listOpen { y += rowHeight }
+            candidateTextInset = listOpen ? padding + (activeRows.first?.textInset ?? 29) : 14
+            pageLabel.isHidden = !hasFooter
+            previous.isHidden = !hasFooter
+            next.isHidden = !hasFooter
+            zhuyinButton.isHidden = !hasHint
+            correctionButton.isHidden = !hasToggle
+            singleButton.isHidden = !hasSingle
+            if hasHint {
+                zhuyinButton.frame = NSRect(x: padding + 4, y: hintY + (compact ? 1 : 2),
+                                            width: min(ceil(zhuyinButton.preferredWidth), width - padding * 2 - 8), height: 22)
+            }
+            if hasFooter {
+                let footerX = layout == .horizontal ? width - footerWidth : padding + 4
+                singleButton.frame = NSRect(x: footerX, y: pageY, width: max(0, singleWidth - 8), height: 22)
+                correctionButton.frame = NSRect(x: footerX + singleWidth, y: pageY, width: max(0, toggleWidth - 8), height: 22)
+            }
+            if hasFooter, let list {
+                let pageText = "\(list.page + 1) / \(list.pageCount)"
+                if direction != 0, pageText != pageLabel.stringValue, animates, window?.isVisible == true {
+                    let fade = CATransition()
+                    fade.type = .fade
+                    fade.duration = PageMotion.duration
+                    fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    pageLabel.layer?.add(fade, forKey: "page")
+                }
+                pageLabel.stringValue = pageText
+                pageLabel.frame = NSRect(x: width - 65, y: pageY + 3, width: 40, height: 16)
+                previous.frame = NSRect(x: width - 89, y: pageY, width: 22, height: 22)
+                next.frame = NSRect(x: width - 25, y: pageY, width: 22, height: 22)
+                previous.isEnabled = list.page > 0
+                next.isEnabled = list.page + 1 < list.pageCount
+                if layout == .vertical { y += footerHeight }
+            }
+            let size = NSSize(width: width, height: max(y + padding, listOpen ? steadySize.height : 0))
+            if listOpen { steadySize = size }
+            if frame.size != size { setFrameSize(size) }
+            placePages(direction: direction)
+            refreshHover()
+            return size
         }
-        let size = NSSize(width: width, height: max(y + padding, listOpen ? steadySize.height : 0))
-        if listOpen { steadySize = size }
-        if frame.size != size { setFrameSize(size) }
-        placePages(direction: direction)
-        refreshHover()
-        return size
+        return applyLayoutAndAnimation()
     }
     func resetHover() {
         hoveredRow = nil
