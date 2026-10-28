@@ -947,10 +947,14 @@ impl Engine {
             key.push_str(keys);
         }
         // Third-tone sandhi reads the syllable after the span's last one.
-        let following = self.channel.as_ref().and(tokens.get(start + span.len())).and_then(CompositionToken::reading);
-        if let Some(following) = following {
+        let following = self
+            .channel
+            .as_ref()
+            .filter(|c| c.settings.uses(ChannelClass::Sandhi))
+            .and(tokens.get(start + span.len()))
+            .and_then(CompositionToken::reading);
+        if following.is_some_and(|f| f.ends_with('ˇ')) {
             key.push('\u{2}');
-            key.push_str(following);
         }
         let (cached, revision) = {
             let mut state = self.lock();
@@ -1062,18 +1066,14 @@ impl Engine {
 
     /// Whether a path's reading can still lead to a word.
     fn known(&self, used: Option<&Used<'_>>, next: &str, next_base: &str) -> bool {
-        let known = {
-            let state = self.lock();
-            state.reading_prefixes.contains(next_base)
-                || self.mapped.as_ref().is_some_and(|m| m.contains_prefix(next_base))
-        };
-        known
-            && match used {
-                Some(Used { step: ChannelStep::Restricted(_), .. }) => {
-                    self.channel.as_ref().is_some_and(|c| c.has_prefix(next))
-                }
-                _ => true,
-            }
+        // A path through a restricted variant can only reach the indexed words: check those first, without the lock.
+        if let Some(Used { step: ChannelStep::Restricted(_), .. }) = used
+            && !self.channel.as_ref().is_some_and(|c| c.has_prefix(next))
+        {
+            return false;
+        }
+        let state = self.lock();
+        state.reading_prefixes.contains(next_base) || self.mapped.as_ref().is_some_and(|m| m.contains_prefix(next_base))
     }
 
     /// Walks the syllables' options depth first: the typed reading, its corrections and fuzzy sounds, and (once per
@@ -1122,6 +1122,11 @@ impl Engine {
             }
             let reading = step.reading();
             let next = if path.reading.is_empty() { reading.to_owned() } else { format!("{} {reading}", path.reading) };
+            if let ChannelStep::Restricted(_) = step
+                && !self.channel.as_ref().is_some_and(|c| c.has_prefix(&next))
+            {
+                continue;
+            }
             let option_base = without_tones(reading);
             let next_base = if path.base.is_empty() { option_base } else { format!("{} {option_base}", path.base) };
             let used = Some(Used { position: index, step });

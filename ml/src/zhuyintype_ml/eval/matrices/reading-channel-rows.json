@@ -14,6 +14,66 @@
    ]
   },
   {
+   "name": "plus2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-offset",
+    "lexicon=2",
+    "--channel-offset",
+    "taiwan=2",
+    "--channel-offset",
+    "word=2",
+    "--channel-offset",
+    "attested=2",
+    "--channel-offset",
+    "cns=2",
+    "--channel-offset",
+    "unihan=2",
+    "--channel-offset",
+    "series=2",
+    "--channel-offset",
+    "interjection=2",
+    "--channel-offset",
+    "taiwan-word=2",
+    "--channel-offset",
+    "neutral=2",
+    "--channel-offset",
+    "sandhi=2"
+   ]
+  },
+  {
+   "name": "nosingle",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none"
+   ]
+  },
+  {
+   "name": "single-interjection",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "interjection"
+   ]
+  },
+  {
+   "name": "single-taiwan-interjection",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "taiwan,interjection"
+   ]
+  },
+  {
    "name": "only-lexicon",
    "config": "app",
    "cli_args": [
@@ -124,121 +184,167 @@
    ]
   },
   {
-   "name": "sandhi-correction",
+   "name": "ns-v3best",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
-    "--channel-state",
-    "sandhi=correction"
-   ]
-  },
-  {
-   "name": "neutral-correction",
-   "config": "app",
-   "cli_args": [
-    "--channel",
-    "on",
-    "--channel-state",
-    "neutral=correction"
-   ]
-  },
-  {
-   "name": "v3-best",
-   "config": "app",
-   "cli_args": [
-    "--channel",
-    "on",
+    "--channel-single-classes",
+    "none",
     "--v3-variants",
     "best"
    ]
   },
   {
-   "name": "v3-zero",
+   "name": "ns-v3zero",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
+    "--channel-single-classes",
+    "none",
     "--v3-variants",
     "zero"
    ]
   },
   {
-   "name": "margin2",
+   "name": "ns-v3all",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
+    "--channel-single-classes",
+    "none",
+    "--v3-variant-window",
+    "1000"
+   ]
+  },
+  {
+   "name": "ns-sandhicorr",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-state",
+    "sandhi=correction"
+   ]
+  },
+  {
+   "name": "ns-neutralcorr",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-state",
+    "neutral=correction"
+   ]
+  },
+  {
+   "name": "ns-margin2",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
     "--reading-margin",
     "2"
    ]
   },
   {
-   "name": "margin8",
+   "name": "ns-margin8",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
+    "--channel-single-classes",
+    "none",
     "--reading-margin",
     "8"
    ]
   },
   {
-   "name": "plus2",
+   "name": "ns-cap2",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
-    "--channel-offset",
-    "lexicon=2",
-    "--channel-offset",
-    "taiwan=2",
-    "--channel-offset",
-    "word=2",
-    "--channel-offset",
-    "attested=2",
-    "--channel-offset",
-    "cns=2",
-    "--channel-offset",
-    "unihan=2",
-    "--channel-offset",
-    "series=2",
-    "--channel-offset",
-    "interjection=2",
-    "--channel-offset",
-    "taiwan-word=2",
-    "--channel-offset",
-    "neutral=2",
-    "--channel-offset",
-    "sandhi=2"
+    "--channel-single-classes",
+    "none",
+    "--channel-cap",
+    "2"
    ]
   },
   {
-   "name": "cap8",
+   "name": "ns-cap8",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
+    "--channel-single-classes",
+    "none",
     "--channel-cap",
     "8"
    ]
   },
   {
-   "name": "neutral-log",
+   "name": "ns-maxcost6",
    "config": "app",
    "cli_args": [
     "--channel",
     "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-max-cost",
+    "6"
+   ]
+  },
+  {
+   "name": "ns-neutrallog",
+   "config": "app",
+   "cli_args": [
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
     "--neutral-costs",
     "0.37,4.22"
    ]
   },
   {
-   "name": "off-neutral-log",
+   "name": "ns-plus1",
    "config": "app",
    "cli_args": [
-    "--neutral-costs",
-    "0.37,4.22"
+    "--channel",
+    "on",
+    "--channel-single-classes",
+    "none",
+    "--channel-offset",
+    "lexicon=1",
+    "--channel-offset",
+    "taiwan=1",
+    "--channel-offset",
+    "word=1",
+    "--channel-offset",
+    "attested=1",
+    "--channel-offset",
+    "cns=1",
+    "--channel-offset",
+    "unihan=1",
+    "--channel-offset",
+    "series=1",
+    "--channel-offset",
+    "interjection=1",
+    "--channel-offset",
+    "taiwan-word=1",
+    "--channel-offset",
+    "neutral=1",
+    "--channel-offset",
+    "sandhi=1"
    ]
   }
  ],

@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use zhuyin_core::api::FuzzySounds;
 use zhuyin_core::engine::{Engine, EngineConfig};
+use zhuyin_core::reading_channel::ChannelSettings;
 
 use crate::ZtStringList;
 use crate::strings::{borrowed, owned, set_error, string_list};
@@ -42,6 +43,16 @@ pub struct ZtEngineConfig {
     pub hotspot: bool,
     /// The reading channel's table (`channel.bin`), or NULL for no reading channel.
     pub reading_channel: *const c_char,
+    /// The reading channel's classes in use, one bit per class (`reading-channel.md`).
+    pub channel_classes: u32,
+    /// The classes a single-character word takes variants from.
+    pub channel_single_classes: u32,
+    /// The classes whose variants are corrections.
+    pub channel_corrections: u32,
+    /// The most lexicon readings one typed syllable reaches through the channel.
+    pub channel_options_per_syllable: u32,
+    /// Variants that cost more are left out.
+    pub channel_max_cost: f64,
 }
 
 /// The default settings (no chat model).
@@ -57,6 +68,11 @@ pub extern "C" fn zt_engine_config_default() -> ZtEngineConfig {
         domain_evidence_centre: config.domain_evidence_centre,
         hotspot: config.hotspot,
         reading_channel: std::ptr::null(),
+        channel_classes: u32::from(config.channel.classes),
+        channel_single_classes: u32::from(config.channel.single_classes),
+        channel_corrections: u32::from(config.channel.corrections),
+        channel_options_per_syllable: u32::try_from(config.channel.options_per_syllable).unwrap_or(u32::MAX),
+        channel_max_cost: config.channel.max_cost,
     }
 }
 
@@ -76,6 +92,14 @@ unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
         hotspot: config.hotspot,
         // SAFETY: NULL or a C string per the contract.
         reading_channel: unsafe { borrowed(config.reading_channel) }.map(PathBuf::from),
+        channel: ChannelSettings {
+            classes: (config.channel_classes & 0xffff) as u16,
+            single_classes: (config.channel_single_classes & 0xffff) as u16,
+            corrections: (config.channel_corrections & 0xffff) as u16,
+            options_per_syllable: config.channel_options_per_syllable as usize,
+            max_cost: config.channel_max_cost,
+            ..ChannelSettings::default()
+        },
         ..EngineConfig::default()
     }
 }

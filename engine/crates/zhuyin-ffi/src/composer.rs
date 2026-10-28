@@ -7,7 +7,7 @@ use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput, KeyResult,
     PunctuationKeys, ScoredSentence, SpaceAction, TypoTolerance,
 };
-use zhuyin_core::composer::Composer;
+use zhuyin_core::composer::{Composer, VariantScores};
 
 use crate::ZtEngine;
 use crate::strings::{ZtStrings, borrowed, owned, owned_optional};
@@ -453,6 +453,23 @@ pub unsafe extern "C" fn zt_composer_set_character_weight(composer: *mut ZtCompo
     // SAFETY: live handle.
     if let Some(composer) = unsafe { composer_mut(composer) } {
         composer.character_weight = weight;
+    }
+}
+
+/// How the character scorer scores characters only a reading-channel variant brings: 0 by their lexicon reading
+/// (one more call), 1 the position's best, 2 nothing, 3 as typed; only those within `window` nats of the best other
+/// character at their position.  Other values leave the setting.
+///
+/// # Safety
+/// `composer` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_set_variant_scores(composer: *mut ZtComposer, mode: u8, window: f64) {
+    // SAFETY: live handle.
+    if let Some(composer) = unsafe { composer_mut(composer) } {
+        if let Some(&mode) = VariantScores::ALL.get(usize::from(mode)) {
+            composer.variant_scores = mode;
+        }
+        composer.variant_window = window;
     }
 }
 

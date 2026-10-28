@@ -143,6 +143,7 @@ class AgainstRust(unittest.TestCase):
             for settings in (
                 engine_channel.Settings(),
                 engine_channel.Settings(offsets={"word": 2.0, "series": -1.0}, max_cost=7.0),
+                engine_channel.Settings(single_classes={"taiwan"}),
             ):
                 python = engine_channel.table(channel, lexicon, settings)
                 rust = engine_channel.rust_table(

@@ -22,6 +22,17 @@ func checked<T>(_ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> 
     throw EngineError(message: take(error) ?? "unknown error")
 }
 
+/// The reading channel's settings (`resources/formats/reading-channel.md`): class bits in the table's order, the
+/// options per typed syllable and the cost limit.
+public struct ChannelSettings: Sendable {
+    public var classes: UInt32?
+    public var singleClasses: UInt32?
+    public var corrections: UInt32?
+    public var optionsPerSyllable: UInt32?
+    public var maxCost: Double?
+    public init() {}
+}
+
 public final class Engine: @unchecked Sendable {
     let handle: OpaquePointer
 
@@ -29,8 +40,19 @@ public final class Engine: @unchecked Sendable {
     nonisolated(unsafe) public static var chatModelDirectory: URL?
     /// The reading channel's table (`channel.bin`), read when an engine is created; nil turns the channel off.
     nonisolated(unsafe) public static var readingChannel: URL?
+    /// The reading channel's settings; nil fields keep the engine's defaults.
+    nonisolated(unsafe) public static var channelSettings = ChannelSettings()
 
-    private static func config() -> ZtEngineConfig { zt_engine_config_default() }
+    private static func config() -> ZtEngineConfig {
+        var config = zt_engine_config_default()
+        let settings = channelSettings
+        if let classes = settings.classes { config.channel_classes = classes }
+        if let classes = settings.singleClasses { config.channel_single_classes = classes }
+        if let classes = settings.corrections { config.channel_corrections = classes }
+        if let cap = settings.optionsPerSyllable { config.channel_options_per_syllable = cap }
+        if let cost = settings.maxCost { config.channel_max_cost = cost }
+        return config
+    }
 
     public init(lexiconURL: URL, userDataDirectory: URL?) throws {
         var config = Self.config()

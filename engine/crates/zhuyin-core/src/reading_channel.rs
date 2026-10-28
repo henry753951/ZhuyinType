@@ -105,6 +105,8 @@ pub struct ChannelSettings {
     pub classes: u16,
     /// The classes whose variants are corrections; the others are accepted readings.
     pub corrections: u16,
+    /// The classes a single-character word takes variants from (a subset of `classes`).
+    pub single_classes: u16,
     /// Nats added to each class's cost, by [`ChannelClass`] order.
     pub offsets: [f64; 11],
     /// Variants that cost more than this (after the offset) are left out.
@@ -118,6 +120,7 @@ impl Default for ChannelSettings {
         Self {
             classes: ChannelClass::ALL.iter().fold(0, |bits, c| bits | c.bit()),
             corrections: ChannelClass::Series.bit(),
+            single_classes: ChannelClass::ALL.iter().fold(0, |bits, c| bits | c.bit()),
             offsets: [0.0; 11],
             max_cost: 8.0,
             options_per_syllable: 4,
@@ -135,6 +138,12 @@ impl ChannelSettings {
     /// Turns a class on or off.
     pub fn set_uses(&mut self, class: ChannelClass, on: bool) {
         if on { self.classes |= class.bit() } else { self.classes &= !class.bit() }
+    }
+
+    /// Whether a single-character word takes the class's variants.
+    #[must_use]
+    pub fn single_uses(&self, class: ChannelClass) -> bool {
+        self.single_classes & class.bit() != 0
     }
 
     /// Whether the class's variants are corrections.
@@ -158,10 +167,11 @@ impl ChannelSettings {
 /// A variant never ties with the lexicon reading, even where a source gives it the larger share.
 pub const TIE: f64 = 0.01;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 struct CharacterRows {
-    start: usize,
-    count: usize,
+    character: char,
+    start: u32,
+    count: u32,
     familiar: bool,
 }
 
@@ -185,9 +195,11 @@ struct TaiwanRow {
 pub struct ChannelTable {
     syllables: Vec<Arc<str>>,
     syllable_ids: HashMap<Arc<str>, u32>,
-    characters: HashMap<char, CharacterRows>,
+    /// Sorted by character.
+    characters: Vec<CharacterRows>,
     rows: Vec<Row>,
-    taiwan: HashMap<(char, u32), TaiwanRow>,
+    /// Sorted by (character, word syllable).
+    taiwan: Vec<(char, u32, TaiwanRow)>,
     /// m: the share of character positions typed with another reading of the character.
     pub misread: f64,
     /// The share of neutral-tone syllables typed with a full tone.
@@ -228,43 +240,39 @@ impl ChannelTable {
         let mut table = ChannelTable {
             syllables: vec![],
             syllable_ids: HashMap::new(),
-            characters: HashMap::new(),
+            characters: Vec::new(),
             rows: Vec::with_capacity(rows.len()),
-            taiwan: HashMap::new(),
+            taiwan: Vec::with_capacity(taiwan.len()),
             misread,
             neutral_full_tone,
         };
         let familiar: HashSet<char> = familiar.chars().collect();
-        // Each character's rows together, characters in order of first appearance, rows in their order.
-        let mut slots: HashMap<char, usize> = HashMap::new();
-        let mut placed: Vec<(usize, usize, Row)> = Vec::with_capacity(rows.len());
-        for (order, &(character, reading, class, logp)) in rows.iter().enumerate() {
+        // Each character's rows together (in their order), characters sorted.
+        let mut order: Vec<usize> = (0..rows.len()).collect();
+        order.sort_by_key(|&i| (rows[i].0, i));
+        for i in order {
+            let (character, reading, class, logp) = rows[i];
             let syllable = table.intern(reading);
-            let next = slots.len();
-            let slot = *slots.entry(character).or_insert(next);
-            placed.push((slot, order, Row { syllable, class, probability: logp.exp() }));
-        }
-        placed.sort_unstable_by_key(|&(slot, order, _)| (slot, order));
-        let mut characters: Vec<char> = vec!['\0'; slots.len()];
-        for (&character, &slot) in &slots {
-            characters[slot] = character;
-        }
-        for group in placed.chunk_by(|a, b| a.0 == b.0) {
-            let character = characters[group[0].0];
-            table.characters.insert(
-                character,
-                CharacterRows { start: table.rows.len(), count: group.len(), familiar: familiar.contains(&character) },
-            );
-            table.rows.extend(group.iter().map(|g| g.2));
+            let index = u32::try_from(table.rows.len()).unwrap_or(u32::MAX);
+            match table.characters.last_mut() {
+                Some(last) if last.character == character => last.count += 1,
+                _ => table.characters.push(CharacterRows {
+                    character,
+                    start: index,
+                    count: 1,
+                    familiar: familiar.contains(&character),
+                }),
+            }
+            table.rows.push(Row { syllable, class, probability: logp.exp() });
         }
         for &(character, word_reading, taiwan_reading, log_strength, standard) in taiwan {
             let word_syllable = table.intern(word_reading);
             let taiwan_syllable = table.intern(taiwan_reading);
-            table.taiwan.insert(
-                (character, word_syllable),
-                TaiwanRow { taiwan: taiwan_syllable, strength: log_strength.exp(), standard },
-            );
+            let row = TaiwanRow { taiwan: taiwan_syllable, strength: log_strength.exp(), standard };
+            table.taiwan.push((character, word_syllable, row));
         }
+        table.taiwan.sort_by_key(|t| (t.0, t.1));
+        table.taiwan.dedup_by_key(|t| (t.0, t.1));
         table
     }
 
@@ -285,10 +293,12 @@ impl ChannelTable {
     /// # Errors
     /// [`DataError::Io`] when the file cannot be read, [`DataError::InvalidChannel`] when a check fails.
     pub fn open(path: &Path) -> Result<Self, DataError> {
-        let data = std::fs::read(path)?;
-        Self::parse(&data).ok_or(DataError::InvalidChannel)
+        let mapping = crate::binary::Mapping::open(path)?;
+        Self::parse(mapping.bytes()).ok_or(DataError::InvalidChannel)
     }
 
+    // One function: the header, then each table checked as it is read.
+    #[allow(clippy::too_many_lines)]
     fn parse(data: &[u8]) -> Option<Self> {
         let u32_at =
             |offset: usize| -> Option<u32> { Some(u32::from_le_bytes(data.get(offset..offset + 4)?.try_into().ok()?)) };
@@ -314,64 +324,73 @@ impl ChannelTable {
             return None;
         }
         let blob = &data[sections[4]..];
-        let mut syllables: Vec<String> = Vec::with_capacity(syllable_count);
+        let mut table = ChannelTable {
+            syllables: Vec::with_capacity(syllable_count),
+            syllable_ids: HashMap::with_capacity(syllable_count),
+            characters: Vec::with_capacity(character_count),
+            rows: Vec::with_capacity(row_count),
+            taiwan: Vec::with_capacity(taiwan_count),
+            misread,
+            neutral_full_tone: neutral,
+        };
         for i in 0..syllable_count {
             let (start, length) = (u32_at(sections[0] + i * 8)? as usize, u32_at(sections[0] + i * 8 + 4)? as usize);
             let text = std::str::from_utf8(blob.get(start..start.checked_add(length)?)?).ok()?;
-            if text.is_empty() || syllables.last().is_some_and(|last| last.as_bytes() >= text.as_bytes()) {
+            if text.is_empty() || table.syllables.last().is_some_and(|last| last.as_bytes() >= text.as_bytes()) {
                 return None;
             }
-            syllables.push(text.to_owned());
+            table.intern(text);
         }
-        let mut rows: Vec<TableRow<'_>> = Vec::with_capacity(row_count);
-        let mut familiar = String::new();
-        let mut covered = 0;
-        let mut previous: Option<char> = None;
+        let mut covered = 0usize;
         for i in 0..character_count {
             let p = sections[1] + i * 16;
             let character = char::from_u32(u32_at(p)?)?;
-            let (start, count, flag) = (u32_at(p + 4)? as usize, u32_at(p + 8)? as usize, u32_at(p + 12)?);
-            if previous.is_some_and(|c| c >= character) || start != covered || count == 0 || flag > 1 {
+            let (start, count, flag) = (u32_at(p + 4)?, u32_at(p + 8)?, u32_at(p + 12)?);
+            if table.characters.last().is_some_and(|c| c.character >= character)
+                || start as usize != covered
+                || count == 0
+                || flag > 1
+            {
                 return None;
             }
-            previous = Some(character);
-            covered = start.checked_add(count)?;
+            covered = covered.checked_add(count as usize)?;
             if covered > row_count {
                 return None;
             }
-            if flag == 1 {
-                familiar.push(character);
-            }
-            for r in start..covered {
+            table.characters.push(CharacterRows { character, start, count, familiar: flag == 1 });
+            for r in start as usize..covered {
                 let q = sections[2] + r * 16;
-                let (logp, syllable, class) = (f64_at(q)?, u32_at(q + 8)? as usize, u32_at(q + 12)?);
-                if !logp.is_finite() || logp > 1e-9 || syllable >= syllable_count || class >= CLASS_COUNT {
+                let (logp, syllable, class) = (f64_at(q)?, u32_at(q + 8)?, u32_at(q + 12)?);
+                if !logp.is_finite() || logp > 1e-9 || syllable as usize >= syllable_count || class >= CLASS_COUNT {
                     return None;
                 }
-                rows.push((character, &syllables[syllable], ChannelClass::ALL[class as usize], logp));
+                table.rows.push(Row { syllable, class: ChannelClass::ALL[class as usize], probability: logp.exp() });
             }
         }
         if covered != row_count {
             return None;
         }
-        let mut taiwan: Vec<TaiwanTableRow<'_>> = Vec::with_capacity(taiwan_count);
         for i in 0..taiwan_count {
             let p = sections[3] + i * 24;
             let character = char::from_u32(u32_at(p)?)?;
-            let (word, standard_reading, standard) =
-                (u32_at(p + 4)? as usize, u32_at(p + 8)? as usize, u32_at(p + 12)?);
+            let (word, taiwan, standard) = (u32_at(p + 4)?, u32_at(p + 8)?, u32_at(p + 12)?);
             let strength = f64_at(p + 16)?;
-            if word >= syllable_count
-                || standard_reading >= syllable_count
+            if word as usize >= syllable_count
+                || taiwan as usize >= syllable_count
                 || standard > 1
                 || !strength.is_finite()
                 || strength > 1e-9
+                || table.taiwan.last().is_some_and(|t| (t.0, t.1) >= (character, word))
             {
                 return None;
             }
-            taiwan.push((character, &syllables[word], &syllables[standard_reading], strength, standard == 1));
+            table.taiwan.push((
+                character,
+                word,
+                TaiwanRow { taiwan, strength: strength.exp(), standard: standard == 1 },
+            ));
         }
-        Some(Self::new(&rows, &taiwan, &familiar, misread, neutral))
+        Some(table)
     }
 
     /// Number of (character, reading) rows.
@@ -381,9 +400,12 @@ impl ChannelTable {
     }
 
     fn rows_of(&self, character: char) -> (&[Row], bool) {
-        match self.characters.get(&character) {
-            Some(c) => (&self.rows[c.start..c.start + c.count], c.familiar),
-            None => (&[], false),
+        match self.characters.binary_search_by_key(&character, |c| c.character) {
+            Ok(i) => {
+                let c = self.characters[i];
+                (&self.rows[c.start as usize..(c.start + c.count) as usize], c.familiar)
+            }
+            Err(_) => (&[], false),
         }
     }
 
@@ -427,7 +449,13 @@ impl ChannelTable {
     ) {
         let (rows, familiar) = self.rows_of(character);
         let id = self.id(syllable);
-        let taiwan = if single { None } else { id.and_then(|id| self.taiwan.get(&(character, id))) };
+        let taiwan = if single {
+            None
+        } else {
+            id.and_then(|id| {
+                self.taiwan.binary_search_by_key(&(character, id), |t| (t.0, t.1)).ok().map(|i| &self.taiwan[i].2)
+            })
+        };
         if rows.is_empty() && taiwan.is_none() {
             return;
         }
@@ -458,7 +486,7 @@ impl ChannelTable {
             }
         } else if single {
             if let Some(top) = rows.iter().find(|r| Some(r.syllable) == id).map(|r| r.probability) {
-                for row in rows.iter().filter(|r| Some(r.syllable) != id) {
+                for row in rows.iter().filter(|r| Some(r.syllable) != id && settings.single_uses(r.class)) {
                     add(&mut found, row.syllable, row.class, TIE.max(-(row.probability / top).ln()));
                 }
             }
@@ -573,16 +601,6 @@ pub struct ChannelIndex {
     readings: Vec<((u32, u32), u32, u32)>,
     /// (word index, syllable): syllables at the word's variant position that it has its own lexicon rows for, sorted.
     excluded: Vec<(u32, Arc<str>)>,
-    /// Hashes of the toned prefixes of the indexed readings, from their variant position on (a collision only lets a
-    /// path go one lookup further).
-    prefixes: HashSet<u64>,
-}
-
-fn prefix_hash(reading: &str) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::hash::DefaultHasher::new();
-    reading.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// One lexicon row, borrowed.
@@ -685,15 +703,20 @@ impl ChannelIndex {
             cost: f64,
             score: f64,
         }
-        let mut rows: Vec<OptionRow> = Vec::new();
+        // A first pass counts, so every buffer is allocated once at its final size.
+        let (mut variant_count, mut word_count, mut text_size) = (0usize, 0usize, 0usize);
+        Self::for_each_variant(table, settings, lexicon, |row, _, _, _, variants, _| {
+            variant_count += variants.len();
+            word_count += 1;
+            text_size += row.word.len() + row.reading.len();
+        });
+        let mut rows: Vec<OptionRow> = Vec::with_capacity(variant_count);
         // (reading span, word); the word's index in `found` keys its exclusions.
-        let mut found: Vec<((u32, u32), IndexedWord)> = Vec::new();
+        let mut found: Vec<((u32, u32), IndexedWord)> = Vec::with_capacity(word_count);
         let mut excluded_found: Vec<(u32, Arc<str>)> = Vec::new();
         let mut lexicon_syllables: Vec<Arc<str>> = Vec::new();
         let mut lexicon_ids: HashMap<Arc<str>, u32> = HashMap::new();
-        let mut text = String::new();
-        let mut prefixes: HashSet<u64> = HashSet::new();
-        let mut prefix = String::new();
+        let mut text = String::with_capacity(text_size);
         let mut last_reading: Option<(u32, u32)> = None;
         let span = |text: &mut String, value: &str| -> (u32, u32) {
             let start = u32::try_from(text.len()).unwrap_or(u32::MAX);
@@ -745,16 +768,6 @@ impl ChannelIndex {
                     single,
                 },
             ));
-            prefix.clear();
-            for (i, syllable) in row.reading.split(' ').filter(|p| !p.is_empty()).enumerate() {
-                if i > 0 {
-                    prefix.push(' ');
-                }
-                prefix.push_str(syllable);
-                if i >= position {
-                    prefixes.insert(prefix_hash(&prefix));
-                }
-            }
         });
         drop(lexicon_ids);
         // Options: group by (typed, lexicon syllable, state), one entry per (character, single), the best score.
@@ -824,10 +837,9 @@ impl ChannelIndex {
             excluded_found.into_iter().map(|(old, syllable)| (new_index[old as usize], syllable)).collect();
         excluded.sort_unstable_by(|a, b| (a.0, a.1.as_bytes()).cmp(&(b.0, b.1.as_bytes())));
         readings.shrink_to_fit();
-        prefixes.shrink_to_fit();
         text.shrink_to_fit();
         let sandhi_cost = table.sandhi_cost() + settings.offset(ChannelClass::Sandhi);
-        ChannelIndex { settings: settings.clone(), sandhi_cost, options, text, words, readings, excluded, prefixes }
+        ChannelIndex { settings: settings.clone(), sandhi_cost, options, text, words, readings, excluded }
     }
 
     fn text_of(&self, span: (u32, u32)) -> &str {
@@ -893,9 +905,14 @@ impl ChannelIndex {
         self.options.get(syllable).map_or(&[], Vec::as_slice)
     }
 
-    /// Whether some indexed reading starts with `reading` (toned) from its variant position on.
+    /// Whether some indexed reading is `reading` (toned) or starts with it and a space: the first reading at or
+    /// after it in the sorted table tells.
     pub(crate) fn has_prefix(&self, reading: &str) -> bool {
-        self.prefixes.contains(&prefix_hash(reading))
+        let first = self.readings.partition_point(|r| self.text_of(r.0).as_bytes() < reading.as_bytes());
+        self.readings.get(first).is_some_and(|r| {
+            let found = self.text_of(r.0);
+            found == reading || (found.starts_with(reading) && found.as_bytes()[reading.len()] == b' ')
+        })
     }
 
     /// The sandhi syllable for `typed` before `next`: a second and a third tone swap before a third tone.

@@ -16,6 +16,17 @@ var arguments = Array(CommandLine.arguments.dropFirst())
 var models: URL?
 var timing = false
 var channel: String?
+var variantScores: (UInt8, Double)?
+var channelSettings = ChannelSettings()
+let channelClasses = ["lexicon", "taiwan", "word", "attested", "cns", "unihan", "series", "interjection", "taiwan-word",
+                      "neutral", "sandhi"]
+func classBits(_ list: String) -> UInt32 {
+    list.split(separator: ",").reduce(0) { bits, name in
+        if name == "none" { return bits }
+        guard let index = channelClasses.firstIndex(of: String(name)) else { fail("unknown class \(name)") }
+        return bits | (1 << UInt32(index))
+    }
+}
 while let option = arguments.first, option.hasPrefix("--") {
     switch option {
     case "--models":
@@ -25,6 +36,26 @@ while let option = arguments.first, option.hasPrefix("--") {
     case "--timing":
         timing = true
         arguments.removeFirst()
+    case "--v3-variants":
+        // As zhuyin-cli: standard, best, zero or typed, with the window after a comma (default 3).
+        guard arguments.count >= 2 else { fail("--v3-variants needs standard, best, zero or typed") }
+        let parts = arguments[1].split(separator: ",")
+        guard let mode = ["standard", "best", "zero", "typed"].firstIndex(of: String(parts[0])) else {
+            fail("--v3-variants needs standard, best, zero or typed")
+        }
+        variantScores = (UInt8(mode), parts.count > 1 ? Double(parts[1]) ?? 3 : 3)
+        arguments.removeFirst(2)
+    case "--channel-classes", "--channel-single-classes", "--channel-cap", "--channel-max-cost":
+        // As zhuyin-cli.
+        guard arguments.count >= 2 else { fail("\(option) needs a value") }
+        let value = arguments[1]
+        switch option {
+        case "--channel-classes": channelSettings.classes = classBits(value)
+        case "--channel-single-classes": channelSettings.singleClasses = classBits(value)
+        case "--channel-cap": channelSettings.optionsPerSyllable = UInt32(value) ?? 4
+        default: channelSettings.maxCost = Double(value) ?? 8
+        }
+        arguments.removeFirst(2)
     case "--channel":
         // The reading channel: `on` for channel.bin beside the lexicon, a path, or `off`.
         guard arguments.count >= 2 else { fail("--channel needs on, off or a path") }
@@ -71,6 +102,7 @@ func exists(_ directory: String, _ file: String) -> URL? {
 }
 let loadStart = Date()
 Engine.chatModelDirectory = exists("lm_chat", "lm.bin") ?? exists("lm_chat", "bigram.tsv")
+Engine.channelSettings = channelSettings
 Engine.readingChannel = channel.map { $0 == "on" ? models.appendingPathComponent("channel.bin") : URL(fileURLWithPath: $0) }
 let engine: Engine
 do { engine = try Engine(lexiconURL: models.appendingPathComponent("lexicon.tsv"), userDataDirectory: nil) }
@@ -93,6 +125,7 @@ var recentText = ""
 var options = ComposerOptions()
 options.learningEnabled = ProcessInfo.processInfo.environment["ZHUYIN_BENCH_LEARNING"] != "off"
 let composer = Composer(engine: engine, options: options)
+if let (mode, window) = variantScores { composer.setVariantScores(mode: mode, window: window) }
 if let characterModel {
     composer.characterWeight = SyllableScorer.appWeight
     composer.characterScorer = { syllables, candidates in

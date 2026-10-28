@@ -351,6 +351,16 @@ typedef struct {
   bool hotspot;
   // The reading channel's table (`channel.bin`), or NULL for no reading channel.
   const char *reading_channel;
+  // The reading channel's classes in use, one bit per class (`reading-channel.md`).
+  uint32_t channel_classes;
+  // The classes a single-character word takes variants from.
+  uint32_t channel_single_classes;
+  // The classes whose variants are corrections.
+  uint32_t channel_corrections;
+  // The most lexicon readings one typed syllable reaches through the channel.
+  uint32_t channel_options_per_syllable;
+  // Variants that cost more are left out.
+  double channel_max_cost;
 } ZtEngineConfig;
 
 // One personal-data entry.
@@ -559,6 +569,16 @@ void zt_composer_set_reranking_count(ZtComposer *composer, size_t count);
 // # Safety
 // `composer` is a live handle.
 void zt_composer_set_character_weight(ZtComposer *composer, double weight);
+
+// How the character scorer scores characters only a reading-channel variant brings: 0 by their lexicon reading
+// (one more call), 1 the position's best, 2 nothing, 3 as typed; only those within `window` nats of the best other
+// character at their position.  Other values leave the setting.
+//
+// # Safety
+// `composer` is a live handle.
+void zt_composer_set_variant_scores(ZtComposer *composer,
+                                    uint8_t mode,
+                                    double window);
 
 // Whether the character scorer also orders the candidate list.
 //

@@ -128,3 +128,56 @@
 9. v3 重訓的讀音雜訊用同一張表與同一套狀態：接受的讀音 `cost_bucket` 0，修正依成本分桶。重訓的 v3 採用後，拿掉第 7 點的過渡做法。
 10. `zhuyin-cli` 加除錯輸出，印出每個候選走了哪一類變體與成本；`zt eval losses --channel` 依類別分組。
 11. 驗收照提案 §2.3。Mac 上每鍵 p95 不增加（`tools/zt eval latency`）。
+
+## channel.bin（ZTCB/1）
+
+引擎讀的二進位版本。`zt data compile` 從資料目錄的 `channel/`（沒有時用 `lexicon_coverage/channel/`）的 `channel.tsv`、`taiwan.tsv`、`familiar.txt` 與 `channel.json` 編成，放在詞庫旁邊；`channel.json`（和 `channel.bin` 同名的中繼資料）記錄四個來源檔的 SHA-256，來源沒變時不重編。編譯程式是 `ml/src/zhuyintype_ml/training/lm/compile_data.py` 的 `compile_channel`，讀取程式是 `engine/crates/zhuyin-core/src/reading_channel.rs` 的 `ChannelTable::open`。
+
+所有數字是 little-endian。檔頭 96 位元組：
+
+| 位移 | 型別 | 內容 |
+|---|---|---|
+| 0 | 4 位元組 | `ZTCB` |
+| 4 | u32 | 版本 1 |
+| 8 | u32 | 音節數 S |
+| 12 | u32 | 字數 C |
+| 16 | u32 | 列數 N |
+| 20 | u32 | 台灣讀音數 T |
+| 24、28 | u32 | 保留，0 |
+| 32 | f64 | `misread`（m） |
+| 40 | f64 | `neutral_full_tone` |
+| 48–95 | 6 × u64 | 音節表、字表、列、台灣讀音、字串區的起點，以及檔案大小 |
+
+每一區從 8 位元組的邊界開始：
+
+| 區 | 每筆 | 內容 |
+|---|---|---|
+| 音節表 | 8 位元組 | 字串區裡的（起點 u32，長度 u32），依 UTF-8 位元組排序，不重複 |
+| 字表 | 16 位元組 | 字的碼位 u32、第一列 u32、列數 u32、熟悉的字 u32（1 或 0），依碼位排序；各字的列連續 |
+| 列 | 16 位元組 | log P f64、音節 u32、類別 u32（0 lexicon、1 taiwan、2 word、3 attested、4 cns、5 unihan、6 series、7 interjection）；同一個字的列照 `channel.tsv` 的順序 |
+| 台灣讀音 | 24 位元組 | 字 u32、詞裡的讀音 u32、台灣讀音 u32、標準讀音 u32（1 或 0）、log strength f64，依（字，讀音的位元組）排序 |
+| 字串區 | — | 音節的 UTF-8 |
+
+讀取時檢查每個數量、位移、參照與分數（log P 有限且不大於 0；m 與輕聲比例在 0 和 1 之間），任一項不符就拒絕整個檔案（`DataError::InvalidChannel`）。成本不存在檔案裡，引擎載入時依參數計算，所以調成本不必重編。
+
+## 引擎的做法（`reading_channel.rs`）
+
+- **開關。** `zhuyin-cli --channel on`（詞庫旁的 `channel.bin`）或 `--channel PATH`；沒有給時讀音通道關閉，輸出和沒有讀音通道的引擎逐位元相同。App 目前不開；C 介面的 `ZtEngineConfig.reading_channel` 與 EngineBench 的 `--channel` 用來量 App 的路徑。
+- **類別。** `channel.tsv` 的八類，加上 `taiwan-word`（`taiwan.tsv`）、`neutral`（輕聲打本調）與 `sandhi`（三聲變調），共十一類。每類可以關掉（`--channel-classes`）、加成本（`--channel-offset CLASS=NATS`）、改狀態（`--channel-state CLASS=accepted|correction`）。預設 `series` 是修正，其他是接受的讀音；成本超過 `--channel-max-cost`（預設 8）的不用。
+- **一個字的變體。** 詞庫的一列（詞，讀音）裡，位置 i 的字 c 讀 s 時：
+  - 多字詞且 `taiwan.tsv` 有（c，s）：台灣讀音，標準讀音成本 0，其他 −log strength；
+  - 多字詞且 s 是輕聲：c 的其他非輕聲、不同音的讀音 r，−log neutral − log(P(r) / 這些讀音的機率和)；
+  - 單字詞（只用這個字最好的一列）：c 的其他讀音 r，max(0.01, −log(P(r) / P(s)))；
+  - 多字詞且 c 不是熟悉的字：c 的其他不同音的讀音 r，−log m − log(P(r) / (1 − P(s)))。
+  
+  同一個打的讀音以先出現的類別為準；成本依原表的列順序逐項相加，Python 的參考實作（`zhuyintype_ml.training.lexicon.engine_channel`）照同樣的順序，兩邊的整張表逐位元相同。
+- **詞庫的列優先。** 同一個詞只改這個位置的另一列已經是打的讀音時（鮮蚵 有 ㄒㄧㄢ ㄎㄜ 這一列），這個變體不用。
+- **對不齊的詞跳過。** 字數和音節數不同、或含非漢字的詞（T恤、兒化）沒有變體；超過 8 個音節的詞也沒有。
+- **索引。** 載入時掃一次詞庫，把有變體的列依（詞庫讀音，位置，字）建索引，另外記下這些讀音從變體位置起的前綴雜湊值。打的音節查到「詞庫音節 s 與可以這樣打的字」的選項；比對時沿著 s 往下走，只查索引裡這個讀音、這個位置、這些字的詞，不查完整個讀音再過濾。
+- **選項上限。** 每個打的音節最多 4 個詞庫音節（`--channel-cap`），依「經由它能得到的最好的詞分數」（log P(詞) + log P(讀音 | 詞) − 成本）排序。
+- **一個詞最多一個音節。** 走過讀音通道的路徑不再走第二次；兩個音節同時改變的（蚵仔煎 ㄎㄜ ㄚˇ）只靠詞庫的列。
+- **三聲變調。** 打的音節是二聲或三聲、下一個打的音節是三聲時，另一個聲調也是選項，所有詞都可以，但「一」「不」在這個位置的不算（它們的變調是詞庫的列）。成本 −log m。比對的快取鍵因此包含範圍後面那一個音節。
+- **三種狀態。** 接受的讀音不標註、不算編輯、不是修正；修正標出詞庫讀音、算一次編輯，`SentenceWord.reading_corrected` 為真，重排時要贏過照按鍵打的最好整句 `reading_margin`（預設 4，`--reading-margin`）。同時有按錯鍵修正的詞照按錯鍵的 `exact_margin`。從讀音通道選字不記成按錯鍵的習慣。
+- **輕聲容忍。** 詞庫輕聲打成同音他調的 0.4、詞庫有聲調打成輕聲的 1.2 改為引擎參數（`--neutral-costs`），預設不變。
+- **v3。** 各位置候選字截斷時，變體字依不含變體成本的分數排序。只因變體進來、分數在同位置其他字的最好分數 3 nats 以內（`--v3-variant-window`）的字，依 `--v3-variants`：`standard`（第 7 點的 (a)：再呼叫一次 v3，該位置改用詞庫讀音）、`best`（該位置的最高分）、`zero`（第 7 點的 (b)）、`typed`（照打的讀音，給重訓後的 v3：修正依成本分桶，界線和按錯鍵相同）。
+- **除錯。** `zhuyin-cli --channel-report` 在每一鍵後印出每個走讀音通道的候選（範圍、詞、詞庫讀音、類別@位置:成本、是否修正與標註），整句的 n-best 也標出；`--batch` 時在每行輸出後加上一欄已送出的詞的類別與成本。`--channel-table` 印出整張變體表後結束。

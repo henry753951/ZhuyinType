@@ -229,6 +229,12 @@ public final class Composer {
         didSet { zt_composer_set_character_weight(handle, characterWeight) }
     }
 
+    /// How the character model scores characters only a reading-channel variant brings (0 lexicon reading, 1 the
+    /// position's best, 2 nothing, 3 as typed), for those within `window` nats of the best other character.
+    public func setVariantScores(mode: UInt8, window: Double) {
+        zt_composer_set_variant_scores(handle, mode, window)
+    }
+
     public var characterScoresInList = true {
         didSet { zt_composer_set_character_scores_in_list(handle, characterScoresInList) }
     }

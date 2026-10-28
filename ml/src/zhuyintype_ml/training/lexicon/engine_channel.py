@@ -44,12 +44,14 @@ Row = tuple[str, str, int, str, str, str, float]  # reading, word, position, typ
 class Settings:
     classes: set[str] = field(default_factory=lambda: set(CLASSES))
     corrections: set[str] = field(default_factory=lambda: {"series"})
+    single_classes: set[str] = field(default_factory=lambda: set(CLASSES))
     offsets: dict[str, float] = field(default_factory=dict)
     max_cost: float = 8.0
 
     def arguments(self) -> list[str]:
         """The same settings as zhuyin-cli options."""
         args = ["--channel-classes", ",".join(c for c in CLASSES if c in self.classes)]
+        args += ["--channel-single-classes", ",".join(c for c in CLASSES if c in self.single_classes) or "none"]
         for name, value in sorted(self.offsets.items()):
             args += ["--channel-offset", f"{name}={value!r}"]
         for name in CLASSES:
@@ -93,7 +95,7 @@ def variants(
         top = shares.get(syllable)
         if top:
             for r, p in shares.items():
-                if r != syllable:
+                if r != syllable and channel.mechanism[(char, r)] in settings.single_classes:
                     add(r, channel.mechanism[(char, r)], max(TIE, -math.log(p / top)))
     elif char not in channel.familiar:
         rest = 1.0 - shares.get(syllable, 0.0)

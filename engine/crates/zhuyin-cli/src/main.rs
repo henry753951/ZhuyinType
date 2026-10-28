@@ -28,7 +28,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -138,13 +138,17 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         match option.as_str() {
             "--models" => s.models = Some(next_value(&arguments).to_owned()),
             "--channel" => s.channel = Some(next_value(&arguments).to_owned()).filter(|v| v != "off"),
-            "--channel-classes" => {
+            "--channel-classes" | "--channel-single-classes" => {
                 let mut classes = 0;
-                for name in next_value(&arguments).split(',').filter(|n| !n.is_empty()) {
+                for name in next_value(&arguments).split(',').filter(|n| !n.is_empty() && *n != "none") {
                     let class = ChannelClass::from_raw(name).unwrap_or_else(|| fail(&channel_classes()));
                     classes |= 1 << (class as u16);
                 }
-                s.config.channel.classes = classes;
+                if option == "--channel-classes" {
+                    s.config.channel.classes = classes;
+                } else {
+                    s.config.channel.single_classes = classes;
+                }
             }
             "--channel-offset" | "--channel-state" => {
                 let value = next_value(&arguments);
