@@ -48,8 +48,9 @@ COMPONENTS: dict[str, list[str]] = {
         "lm_chat/attribution.jsonl",
         "lm_chat/source-manifest.json",
     ],
+    # The prefix-tree model only: the batched Reranker.mlmodelc holds the same weights and the app no longer loads
+    # it when the tree is there (docs/engine/ARCHITECTURE.md §10).
     "reranker": [
-        "reranker/Reranker.mlmodelc",
         "reranker/RerankerTree.mlmodelc",
         "reranker/vocab.json",
         "reranker/config.json",

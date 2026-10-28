@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -215,11 +216,17 @@ def quantize(m: Method, reranker: Path, v3: Path, out: Path) -> dict[str, Any]:
         syllable=state(checkpoint["syllable"], m, "syllable.", records["v3"]),
     )
     torch.save(checkpoint, v3_out / "syllable.pt")
-    # The context-stage checkpoint is not part of any export; the ONNX export only records its hash.
-    context = v3_out / "context.pt"
-    if context.is_symlink() or context.exists():
-        context.unlink()
-    context.symlink_to((v3 / "context.pt").resolve())
+    # The context-stage checkpoint is not part of any export (the ONNX export only records its hash); it is kept as
+    # it is, a hard link where possible, so the directory packs as a checkpoints component.
+    for name in ["context.pt", "articles.tsv.gz"]:
+        target = v3_out / name
+        if target.is_symlink() or target.exists():
+            target.unlink()
+        if (v3 / name).exists():
+            try:
+                os.link((v3 / name).resolve(), target)
+            except OSError:
+                shutil.copy2(v3 / name, target)
     summary = {
         "method": m.name,
         "kind": m.kind,

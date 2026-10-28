@@ -1,10 +1,10 @@
 {
   "components": {
     "checkpoints": {
-      "file": "zhuyintype-checkpoints-2659054d6777.tar.gz",
-      "release": "data-3",
-      "sha256": "2659054d6777dbed1fae5a408cfb6e6be28ea25bb2a328d119fc1d22a133b827",
-      "size": 530279479
+      "file": "zhuyintype-checkpoints-14289bd6d5f7.tar.gz",
+      "release": "data-5",
+      "sha256": "14289bd6d5f7cc53c6c3a146056a65750a5d218771d87f0b4e98bcc0703851f3",
+      "size": 308375757
     },
     "eval-sets": {
       "file": "zhuyintype-eval-sets-e0612940c268.tar.gz",
@@ -31,10 +31,10 @@
       "size": 5210068
     },
     "reranker": {
-      "file": "zhuyintype-reranker-319775ba196e.tar.gz",
+      "file": "zhuyintype-reranker-c83842642e1f.tar.gz",
       "release": "data-5",
-      "sha256": "319775ba196ea6c79bd1f94514e6aa8175b517387582b2531c57349ff90431fa",
-      "size": 54095267
+      "sha256": "c83842642e1f1b412d32e1bd55cc272a58739718592870ea9266b791d87d3148",
+      "size": 27062175
     },
     "v3": {
       "file": "zhuyintype-v3-533962548bc5.tar.gz",
