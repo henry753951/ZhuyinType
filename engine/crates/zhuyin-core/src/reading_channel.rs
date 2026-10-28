@@ -113,22 +113,39 @@ pub struct ChannelSettings {
     pub max_cost: f64,
     /// The most lexicon readings one typed syllable reaches through the channel.
     pub options_per_syllable: usize,
+    /// Third-tone sandhi also reads a typed third tone as the lexicon's second (危險 typed ㄨㄟˇ ㄒㄧㄢˇ), not only a
+    /// typed second as the lexicon's third (你好 typed ㄋㄧˊ ㄏㄠˇ).
+    pub sandhi_reverse: bool,
 }
 
+/// The defaults chosen on the development sets and the Mac's per-key latency (`docs/research/log.md`, 2026-10-28):
+/// in words of two or more characters, the phonetic series, the neutral tone typed with another reading, and
+/// `taiwan.tsv`'s readings.  The other classes, single characters and sandhi are options: none of them changed a
+/// development set or an independent one for the better, single-character readings and sandhi made some worse, and
+/// each costs per-key time (single characters even for the series alone: p95 +2%).
 impl Default for ChannelSettings {
     fn default() -> Self {
+        let bits = |classes: &[ChannelClass]| classes.iter().fold(0, |bits, c| bits | c.bit());
         Self {
-            classes: ChannelClass::ALL.iter().fold(0, |bits, c| bits | c.bit()),
+            classes: bits(&[ChannelClass::Series, ChannelClass::Neutral, ChannelClass::TaiwanWord]),
             corrections: ChannelClass::Series.bit(),
-            single_classes: ChannelClass::ALL.iter().fold(0, |bits, c| bits | c.bit()),
+            single_classes: 0,
             offsets: [0.0; 11],
             max_cost: 8.0,
             options_per_syllable: 4,
+            sandhi_reverse: true,
         }
     }
 }
 
 impl ChannelSettings {
+    /// Every class on, single characters too (tools, tests and measurements).
+    #[must_use]
+    pub fn every_class() -> Self {
+        let all = ChannelClass::ALL.iter().fold(0, |bits, c| bits | c.bit());
+        Self { classes: all, single_classes: all, ..Self::default() }
+    }
+
     /// Whether the class is on.
     #[must_use]
     pub fn uses(&self, class: ChannelClass) -> bool {
@@ -921,7 +938,11 @@ impl ChannelIndex {
         if !self.settings.uses(ChannelClass::Sandhi) || !next.is_some_and(|n| n.ends_with('ˇ')) {
             return None;
         }
-        let base = typed.strip_suffix('ˊ').map(|b| (b, 'ˇ')).or_else(|| typed.strip_suffix('ˇ').map(|b| (b, 'ˊ')))?;
+        // Typed as pronounced (你好 ㄋㄧˊ ㄏㄠˇ), and, unless turned off, the other way (危險 typed ㄨㄟˇ ㄒㄧㄢˇ).
+        let base = typed
+            .strip_suffix('ˊ')
+            .map(|b| (b, 'ˇ'))
+            .or_else(|| typed.strip_suffix('ˇ').filter(|_| self.settings.sandhi_reverse).map(|b| (b, 'ˊ')))?;
         (self.sandhi_cost <= self.settings.max_cost).then(|| format!("{}{}", base.0, base.1))
     }
 

@@ -45,7 +45,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         }
         variantScores = (UInt8(mode), parts.count > 1 ? Double(parts[1]) ?? 3 : 3)
         arguments.removeFirst(2)
-    case "--channel-classes", "--channel-single-classes", "--channel-cap", "--channel-max-cost":
+    case "--channel-classes", "--channel-single-classes", "--channel-cap", "--channel-max-cost", "--channel-sandhi":
         // As zhuyin-cli.
         guard arguments.count >= 2 else { fail("\(option) needs a value") }
         let value = arguments[1]
@@ -53,6 +53,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         case "--channel-classes": channelSettings.classes = classBits(value)
         case "--channel-single-classes": channelSettings.singleClasses = classBits(value)
         case "--channel-cap": channelSettings.optionsPerSyllable = UInt32(value) ?? 4
+        case "--channel-sandhi": channelSettings.sandhiReverse = value != "forward"
         default: channelSettings.maxCost = Double(value) ?? 8
         }
         arguments.removeFirst(2)

@@ -40,13 +40,22 @@ TONES = "ˊˇˋ˙"
 Row = tuple[str, str, int, str, str, str, float]  # reading, word, position, typed, class, state, cost
 
 
+DEFAULT_CLASSES = ("series", "neutral", "taiwan-word")  # ChannelSettings::default() in reading_channel.rs
+
+
 @dataclass
 class Settings:
-    classes: set[str] = field(default_factory=lambda: set(CLASSES))
+    """The engine's channel settings; the defaults are ChannelSettings::default()'s, `every_class()` turns all on."""
+
+    classes: set[str] = field(default_factory=lambda: set(DEFAULT_CLASSES))
     corrections: set[str] = field(default_factory=lambda: {"series"})
-    single_classes: set[str] = field(default_factory=lambda: set(CLASSES))
+    single_classes: set[str] = field(default_factory=set)
     offsets: dict[str, float] = field(default_factory=dict)
     max_cost: float = 8.0
+
+    @classmethod
+    def every_class(cls) -> Settings:
+        return cls(classes=set(CLASSES), single_classes=set(CLASSES))
 
     def arguments(self) -> list[str]:
         """The same settings as zhuyin-cli options."""
@@ -208,19 +217,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     import tempfile
 
-    settings = Settings()
+    channel, lexicon = load(args.channel), read_lexicon(args.lexicon)
+    status = 0
     with tempfile.TemporaryDirectory() as tmp:
         binary = args.binary
         if binary is None:
             compile_channel(args.channel, Path(tmp))
             binary = Path(tmp) / "channel.bin"
-        rust = rust_table(args.cli or paths.cli(), args.lexicon, binary, settings)
-    python = table(load(args.channel), read_lexicon(args.lexicon), settings)
-    problems = compare(python, rust)
-    print(f"{len(python)} variants in Python, {len(rust)} in Rust: {'identical' if not problems else 'different'}")
-    for problem in problems:
-        print(problem, file=sys.stderr)
-    return 1 if problems else 0
+        for name, settings in (("every class", Settings.every_class()), ("defaults", Settings())):
+            rust = rust_table(args.cli or paths.cli(), args.lexicon, binary, settings)
+            python = table(channel, lexicon, settings)
+            problems = compare(python, rust)
+            verdict = "identical" if not problems else "different"
+            print(f"{name}: {len(python)} variants in Python, {len(rust)} in Rust: {verdict}")
+            for problem in problems:
+                print(problem, file=sys.stderr)
+            status |= bool(problems)
+    return status
 
 
 if __name__ == "__main__":

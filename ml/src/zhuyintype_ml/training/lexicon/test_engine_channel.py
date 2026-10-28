@@ -84,7 +84,7 @@ class Reference(unittest.TestCase):
     def rows(
         self, settings: engine_channel.Settings | None = None
     ) -> dict[tuple[str, int, str], tuple[str, str, float]]:
-        table = engine_channel.table(self.channel, self.lexicon, settings or engine_channel.Settings())
+        table = engine_channel.table(self.channel, self.lexicon, settings or engine_channel.Settings.every_class())
         return {(word, position, typed): (kind, state, cost) for _, word, position, typed, kind, state, cost in table}
 
     def test_classes_and_costs(self):
@@ -117,7 +117,8 @@ class Reference(unittest.TestCase):
         self.assertFalse(any(word == "T恤" for word, _, _ in rows))
 
     def test_settings(self):
-        settings = engine_channel.Settings(offsets={"taiwan": 1.5}, max_cost=6.0)
+        settings = engine_channel.Settings.every_class()
+        settings.offsets, settings.max_cost = {"taiwan": 1.5}, 6.0
         settings.classes.discard("series")
         rows = self.rows(settings)
         self.assertNotIn(("鳥喙", 1, "ㄓㄡˋ"), rows)
@@ -142,6 +143,7 @@ class AgainstRust(unittest.TestCase):
             lexicon = engine_channel.read_lexicon(directory / "lexicon.tsv")
             for settings in (
                 engine_channel.Settings(),
+                engine_channel.Settings.every_class(),
                 engine_channel.Settings(offsets={"word": 2.0, "series": -1.0}, max_cost=7.0),
                 engine_channel.Settings(single_classes={"taiwan"}),
             ):
@@ -150,7 +152,7 @@ class AgainstRust(unittest.TestCase):
                     paths.cli(), directory / "lexicon.tsv", directory / "compiled" / "channel.bin", settings
                 )
                 self.assertEqual(engine_channel.compare(python, rust), [])
-                self.assertGreater(len(python), 5)
+                self.assertGreater(len(python), 2)
 
 
 if __name__ == "__main__":

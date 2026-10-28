@@ -30,6 +30,7 @@ public struct ChannelSettings: Sendable {
     public var corrections: UInt32?
     public var optionsPerSyllable: UInt32?
     public var maxCost: Double?
+    public var sandhiReverse: Bool?
     public init() {}
 }
 
@@ -51,6 +52,7 @@ public final class Engine: @unchecked Sendable {
         if let classes = settings.corrections { config.channel_corrections = classes }
         if let cap = settings.optionsPerSyllable { config.channel_options_per_syllable = cap }
         if let cost = settings.maxCost { config.channel_max_cost = cost }
+        if let reverse = settings.sandhiReverse { config.channel_sandhi_reverse = reverse }
         return config
     }
 

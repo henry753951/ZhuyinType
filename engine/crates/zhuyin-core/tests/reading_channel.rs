@@ -61,7 +61,7 @@ fn matches(engine: &Engine, readings: &[&str]) -> Vec<Match> {
 
 #[test]
 fn accepted_readings_are_not_corrections() {
-    let engine = engine(ChannelSettings::default());
+    let engine = engine(ChannelSettings::every_class());
     let single = matches(&engine, &["ㄕㄡˊ"]);
     let shu = find(&single, "熟").expect("熟 typed ㄕㄡˊ");
     let channel = shu.channel.expect("through the channel");
@@ -86,7 +86,7 @@ fn accepted_readings_are_not_corrections() {
 
 #[test]
 fn corrections_are_annotated() {
-    let engine = engine(ChannelSettings::default());
+    let engine = engine(ChannelSettings::every_class());
     let found = matches(&engine, &["ㄋㄧㄠˇ", "ㄓㄡˋ"]);
     let beak = find(&found, "鳥喙").expect("鳥喙 typed with its phonetic's reading");
     assert_eq!(beak.annotation.as_deref(), Some("ㄋㄧㄠˇ ㄏㄨㄟˋ"));
@@ -101,7 +101,7 @@ fn corrections_are_annotated() {
 
 #[test]
 fn rows_win_and_one_syllable_per_word() {
-    let engine = engine(ChannelSettings::default());
+    let engine = engine(ChannelSettings::every_class());
     // 鮮蚵 has its own row for ㄒㄧㄢ ㄎㄜ: no channel variant beside it.
     let found = matches(&engine, &["ㄒㄧㄢ", "ㄎㄜ"]);
     assert!(find(&found, "鮮蚵").is_some_and(|m| m.channel.is_none()));
@@ -113,7 +113,7 @@ fn rows_win_and_one_syllable_per_word() {
 
 #[test]
 fn sandhi_and_the_neutral_tone() {
-    let engine = engine(ChannelSettings::default());
+    let engine = engine(ChannelSettings::every_class());
     let found = matches(&engine, &["ㄋㄧˊ", "ㄏㄠˇ"]);
     let nihao = find(&found, "你好").expect("你好 typed with sandhi");
     let channel = nihao.channel.unwrap();
@@ -136,7 +136,7 @@ fn settings_and_off() {
     assert!(off.reading_channel().is_none());
     assert!(find(&matches(&off, &["ㄕㄡˊ", "ㄒㄧ"]), "熟悉").is_none());
     assert!(matches(&off, &["ㄕㄡˊ"]).iter().all(|m| m.channel.is_none()));
-    let mut settings = ChannelSettings::default();
+    let mut settings = ChannelSettings::every_class();
     settings.set_uses(ChannelClass::Sandhi, false);
     settings.set_correction(ChannelClass::TaiwanWord, true);
     let engine = engine(settings.clone());
@@ -150,10 +150,10 @@ fn settings_and_off() {
 
 #[test]
 fn options_are_capped() {
-    let one = ChannelSettings { options_per_syllable: 1, ..ChannelSettings::default() };
+    let one = ChannelSettings { options_per_syllable: 1, ..ChannelSettings::every_class() };
     let engine = engine(one);
     assert!(engine.reading_channel().unwrap().options("ㄎㄜ").len() <= 1);
-    assert_eq!(self::engine(ChannelSettings::default()).reading_channel().unwrap().options("ㄕㄡˊ").len(), 1);
+    assert_eq!(self::engine(ChannelSettings::every_class()).reading_channel().unwrap().options("ㄕㄡˊ").len(), 1);
 }
 
 #[test]
@@ -172,7 +172,7 @@ type Calls = Arc<Mutex<Vec<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)>>>;
 
 /// Types `keys` with a character model that answers −1 everywhere and records each call.
 fn model_calls(mode: VariantScores, window: f64, keys: &str) -> Vec<(Vec<CharacterModelSyllable>, Vec<Vec<String>>)> {
-    let engine = Arc::new(engine(ChannelSettings::default()));
+    let engine = Arc::new(engine(ChannelSettings::every_class()));
     let options = ComposerOptions { typo_tolerance: TypoTolerance::Off, ..ComposerOptions::default() };
     let mut composer = Composer::new(engine, options);
     composer.variant_scores = mode;

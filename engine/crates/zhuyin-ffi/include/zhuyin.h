@@ -361,6 +361,8 @@ typedef struct {
   uint32_t channel_options_per_syllable;
   // Variants that cost more are left out.
   double channel_max_cost;
+  // Third-tone sandhi also reads a typed third tone as the lexicon's second.
+  bool channel_sandhi_reverse;
 } ZtEngineConfig;
 
 // One personal-data entry.

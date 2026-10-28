@@ -53,11 +53,12 @@ pub fn cost_bucket(cost: f64) -> i32 {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VariantScores {
     /// (a) The score the character gets under its lexicon reading: one more model call with that syllable.
-    #[default]
     Standard,
     /// (a) without the extra call: the position's best score.
     Best,
-    /// (b) No character-model score (weight 0).
+    /// (b) No character-model score (weight 0): the default; (a) scored the same on every set and its extra call
+    /// costs the Mac about 10% per-key p95 (`docs/research/log.md`, 2026-10-28).
+    #[default]
     Zero,
     /// As typed, for a model trained on the channel's noise: accepted readings with cost bucket 0, corrections
     /// bucketed by their cost.
@@ -1004,10 +1005,11 @@ impl Composer {
                     if start + offset >= count {
                         continue;
                     }
-                    let mut value = prior;
+                    let value = prior;
                     let through = m.channel.filter(|c| c.position == offset);
                     if let Some(channel) = through {
-                        value = prior + channel.cost;
+                        // Ranked without the variant's cost, if it is competitive (below).
+                        let free = prior + channel.cost;
                         let syllable = m
                             .entry
                             .reading
@@ -1021,9 +1023,9 @@ impl Composer {
                             correction: false,
                             cost: 0.0,
                         });
-                        if value > seen.prior {
+                        if free > seen.prior {
                             *seen = VariantCharacter {
-                                prior: value,
+                                prior: free,
                                 syllable,
                                 correction: channel.correction,
                                 cost: channel.cost,
@@ -1048,9 +1050,17 @@ impl Composer {
                 }
             }
         }
+        // Characters only a variant brings, within the window of the best other character: ranked without the
+        // variant's cost, so the cut keeps them for the model (rule 8); the others keep their cost and the model's
+        // score as typed.
         for (position, seen) in variants.iter_mut().enumerate() {
             let floor = plain_best[position] - self.variant_window;
             seen.retain(|character, v| candidates[position].get(character).is_none_or(|c| !c.1) && v.prior >= floor);
+            for (character, v) in seen.iter() {
+                if let Some(slot) = candidates[position].get_mut(character) {
+                    slot.0 = swift_max(slot.0, v.prior);
+                }
+            }
         }
         // Equal priors by character, so the cut does not depend on the table's order.
         let lists: Vec<Vec<String>> = candidates

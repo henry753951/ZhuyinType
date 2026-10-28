@@ -53,6 +53,8 @@ pub struct ZtEngineConfig {
     pub channel_options_per_syllable: u32,
     /// Variants that cost more are left out.
     pub channel_max_cost: f64,
+    /// Third-tone sandhi also reads a typed third tone as the lexicon's second.
+    pub channel_sandhi_reverse: bool,
 }
 
 /// The default settings (no chat model).
@@ -73,6 +75,7 @@ pub extern "C" fn zt_engine_config_default() -> ZtEngineConfig {
         channel_corrections: u32::from(config.channel.corrections),
         channel_options_per_syllable: u32::try_from(config.channel.options_per_syllable).unwrap_or(u32::MAX),
         channel_max_cost: config.channel.max_cost,
+        channel_sandhi_reverse: config.channel.sandhi_reverse,
     }
 }
 
@@ -98,6 +101,7 @@ unsafe fn engine_config(config: *const ZtEngineConfig) -> EngineConfig {
             corrections: (config.channel_corrections & 0xffff) as u16,
             options_per_syllable: config.channel_options_per_syllable as usize,
             max_cost: config.channel_max_cost,
+            sandhi_reverse: config.channel_sandhi_reverse,
             ..ChannelSettings::default()
         },
         ..EngineConfig::default()
