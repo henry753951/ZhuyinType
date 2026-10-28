@@ -123,14 +123,14 @@ final class PracticeFieldModel: ObservableObject {
         view.textView.placeholder = "在這裡試打"
     }
 
-    /// The wizard changed the draft settings or the task (a task is told apart by its prompt and hint).
+    /// The wizard changed the draft settings or the task.
     func update(settings: SettingsSnapshot, task: PracticeTask, initialText: String) {
         if settings != session.settings {
             session.apply(settings)
             view.settingsChanged()
             height = view.intrinsicContentSize.height
         }
-        if task.prompt != session.task.prompt || task.hint != session.task.hint || initialText != session.initialText {
+        if task.id != session.task.id || initialText != session.initialText {
             session.setTask(task, initialText: initialText)
             view.textView.setAccessibilityLabel(task.prompt.isEmpty ? "練習" : task.prompt)
         }

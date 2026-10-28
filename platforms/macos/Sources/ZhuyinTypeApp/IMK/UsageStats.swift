@@ -171,6 +171,8 @@ struct TypingRhythm: Codable, Equatable {
         let empty = TypingRhythm()
         intervals = (try? c.decodeIfPresent(Buckets.self, forKey: .intervals)) ?? empty.intervals
         pauses = (try? c.decodeIfPresent(Buckets.self, forKey: .pauses)) ?? empty.pauses
+        if intervals.counts.count != intervals.bounds.count + 1 { intervals = empty.intervals }
+        if pauses.counts.count != pauses.bounds.count + 1 { pauses = empty.pauses }
         longestRun = (try? c.decodeIfPresent(Int.self, forKey: .longestRun)) ?? 0
         longestCleanRun = (try? c.decodeIfPresent(Int.self, forKey: .longestCleanRun)) ?? 0
         let stored = (try? c.decodeIfPresent([Int].self, forKey: .hours)) ?? []
@@ -204,6 +206,7 @@ struct UsageData: Codable, Equatable {
         totals = (try? c.decodeIfPresent(UsageCounters.self, forKey: .totals)) ?? UsageCounters()
         days = (try? c.decodeIfPresent([String: UsageCounters].self, forKey: .days)) ?? [:]
         latency = (try? c.decodeIfPresent(LatencyHistogram.self, forKey: .latency)) ?? LatencyHistogram()
+        if latency.counts.count != LatencyHistogram.bounds.count + 1 { latency = LatencyHistogram() }
         rhythm = (try? c.decodeIfPresent(TypingRhythm.self, forKey: .rhythm)) ?? TypingRhythm()
     }
 }
@@ -234,6 +237,8 @@ final class UsageStatsStore {
     /// Seconds since boot, for the write interval.
     var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     private var dirty = false
+    private var revision = 0
+    private var writing = false
     /// When the file was last written (or counting began in this process), in `uptime` seconds.
     private var lastSave: TimeInterval?
     /// Writes so far, for the self-test.
@@ -337,6 +342,7 @@ final class UsageStatsStore {
     /// Marks a change; writes only when the last write is `saveInterval` old.
     private func changed() {
         dirty = true
+        revision &+= 1
         let now = uptime()
         guard let last = lastSave else { lastSave = now; return }
         if now - last >= Self.saveInterval { saveIfNeeded() }
@@ -344,40 +350,57 @@ final class UsageStatsStore {
 
     /// Writes in the background if anything changed since the last write.
     func saveIfNeeded() {
-        guard dirty, url != nil else { return }
-        dirty = false
+        guard dirty, url != nil, !writing else { return }
+        writing = true
         lastSave = uptime()
         writes += 1
         let snapshot = data
-        queue.async { self.write(snapshot) }
+        let savedRevision = revision
+        queue.async {
+            let success = self.write(snapshot)
+            DispatchQueue.main.async {
+                self.writing = false
+                if success && self.revision == savedRevision { self.dirty = false }
+            }
+        }
     }
 
     /// Starts over: the counters, the rhythm, the history and the file.
-    func clear() {
+    func clear() throws {
+        if let url {
+            try queue.sync {
+                if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            }
+        }
+        revision &+= 1
         stored = UsageData(since: now())
         rhythm = TypingRhythm()
         today = UsageCounters()
         todayKey = ""
         todayEnd = -1
         dirty = false
-        guard let url else { return }
-        queue.async { try? FileManager.default.removeItem(at: url) }
     }
 
     /// Writes now if anything changed, and waits: before the process exits, and in self-tests.
     func flush() {
-        saveIfNeeded()
         queue.sync {}
+        guard dirty, url != nil else { return }
+        let snapshot = data
+        writes += 1
+        lastSave = uptime()
+        if queue.sync(execute: { write(snapshot) }) { dirty = false }
     }
 
-    private func write(_ snapshot: UsageData) {
-        guard let url, let encoded = Self.encode(snapshot) else { return }
+    private func write(_ snapshot: UsageData) -> Bool {
+        guard let url, let encoded = Self.encode(snapshot) else { return false }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try encoded.write(to: url, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            return true
         } catch {
             EngineHost.logger.error("Stats write failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 }

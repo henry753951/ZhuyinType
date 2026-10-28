@@ -234,6 +234,8 @@ final class ZhuyinInputController: IMKInputController {
         guard let input = (sender as? IMKTextInput) ?? client() else { return false }
         let identity = ObjectIdentifier(input as AnyObject)
         if identity != clientIdentity {
+            // Held keys belong to the old client and must never reach the new one.
+            bufferedKeys.removeAll()
             core?.endSession() // Finish against the old client before replacing its adapter.
             core = nil
             textClient = IMKTextClient(input)

@@ -150,8 +150,8 @@ enum UIPreviewRenderer {
         // Everything optional turned off, five to a page, large type.
         let minimal = CandidateStyle(layout: .vertical, fontSize: 24, density: .compact, showsZhuyinHint: false,
                                      showsAnnotations: false, showsListSwitches: false)
-        var fivePerPage = corrections
-        fivePerPage.pageSize = 5
+        let fivePerPage = CandidateList(items: corrections.items, selection: corrections.selection, pageSize: 5,
+                                        tolerant: corrections.tolerant, singleCharacter: corrections.singleCharacter)
         try capturePanel(list: fivePerPage, keys: Array("asdfg"), style: minimal, zhuyinHint: hint,
                          to: directory.appendingPathComponent("candidate-minimal-\(suffix).png"))
         for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字")] {
@@ -724,7 +724,7 @@ enum UIPreviewRenderer {
             for (size, label) in sizes {
                 for (stepName, step, adjust) in steps {
                     let wizard = model()
-                    wizard.mode = .full
+                    wizard.choose(.full)
                     wizard.jump(to: step)
                     adjust?(wizard)
                     WizardFit.reset()

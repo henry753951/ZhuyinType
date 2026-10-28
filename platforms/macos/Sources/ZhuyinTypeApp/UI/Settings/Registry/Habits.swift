@@ -197,6 +197,7 @@ struct PracticeOutcome {
 }
 
 struct PracticeTask {
+    let id = UUID()
     let prompt: String
     var hint: String?
     let isDone: (PracticeOutcome) -> Bool

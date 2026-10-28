@@ -270,7 +270,10 @@ struct MiniDemo: View {
     @State private var started = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var current: DemoFrame { frames[min(pinned ?? index, frames.count - 1)] }
+    private var current: DemoFrame {
+        guard !frames.isEmpty else { return DemoFrame(line: [], caption: "") }
+        return frames[min(max(0, pinned ?? index), frames.count - 1)]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

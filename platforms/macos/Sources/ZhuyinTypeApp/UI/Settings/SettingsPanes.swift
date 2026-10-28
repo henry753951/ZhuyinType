@@ -150,7 +150,9 @@ struct AdvancedPane: View {
             Text("自訂詞與記住的字詞會保留。")
         }
         .alert("要清除所有改字記錄嗎？", isPresented: $confirmingClear) {
-            Button("清除", role: .destructive) { CorrectionLog.shared.clear {} }
+            Button("清除", role: .destructive) { CorrectionLog.shared.clear { error in
+                    if let error { NSApp.presentError(error) }
+                } }
             Button("取消", role: .cancel) {}
         } message: {
             Text("清除後無法復原。")

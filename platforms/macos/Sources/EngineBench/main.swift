@@ -48,7 +48,7 @@ while let option = arguments.first, option.hasPrefix("--") {
         // As zhuyin-cli: standard, best, zero or typed, with the window after a comma (default 3).
         guard arguments.count >= 2 else { fail("--v3-variants needs standard, best, zero or typed") }
         let parts = arguments[1].split(separator: ",")
-        guard let mode = ["standard", "best", "zero", "typed"].firstIndex(of: String(parts[0])) else {
+        guard let first = parts.first, let mode = ["standard", "best", "zero", "typed"].firstIndex(of: String(first)) else {
             fail("--v3-variants needs standard, best, zero or typed")
         }
         variantScores = (UInt8(mode), parts.count > 1 ? Double(parts[1]) ?? 3 : 3)

@@ -227,26 +227,28 @@ public final class Composer {
     // MARK: - Models
 
     public var rerankingCount: Int = 8 {
-        didSet { zt_composer_set_reranking_count(handle, max(0, rerankingCount)) }
+        didSet { zt_composer_set_reranking_count(handle, max(0, rerankingCount)); cached = nil }
     }
 
     public var characterWeight = 1.0 {
-        didSet { zt_composer_set_character_weight(handle, characterWeight) }
+        didSet { zt_composer_set_character_weight(handle, characterWeight); cached = nil }
     }
 
     /// How the character model scores characters only a reading-channel variant brings (0 lexicon reading, 1 the
     /// position's best, 2 nothing, 3 as typed), for those within `window` nats of the best other character.
     public func setVariantScores(mode: UInt8, window: Double) {
         zt_composer_set_variant_scores(handle, mode, window)
+        cached = nil
     }
 
     public var characterScoresInList = true {
-        didSet { zt_composer_set_character_scores_in_list(handle, characterScoresInList) }
+        didSet { zt_composer_set_character_scores_in_list(handle, characterScoresInList); cached = nil }
     }
 
     /// Chooses the displayed sentence among the engine's best (an index into them).
     public var reranker: ((ScoredSentences) -> Int)? {
         didSet {
+            defer { cached = nil }
             guard let reranker else {
                 zt_composer_set_reranker(handle, ZtRerankerHook(context: nil, choose: nil, release: nil))
                 return
@@ -262,6 +264,7 @@ public final class Composer {
     /// Scores a span's candidates for list order: `before` is the composition text before the span.
     public var candidateScorer: ((_ before: String, _ candidates: CandidateTexts) -> ScoresWritten?)? {
         didSet {
+            defer { cached = nil }
             guard let candidateScorer else {
                 zt_composer_set_candidate_scorer(handle, ZtCandidateScorerHook(context: nil, score: nil, release: nil))
                 return
@@ -294,6 +297,7 @@ public final class Composer {
     /// Scores each syllable's candidate characters for the lattice.
     public var characterScorer: ((_ syllables: [CharacterModelSyllable], _ candidates: CandidateRows) -> ScoresWritten?)? {
         didSet {
+            defer { cached = nil }
             guard let characterScorer else {
                 zt_composer_set_character_scorer(handle, ZtCharacterScorerHook(context: nil, score: nil, release: nil))
                 return
