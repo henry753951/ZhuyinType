@@ -307,7 +307,7 @@ private struct WelcomeStep: View {
 
 private struct WelcomePreview: View {
     @ObservedObject var preferences: Preferences
-    @StateObject private var director = PreviewDirector()
+    @StateObject private var director = PreviewDirector(name: "welcome")
     var body: some View { UnifiedPreview(preferences: preferences, director: director, maxHeight: 200) }
 }
 
@@ -427,7 +427,7 @@ private struct LessonDemoView: View {
             switch demo {
             case .preview(let state):
                 UnifiedPreview(preferences: preferences, director: director, tabs: false, maxHeight: 240)
-                    .onAppear { director.show(state, animated: false) }
+                    .onAppear { director.pin(state) }
             case .space: SpaceInfo(current: preferences.spaceAction)
             case .punctuation: PunctuationTable(current: preferences.punctuationKeys)
             case .typo: TypoInfo(current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList))

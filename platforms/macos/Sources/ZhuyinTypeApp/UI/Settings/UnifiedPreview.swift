@@ -28,18 +28,28 @@ final class PreviewDirector: ObservableObject {
     @Published var state: PreviewState = .list
     /// The moment of the state's flow; it starts at the last, which shows the window.
     @Published var frame = Int.max
-    /// The pointer is over the preview.
-    @Published var hovered = false
-    /// No autoplay until then: the user picked a tab or changed a setting.
+    /// No moving to another state until then: the user just picked a tab or changed a setting.  Short, so the
+    /// carousel goes on soon after.
     var heldUntil = Date.distantPast
+    /// A state the preview stays on, playing its flow (a wizard lesson's demo); nil plays every state in turn.
+    var pinnedState: PreviewState?
     /// Every candidate of a page (not the compact few) until then: 每頁的候選字 just changed.
     @Published var fullPageUntil = Date.distantPast
     var showsFullPage: Bool { Date() < fullPageUntil }
+    /// No moving at all until then: the user is pressing or dragging in the preview.
+    var pausedUntil = Date.distantPast
+    /// A name for the self-tests, which read the states it went through.
+    let name: String?
+
+    init(name: String? = nil) { self.name = name }
 
     static var step: TimeInterval = 1.4
-    static let hold: TimeInterval = 8
+    static let hold: TimeInterval = 2
+    /// The states each named preview has shown, for the self-tests.
+    private(set) static var history: [String: [PreviewState]] = [:]
 
-    /// Shows `state` (from its first moment, or its last, which shows the setting), and holds it a while.
+    /// Shows `state` (from its first moment, or its last, which shows the setting); the carousel goes on after a
+    /// short hold.
     func show(_ state: PreviewState, last: Bool = true, animated: Bool = true) {
         heldUntil = Date().addingTimeInterval(Self.hold)
         let apply = { [self] in
@@ -47,26 +57,45 @@ final class PreviewDirector: ObservableObject {
             frame = last ? Int.max : 0
         }
         if animated { withAnimation(.easeInOut(duration: 0.3)) { apply() } } else { apply() }
+        record()
     }
 
-    /// The next moment of the flow; after its last, the next state, unless the user is looking at this one (a tab
-    /// picked or a setting changed a moment ago), which then plays its flow again.
+    /// Keeps the preview on `state`, playing its flow over and over (a wizard lesson's demo).
+    func pin(_ state: PreviewState) {
+        pinnedState = state
+        self.state = state
+        frame = 0
+    }
+
+    /// The next moment of the flow; after its last, the next state (or this one again, when it is pinned or the user
+    /// has just picked it).  Nothing pauses it but the user's own clicks: the pointer resting over it does not.
     func advance(states: [PreviewState], frames: (PreviewState) -> Int) {
-        guard !hovered, !states.isEmpty else { return }
+        guard !states.isEmpty, Date() >= pausedUntil else { return }
         let count = frames(state)
         let current = min(frame, max(0, count - 1))
         if current + 1 < count {
             withAnimation(.easeOut(duration: 0.25)) { frame = current + 1 }
-        } else if Date() < heldUntil {
+        } else if pinnedState != nil || Date() < heldUntil || !states.contains(where: { $0 != state }) {
             withAnimation(.easeOut(duration: 0.25)) { frame = 0 }
         } else {
             let index = states.firstIndex(of: state).map { ($0 + 1) % states.count } ?? 0
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
                 state = states[index]
                 frame = 0
             }
+            record()
         }
         ticks += 1
+    }
+
+    static func clearHistory(_ name: String) { history[name] = nil }
+
+    /// The user pressed or dragged in the preview: it stays as it is, and goes on a moment after they let go.
+    func interact() { pausedUntil = Date().addingTimeInterval(Self.hold) }
+
+    private func record() {
+        guard let name else { return }
+        Self.history[name, default: []].append(state)
     }
 
     /// How many moments have played (the self-tests check that the preview moves).
@@ -117,7 +146,9 @@ struct UnifiedPreview: View {
             .frame(height: stageHeight(flows, [state], width: sceneWidth(flows, states, in: width)))
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.45, dampingFraction: 0.85), value: state)
         }
-        .onHover { director.hovered = $0 }
+        // Only a press or a drag pauses it (and it goes on about 2 s later); the pointer resting over it does not.
+        .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in director.interact() }
+            .onEnded { _ in director.interact() })
         .task(id: reduceMotion) {
             // Autoplay; none under Reduce Motion (the tabs and the switch on a change still work, as a crossfade).
             guard !reduceMotion, pinned == nil, !SettingsWindowController.isPreview || DemoPinning.live else { return }

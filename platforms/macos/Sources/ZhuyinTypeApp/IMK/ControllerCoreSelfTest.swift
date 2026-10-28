@@ -1251,6 +1251,55 @@ enum ControllerCoreSelfTest {
                 badge = find(hosting)
             }
             try expect(badge, "the 中英 badge never appeared in the preview")
+            // A press pauses it, for about 2 s only.
+            director.interact()
+            let held = (director.state, director.frame, director.ticks)
+            director.advance(states: PreviewState.allCases, frames: { _ in 2 })
+            try expect((director.state, director.frame, director.ticks) == held, "a press did not pause the preview")
+            try expect(director.pausedUntil.timeIntervalSinceNow <= PreviewDirector.hold + 0.1, "a press paused it for long")
+            director.pausedUntil = .distantPast
+            director.advance(states: PreviewState.allCases, frames: { _ in 2 })
+            try expect(director.ticks == held.2 + 1, "the preview did not go on after the pause")
+        }
+
+        test("live: the wizard's welcome preview and 視窗與提示 go through ≥ 3 states in 10 s with the pointer resting on them") {
+            // At the real pace, in real windows, with mouse-moved events over the preview the whole time: the pointer
+            // resting on it must not stop it (it used to, which looked like a broken carousel).
+            _ = NSApplication.shared
+            let saved = Preferences.shared
+            defer { Preferences.shared = saved }
+            Preferences.shared = Preferences(defaults: MemorySettingsStorage())
+            PreviewDirector.clearHistory("welcome")
+            PreviewDirector.clearHistory("candidates")
+            let model = WizardModel(original: Preferences.shared, mode: .quick)
+            let size = NSSize(width: 680, height: 700)
+            let wizard = HeadlessWindow(size: size)
+            wizard.contentView = NSHostingView(rootView: WizardView(model: model).frame(width: size.width, height: size.height))
+            let settings = HeadlessWindow(size: NSSize(width: 620, height: 700))
+            settings.contentView = NSHostingView(rootView: CandidatesPane(preferences: Preferences.shared, model: SettingsModel())
+                .frame(width: 620, height: 700))
+            let windows = [wizard, settings]
+            for window in windows {
+                window.acceptsMouseMovedEvents = true
+                window.orderFrontRegardless()
+            }
+            defer { for window in windows { window.orderOut(nil); window.contentView = nil; window.close() } }
+            let until = Date().addingTimeInterval(10)
+            var rested: Set<Int> = []
+            while Date() < until {
+                for window in windows {
+                    // The pointer over the preview: the welcome page's lower half, the pane's top.
+                    let point = window === wizard ? NSPoint(x: size.width / 2, y: size.height * 0.3)
+                                                  : NSPoint(x: 300, y: 560)
+                    PointerRest.rest(at: point, in: window, entering: !rested.contains(window.windowNumber))
+                    rested.insert(window.windowNumber)
+                }
+                RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+            }
+            for name in ["welcome", "candidates"] {
+                let states = PreviewDirector.history[name] ?? []
+                try expect(Set(states).count >= 3, "the \(name) preview went through \(states.map(\.rawValue)) in 10 s")
+            }
         }
 
         test("live: the wizard's parts arrive, and closing it leaves the settings window open") {
@@ -1292,5 +1341,23 @@ enum ControllerCoreSelfTest {
 
         print("\(cases - failures)/\(cases) ControllerCore self-tests passed")
         return failures == 0 ? 0 : 1
+    }
+}
+
+/// The pointer resting at a point of a headless window: the hosting view is told it entered (once) and moved there,
+/// which is where SwiftUI's hover comes from (a headless window has no tracking areas of its own to fire).
+enum PointerRest {
+    static func rest(at point: NSPoint, in window: NSWindow, entering: Bool) {
+        let time = ProcessInfo.processInfo.systemUptime
+        guard let root = window.contentView,
+              let moved = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [], timestamp: time,
+                                             windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                             clickCount: 0, pressure: 0) else { return }
+        if entering, let entered = NSEvent.enterExitEvent(with: .mouseEntered, location: point, modifierFlags: [],
+                                                          timestamp: time, windowNumber: window.windowNumber, context: nil,
+                                                          eventNumber: 0, trackingNumber: 0, userData: nil) {
+            root.mouseEntered(with: entered)
+        }
+        root.mouseMoved(with: moved)
     }
 }
