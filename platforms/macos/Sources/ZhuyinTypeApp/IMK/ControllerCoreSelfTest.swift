@@ -1297,6 +1297,8 @@ enum ControllerCoreSelfTest {
 
         test("live: the 視窗與提示 preview plays — moments and states change over time, and the 中英 badge appears") {
             _ = NSApplication.shared
+            // Under Reduce Motion the preview does not play by itself (by design); a CI machine may have it on.
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { print("     skipped: Reduce Motion is on"); return }
             let saved = (Preferences.shared, PreviewDirector.step)
             defer { Preferences.shared = saved.0; PreviewDirector.step = saved.1 }
             Preferences.shared = Preferences(defaults: MemorySettingsStorage())
@@ -1313,7 +1315,8 @@ enum ControllerCoreSelfTest {
                 RunLoop.main.run(until: Date().addingTimeInterval(0.05))
                 states.insert(director.state)
             }
-            try expect(director.ticks >= 6, "the preview did not play: \(director.ticks) moments")
+            try expect(director.ticks >= 6, "the preview did not play: \(director.ticks) moments"
+                       + " (window visible: \(window.occlusionState.contains(.visible)), screens: \(NSScreen.screens.count))")
             try expect(states.count >= 3, "the preview stayed on \(states)")
             director.show(.mode, last: false)
             var badge = false
@@ -1381,6 +1384,7 @@ enum ControllerCoreSelfTest {
             // At the real pace, in real windows, with mouse-moved events over the preview the whole time: the pointer
             // resting on it must not stop it (it used to, which looked like a broken carousel).
             _ = NSApplication.shared
+            if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion { print("     skipped: Reduce Motion is on"); return }
             let saved = Preferences.shared
             defer { Preferences.shared = saved }
             Preferences.shared = Preferences(defaults: MemorySettingsStorage())
@@ -1413,7 +1417,8 @@ enum ControllerCoreSelfTest {
             }
             for name in ["welcome", "candidates"] {
                 let states = PreviewDirector.history[name] ?? []
-                try expect(Set(states).count >= 3, "the \(name) preview went through \(states.map(\.rawValue)) in 10 s")
+                try expect(Set(states).count >= 3, "the \(name) preview went through \(states.map(\.rawValue)) in 10 s"
+                           + " (windows visible: \(windows.map { $0.occlusionState.contains(.visible) }), screens: \(NSScreen.screens.count))")
             }
         }
 
