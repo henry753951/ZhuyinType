@@ -208,12 +208,12 @@ final class SettingsModel: ObservableObject {
 
 /// The sidebar's pages (docs/product/SETTINGS_IA.md).
 enum SettingsPane: String, CaseIterable {
-    case intro, typing, choosing, candidates, words, analytics, keys, advanced, about, sources
+    case intro, typing, choosing, candidates, words, analytics, keys, advanced, about
 
     /// The sidebar's sections, each under a small grey header.
     static let groups: [(title: String, panes: [SettingsPane])] = [
         ("概覽", [.intro, .analytics]), ("輸入", [.typing, .choosing, .words]), ("外觀", [.candidates]),
-        ("一般", [.keys, .advanced, .about, .sources]),
+        ("一般", [.keys, .advanced, .about]),
     ]
 
     var title: String {
@@ -227,7 +227,6 @@ enum SettingsPane: String, CaseIterable {
         case .keys: return "快捷鍵"
         case .advanced: return "進階"
         case .about: return "關於"
-        case .sources: return "授權與資料來源"
         }
     }
 
@@ -242,7 +241,6 @@ enum SettingsPane: String, CaseIterable {
         case .keys: return "command"
         case .advanced: return "slider.horizontal.3"
         case .about: return "info"
-        case .sources: return "doc.text"
         }
     }
 
@@ -254,7 +252,7 @@ enum SettingsPane: String, CaseIterable {
         case .candidates: return .systemBlue
         case .words: return .systemOrange
         case .analytics: return .systemGreen
-        case .keys, .advanced, .about, .sources: return .systemGray
+        case .keys, .advanced, .about: return .systemGray
         }
     }
 

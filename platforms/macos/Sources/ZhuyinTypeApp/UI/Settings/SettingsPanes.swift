@@ -213,6 +213,7 @@ enum CorrectionLogActions {
 }
 
 struct AboutPane: View {
+    @ObservedObject var model: SettingsModel
     @ObservedObject private var updater = Updater.shared
 
     private var sourceURL: URL {
@@ -273,9 +274,8 @@ struct AboutPane: View {
                 SettingRow(title: "原始碼") {
                     Link("查看此版本", destination: sourceURL)
                 }
-                SettingRow(title: "授權與資料來源") {
-                    Button("查看") { SettingsWindowController.shared.select(.sources) }
-                }
+                DrillRow(model: model, title: "授權與資料來源", subtitle: "程式庫、詞庫、資料集與模型的授權與署名",
+                         value: "", subpage: .sources)
                 SettingRow(title: "詞庫授權", value: "CC BY-SA 4.0")
                 SettingRow(title: "詞庫資料", value: "CC-CEDICT、Unicode Unihan、wordfreq")
             }
