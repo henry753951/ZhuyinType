@@ -78,6 +78,13 @@ if [[ -d data/build/v3/ContextEncoder.mlmodelc && -d data/build/v3/SyllableEncod
         [[ -e data/build/v3/$notice ]] && cp -R -X data/build/v3/$notice "$contents/Resources/v3/"
     done
 fi
+# These archived notices describe our training scripts; preserve the model and data terms and source attributions.
+for model in lm lm_chat v3; do
+    notice="$contents/Resources/$model/NOTICE.md"
+    [[ -f "$notice" ]] || continue
+    sed -i '' -e 's/Code: MIT\./Code: AGPL-3.0-only./g' \
+        -e 's/Scripts are MIT-licensed\./Scripts are AGPL-3.0-only./g' "$notice"
+done
 # What this build ships: version and the SHA-256 of every data and model file, so an installed copy can be checked and
 # updates can be told apart from the running one.
 /usr/bin/python3 -I - "$contents" <<'PY'
