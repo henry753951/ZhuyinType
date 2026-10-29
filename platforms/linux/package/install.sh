@@ -5,7 +5,10 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 share="$HOME/.local/share/zhuyintype"
-fcitx_libdir=$(pkg-config --variable=libdir Fcitx5Core 2>/dev/null || echo /usr/lib/x86_64-linux-gnu)/fcitx5
+# Fcitx 5's addon directory: asked from pkg-config when it is installed, otherwise the Debian/Ubuntu path for x86_64.
+libdir=/usr/lib/x86_64-linux-gnu
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists Fcitx5Core; then libdir=$(pkg-config --variable=libdir Fcitx5Core); fi
+fcitx_libdir="$libdir/fcitx5"
 if [[ ${1:-} == --uninstall ]]; then
     sudo rm -f "$fcitx_libdir/libzhuyintype.so" /usr/share/fcitx5/addon/zhuyintype.conf /usr/share/fcitx5/inputmethod/zhuyintype.conf
     pkill -f "$share/bin/zhuyintype-desktop --ime-host" 2>/dev/null || true
@@ -13,7 +16,7 @@ if [[ ${1:-} == --uninstall ]]; then
     echo "ZhuyinType 已移除。Fcitx 5 的輸入方式清單請自行確認。"
     exit 0
 fi
-for tool in pkg-config sudo; do command -v "$tool" >/dev/null || { echo "需要 $tool" >&2; exit 1; }; done
+for tool in sudo bash; do command -v "$tool" >/dev/null || { echo "需要 $tool" >&2; exit 1; }; done
 rm -rf "$share"
 mkdir -p "$share"
 cp -r "$here/bin" "$here/data" "$share/"
