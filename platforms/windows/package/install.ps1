@@ -47,8 +47,10 @@ foreach ($name in @('zhuyintype-tsf.dll','zt-tsf-register.exe')) {
     $target=Join-Path $tsfDirectory $name
     if (-not ((Test-Path $target) -and (Get-FileHash $source).Hash -eq (Get-FileHash $target).Hash)) { Copy-Item $source $target -Force }
 }
-& "$tsfDirectory\zt-tsf-register.exe" install "$tsfDirectory\zhuyintype-tsf.dll"
-if ($LASTEXITCODE) { throw 'TSF 註冊失敗' }
+& "$tsfDirectory\zt-tsf-register.exe" install "$tsfDirectory\zhuyintype-tsf.dll" | Out-Null
+# Judged by the result, not the exit code: the registry must now name this DLL.
+$registered=(Get-Item $tsfKey -ErrorAction SilentlyContinue).GetValue('')
+if ($registered -ne "$tsfDirectory\zhuyintype-tsf.dll") { throw 'TSF 註冊失敗' }
 & "$here\user-profile.ps1"
 
 $exe=Join-Path $app 'zhuyintype-desktop.exe'
