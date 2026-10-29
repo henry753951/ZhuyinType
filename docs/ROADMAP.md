@@ -112,7 +112,7 @@
 
 之後要做 Linux 與 Windows 輸入法，共用同一個引擎與模型。評測也要搬到 GPU 主機（64 核心）上跑。
 
-原則是依平台各自優化。跨平台共用的只有引擎邏輯（Rust，`engine/`）與訓練好的權重，每個平台用最適合的執行方式與介面。macOS 是主要平台，維持專門的優化，不經過任何跨平台層：
+原則是依平台各自優化。三個平台共用引擎邏輯（Rust，`engine/`）與訓練好的權重；Linux 與 Windows 另共用 Qt 介面、設定與候選狀態，系統輸入法整合各自實作。macOS 是主要平台，維持專門的優化，不經過任何跨平台層：
 
 - Core ML（CPU／神經引擎，之後加上有狀態的前文模型與 int8 權重）
 - InputMethodKit
@@ -137,7 +137,7 @@
 - macOS 的建置、行為與速度不變。
 - 整組參數掃描比 Mac 明顯快。
 
-目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`），四種評測工具與參數掃描都能用全部核心執行（當時以 Swift 引擎驗證：Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行）。引擎已移植到 Rust，GPU 主機以 Rust 的 zhuyin-cli 與 ONNX Runtime 1.24.4 評測；C ABI（`zhuyin-ffi`）已完成，macOS App 改用它。Linux／Windows 的輸入法介面還沒開始，計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
+目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`），四種評測工具與參數掃描都能用全部核心執行（當時以 Swift 引擎驗證：Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行）。引擎已移植到 Rust，GPU 主機以 Rust 的 zhuyin-cli 與 ONNX Runtime 1.24.4 評測；C ABI（`zhuyin-ffi`）已完成，macOS App 改用它。2026-10-29 已加入 Linux／Windows 共用的 Qt 介面預覽：九個主頁、十個子頁與設定儲存，並補上示範播放、展開與對話框互動、候選字鍵盤試選、動畫及 640 px 窄版排版；原生前端以 Fcitx5／TSF 接入共用 Qt 服務。Linux 已在 Xfce／X11 測試 VM 完成實際輸入、滑鼠選字、安全欄位與使用者部署；Windows 原生驗證記錄隨平台實作維護。Wayland、神經模型回呼與正式發行套件仍待完成，介面外觀另行修正。逐頁狀態見 [Qt 介面移植](product/QT_DESKTOP.md)，平台整合計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
 
 ## 3. 0.5–0.7 規劃：免選字、補標點、補全
 

@@ -391,7 +391,7 @@ enum UIPreviewRenderer {
         bindings[.singleCharacterList] = [Shortcut("↓", option: true)]
         bindings[.typeZhuyin] = [Shortcut("z", control: true)]
         bindings[.selectLeft] = [Shortcut("←", control: true, shift: true)]
-        bindings[.nextPage] = [Shortcut("]", control: true), Shortcut("Tab"), Shortcut("PageDown")]
+        bindings[.nextPage] = [Shortcut("n", control: true), Shortcut("Tab"), Shortcut("PageDown")]
         bindings[.previousPage] = [Shortcut("Tab", shift: true), Shortcut("PageUp", option: true)]
         preferences.bindings = bindings
         preferences.selectionKeys = .homeRow
@@ -552,7 +552,7 @@ enum UIPreviewRenderer {
         Preferences.shared.resetToDefaults()
         customKeys(Preferences.shared)
         var edited = Preferences.shared.bindings
-        edited[.nextPage] = [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true), Shortcut("]", control: true)]
+        edited[.nextPage] = [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true), Shortcut("n", control: true)]
         edited[.previousPage] = [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
         edited[.singleCharacterList] = []
         edited[.typeZhuyin] = []

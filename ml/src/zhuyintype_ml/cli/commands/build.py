@@ -17,7 +17,7 @@ import argparse
 import subprocess
 import sys
 
-from zhuyintype_ml.core import paths
+from zhuyintype_ml.core import desktop, paths
 
 SCRIPTS = paths.CLIENT / "scripts"
 
@@ -31,6 +31,14 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     targets = parser.add_subparsers(dest="target", metavar="TARGET")
+
+    targets.add_parser("input-method", help="shared Qt host and native Fcitx5/TSF adapter").set_defaults(
+        func=lambda _: desktop.build_input_method()
+    )
+
+    targets.add_parser("desktop", help="shared Qt client preview (Linux, Windows, macOS)").set_defaults(
+        func=lambda _: desktop.build()
+    )
 
     cli = targets.add_parser("cli", help="zhuyin-cli (engine/crates/zhuyin-cli)")
     cli.add_argument("--debug", action="store_true", help="debug build (default: release)")

@@ -72,6 +72,11 @@ jobs:
       - name: Speed, energy and memory on this Mac
         run: |
           tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources --json dist/release/metrics-mac.json
+      - name: Stable download name
+        # README links to releases/latest/download/ZhuyinType-macOS.pkg, which always points at the newest release.
+        run: |
+          pkg=$(ls dist/release/ZhuyinType-*.pkg | head -1)
+          cp "$pkg" dist/release/ZhuyinType-macOS.pkg
       - name: Publish
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

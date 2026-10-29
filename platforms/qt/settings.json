@@ -1,0 +1,619 @@
+[
+  {
+    "key": "spaceAction",
+    "title": "空白鍵",
+    "page": "typing",
+    "group": "空白與 Esc",
+    "kind": "choice",
+    "default": "commit",
+    "options": [
+      {
+        "value": "commit",
+        "label": "送出並輸入空白"
+      },
+      {
+        "value": "insert",
+        "label": "輸入空白，不送出"
+      },
+      {
+        "value": "candidates",
+        "label": "開啟候選字視窗"
+      }
+    ],
+    "detail": "打完注音後，再按空白送出組字並輸入空白",
+    "details": {
+      "commit": "打完注音後，再按空白送出組字並輸入空白",
+      "insert": "打完注音後，再按空白在組字中輸入空白，不送出",
+      "candidates": "打完注音後，再按空白開啟候選字視窗"
+    },
+    "anchor": "space"
+  },
+  {
+    "key": "escape",
+    "title": "Esc",
+    "page": "typing",
+    "group": "空白與 Esc",
+    "kind": "choice",
+    "default": "composition",
+    "options": [
+      {
+        "value": "composition",
+        "label": "清除整段組字"
+      },
+      {
+        "value": "reading",
+        "label": "只清除注音"
+      }
+    ],
+    "detail": "先清除注音，再按一次清除整段組字",
+    "details": {
+      "composition": "先清除注音，再按一次清除整段組字",
+      "reading": "只清除還沒打完的注音"
+    },
+    "anchor": "escape"
+  },
+  {
+    "key": "punctuationKeys",
+    "title": "標點按法",
+    "page": "typing",
+    "group": "標點",
+    "kind": "choice",
+    "default": "windows",
+    "options": [
+      {
+        "value": "windows",
+        "label": "Windows"
+      },
+      {
+        "value": "mac",
+        "label": "macOS"
+      }
+    ],
+    "detail": "Shift 加符號鍵打出鍵上的符號，例如 <",
+    "details": {
+      "windows": "Shift 加符號鍵打出鍵上的符號，例如 <",
+      "mac": "Shift 加符號鍵打出中文標點，例如 ，"
+    },
+    "anchor": "punctuationKeys"
+  },
+  {
+    "key": "feature.controlPunctuation",
+    "title": "Ctrl 加符號鍵打中文標點",
+    "page": "punctuation",
+    "group": "可以關閉的按鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "，。、？！：；『』，兩種標點按法都能用",
+    "anchor": "controlPunctuation"
+  },
+  {
+    "key": "feature.optionSymbols",
+    "title": "Alt 加數字或符號鍵打鍵上的符號",
+    "page": "punctuation",
+    "group": "可以關閉的按鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": ". / ; < >，兩種標點按法都能用",
+    "anchor": "optionSymbols"
+  },
+  {
+    "key": "shiftSwitch",
+    "title": "單按 Shift 切換中英",
+    "page": "typing",
+    "group": "中英切換",
+    "kind": "toggle",
+    "default": true,
+    "detail": "在可以打字的地方單按一下",
+    "details": {
+      "true": "在可以打字的地方單按一下",
+      "false": "關閉時，Shift 只當作 Shift"
+    },
+    "anchor": "shiftTap"
+  },
+  {
+    "key": "shiftToggle",
+    "title": "使用的 Shift",
+    "page": "typing",
+    "group": "中英切換",
+    "kind": "choice",
+    "default": "both",
+    "options": [
+      {
+        "value": "both",
+        "label": "左右 Shift"
+      },
+      {
+        "value": "left",
+        "label": "左 Shift"
+      },
+      {
+        "value": "right",
+        "label": "右 Shift"
+      }
+    ],
+    "anchor": "shiftTap"
+  },
+  {
+    "key": "feature.capsLockEnglish",
+    "title": "Caps Lock 打英文",
+    "page": "typing",
+    "group": "中英切換",
+    "kind": "toggle",
+    "default": true,
+    "detail": "開著時打英文，正在組的字先送出",
+    "anchor": "capsLock"
+  },
+  {
+    "key": "startInEnglish",
+    "title": "開始輸入時使用英文",
+    "page": "typing",
+    "group": "中英切換",
+    "kind": "toggle",
+    "default": false
+  },
+  {
+    "key": "feature.deleteWord",
+    "title": "刪掉一個詞",
+    "page": "typing",
+    "group": "編輯組字",
+    "kind": "toggle",
+    "default": true,
+    "detail": "有未完成的注音時清除注音",
+    "anchor": "deleteWord",
+    "commands": [
+      "deleteWord"
+    ]
+  },
+  {
+    "key": "candidateAnchor",
+    "title": "游標在句中時改",
+    "page": "choosing",
+    "group": "轉換",
+    "kind": "choice",
+    "default": "after",
+    "options": [
+      {
+        "value": "after",
+        "label": "游標右邊的字"
+      },
+      {
+        "value": "before",
+        "label": "游標左邊的字"
+      }
+    ],
+    "detail": "要改的字以底線標出"
+  },
+  {
+    "key": "characterForms",
+    "title": "台／臺",
+    "page": "choosing",
+    "group": "轉換",
+    "kind": "choice",
+    "default": "common",
+    "options": [
+      {
+        "value": "common",
+        "label": "台"
+      },
+      {
+        "value": "standard",
+        "label": "臺"
+      }
+    ],
+    "control": "segments",
+    "detail": "顯示與送出的寫法"
+  },
+  {
+    "key": "typoTolerance",
+    "title": "按錯鍵修正",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "choice",
+    "default": "standard",
+    "options": [
+      {
+        "value": "off",
+        "label": "關閉"
+      },
+      {
+        "value": "standard",
+        "label": "標準"
+      },
+      {
+        "value": "aggressive",
+        "label": "積極"
+      }
+    ],
+    "detail": "修正按到相鄰的鍵、多按、漏按、順序與聲調",
+    "details": {
+      "off": "照按下的鍵解讀注音",
+      "standard": "修正按到相鄰的鍵、多按、漏按、順序與聲調",
+      "aggressive": "比「標準」更容易採用修正"
+    },
+    "anchor": "typo"
+  },
+  {
+    "key": "readingChannel",
+    "title": "接受常見的其他讀法",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "有邊讀邊、輕聲照本調打，也找得到要的詞",
+    "details": {
+      "true": "有邊讀邊、輕聲照本調打，也找得到要的詞",
+      "false": "只照字典的讀音找詞"
+    },
+    "anchor": "otherReadings"
+  },
+  {
+    "key": "feature.correctionsList",
+    "title": "列出修正的字",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "按錯修正與模糊音的字排在前面；再按一次還原",
+    "anchor": "corrections",
+    "commands": [
+      "correctionsList"
+    ]
+  },
+  {
+    "key": "fuzzy.zZh",
+    "title": "ㄗ 與 ㄓ",
+    "page": "fuzzy",
+    "group": "",
+    "kind": "toggle",
+    "default": false,
+    "detail": "例如 ㄗㄨˇ 也打得出「主」"
+  },
+  {
+    "key": "fuzzy.cCh",
+    "title": "ㄘ 與 ㄔ",
+    "page": "fuzzy",
+    "group": "",
+    "kind": "toggle",
+    "default": false,
+    "detail": "例如 ㄘ 也打得出「吃」"
+  },
+  {
+    "key": "fuzzy.sSh",
+    "title": "ㄙ 與 ㄕ",
+    "page": "fuzzy",
+    "group": "",
+    "kind": "toggle",
+    "default": false,
+    "detail": "例如 ㄙㄨ ㄈㄨˊ 也打得出「舒服」"
+  },
+  {
+    "key": "fuzzy.enEng",
+    "title": "ㄣ 與 ㄥ",
+    "page": "fuzzy",
+    "group": "",
+    "kind": "toggle",
+    "default": false,
+    "detail": "例如 ㄒㄧㄣ 也打得出「星」"
+  },
+  {
+    "key": "fuzzy.anAng",
+    "title": "ㄢ 與 ㄤ",
+    "page": "fuzzy",
+    "group": "",
+    "kind": "toggle",
+    "default": false,
+    "detail": "例如 ㄈㄢˊ 也打得出「房」"
+  },
+  {
+    "key": "usesPrecedingText",
+    "title": "參考游標前的文字",
+    "page": "context",
+    "group": "",
+    "kind": "toggle",
+    "default": true,
+    "detail": "依前文選字，並調整成口語或書面的用語"
+  },
+  {
+    "key": "feature.typeZhuyin",
+    "title": "打出注音本身",
+    "page": "choosing",
+    "group": "改字",
+    "kind": "toggle",
+    "default": true,
+    "detail": "緊接著再按一次或按 Esc 恢復",
+    "anchor": "typeZhuyin",
+    "commands": [
+      "typeZhuyin"
+    ]
+  },
+  {
+    "key": "feature.selectPhrase",
+    "title": "選取加入自訂詞",
+    "page": "choosing",
+    "group": "改字",
+    "kind": "toggle",
+    "default": true,
+    "detail": "選取 1 到 6 個字，再按 Return",
+    "anchor": "selectPhrase",
+    "commands": [
+      "selectLeft",
+      "selectRight"
+    ]
+  },
+  {
+    "key": "feature.deleteAfterCommit",
+    "title": "送出後刪掉重打",
+    "page": "choosing",
+    "group": "改字",
+    "kind": "toggle",
+    "default": true,
+    "detail": "送出後 30 秒內用 Backspace 刪掉再打，算作改字並接著前文選字",
+    "anchor": "deleteAfterCommit"
+  },
+  {
+    "key": "candidateLayout",
+    "title": "排列",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "choice",
+    "default": "vertical",
+    "options": [
+      {
+        "value": "vertical",
+        "label": "直式"
+      },
+      {
+        "value": "horizontal",
+        "label": "橫式"
+      }
+    ],
+    "control": "segments",
+    "detail": "↑ ↓ 移動反白，← → 改前一個或後一個字",
+    "anchor": "layout",
+    "commands": [
+      "previousCharacter",
+      "nextCharacter"
+    ]
+  },
+  {
+    "key": "candidateFontSize",
+    "title": "字級",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "number",
+    "default": 18,
+    "min": 13,
+    "max": 28,
+    "unit": " pt",
+    "control": "slider"
+  },
+  {
+    "key": "candidateDensity",
+    "title": "間距",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "choice",
+    "default": "standard",
+    "options": [
+      {
+        "value": "standard",
+        "label": "標準"
+      },
+      {
+        "value": "compact",
+        "label": "緊湊"
+      }
+    ],
+    "control": "segments"
+  },
+  {
+    "key": "candidatesPerPage",
+    "title": "每頁的候選字",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "number",
+    "default": 9,
+    "min": 3,
+    "max": 9,
+    "unit": " 個",
+    "detail": "用 1–9 選字；Return 選取反白的字",
+    "anchor": "selection"
+  },
+  {
+    "key": "selectionKeys",
+    "title": "選字鍵",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "choice",
+    "default": "123456789",
+    "options": [
+      {
+        "value": "123456789",
+        "label": "1 2 3 4 5 6 7 8 9"
+      },
+      {
+        "value": "asdfghjkl",
+        "label": "A S D F G H J K L"
+      }
+    ]
+  },
+  {
+    "key": "feature.pageKeys",
+    "title": "翻頁",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "toggle",
+    "default": true,
+    "detail": "空白也翻到下一頁",
+    "anchor": "pageKeys",
+    "commands": [
+      "nextPage",
+      "previousPage"
+    ]
+  },
+  {
+    "key": "pageAtListEdge",
+    "title": "到頁底時 ↓ 翻到下一頁",
+    "page": "appearance",
+    "group": "候選字清單",
+    "kind": "toggle",
+    "default": true,
+    "detail": "在一頁的最後一個字按 ↓ 到下一頁，到清單結尾停住",
+    "details": {
+      "true": "在一頁的最後一個字按 ↓ 到下一頁，到清單結尾停住",
+      "false": "↓ 停在一頁的最後一個字；用翻頁鍵翻頁"
+    }
+  },
+  {
+    "key": "showsZhuyinHint",
+    "title": "顯示注音",
+    "page": "appearance",
+    "group": "清單的內容",
+    "kind": "toggle",
+    "default": true,
+    "detail": "要改的字的注音，列在清單上方",
+    "anchor": "showsZhuyin"
+  },
+  {
+    "key": "feature.zhuyinRowClick",
+    "title": "點注音列打出注音",
+    "page": "appearance",
+    "group": "清單的內容",
+    "kind": "toggle",
+    "default": true,
+    "detail": "打出注音本身",
+    "anchor": "zhuyinRow"
+  },
+  {
+    "key": "showsAnnotations",
+    "title": "標出修正的讀音",
+    "page": "appearance",
+    "group": "清單的內容",
+    "kind": "toggle",
+    "default": true,
+    "detail": "修正過的字旁邊以灰字標出注音"
+  },
+  {
+    "key": "feature.singleCharacterList",
+    "title": "只列一個字",
+    "page": "appearance",
+    "group": "清單的內容",
+    "kind": "toggle",
+    "default": true,
+    "detail": "清單只列游標處的一個字；再按一次還原",
+    "anchor": "single",
+    "commands": [
+      "singleCharacterList"
+    ]
+  },
+  {
+    "key": "showsListSwitches",
+    "title": "單字與修正按鈕",
+    "page": "appearance",
+    "group": "清單的內容",
+    "kind": "toggle",
+    "default": true
+  },
+  {
+    "key": "candidatePlacement",
+    "title": "位置",
+    "page": "appearance",
+    "group": "位置",
+    "kind": "choice",
+    "default": "below",
+    "options": [
+      {
+        "value": "below",
+        "label": "游標下方"
+      },
+      {
+        "value": "above",
+        "label": "游標上方"
+      }
+    ],
+    "detail": "空間不足時換到另一邊，一律留在螢幕內",
+    "anchor": "placement"
+  },
+  {
+    "key": "panelAppearance",
+    "title": "外觀",
+    "page": "appearance",
+    "group": "外觀",
+    "kind": "choice",
+    "default": "system",
+    "options": [
+      {
+        "value": "system",
+        "label": "跟隨系統"
+      },
+      {
+        "value": "light",
+        "label": "淺色"
+      },
+      {
+        "value": "dark",
+        "label": "深色"
+      }
+    ],
+    "detail": "也套用到加入自訂詞的提示與「中」「英」提示",
+    "anchor": "appearance"
+  },
+  {
+    "key": "panelAnimation",
+    "title": "動畫",
+    "page": "appearance",
+    "group": "動畫",
+    "kind": "toggle",
+    "default": true,
+    "detail": "候選字視窗出現、翻頁與「中」「英」提示的動態",
+    "anchor": "motion"
+  },
+  {
+    "key": "showModeToast",
+    "title": "中英提示",
+    "page": "appearance",
+    "group": "提示",
+    "kind": "toggle",
+    "default": true,
+    "detail": "切換時在游標旁顯示「中」或「英」",
+    "anchor": "modeToast"
+  },
+  {
+    "key": "learningEnabled",
+    "title": "記住選過的字詞",
+    "page": "words",
+    "group": "",
+    "kind": "toggle",
+    "default": true,
+    "detail": "下次打同樣的讀音時排在前面；只存在這台電腦"
+  },
+  {
+    "key": "recordsCorrections",
+    "title": "記錄改字",
+    "page": "advanced",
+    "group": "改字記錄",
+    "kind": "toggle",
+    "default": false,
+    "detail": "改字時記下打的鍵與改前改後的字，用來改進選字"
+  },
+  {
+    "key": "recordsCorrectionContext",
+    "title": "一併記錄游標前的文字",
+    "page": "advanced",
+    "group": "改字記錄",
+    "kind": "toggle",
+    "default": false,
+    "detail": "重播記錄時使用同樣的前文"
+  },
+  {
+    "key": "recordsUsageStats",
+    "title": "記錄使用統計",
+    "page": "analytics",
+    "group": "統計",
+    "kind": "toggle",
+    "default": true,
+    "details": {
+      "false": "關閉時不計數"
+    }
+  }
+]

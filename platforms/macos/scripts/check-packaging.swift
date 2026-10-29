@@ -82,6 +82,7 @@ struct Sources: Decodable {
         let id: String, group: String, distribution: String
         let licenseFiles: [String]
         let notices: [String]?
+        let platforms: [String]?
     }
     let version: Int
     let groups: [Group]
@@ -101,10 +102,13 @@ func checkSourceFile(_ path: String, under directory: URL) throws {
 for entry in sources.entries {
     precondition(groupIDs.contains(entry.group), "unknown group: \(entry.group)")
     precondition(["bundled", "training", "evaluation"].contains(entry.distribution), "unknown distribution: \(entry.distribution)")
-    if entry.distribution == "bundled" {
+    // Entries only the Linux and Windows client ships (Qt) have no files in this bundle.
+    if entry.distribution == "bundled", entry.platforms?.contains("macos") ?? true {
         for file in entry.licenseFiles { try checkSourceFile(file, under: resources.appendingPathComponent("Licenses")) }
     }
-    for file in entry.notices ?? [] { try checkSourceFile(file, under: resources) }
+    if entry.platforms?.contains("macos") ?? true {
+        for file in entry.notices ?? [] { try checkSourceFile(file, under: resources) }
+    }
 }
 if FileManager.default.fileExists(atPath: resources.appendingPathComponent("lm").path) {
     try checkSourceFile("lm/articles.tsv.gz", under: resources)

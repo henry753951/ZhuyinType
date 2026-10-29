@@ -215,6 +215,7 @@ enum CorrectionLogActions {
 struct AboutPane: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject private var updater = Updater.shared
+    @State private var document: LicenseDocument?
 
     private var sourceURL: URL {
         let ref = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String).map { "v\($0)" } ?? "main"
@@ -265,8 +266,8 @@ struct AboutPane: View {
             }
             SettingsSection {
                 SettingRow(title: "程式授權") {
-                    Link("AGPL 3.0", destination: Bundle.main.resourceURL?.appendingPathComponent("Licenses/AGPL-3.0.txt")
-                         ?? URL(string: "https://www.gnu.org/licenses/agpl-3.0.html")!)
+                    Button("AGPL 3.0") { document = LicenseDocument(file: "AGPL-3.0.txt", entry: "ZhuyinType") }
+                        .buttonStyle(.link)
                 }
                 SettingRow(title: "原始碼") {
                     Link("查看此版本", destination: sourceURL)
@@ -275,6 +276,7 @@ struct AboutPane: View {
                          value: "", subpage: .sources)
             }
         }
+        .sheet(item: $document) { DocumentSheet(document: $0) }
     }
 }
 
@@ -286,6 +288,9 @@ private struct SourceList: Decodable {
         let copyright: String?, url: URL?, version: String?, changes: String?
         let licenseFiles: [String]
         let notices: [String]?
+        /// The clients that ship it ("macos", "linux", "windows"); every client when absent.
+        let platforms: [String]?
+        var onMac: Bool { platforms?.contains("macos") ?? true }
     }
     let version: Int
     let groups: [Group]
@@ -295,6 +300,7 @@ private struct SourceList: Decodable {
 struct SourcesPane: View {
     private let resources = Bundle.main.resourceURL
     private let sources = SourcesPane.load()
+    @State private var document: LicenseDocument?
 
     // Read once per pane: the list is static data in the bundle.
     private static func load() -> SourceList? {
@@ -312,9 +318,10 @@ struct SourcesPane: View {
     var body: some View {
         SettingsForm {
             if let sources {
-                ForEach(sources.groups) { group in
+                // Entries shipped only by the Linux and Windows client (Qt) are left out here.
+                ForEach(sources.groups.filter { group in sources.entries.contains { $0.group == group.id && $0.onMac } }) { group in
                     SettingsSection(group.title) {
-                        ForEach(sources.entries.filter { $0.group == group.id }) { entry in
+                        ForEach(sources.entries.filter { $0.group == group.id && $0.onMac }) { entry in
                             DisclosureGroup {
                                 VStack(alignment: .leading, spacing: 8) {
                                     if let copyright = entry.copyright { Text(copyright) }
@@ -322,10 +329,10 @@ struct SourcesPane: View {
                                     if let changes = entry.changes { Text("修改：\(changes)") }
                                     if let url = entry.url { Link("來源", destination: url) }
                                     ForEach(entry.licenseFiles, id: \.self) { file in
-                                        fileButton(file, prefix: "Licenses/")
+                                        fileButton(file, prefix: "Licenses/", entry: entry.name)
                                     }
                                     ForEach(entry.notices ?? [], id: \.self) { file in
-                                        fileButton(file, prefix: "")
+                                        fileButton(file, prefix: "", entry: entry.name)
                                     }
                                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
                             } label: {
@@ -348,6 +355,7 @@ struct SourcesPane: View {
                 }
             }
         }
+        .sheet(item: $document) { DocumentSheet(document: $0) }
     }
 
     private func distribution(_ value: String) -> String {
@@ -358,12 +366,109 @@ struct SourcesPane: View {
         }
     }
 
-    private func fileButton(_ file: String, prefix: String) -> some View {
+    /// A licence or notice opens in the app (DocumentSheet); archives and data lists are shown in Finder.
+    private func fileButton(_ file: String, prefix: String, entry: String) -> some View {
         Button(file) {
             guard let url = resources?.appendingPathComponent(prefix + file) else { return }
-            // Archives would be unpacked by Archive Utility; show them in Finder instead.
-            if url.pathExtension == "gz" { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            else { NSWorkspace.shared.open(url) }
+            if let document = LicenseDocument(url: url, entry: entry) { self.document = document }
+            else { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
+    }
+}
+
+/// A licence or notice read inside the app: the same viewer as the Linux and Windows client's DocumentViewer.
+struct LicenseDocument: Identifiable {
+    let url: URL
+    let entry: String
+    let text: String
+    var id: URL { url }
+    var name: String { url.lastPathComponent }
+    var markdown: Bool { url.pathExtension.lowercased() == "md" }
+
+    /// Nil for a file that is not text to read here (an archive, a data list) or cannot be read.
+    init?(url: URL, entry: String) {
+        let ext = url.pathExtension.lowercased()
+        guard ["txt", "md", ""].contains(ext), let data = try? Data(contentsOf: url), data.count <= 8 << 20,
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        self.url = url
+        self.entry = entry
+        self.text = text
+    }
+
+    /// A file of the bundle's Licenses folder.
+    init?(file: String, entry: String) {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("Licenses/" + file) else { return nil }
+        self.init(url: url, entry: entry)
+    }
+}
+
+/// The sheet a licence opens in: the file name and what it belongs to, the text selectable (monospaced for a
+/// licence, formatted for Markdown), and 拷貝全文, 在 Finder 中顯示, 完成.
+struct DocumentSheet: View {
+    let document: LicenseDocument
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(document.name).font(.headline).lineLimit(1).truncationMode(.middle)
+                Text(document.entry).font(.callout).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            Divider()
+            DocumentTextView(text: document.text, markdown: document.markdown)
+            Divider()
+            HStack(spacing: 8) {
+                Button("拷貝全文") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(document.text, forType: .string)
+                }
+                Button("在 Finder 中顯示") { NSWorkspace.shared.activateFileViewerSelecting([document.url]) }
+                Spacer()
+                Button("完成") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .frame(minWidth: 520, idealWidth: 680, minHeight: 420, idealHeight: 620)
+    }
+}
+
+/// Long text in an AppKit text view: selectable, scrolling, fast for the Rust crates' hundred-kilobyte list.
+private struct DocumentTextView: NSViewRepresentable {
+    let text: String
+    let markdown: Bool
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        if let view = scroll.documentView as? NSTextView {
+            view.isEditable = false
+            view.isSelectable = true
+            view.drawsBackground = false
+            view.textContainerInset = NSSize(width: 16, height: 14)
+            view.setAccessibilityLabel("全文")
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let view = scroll.documentView as? NSTextView else { return }
+        view.textStorage?.setAttributedString(attributed)
+    }
+
+    private var attributed: NSAttributedString {
+        if markdown, let parsed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            let result = NSMutableAttributedString(parsed)
+            result.addAttributes([.font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                                  .foregroundColor: NSColor.labelColor], range: NSRange(location: 0, length: result.length))
+            return result
+        }
+        return NSAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
+        ])
     }
 }

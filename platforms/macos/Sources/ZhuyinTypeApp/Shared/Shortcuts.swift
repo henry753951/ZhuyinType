@@ -87,8 +87,15 @@ struct Shortcut: Codable, Hashable {
         }
         if printable && shift && !control && !option { return "Shift 加這個鍵打中文標點或大寫字母" }
         if printable && option && !control && !key.first!.isLetter { return "Option 加這個鍵打鍵上印的符號" }
+        if printable && control && !option && !shift && !key.first!.isLetter && Self.controlPunctuation() {
+            return "⌃ 加符號鍵打中文標點"
+        }
         return nil
     }
+
+    /// Whether ⌃ with a symbol key types Chinese punctuation (「⌃ 加符號鍵打中文標點」 on): those keys are then not free.
+    /// A closure so the self-tests can switch it.
+    static var controlPunctuation: () -> Bool = { Preferences.shared.isEnabled(.controlPunctuation) }
 }
 
 /// The keys the candidate window shows on its keycaps; empty for a command that is turned off.

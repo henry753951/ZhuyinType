@@ -16,7 +16,7 @@ import argparse
 import subprocess
 import sys
 
-from zhuyintype_ml.core import paths
+from zhuyintype_ml.core import desktop, paths
 
 
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -28,6 +28,14 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     kinds = parser.add_subparsers(dest="kind", metavar="KIND")
+
+    kinds.add_parser("input-method", help="shared Qt host and native Fcitx5/TSF adapter").set_defaults(
+        func=lambda _: desktop.build_input_method(check=True)
+    )
+
+    kinds.add_parser("desktop", help="shared Qt state tests and isolated UI renders").set_defaults(
+        func=lambda _: desktop.build(check=True)
+    )
 
     kinds.add_parser("engine", help="engine behaviour and latency checks (cargo test, release)").set_defaults(
         func=engine

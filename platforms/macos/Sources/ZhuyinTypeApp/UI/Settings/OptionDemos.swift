@@ -108,7 +108,11 @@ enum OptionDemos {
 
     static let fuzzy: [DemoFrame] = [
         DemoFrame(keys: ["ㄙ"], line: [DemoSegment("今天很", .document), DemoSegment("ㄙ")], caption: "打 ㄙㄨ ㄈㄨˊ", hold: 0.5),
-        DemoFrame(keys: ["ㄨ"], line: [DemoSegment("今天很", .document), DemoSegment("ㄙㄨ")], caption: "打 ㄙㄨ ㄈㄨˊ", hold: 0.9),
+        DemoFrame(keys: ["ㄨ"], line: [DemoSegment("今天很", .document), DemoSegment("ㄙㄨ")], caption: "打 ㄙㄨ ㄈㄨˊ", hold: 0.5),
+        DemoFrame(keys: ["ㄈ"], line: [DemoSegment("今天很", .document), DemoSegment("ㄙㄨ"), DemoSegment("ㄈ")],
+                  caption: "打 ㄙㄨ ㄈㄨˊ", hold: 0.4),
+        DemoFrame(keys: ["ㄨ"], line: [DemoSegment("今天很", .document), DemoSegment("ㄙㄨ"), DemoSegment("ㄈㄨ")],
+                  caption: "打 ㄙㄨ ㄈㄨˊ", hold: 0.7),
         DemoFrame(keys: ["ˊ"], line: [DemoSegment("今天很", .document), DemoSegment("舒服")],
                   caption: "開啟「ㄙ 與 ㄕ」：也打得出「舒服」", hold: 2.2),
     ]

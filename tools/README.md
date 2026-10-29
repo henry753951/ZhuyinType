@@ -63,6 +63,8 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt build install` | 建置並安裝到 `~/Library/Input Methods` |
 | `zt build pkg` | `dist/ZhuyinType-<版本>.pkg` |
 
+共用 Qt 設定介面與輸入法服務使用 `zt build desktop`；`zt check desktop` 另執行狀態測試與全部頁面的深淺色渲染，不包含在 `check all`。`zt build input-method` 另建置目前系統的 Fcitx5／TSF 原生介面；`zt check input-method` 再執行原生測試。Windows 的系統派送與互動桌面測試另依平台文件執行，不包含在無桌面的 CTest。環境需求與 Windows 指令見 [Qt 客戶端](../platforms/qt/README.md)。
+
 ### 檢查
 
 | 指令 | 說明 |
@@ -139,6 +141,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 檔案 | 說明 |
 |---|---|
+| `zt.ps1` | Windows PowerShell 啟動程式，使用相同 uv 專案與指令；例如 `./tools/zt.ps1 check desktop` |
 | `zt` | 啟動程式（POSIX sh）：找到版本庫與 uv，執行 `uv run --project ml python -m zhuyintype_ml.cli` |
 | `check-public.sh` | 發布前的隱私檢查 |
 | `../ml/pyproject.toml`、`../ml/uv.lock`、`../ml/.python-version` | uv 專案、相依群組、ruff 與 mypy 設定、固定的版本 |
