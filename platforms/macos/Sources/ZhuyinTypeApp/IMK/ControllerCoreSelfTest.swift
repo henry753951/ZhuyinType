@@ -275,6 +275,12 @@ enum ControllerCoreSelfTest {
                        && Shortcut("1", shift: true).reservedReason != nil && Shortcut("s", command: true).reservedReason != nil
                        && Shortcut("s", control: true).reservedReason == nil && Shortcut("`").reservedReason == nil,
                        "reserved keys")
+            let punctuation = Shortcut.controlPunctuation
+            defer { Shortcut.controlPunctuation = punctuation }
+            Shortcut.controlPunctuation = { true }
+            try expect(Shortcut(",", control: true).reservedReason != nil, "⌃, is free while ⌃ types Chinese punctuation")
+            Shortcut.controlPunctuation = { false }
+            try expect(Shortcut(",", control: true).reservedReason == nil, "⌃, is reserved with 中文標點 off")
         }
         test("the character ↓ would change is underlined once the cursor moves into the composition") {
             let (core, client) = session()

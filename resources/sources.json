@@ -59,7 +59,45 @@
         "Sparkle-LICENSE.txt"
       ],
       "version": "2.10.0",
-      "url": "https://github.com/sparkle-project/Sparkle"
+      "url": "https://github.com/sparkle-project/Sparkle",
+      "platforms": [
+        "macos"
+      ]
+    },
+    {
+      "id": "qt",
+      "group": "libraries",
+      "name": "Qt 6",
+      "use": "Linux 與 Windows 的設定視窗與候選字視窗",
+      "distribution": "bundled",
+      "license": "LGPL-3.0-only",
+      "licenseFiles": [
+        "Qt-NOTICE.txt",
+        "LGPL-3.0.txt",
+        "GPL-3.0.txt"
+      ],
+      "copyright": "Copyright (C) The Qt Company Ltd. and other contributors",
+      "url": "https://www.qt.io",
+      "platforms": [
+        "linux",
+        "windows"
+      ]
+    },
+    {
+      "id": "nlohmann-json",
+      "group": "libraries",
+      "name": "JSON for Modern C++",
+      "use": "Fcitx 5 外掛與設定程式之間的訊息",
+      "distribution": "bundled",
+      "license": "MIT",
+      "licenseFiles": [
+        "nlohmann-json.txt"
+      ],
+      "copyright": "Copyright (c) 2013-2025 Niels Lohmann",
+      "url": "https://github.com/nlohmann/json",
+      "platforms": [
+        "linux"
+      ]
     },
     {
       "id": "cc-cedict",
@@ -208,6 +246,9 @@
       "notices": [
         "lm/NOTICE.md",
         "lm/articles.tsv.gz"
+      ],
+      "platforms": [
+        "macos"
       ]
     },
     {
@@ -250,6 +291,9 @@
         "v3/attribution.jsonl",
         "v3/source-manifest.json",
         "v3/articles.tsv.gz"
+      ],
+      "platforms": [
+        "macos"
       ]
     },
     {
@@ -269,6 +313,9 @@
         "lm/NOTICE.md",
         "lm/articles.tsv.gz",
         "v3/Licenses/Qwen3-8B-LICENSE"
+      ],
+      "platforms": [
+        "macos"
       ]
     },
     {
