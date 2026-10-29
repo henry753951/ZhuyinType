@@ -51,7 +51,7 @@ public:
             if (!window_) { Deactivate(); return HRESULT_FROM_WIN32(GetLastError()); }
             // The 中/英 indicator in the taskbar; the input method works without it if the language bar refuses it.
             if (SUCCEEDED(manager->QueryInterface(IID_PPV_ARGS(&langBar_)))) {
-                modeButton_=new InputModeButton([this](bool rightClick) { OnModeClick(rightClick); });
+                modeButton_=new InputModeButton([this](bool rightClick,POINT point) { rightClick ? ShowMenu(point) : ToggleMode(); });
                 if (FAILED(langBar_->AddItem(modeButton_))) { modeButton_->ClearAction(); modeButton_->Release(); modeButton_=nullptr; langBar_.Reset(); }
             }
             threadFocused_=GetFocus()!=nullptr;
@@ -68,6 +68,7 @@ public:
             }
             langBar_.Reset();
             if (window_) { DestroyWindow(window_); window_=nullptr; }
+            if (menuOwner_) { DestroyWindow(menuOwner_); menuOwner_=nullptr; }
             if (!windowClass_.empty()) { UnregisterClassW(windowClass_.c_str(),moduleHandle); windowClass_.clear(); }
             if (keys_) { keys_->UnadviseKeyEventSink(client_); keys_.Reset(); }
             if (source_) {
@@ -101,14 +102,11 @@ public:
     STDMETHODIMP OnSetFocus(BOOL foreground) override {
         return foreground ? OnSetThreadFocus() : OnKillThreadFocus();
     }
-    STDMETHODIMP OnTestKeyDown(ITfContext* context,WPARAM vk,LPARAM,BOOL* eaten) override {
-        if (!eaten) return E_POINTER;
-        // A test is a pure local prediction. TSF may call it repeatedly without OnKeyDown.
-        *eaten=context && !restricted_ && threadFocused_ && !broker_.busy() && PotentialKey(vk);
-        return S_OK;
+    STDMETHODIMP OnTestKeyDown(ITfContext* context,WPARAM vk,LPARAM flags,BOOL* eaten) override {
+        return TestKey(context,vk,flags,false,eaten);
     }
     STDMETHODIMP OnTestKeyUp(ITfContext* context,WPARAM vk,LPARAM flags,BOOL* eaten) override {
-        return OnTestKeyDown(context,vk,flags,eaten);
+        return TestKey(context,vk,flags,true,eaten);
     }
     STDMETHODIMP OnKeyDown(ITfContext* context,WPARAM vk,LPARAM flags,BOOL* eaten) override {
         return KeyEvent(context,vk,flags,false,eaten);
@@ -130,6 +128,19 @@ public:
         });
     }
 private:
+    // A test is a pure local prediction; TSF may call it repeatedly without OnKeyDown. It must be right: a key the
+    // test claims is taken from the application even if OnKeyDown then declines it.
+    HRESULT TestKey(ITfContext* context,WPARAM vk,LPARAM flags,bool release,BOOL* eaten) noexcept {
+        if (!eaten) return E_POINTER;
+        *eaten=context && !restricted_ && threadFocused_ && !broker_.busy() && PotentialKey(vk) && Claims(vk,flags,release);
+        return S_OK;
+    }
+    bool Claims(WPARAM vk,LPARAM flags,bool release) const noexcept {
+        // Caps Lock is not claimed when idle; if it changed since the host's last reply its 英 may be stale, so
+        // let the host decide (a declined character is then typed by OnKeyDown, never lost).
+        const bool capsChanged=((GetKeyState(VK_CAPITAL)&1)!=0)!=capsAtReply_;
+        return HostWantsKey(TranslateKey(vk,flags,release),composing_ || composition_.Get()!=nullptr,english_ && !capsChanged);
+    }
     HRESULT RefreshFocus() {
         if (!manager_ || !threadFocused_) return S_OK;
         Com<ITfDocumentMgr> doc; Com<ITfContext> next;
@@ -218,17 +229,44 @@ private:
         applying_=false;
         if (FAILED(hr)) { broker_.disconnect(true); hostFocused_=false; return false; }
         english_=reply.english;
+        composing_=reply.composing;
+        capsAtReply_=(GetKeyState(VK_CAPITAL)&1)!=0;
         if (modeButton_) modeButton_->SetEnglish(reply.english);
         return true;
     }
     // The taskbar indicator: a left click switches 中/英 in the focused field, a right click opens the settings.
-    void OnModeClick(bool rightClick) {
+    bool CanToggle() const noexcept { return context_ && threadFocused_ && hostFocused_ && !secure_ && !broker_.busy(); }
+    void OpenSettings() {
         Guard([&]() -> HRESULT {
             if (broker_.busy()) return S_OK;
-            if (rightClick) {
-                if (broker_.connected() || broker_.connect()) broker_.request(contextName_.empty() ? L"settings" : contextName_,L"show-settings",Json{});
-                return S_OK;
-            }
+            if (broker_.connected() || broker_.connect()) broker_.request(contextName_.empty() ? L"settings" : contextName_,L"show-settings",Json{});
+            return S_OK;
+        });
+    }
+    // The right-click menu of the 中／英 indicator, the usual place for an input method's settings on Windows.
+    void ShowMenu(POINT point) {
+        Guard([&]() -> HRESULT {
+            // A menu needs a real (not message-only) owner window; it is never shown.
+            if (!menuOwner_) menuOwner_=CreateWindowExW(WS_EX_TOOLWINDOW,windowClass_.c_str(),L"",WS_POPUP,0,0,0,0,nullptr,nullptr,moduleHandle,this);
+            if (!menuOwner_) return S_OK;
+            HMENU menu=CreatePopupMenu();
+            if (!menu) return S_OK;
+            AppendMenuW(menu,MF_STRING | (CanToggle() ? 0 : MF_GRAYED),1,english_ ? L"切換成中文" : L"切換成英文");
+            AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+            AppendMenuW(menu,MF_STRING,2,L"ZhuyinType 設定…");
+            SetForegroundWindow(menuOwner_);
+            const auto command=TrackPopupMenu(menu,TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | TPM_RIGHTALIGN | TPM_NONOTIFY,
+                point.x,point.y,0,menuOwner_,nullptr);
+            PostMessageW(menuOwner_,WM_NULL,0,0);
+            DestroyMenu(menu);
+            if (command==1) ToggleMode();
+            else if (command==2) OpenSettings();
+            return S_OK;
+        });
+    }
+    void ToggleMode() {
+        Guard([&]() -> HRESULT {
+            if (broker_.busy()) return S_OK;
             if (!context_ || !threadFocused_ || !hostFocused_ || secure_) return S_OK;
             const auto generation=generation_;
             Com<TextService> self=this;
@@ -259,6 +297,8 @@ private:
         *eaten=FALSE;
         return Guard([&]() -> HRESULT {
             if (!context || !threadFocused_ || restricted_ || broker_.busy() || !PotentialKey(vk)) return S_OK;
+            // Only keys the test claimed reach here; TSF has already taken them from the application.
+            const bool claimed=Claims(vk,flags,release);
             if (context_.Get()!=context) SwitchContext(context);
             bool handled=false;
             const auto generation=generation_;
@@ -276,11 +316,21 @@ private:
                 Put(fields,L"key",key.key); Put(fields,L"modifiers",key.modifiers);
                 Put(fields,L"release",key.release); Put(fields,L"repeat",key.repeat);
                 Put(fields,L"shiftSide",key.shiftSide); Put(fields,L"secure",false);
+                if (vk!=VK_CAPITAL) Put(fields,L"capsLock",(GetKeyState(VK_CAPITAL)&1)!=0);
                 PutRect(fields,rect_,scale_);
                 const auto reply=broker_.request(contextName_,L"key",fields);
                 if (generation!=generation_) return S_OK;
-                if (reply && Apply(cookie,*reply)) handled=reply->handled;
-                else {
+                if (reply && Apply(cookie,*reply)) {
+                    handled=reply->handled;
+                    // A typed character the host declined (the mode changed in between): put it in the document
+                    // ourselves rather than lose it.
+                    if (!handled && claimed && !release && !composing_) {
+                        if (const auto typed=TypedCharacter(vk,flags)) {
+                            Reply local; local.commit.assign(1,typed); local.english=english_;
+                            if (Apply(cookie,local)) handled=true;
+                        }
+                    }
+                } else {
                     applying_=true; FinishComposition(cookie,composition_,false); applying_=false;
                     hostFocused_=false;
                 }
@@ -334,10 +384,10 @@ private:
     Com<ITfComposition> composition_;
     BrokerClient broker_;
     std::wstring contextName_,windowClass_;
-    HWND window_=nullptr;
+    HWND window_=nullptr,menuOwner_=nullptr;
     unsigned long long generation_=0;
     bool threadFocused_=false,hostFocused_=false,secure_=true,restricted_=false,pending_=false,applying_=false;
-    bool focusDeferred_=false,resetDeferred_=false,english_=false;
+    bool focusDeferred_=false,resetDeferred_=false,english_=false,composing_=false,capsAtReply_=false;
     Com<ITfLangBarItemMgr> langBar_;
     InputModeButton* modeButton_=nullptr;
     RECT rect_{};

@@ -4,6 +4,28 @@ namespace zt {
 bool PotentialKey(WPARAM vk) noexcept {
     return vk != VK_LWIN && vk != VK_RWIN && vk != VK_PROCESSKEY && vk != VK_PACKET;
 }
+bool HostWantsKey(const Key& key, bool composing, bool english) noexcept {
+    if (!key.key) return false;
+    if (composing) return true;
+    if (key.key == 0x01000020) return true;  // Shift: a tap switches 中/英.
+    if (english || key.release) return false;
+    if (key.key >= 0x01000000 || key.key <= 0x20) return false;  // Space, Return, arrows and editing keys when idle.
+    const int chord = key.modifiers & (0x04000000 | 0x08000000 | 0x10000000);
+    if (!chord) return true;  // Zhuyin keys, digits for tones, punctuation.
+    if (chord & 0x10000000) return false;  // Win: the system's.
+    const bool letter = (key.key >= 'A' && key.key <= 'Z') || (key.key >= 'a' && key.key <= 'z');
+    // Ctrl or Alt with a symbol key types 中文標點 / the key's symbol; with a letter it is the app's shortcut.
+    return !letter && chord != (0x04000000 | 0x08000000);
+}
+wchar_t TypedCharacter(WPARAM vk, LPARAM flags) noexcept {
+    std::array<BYTE,256> state{};
+    std::array<wchar_t,8> chars{};
+    if (!GetKeyboardState(state.data())) return 0;
+    if ((state[VK_CONTROL] | state[VK_MENU]) & 0x80) return 0;
+    const int n=ToUnicodeEx(static_cast<UINT>(vk), (static_cast<UINT>(flags)>>16)&0xff, state.data(), chars.data(),
+        static_cast<int>(chars.size()), 4, GetKeyboardLayout(0));
+    return n==1 && chars[0]>=32 && !(chars[0]>=0xd800 && chars[0]<=0xdfff) ? chars[0] : 0;
+}
 Key TranslateKey(WPARAM vk, LPARAM flags, bool release) noexcept {
     Key r;
     r.release = release;

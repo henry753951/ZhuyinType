@@ -58,14 +58,15 @@ STDMETHODIMP InputModeButton::GetTooltipString(BSTR* tooltip) {
     *tooltip = SysAllocString(english_ ? L"英文（按一下切換成中文）" : L"中文（按一下切換成英文）");
     return *tooltip ? S_OK : E_OUTOFMEMORY;
 }
-STDMETHODIMP InputModeButton::OnClick(TfLBIClick click, POINT, const RECT*) {
-    if (action_) action_(click == TF_LBI_CLK_RIGHT);
+STDMETHODIMP InputModeButton::OnClick(TfLBIClick click, POINT point, const RECT*) {
+    if (action_) action_(click == TF_LBI_CLK_RIGHT, point);
     return S_OK;
 }
 STDMETHODIMP InputModeButton::InitMenu(ITfMenu*) { return E_NOTIMPL; }
 STDMETHODIMP InputModeButton::OnMenuSelect(UINT) { return E_NOTIMPL; }
 STDMETHODIMP InputModeButton::GetIcon(HICON* icon) {
     if (!icon) return E_INVALIDARG;
+    // One plain glyph, like Windows' own IMEs; the input method's square logo sits to its right.
     *icon = CreateGlyphIcon(english_ ? L"英" : L"中");
     return *icon ? S_OK : E_FAIL;
 }

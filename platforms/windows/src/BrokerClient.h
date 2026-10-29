@@ -8,7 +8,7 @@
 namespace zt {
 using Json = winrt::Windows::Data::Json::JsonObject;
 struct Reply {
-    bool handled = false, candidates = false, english = false;
+    bool handled = false, candidates = false, english = false, composing = false;
     std::wstring commit, preedit;
     int cursor = 0;
 };

@@ -3,6 +3,9 @@ $ErrorActionPreference='Stop'
 $root=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $entry='ZhuyinTypeInputHost'
+# 開始功能表的「ZhuyinType 設定」：開啟執行檔時，執行中的服務會顯示設定視窗。
+# WScript.Shell cannot save a shortcut whose file name is not ASCII, so the Start menu entry is named in English.
+$shortcut=Join-Path ([Environment]::GetFolderPath('Programs')) 'ZhuyinType Settings.lnk'
 if ($Uninstall) {
     & "$PSScriptRoot\user-profile.ps1" -Remove
     $key='HKCU:\Software\Classes\CLSID\{25BC3548-B611-4F92-91D0-C9291D427EA8}\InprocServer32'
@@ -13,6 +16,7 @@ if ($Uninstall) {
         if ($LASTEXITCODE) { throw '移除 TSF 註冊失敗' }
     }
     Remove-ItemProperty $run -Name $entry -ErrorAction SilentlyContinue
+    Remove-Item $shortcut -ErrorAction SilentlyContinue
     Write-Output '已移除輸入法註冊與登入啟動項目。開啟中的應用程式結束後會卸載 DLL。'
     exit 0
 }
@@ -36,4 +40,9 @@ if (-not (Test-Path $run)) { New-Item $run | Out-Null }
 $powershell=Join-Path $PSHOME 'powershell.exe'
 $command='"'+$powershell+'" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$launcher+'"'
 New-ItemProperty $run -Name $entry -PropertyType String -Value $command -Force | Out-Null
+$link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+$link.TargetPath=$HostExe
+$link.WorkingDirectory=Split-Path $HostExe -Parent
+$link.Description='Open ZhuyinType settings (開啟 ZhuyinType 設定)'
+$link.Save()
 Write-Output '已登記輸入法與目前使用者的登入啟動項目。請使用 Win+空白鍵選取 ZhuyinType 注音。'

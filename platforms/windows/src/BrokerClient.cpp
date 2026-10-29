@@ -189,6 +189,8 @@ std::optional<Reply> BrokerClient::request(const std::wstring& context, const wc
         if (!std::isfinite(cursor) || std::floor(cursor) != cursor || cursor < 0 || cursor > reply.preedit.size() ||
             !Boundary(reply.preedit, static_cast<size_t>(cursor))) throw std::runtime_error("cursor");
         reply.cursor = static_cast<int>(cursor);
+        // Older hosts send no `composing`; their composition is the preedit.
+        reply.composing = response.HasKey(L"composing") ? response.GetNamedBoolean(L"composing") : !reply.preedit.empty() || reply.candidates;
         return reply;
     } catch (...) { disconnect(true); return {}; }
 }

@@ -162,7 +162,9 @@ QJsonObject ImeHost::snapshot(bool handled) {
             // A listed app shows nothing itself: the composition is in the candidate window.
             {"preedit", secure_ || popupApps_.contains(clientApp_, Qt::CaseInsensitive) ? QString() : session_.composition()},
             {"cursor", secure_ ? 0 : session_.cursor()}, {"candidates", visible()},
-            {"english", input_.english()}};
+            {"english", input_.english()},
+            // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
+            {"composing", !secure_ && (session_.composing() || visible())}};
 }
 
 QJsonObject ImeHost::dispatch(QLocalSocket *peer, const QJsonObject &r) {

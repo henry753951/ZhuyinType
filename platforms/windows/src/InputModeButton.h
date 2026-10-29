@@ -7,10 +7,10 @@
 namespace zt {
 // The 中/英 indicator Windows shows in the taskbar's input indicator (GUID_LBI_INPUTMODE), like the built-in
 // Bopomofo IME: a monochrome 中 or 英 drawn for the taskbar's light or dark colour. A left click asks the host to
-// switch modes; a right click opens the settings. The button owns no state but what the host last reported.
+// switch modes; a right click shows the input method's menu (switch, settings). The button owns no state but what the host last reported.
 class InputModeButton final : public ITfLangBarItemButton, public ITfSource {
 public:
-    using Action = std::function<void(bool rightClick)>;
+    using Action = std::function<void(bool rightClick, POINT point)>;
     explicit InputModeButton(Action action);
     ~InputModeButton();
     InputModeButton(const InputModeButton&) = delete;
