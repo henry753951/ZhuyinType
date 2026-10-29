@@ -94,7 +94,7 @@
 Ubuntu 26.04 可用 `apt` 安裝需求：
 
 ```sh
-sudo apt install fcitx5 libqt6quick6 libqt6qml6 libqt6network6 libqt6quickcontrols2-6 qml6-module-qtquick-controls
+sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-shapes qml6-module-qtquick-dialogs qml6-module-qtquick-window qml6-module-qtquick-templates
 ```
 
 解開 `ZhuyinType-Linux-x86_64.tar.gz` 後，在資料夾中執行 `./install.sh`。安裝程式會複製 Fcitx 5 附加元件、啟動服務，並設定登入後自動啟動。之後在 Fcitx 5 設定中加入「ZhuyinType」並切換使用。
