@@ -195,7 +195,7 @@ sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6
 4. 整句重排：引擎對首選沒有把握時，字級 Transformer 語言模型（v2b）依前文為前 16 句評分，選出最後顯示的整句。你選過的詞會保留。
 5. 送出與學習：送出後更新個人統計與記住的字詞；選了修正過的字時，記下按錯的鍵。
 
-詞庫與語言模型以 mmap 載入，常駐記憶體約 29 MB。兩個神經模型以 Core ML 在 CPU 上執行。
+詞庫與語言模型以 mmap 載入，常駐記憶體約 29 MB。兩個神經模型在 CPU 上執行：macOS 使用 Core ML，Windows 與 Linux 使用 ONNX Runtime。
 
 ## 準確率
 
@@ -212,21 +212,34 @@ sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6
 
 ## 從原始碼建置
 
-需要 [Rust](https://rustup.rs)（引擎；`engine/rust-toolchain.toml` 固定版本）、Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）與 [uv](https://docs.astral.sh/uv/)。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。所有工作都由 `tools/zt` 執行，`tools/zt help` 列出全部指令。
+需要 [Rust](https://rustup.rs)（引擎；`engine/rust-toolchain.toml` 固定版本）與 [uv](https://docs.astral.sh/uv/)。所有平台共用的工作由根目錄的 `tools/zt` 執行，`tools/zt help` 列出全部指令。
 
 ```sh
 tools/zt setup           # 檢查並準備開發環境
 tools/zt data fetch      # 下載詞庫、語言模型與神經模型（依 resources/assets.json 驗證雜湊）
-tools/zt build app       # dist/ZhuyinType.app
-tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
 tools/zt check engine    # 引擎的測試（cargo test --release）
-tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 ```
+
+各平台的輸入法建置方式：
+
+- **macOS**：需要 Xcode（設定視窗使用 SwiftUI，需要 Xcode 內附的 macro 外掛；本專案使用 Swift 6.4）。`xcode-select -p` 指向 Command Line Tools 時，建置腳本會自動改用 `/Applications/Xcode.app`。
+
+  ```sh
+  tools/zt build app       # dist/ZhuyinType.app
+  tools/zt build install   # 安裝到目前帳號；正在使用的輸入法會在組字結束後換成新版
+  tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
+  ```
+
+- **Windows**：見 [Windows 建置說明](platforms/windows/README.md)，需要 Visual Studio 2022 C++ Build Tools 與 CMake，並先建置共用的 Qt 桌面服務。
+- **Linux**：見 [Linux 建置說明](platforms/linux/README.md)，需要 Fcitx 5 開發套件，並先建置共用的 Qt 桌面服務。
 
 | 目錄 | 內容 |
 |---|---|
 | `engine/` | 所有平台共用的輸入法引擎（Rust）：組字、按鍵解碼、容錯、語言模型、神經模型、C 介面、`zhuyin-cli` |
+| `platforms/qt/` | Windows 與 Linux 共用的桌面服務（Qt 6 Quick）：設定視窗、候選字視窗與共用的介面元件 |
 | `platforms/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
+| `platforms/windows/` | Windows 輸入法（TSF 文字服務）、安裝與測試腳本 |
+| `platforms/linux/` | Linux 輸入法（Fcitx 5 附加元件）、安裝與測試腳本 |
 | `ml/` | 研發：資料、訓練、評測與 `zt` 指令（Python，見 [ml/README.md](ml/README.md)） |
 | `resources/` | 資料與模型的固定版本、來源與授權、二進位格式 |
 | `tools/` | `zt` 啟動器，說明見 [tools/README.md](tools/README.md) |
@@ -236,9 +249,9 @@ tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
 
 ## 移除
 
-先切換至英文輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除安裝的 app。
-原始碼提供 `platforms/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定。
-執行 `platforms/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
+- **macOS**：先切換至英文輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除安裝的 app。原始碼提供 `platforms/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定；執行 `platforms/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
+- **Windows**：在安裝資料夾中執行 `install.ps1 -Uninstall`。
+- **Linux**：在安裝資料夾中執行 `./install.sh --uninstall`。
 
 ## 文件
 
