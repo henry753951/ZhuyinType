@@ -1,0 +1,17 @@
+Qt 6
+
+Copyright (C) The Qt Company Ltd. and other contributors.
+
+ZhuyinType 在 Linux 與 Windows 的設定視窗、候選字視窗使用 Qt 6 的 Qt Core、Qt Gui、Qt Network、
+Qt Qml、Qt Quick 與 Qt Quick Controls 模組，依 GNU Lesser General Public License 第 3 版
+（LGPL-3.0-only）使用，未修改。授權全文見 LGPL-3.0.txt；LGPL 第 3 版引用的 GNU General Public
+License 第 3 版見 GPL-3.0.txt。
+
+Qt 以動態程式庫的形式隨 ZhuyinType 提供，你可以用相容的自行建置版本替換這些程式庫。
+Qt 的對應原始碼可在 https://download.qt.io/official_releases/qt/ 取得，或來信
+向 ZhuyinType 的維護者索取（https://github.com/henry753951/ZhuyinType）。
+
+ZhuyinType uses the Qt 6 modules Qt Core, Qt Gui, Qt Network, Qt Qml, Qt Quick and Qt Quick
+Controls, unmodified, under the GNU Lesser General Public License version 3 (LGPL-3.0-only).
+Qt is shipped as dynamic libraries that you may replace with a compatible build of your own.
+The corresponding source code is available at https://download.qt.io/official_releases/qt/.
