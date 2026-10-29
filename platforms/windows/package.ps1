@@ -10,6 +10,7 @@ New-Item -ItemType Directory -Force "$pkg\app","$pkg\tsf","$pkg\app\data" | Out-
 Copy-Item "$HostBuild\*" "$pkg\app" -Recurse -Force -Exclude '*.lib','*.exp','*.pdb','*.ilk','CMakeFiles','*.cmake','*.vcxproj*','*.obj','*.rc'
 Copy-Item "$root\data\build\*" "$pkg\app\data" -Recurse -Force
 Copy-Item "$TsfBuild\zhuyintype-tsf.dll","$TsfBuild\zt-tsf-register.exe" "$pkg\tsf"
+Copy-Item "$root\platforms\windows\src\logo.ico" "$pkg\tsf"
 Copy-Item "$PSScriptRoot\package\install.ps1","$PSScriptRoot\user-profile.ps1" $pkg
 Copy-Item "$root\LICENSE","$root\NOTICE" $pkg
 New-Item -ItemType Directory -Force $Out | Out-Null

@@ -42,12 +42,13 @@ $version=(Get-FileHash $dll -Algorithm SHA256).Hash.Substring(0,16)
 $tsfDirectory=Join-Path $root "Tsf\$version"
 New-Item -ItemType Directory -Force $tsfDirectory | Out-Null
 # An identical file already in place is kept: a DLL that an application has loaded cannot be rewritten.
-foreach ($name in @('zhuyintype-tsf.dll','zt-tsf-register.exe')) {
+foreach ($name in @('zhuyintype-tsf.dll','zt-tsf-register.exe','logo.ico')) {
     $source=Join-Path $here "tsf\$name"
     $target=Join-Path $tsfDirectory $name
     if (-not ((Test-Path $target) -and (Get-FileHash $source).Hash -eq (Get-FileHash $target).Hash)) { Copy-Item $source $target -Force }
 }
-& "$tsfDirectory\zt-tsf-register.exe" install "$tsfDirectory\zhuyintype-tsf.dll" | Out-Null
+# The language list icon is the logo file: the profile cannot take the DLL itself as its icon.
+& "$tsfDirectory\zt-tsf-register.exe" install "$tsfDirectory\zhuyintype-tsf.dll" --icon "$tsfDirectory\logo.ico" | Out-Null
 # Judged by the result, not the exit code: the registry must now name this DLL.
 $registered=(Get-Item $tsfKey -ErrorAction SilentlyContinue).GetValue('')
 if ($registered -ne "$tsfDirectory\zhuyintype-tsf.dll") { throw 'TSF 註冊失敗' }
