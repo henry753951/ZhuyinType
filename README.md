@@ -4,12 +4,12 @@
 
 # ZhuyinType 注音
 
-開源、在本機運作的 macOS 注音輸入法。<br>
-整句選字、修正按錯的鍵、依前文調整用語，所有輸入都在這台 Mac 上處理。
+開源、在本機運作的注音輸入法，支援 macOS、Windows 與 Linux。<br>
+整句選字、修正按錯的鍵、依前文調整用語，所有輸入都在這台電腦上處理。
 
 [![最新版本](https://img.shields.io/github/v/release/henry753951/ZhuyinType?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases/latest)
 [![下載次數](https://img.shields.io/github/downloads/henry753951/ZhuyinType/total?label=%E4%B8%8B%E8%BC%89&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000000?logo=apple&logoColor=white)](#安裝)
+[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-3969FA)](#安裝)
 [![授權](https://img.shields.io/github/license/henry753951/ZhuyinType?label=%E6%8E%88%E6%AC%8A)](LICENSE)
 <br>
 [![Engine](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/engine.yml?branch=main&label=Engine&logo=rust)](https://github.com/henry753951/ZhuyinType/actions/workflows/engine.yml)
@@ -17,7 +17,7 @@
 [![ML](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/ml.yml?branch=main&label=ML&logo=python&logoColor=white)](https://github.com/henry753951/ZhuyinType/actions/workflows/ml.yml)
 [![ZhuyinBench](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/benchmark.yml?label=ZhuyinBench)](docs/benchmarks/)
 
-[下載](https://github.com/henry753951/ZhuyinType/releases/latest) · [發布說明](docs/releases/) · [每版成績](docs/benchmarks/) · [文件](docs/README.md) · [規劃](docs/ROADMAP.md)
+[下載](#安裝) · [發布說明](docs/releases/) · [每版成績](docs/benchmarks/) · [文件](docs/README.md) · [規劃](docs/ROADMAP.md)
 
 </div>
 
@@ -50,7 +50,17 @@
 
 ## 安裝
 
-從 [GitHub Releases](https://github.com/henry753951/ZhuyinType/releases/latest) 下載 `ZhuyinType-<版本>.pkg`，開啟後依指示安裝，需要 macOS 14 或更新版本與管理員權限。套件會安裝到 `/Library/Input Methods/ZhuyinType.app`。
+最新版本的安裝檔固定在 [最新發布頁](https://github.com/henry753951/ZhuyinType/releases/latest)，下方連結會自動指向最新版：
+
+| 平台 | 下載 | 需求 |
+|---|---|---|
+| macOS | [ZhuyinType-macOS.pkg](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-macOS.pkg) | macOS 14 或更新版本 |
+| Windows | [ZhuyinType-Windows-x64.zip](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Windows-x64.zip) | Windows 10 或 11（x64） |
+| Linux | [ZhuyinType-Linux-x86_64.tar.gz](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-x86_64.tar.gz) | Fcitx 5、Qt 6.8 以上，x86_64 |
+
+### macOS
+
+開啟 `ZhuyinType-<版本>.pkg`，依指示安裝，需要管理員權限。套件會安裝到 `/Library/Input Methods/ZhuyinType.app`。
 
 第一次使用時：
 
@@ -64,6 +74,32 @@
 
 > [!NOTE]
 > 目前 app 採 ad-hoc 簽章，pkg 的簽署與公證尚待完成，套件使用建置機的架構。若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」查看開啟選項。曾從原始碼安裝者，請先移除 `~/Library/Input Methods/ZhuyinType.app`，再使用 pkg 版本。
+
+### Windows
+
+解壓縮 `ZhuyinType-Windows-x64.zip`，在資料夾中以 PowerShell 執行 `install.ps1`。安裝程式會：
+
+- 把程式放到 `%LOCALAPPDATA%\ZhuyinType`，並註冊「ZhuyinType 注音」輸入法；
+- 設定登入後自動啟動，並在開始功能表建立「ZhuyinType Settings」捷徑。
+
+安裝後到「設定 → 時間與語言 → 語言與地區」確認已加入「ZhuyinType 注音」，再以 Win＋空白鍵切換。工作列的輸入指示器左格顯示「中」／「英」，按一下切換；右格是 ZhuyinType 的標誌，右鍵可開啟設定。
+
+解除安裝：執行 `install.ps1 -Uninstall`。
+
+> [!NOTE]
+> 安裝檔尚未簽章，Windows 可能顯示 SmartScreen 提示；請確認來源為本發布頁後，選擇「其他資訊 → 仍要執行」。
+
+### Linux
+
+Ubuntu 26.04 可用 `apt` 安裝需求：
+
+```sh
+sudo apt install fcitx5 libqt6quick6 libqt6qml6 libqt6network6 libqt6quickcontrols2-6 qml6-module-qtquick-controls
+```
+
+解開 `ZhuyinType-Linux-x86_64.tar.gz` 後，在資料夾中執行 `./install.sh`。安裝程式會複製 Fcitx 5 附加元件、啟動服務，並設定登入後自動啟動。之後在 Fcitx 5 設定中加入「ZhuyinType」並切換使用。
+
+目前 Linux 版使用 X11 桌面（Xfce、GNOME、KDE 的 X11 工作階段）；Wayland 原生候選字視窗尚未完成，Wayland 工作階段會顯示提示並停止服務。
 
 ## 基本按鍵
 
@@ -137,7 +173,7 @@
 - `[` `]` 打出「」，`'` 打出「、」。在標點上按 ↓ 可以換成同類的全形或半形標點。
 - 單按 Shift 切換中英文，Caps Lock 開啟時輸入英文。快捷鍵可重新指定。
 - 有新版本時在你停止打字後自動更新，更新檔都經過簽章驗證，正在使用的輸入法在組字結束後換成新版。
-- 設定的「分析」頁回顧打了多少字、改了幾次字，以及輸入法每個按鍵的反應時間；只記錄次數與時間，存在這台 Mac，可以關閉或清除。
+- 設定的「分析」頁回顧打了多少字、改了幾次字，以及輸入法每個按鍵的反應時間；只記錄次數與時間，存在這台電腦，可以關閉或清除。
 - 不常用的按鍵功能（打出注音本身、單字與修正清單、⌃ 與 ⌥ 的符號、Caps Lock 打英文等）可以個別關閉，按鍵交給 App；每個功能最多可以指定三個按鍵。
 - 所有輸入都在本機處理，不連網路選字。
 
