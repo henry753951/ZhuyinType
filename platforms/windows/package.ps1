@@ -15,6 +15,8 @@ Copy-Item "$root\LICENSE","$root\NOTICE" $pkg
 New-Item -ItemType Directory -Force $Out | Out-Null
 $zip=Join-Path (Resolve-Path $Out) 'ZhuyinType-Windows-x64.zip'
 if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path "$pkg\*" -DestinationPath $zip
+# bsdtar (built into Windows 10 and later) writes the zip; Compress-Archive rejects some file timestamps.
+tar.exe -a -c -f $zip -C $pkg .
+if ($LASTEXITCODE) { throw "zip failed" }
 (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + '  ZhuyinType-Windows-x64.zip' | Set-Content "$zip.sha256"
 Write-Output $zip

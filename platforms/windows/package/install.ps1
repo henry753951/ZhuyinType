@@ -41,7 +41,12 @@ $dll=Join-Path $here 'tsf\zhuyintype-tsf.dll'
 $version=(Get-FileHash $dll -Algorithm SHA256).Hash.Substring(0,16)
 $tsfDirectory=Join-Path $root "Tsf\$version"
 New-Item -ItemType Directory -Force $tsfDirectory | Out-Null
-foreach ($name in @('zhuyintype-tsf.dll','zt-tsf-register.exe')) { Copy-Item (Join-Path $here "tsf\$name") $tsfDirectory -Force }
+# An identical file already in place is kept: a DLL that an application has loaded cannot be rewritten.
+foreach ($name in @('zhuyintype-tsf.dll','zt-tsf-register.exe')) {
+    $source=Join-Path $here "tsf\$name"
+    $target=Join-Path $tsfDirectory $name
+    if (-not ((Test-Path $target) -and (Get-FileHash $source).Hash -eq (Get-FileHash $target).Hash)) { Copy-Item $source $target -Force }
+}
 & "$tsfDirectory\zt-tsf-register.exe" install "$tsfDirectory\zhuyintype-tsf.dll"
 if ($LASTEXITCODE) { throw 'TSF 註冊失敗' }
 & "$here\user-profile.ps1"
