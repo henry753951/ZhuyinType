@@ -1,6 +1,8 @@
 # Writes the licence texts of every Rust crate the engine library links (normal and build dependencies, all targets),
 # the Linux/Windows counterpart of platforms/macos/scripts/rust-licenses.swift. Fails when a crate has no licence file.
 # Run: cmake -DENGINE_DIR=<engine> -DOUTPUT=<Rust-crates.txt> -P RustLicenses.cmake
+# Script mode starts with no policies set; IN_LIST needs CMP0057.
+cmake_minimum_required(VERSION 3.24)
 find_program(CARGO cargo HINTS "$ENV{CARGO_HOME}/bin" "$ENV{HOME}/.cargo/bin" "$ENV{USERPROFILE}/.cargo/bin" REQUIRED)
 execute_process(COMMAND "${CARGO}" tree --locked -p zhuyin-ffi -e normal,build --prefix none --format "{p}|{l}" --target all
     WORKING_DIRECTORY "${ENGINE_DIR}" OUTPUT_VARIABLE tree RESULT_VARIABLE status)

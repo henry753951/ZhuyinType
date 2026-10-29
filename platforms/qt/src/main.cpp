@@ -1,3 +1,5 @@
+#include <memory>
+#include "TrayIcon.h"
 #include "Candidates.h"
 #include "Settings.h"
 #include "ApplicationInfo.h"
@@ -199,6 +201,8 @@ int main(int argc, char *argv[]) {
     if (engine.rootObjects().isEmpty())
         return 1;
     QQmlApplicationEngine popupEngine;
+    // Windows: the logo in the notification area while the service runs; a click opens the settings.
+    std::unique_ptr<TrayIcon> tray;
     if (!parser.isSet("render-dir")) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
         if (!window) return 1;
@@ -210,6 +214,12 @@ int main(int argc, char *argv[]) {
             window->show(); window->raise(); window->requestActivate();
             QMetaObject::invokeMethod(window, "showWizardOnFirstUse", Qt::QueuedConnection);
         });
+#ifdef Q_OS_WIN
+        if (parser.isSet("ime-host")) {
+            tray = std::make_unique<TrayIcon>();
+            QObject::connect(tray.get(), &TrayIcon::activated, &host, [&host] { emit host.showSettingsRequested(); });
+        }
+#endif
         popupEngine.setInitialProperties({{"host", QVariant::fromValue(&host)}, {"settings", QVariant::fromValue(&settings)}, {"shortcuts", QVariant::fromValue(&shortcuts)}});
         popupEngine.loadFromModule("ZhuyinType.Desktop", "ImePopup");
         if (popupEngine.rootObjects().isEmpty()) return 1;

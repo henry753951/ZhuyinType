@@ -301,6 +301,8 @@ private slots:
         QFile file(QFileInfo(log.location().toLocalFile()).absoluteFilePath());
         QVERIFY(file.open(QIODevice::ReadOnly));
         const auto line = file.readLine();
+        // Windows cannot delete a file another handle has open; clearLog() below must not meet this one.
+        file.close();
         QVERIFY(line.endsWith('\n'));
         const auto record = QJsonDocument::fromJson(line).object();
         QCOMPARE(record.value("schema").toInt(), 1);

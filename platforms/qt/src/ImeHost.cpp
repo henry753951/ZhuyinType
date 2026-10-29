@@ -172,7 +172,7 @@ QJsonObject ImeHost::dispatch(QLocalSocket *peer, const QJsonObject &r) {
     if (r.value("v").toInt() != 1 || context.isEmpty() || context.size() > 128)
         return failure(QStringLiteral("通訊格式無效。"));
     if (op == "show-settings") { emit showSettingsRequested(); return {{"ok", true}}; }
-    if (!QStringList{"focus", "key", "poll", "blur", "reset", "secure", "context"}.contains(op))
+    if (!QStringList{"focus", "key", "poll", "blur", "reset", "secure", "context", "mode"}.contains(op))
         return failure(QStringLiteral("不支援的操作。"));
     if ((op == "key" || op == "focus" || op == "secure") && !r.value("secure").isBool())
         return failure(QStringLiteral("缺少安全輸入狀態。"));
@@ -184,6 +184,8 @@ QJsonObject ImeHost::dispatch(QLocalSocket *peer, const QJsonObject &r) {
         || !r.value("release").isBool()
         || (r.contains("shiftSide") && !integer(r.value("shiftSide"), 0, 2))))
         return failure(QStringLiteral("按鍵格式無效。"));
+    if (op == "mode" && !r.value("english").isBool())
+        return failure(QStringLiteral("中英模式格式無效。"));
     // 前文: the app and the text before the insertion point, when the platform reports them (IPC.md §前文).
     if ((r.contains("app") && (!r.value("app").isString() || r.value("app").toString().size() > 256))
         || (r.contains("before") && (!r.value("before").isString() || r.value("before").toString().size() > 1024)))
@@ -221,6 +223,8 @@ QJsonObject ImeHost::dispatch(QLocalSocket *peer, const QJsonObject &r) {
         const int side = r.value("shiftSide").toInt();
         if (r.value("release").toBool()) input_.release(key, modifiers, side);
         else handled = input_.press(key, modifiers, r.value("repeat").toBool(), side);
+    } else if (op == "mode" && !secure_) {
+        input_.setEnglish(r.value("english").toBool());
     } else if (op == "reset") {
         commit_.clear(); session_.reset();
     } else if (op == "blur") input_.deactivate();

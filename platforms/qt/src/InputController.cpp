@@ -321,6 +321,15 @@ void InputController::release(int key, int modifiers, int shiftSide) {
     }
 }
 
+void InputController::setEnglish(bool english) {
+    if (secure_ || english == english_ || (engine_.ready() && engine_.composing())) return;
+    if (engine_.ready()) engine_.setPrecedingText({});
+    if (recorder_) recorder_->breakContext();
+    english_ = english;
+    emit modeChanged();
+    emit modeSwitched(InputController::english());
+}
+
 void InputController::clearShift() {
     heldShifts_.clear();
     shiftTap_.reset();

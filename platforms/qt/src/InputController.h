@@ -42,6 +42,8 @@ public:
     /// the insertion point (nullopt: unknown).  Read when a composition starts.
     void setClient(const QString &app, std::optional<QString> before);
     void synchronizeCapsLock(bool enabled);
+    /// Sets 中/英 from outside the keyboard (the taskbar indicator), like a Shift tap: not while composing.
+    void setEnglish(bool english);
     void setCorrectionLog(CorrectionLog *log, const QString &appVersion);
     /// Monotonic seconds, for the key times the observers use; tests replace it.
     std::function<double()> clock;

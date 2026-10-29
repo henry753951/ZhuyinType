@@ -1,6 +1,7 @@
 #include "Identity.h"
 #include "Composition.h"
 #include "Keyboard.h"
+#include "InputModeButton.h"
 #include <new>
 
 namespace zt {
@@ -48,6 +49,11 @@ public:
             if (!RegisterClassW(&klass)) { Deactivate(); return HRESULT_FROM_WIN32(GetLastError()); }
             window_=CreateWindowExW(0,windowClass_.c_str(),L"",0,0,0,0,0,HWND_MESSAGE,nullptr,moduleHandle,this);
             if (!window_) { Deactivate(); return HRESULT_FROM_WIN32(GetLastError()); }
+            // The 中/英 indicator in the taskbar; the input method works without it if the language bar refuses it.
+            if (SUCCEEDED(manager->QueryInterface(IID_PPV_ARGS(&langBar_)))) {
+                modeButton_=new InputModeButton([this](bool rightClick) { OnModeClick(rightClick); });
+                if (FAILED(langBar_->AddItem(modeButton_))) { modeButton_->ClearAction(); modeButton_->Release(); modeButton_=nullptr; langBar_.Reset(); }
+            }
             threadFocused_=GetFocus()!=nullptr;
             return RefreshFocus();
         });
@@ -55,6 +61,12 @@ public:
     STDMETHODIMP Deactivate() override {
         return Guard([&]() -> HRESULT {
             SwitchContext(nullptr);
+            if (modeButton_) {
+                modeButton_->ClearAction();
+                if (langBar_) langBar_->RemoveItem(modeButton_);
+                modeButton_->Release(); modeButton_=nullptr;
+            }
+            langBar_.Reset();
             if (window_) { DestroyWindow(window_); window_=nullptr; }
             if (!windowClass_.empty()) { UnregisterClassW(windowClass_.c_str(),moduleHandle); windowClass_.clear(); }
             if (keys_) { keys_->UnadviseKeyEventSink(client_); keys_.Reset(); }
@@ -163,6 +175,7 @@ private:
     bool Prepare(TfEditCookie cookie,bool capsKey=false) {
         const auto generation=generation_;
         const bool secure=restricted_ || IsSecure(context_.Get(),cookie);
+        if (modeButton_) modeButton_->SetEnabled(!secure);
         if (secure) {
             applying_=true;
             const auto hr=FinishComposition(cookie,composition_,true);
@@ -204,7 +217,32 @@ private:
             ApplyReply(context_.Get(),cookie,static_cast<ITfCompositionSink*>(this),composition_,reply);
         applying_=false;
         if (FAILED(hr)) { broker_.disconnect(true); hostFocused_=false; return false; }
+        english_=reply.english;
+        if (modeButton_) modeButton_->SetEnglish(reply.english);
         return true;
+    }
+    // The taskbar indicator: a left click switches 中/英 in the focused field, a right click opens the settings.
+    void OnModeClick(bool rightClick) {
+        Guard([&]() -> HRESULT {
+            if (broker_.busy()) return S_OK;
+            if (rightClick) {
+                if (broker_.connected() || broker_.connect()) broker_.request(contextName_.empty() ? L"settings" : contextName_,L"show-settings",Json{});
+                return S_OK;
+            }
+            if (!context_ || !threadFocused_ || !hostFocused_ || secure_) return S_OK;
+            const auto generation=generation_;
+            Com<TextService> self=this;
+            return Edit(context_.Get(),client_,false,[self,generation](TfEditCookie cookie) -> HRESULT {
+                if (generation!=self->generation_ || !self->hostFocused_ || self->secure_) return S_OK;
+                Json fields;
+                Put(fields,L"english",!self->english_);
+                const auto reply=self->broker_.request(self->contextName_,L"mode",fields);
+                if (generation!=self->generation_) { self->RecoverDeferred(); return S_OK; }
+                if (reply) self->Apply(cookie,*reply);
+                self->RecoverDeferred();
+                return S_OK;
+            });
+        });
     }
     void RecoverDeferred() {
         if (broker_.busy()) return;
@@ -299,7 +337,9 @@ private:
     HWND window_=nullptr;
     unsigned long long generation_=0;
     bool threadFocused_=false,hostFocused_=false,secure_=true,restricted_=false,pending_=false,applying_=false;
-    bool focusDeferred_=false,resetDeferred_=false;
+    bool focusDeferred_=false,resetDeferred_=false,english_=false;
+    Com<ITfLangBarItemMgr> langBar_;
+    InputModeButton* modeButton_=nullptr;
     RECT rect_{};
     double scale_=1;
 };

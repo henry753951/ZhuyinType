@@ -54,6 +54,13 @@ COM 預設登記於 `HKCU\Software\Classes`。TSF profile 與類別透過 Window
 
 游標使用 `GetTextExt`，無法取得時嘗試 Windows caret。先依來源視窗 DPI context 正規化為實體座標，再依螢幕原點換算成 Qt 邏輯座標：`origin + (physical - origin) / scale`，寬高除以 scale，送出 `scale: 1`。
 
+工作列右下角有兩個 Windows 風格的單色圖示，顏色跟著工作列的深淺色：
+
+- 輸入指示器裡的「中」／「英」：TSF 的輸入模式按鈕（`GUID_LBI_INPUTMODE`，`src/InputModeButton.cpp`），按一下切換中英（IPC 的 `mode`），按右鍵開啟設定。組字中與安全欄位不切換。
+- 通知區域的 ZhuyinType 標誌：方形微圓角、挖空「ㄓ」，由服務以 `Shell_NotifyIcon` 顯示（`platforms/qt/src/TrayIcon.cpp`），按一下開啟設定。Windows 11 預設把新圖示收在「^」裡，可在工作列設定釘選。
+
+語言清單中的輸入法圖示是 DLL 內的單色標誌（`src/logo.ico`），不是彩色 App 圖示。
+
 ## 驗證
 
 `build.ps1` 會執行 `pipe-contract`。互動測試需要已登入且可接收鍵盤滑鼠的桌面，不能以 Session 0 的 SSH 程序當成 GUI 驗證：

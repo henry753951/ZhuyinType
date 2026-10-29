@@ -171,6 +171,22 @@ private slots:
         request(f.client, {{"op", "focus"}, {"secure", false}, {"app", "editor"}});
         QVERIFY(f.host.inlinePreedit());
     }
+    // The taskbar indicator's 中/英 switch: like a Shift tap it waits for the composition and skips secure fields.
+    void modeSwitchFromTheIndicator() {
+        Fixture f; QVERIFY2(f.start(), qPrintable(f.engine.error() + f.host.error()));
+        QVERIFY(request(f.client, {{"op", "focus"}, {"secure", false}}).value("ok").toBool());
+        QVERIFY(!request(f.client, {{"op", "mode"}, {"english", "yes"}}).value("ok").toBool());
+        auto reply = request(f.client, {{"op", "mode"}, {"english", true}});
+        QVERIFY(reply.value("ok").toBool());
+        QVERIFY(reply.value("english").toBool());
+        QVERIFY(!key(f.client, 'S').value("handled").toBool());
+        QVERIFY(!request(f.client, {{"op", "mode"}, {"english", false}}).value("english").toBool());
+        key(f.client, 'S');
+        QVERIFY(!request(f.client, {{"op", "mode"}, {"english", true}}).value("english").toBool());
+        request(f.client, {{"op", "reset"}});
+        request(f.client, {{"op", "secure"}, {"secure", true}});
+        QVERIFY(!request(f.client, {{"op", "mode"}, {"english", true}}).value("english").toBool());
+    }
     void refusesOccupiedFile() {
 #ifndef Q_OS_WIN
         Fixture f;

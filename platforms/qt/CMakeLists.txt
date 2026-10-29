@@ -19,7 +19,7 @@ qt_add_resources(desktop_state settings PREFIX / FILES settings.json)
 
 set(ZT_ENGINE_LIBRARY "${CMAKE_CURRENT_SOURCE_DIR}/../../engine/target/release/${CMAKE_SHARED_LIBRARY_PREFIX}zhuyin${CMAKE_SHARED_LIBRARY_SUFFIX}" CACHE FILEPATH "Rust C ABI library")
 get_filename_component(ZT_ENGINE_LIBRARY_NAME "${ZT_ENGINE_LIBRARY}" NAME)
-qt_add_executable(zhuyintype-desktop src/main.cpp src/FontSetup.cpp src/ApplicationInfo.cpp src/PreviewCapture.cpp src/PreviewCapture.h)
+qt_add_executable(zhuyintype-desktop src/main.cpp src/TrayIcon.cpp src/TrayIcon.h src/FontSetup.cpp src/ApplicationInfo.cpp src/PreviewCapture.cpp src/PreviewCapture.h)
 target_compile_definitions(zhuyintype-desktop PRIVATE ZT_ENGINE_LIBRARY_NAME="${ZT_ENGINE_LIBRARY_NAME}" ZT_DEVELOPMENT_DATA="${CMAKE_CURRENT_SOURCE_DIR}/../../data/build")
 add_custom_command(TARGET zhuyintype-desktop POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ZT_ENGINE_LIBRARY}" "$<TARGET_FILE_DIR:zhuyintype-desktop>/${ZT_ENGINE_LIBRARY_NAME}")
 file(STRINGS "../../engine/Cargo.toml" LICENSE_LINE REGEX "^license =")

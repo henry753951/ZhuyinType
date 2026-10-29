@@ -27,8 +27,7 @@ try {
             Copy-Item $source $target
         }
         $arguments=@('install',"$destination\zhuyintype-tsf.dll")
-        if (-not $HostExe) { $HostExe=Join-Path $root '.build-qt\Release\zhuyintype-desktop.exe' }
-        if (Test-Path $HostExe) { $arguments+=@('--icon',$HostExe) }
+        # The language list shows the DLL's own monochrome logo (src/logo.ico), not the colour app icon.
         if ($Machine) { $arguments+='--machine' }
         & "$destination\zt-tsf-register.exe" @arguments
         if ($LASTEXITCODE) { throw '註冊失敗' }
