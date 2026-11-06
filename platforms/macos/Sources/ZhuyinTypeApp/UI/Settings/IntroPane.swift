@@ -64,8 +64,8 @@ struct IntroFeature: Identifiable {
 
     static func all(_ keys: CurrentKeys, preferences: Preferences) -> [IntroFeature] {
         let punctuation = preferences.punctuationKeys == .windows
-            ? "⇧ 加符號鍵打出鍵上的符號" + (keys.isOn(.controlPunctuation) ? "，⌃ 加符號鍵打中文標點" : "") + "，和 Windows 的注音相同。"
-            : "⇧ 加符號鍵打出中文標點，和 macOS 的注音相同。"
+            ? "⇧ 加符號鍵打出鍵上的符號" + (keys.isOn(.controlPunctuation) ? "，⌃ 加符號鍵打中文標點" : "") + "。標點預設全形，可切換全半形。"
+            : "⇧ 加符號鍵打出中文標點。標點預設全形，可切換全半形。"
         return [
             IntroFeature(title: "整句輸入", text: "一句話連續打完，依讀音與前後文選出最通順的寫法。", symbol: "text.word.spacing",
                          tint: .blue, place: SettingsPlace(.candidates)),

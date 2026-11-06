@@ -140,6 +140,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     case selectLeft, selectRight, deleteWord, commitWithNewline
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
+    case togglePunctuationWidth, insertSpace
 
     var id: String { rawValue }
 
@@ -156,6 +157,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .commitWithNewline: return "送出並換行"
         case .previousCharacter: return "清單開著時改前一個字"
         case .nextCharacter: return "清單開著時改後一個字"
+        case .togglePunctuationWidth: return "切換標點全半形"
+        case .insertSpace: return "在組字中放一個空白"
         }
     }
 
@@ -172,13 +175,16 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .commitWithNewline: return Shortcut("Return", shift: true)
         case .previousCharacter: return Shortcut("←", option: true)
         case .nextCharacter: return Shortcut("→", option: true)
+        case .togglePunctuationWidth: return Shortcut("Space", shift: true)
+        case .insertSpace: return Shortcut("Space", option: true)
         }
     }
 
     /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
     var input: KeyInput? {
         switch self {
-        case .previousCharacter, .nextCharacter: return nil
+        case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
+        case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
         case .typeZhuyin: return .char("`")
@@ -205,6 +211,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .commitWithNewline: return "送出並換行"
         case .previousCharacter: return "改前一個字"
         case .nextCharacter: return "改後一個字"
+        case .togglePunctuationWidth: return "標點全半形"
+        case .insertSpace: return "插入空白"
         }
     }
 
@@ -244,7 +252,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
-        case .commitWithNewline, .previousCharacter, .nextCharacter: return nil
+        case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
         }
     }
 

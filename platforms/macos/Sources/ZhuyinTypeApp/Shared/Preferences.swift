@@ -347,7 +347,9 @@ final class Preferences: ObservableObject {
         let taken = Set(user.values.joined())
         for command in ShortcutCommand.allCases where result[command] == nil {
             let free = command.defaultBindings.filter { !taken.contains($0) }
-            result[command] = free.isEmpty ? command.defaultBindings : free
+            // New punctuation keys yield to a user's existing bindings, including a sole Shift+Space binding.
+            result[command] = free.isEmpty && command != .togglePunctuationWidth && command != .insertSpace
+                ? command.defaultBindings : free
         }
         return result
     }

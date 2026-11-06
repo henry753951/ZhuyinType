@@ -87,6 +87,8 @@ v0.4.0 以前的 ZhuyinBench 紀錄，app 設定是直接列出模型選項，�
 - 結果分三種：`right`（打出送出的字）、`unchanged`（還是第一次改字之前畫面上的字，`shown`）、`other`。`backspace`、`escape` 在第一次改字之後還有打字時，`shown` 只是當時畫面的一部分，`unchanged` 不會成立，算在 `other`。
 - 無法重播的記錄（在句中修改過，或有 `zhuyin-cli` 寫不出的鍵）只計入筆數。
 - 重播不帶個人記憶：當時由記住的字詞決定的結果，重播時可能不同。
+- 新選字事件另保留 `candidate_text`、`candidate_reading`、`candidate_start`、`candidate_end`：實際候選詞、學習讀音與組字 token 範圍（結尾不含）。原本的 `removed`／`inserted` 仍是整段畫面的差異，不能視為完整候選詞。schema 1 的舊紀錄缺少候選身分時，不回推其讀音或學習範圍。
+- 新紀錄的 `settings.punctuation_width` 指定組字開始時的標點寬度，`<punct-width>` 記錄組字中的切換；缺少欄位的舊紀錄沿用 `legacy` 映射，`<sspace>` 仍是插入空白。送出後刪掉重打時，採用事件的 `previous_punctuation_width` 重播上一段。跨越寬度切換的刪改目前保留完整操作事件，但不標成可重播。
 - 報告的每一項有 `id`（記錄編號加改字種類）、`group`（改字種類）、`reference`、`output`、`shown`、`keys` 與 `outcome`，可以用 `zt eval stats` 比較兩個版本的引擎。
 
 `zt data corrections FILE… --summary` 列出改字的種類與次數、最常見的「刪掉的鍵 → 重打的鍵」（例如 `1j6 → 1j4`），以及最常見的「畫面上的字 → 改成的字」（選字、刪掉重打、送出後刪掉重打）。`--rows OUT` 把可重播的項目寫成 `前文|答案|注音` 的列，給 `zt eval rows` 使用：注音由按鍵推出，只收每個音節都以聲調鍵或空白結束、沒有刪除、按鍵順序和注音順序相同、每個字一個音節的項目；刪掉重打的項目用第一次打的鍵，所以按錯的鍵保留在注音中。

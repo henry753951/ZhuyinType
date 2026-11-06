@@ -26,6 +26,35 @@ fn text(pointer: *mut c_char) -> Option<String> {
     Some(string)
 }
 
+#[test]
+fn punctuation_width_action_and_legacy_space_are_distinct() {
+    let engine = open_engine();
+    // SAFETY: the handles are live until freed, and every returned string is freed by text().
+    unsafe {
+        let composer = zt_composer_new(engine, std::ptr::null());
+        assert!(!composer.is_null());
+        assert_eq!(zt_composer_punctuation_width(composer), ZT_PUNCTUATION_WIDTH_LEGACY);
+        assert!(zt_composer_set_punctuation_width(composer, ZT_PUNCTUATION_WIDTH_FULL));
+        let hash = ZtKey { kind: ZT_KEY_SHIFTED_CHAR, character: u32::from('3') };
+        assert!(zt_composer_handle(composer, hash).handled);
+        let before = presentation_line(composer);
+        assert!(zt_composer_handle(composer, ZtKey { kind: ZT_KEY_TOGGLE_PUNCTUATION_WIDTH, character: 0 }).handled);
+        assert_eq!(presentation_line(composer), before);
+        assert_eq!(zt_composer_punctuation_width(composer), ZT_PUNCTUATION_WIDTH_HALF);
+        assert!(zt_composer_handle(composer, hash).handled);
+        assert!(zt_composer_handle(composer, ZtKey { kind: ZT_KEY_SHIFT_SPACE, character: 0 }).handled);
+        assert_eq!(text(zt_composer_commit_all(composer)).as_deref(), Some("＃# "));
+        assert!(!zt_composer_set_punctuation_width(composer, 99));
+        assert_eq!(zt_composer_punctuation_width(composer), ZT_PUNCTUATION_WIDTH_HALF);
+        assert!(zt_composer_set_punctuation_width(composer, ZT_PUNCTUATION_WIDTH_FULL));
+        assert_eq!(zt_composer_punctuation_width(composer), ZT_PUNCTUATION_WIDTH_FULL);
+        zt_composer_free(composer);
+        zt_engine_free(engine);
+        assert!(!zt_composer_set_punctuation_width(std::ptr::null_mut(), ZT_PUNCTUATION_WIDTH_HALF));
+        assert_eq!(zt_composer_punctuation_width(std::ptr::null()), ZT_PUNCTUATION_WIDTH_LEGACY);
+    }
+}
+
 fn key(character: char) -> ZtKey {
     match character {
         ' ' => ZtKey { kind: ZT_KEY_SPACE, character: 0 },
@@ -108,6 +137,34 @@ fn open_engine() -> *mut ZtEngine {
     };
     assert!(!engine.is_null(), "{:?}", text(error));
     engine
+}
+
+#[test]
+fn candidate_details_snapshot_is_owned_and_uses_token_ranges() {
+    let engine = open_engine();
+    let options = zt_composer_options_default();
+    // SAFETY: live handles, valid strings, and snapshots freed once below.
+    unsafe {
+        let composer = zt_composer_new(engine, &raw const options);
+        assert!(zt_composer_candidate_details(std::ptr::null(), 0).is_null());
+        assert!(zt_composer_candidate_details(composer, 0).is_null());
+        for c in "su3cl3↓".chars() {
+            text(zt_composer_handle(composer, key(c)).commit);
+        }
+        assert!(zt_composer_candidate_details(composer, usize::MAX).is_null());
+        let details = zt_composer_candidate_details(composer, 0);
+        assert!(!details.is_null());
+        assert_eq!(CStr::from_ptr((*details).text).to_str().unwrap(), "你好");
+        assert_eq!(CStr::from_ptr((*details).reading).to_str().unwrap(), "ㄋㄧˇ ㄏㄠˇ");
+        assert_eq!(((*details).range.start, (*details).range.end), (0, 2));
+        text(zt_composer_select_candidate(composer, 0).commit);
+        assert!(zt_composer_candidate_details(composer, 0).is_null());
+        zt_composer_free(composer);
+        zt_engine_free(engine);
+        assert_eq!(CStr::from_ptr((*details).text).to_str().unwrap(), "你好", "snapshot outlives composer");
+        zt_candidate_details_free(details);
+        zt_candidate_details_free(std::ptr::null_mut());
+    }
 }
 
 #[test]

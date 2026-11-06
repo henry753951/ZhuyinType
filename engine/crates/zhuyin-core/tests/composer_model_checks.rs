@@ -11,11 +11,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use common::{LmTrigram, TempDir, bigram, bigram_backoff, lm_fixture};
-use zhuyin_core::LanguageModel;
 use zhuyin_core::api::{CandidateAnchor, ComposerOptions, KeyInput, KeyResult, PunctuationKeys, TypoTolerance};
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
 use zhuyin_core::language_model::BigramLanguageModel;
+use zhuyin_core::{LanguageModel, LanguageModelHistory};
 
 const TINY: &str = "ㄅㄚ\t八\t-2\nㄅㄚ\t巴\t-2.3\nㄅㄚ\t吧\t-2.4\nㄅㄚ\t芭\t-2.5\nㄅㄚ\t疤\t-2.6\nㄅㄚ\t笆\t-2.7\n\
 ㄅㄚ\t捌\t-2.8\nㄅㄚ\t粑\t-2.9\nㄅㄚ\t叭\t-3.0\nㄅㄚ\t豝\t-3.1\nㄅㄚ\t仈\t-3.2\nㄅㄚˊ\t拔\t-2\nㄅㄚˇ\t把\t-2\nㄅㄚˋ\t爸\t-2\n\
@@ -84,6 +84,71 @@ fn with_anchor(c: &mut Composer, anchor: CandidateAnchor) {
     let mut options = c.options().clone();
     options.candidate_anchor = anchor;
     c.set_options(options);
+}
+
+#[test]
+fn replacing_a_picked_phrase_releases_its_reranker_protection() {
+    let model = engine(TINY, None, None);
+    let mut first = composer(&model, "18 q8 ");
+    first.handle(KeyInput::Down);
+    first.select_candidate(index_of(&first, "巴趴"));
+    assert!(model.learned_entries().is_empty(), "a pick is learned only on commit");
+    assert_eq!(first.commit_all(), "巴趴");
+    let previous = first.last_committed()[0].clone();
+    assert!(model.remembers(&previous, LanguageModelHistory::default()), "committed pick is protected");
+
+    let mut replacement = composer(&model, "18 q8 ");
+    replacement.handle(KeyInput::Down);
+    replacement.select_candidate(index_of(&replacement, "八趴"));
+    assert_eq!(replacement.commit_all(), "八趴");
+    assert!(model.remembers(&replacement.last_committed()[0], LanguageModelHistory::default()));
+    assert!(
+        !model.remembers(&previous, LanguageModelHistory::default()),
+        "a replaced phrase must not retain unconditional reranker protection"
+    );
+}
+
+#[test]
+fn replacing_a_phrase_keeps_picks_in_other_contexts() {
+    let model = engine(TINY, None, None);
+    let pick = |context: &str, word: &str| {
+        let mut c = composer(&model, "");
+        c.set_preceding_text(context);
+        type_keys("18 q8 ", &mut c);
+        c.handle(KeyInput::Down);
+        c.select_candidate(index_of(&c, word));
+        assert_eq!(c.commit_all(), word);
+        c.last_committed()[0].clone()
+    };
+    let old = pick("媽", "巴趴");
+    pick("麻", "巴趴");
+    let new = pick("媽", "八趴");
+    let history = |context| model.trailing_words(context).last().unwrap().history.unwrap();
+    assert!(!model.remembers(&old, history("媽")), "old preference is released in the corrected context");
+    assert!(model.remembers(&new, history("媽")), "new selection is protected in its context");
+    assert!(model.remembers(&old, history("麻")), "the other context keeps its explicit old preference");
+}
+
+#[test]
+fn contextual_picks_override_conflicting_whole_recalls() {
+    let model = engine(TINY, None, None);
+    for (context, word) in [("媽", "巴趴"), ("麻", "巴趴"), ("媽", "八趴")] {
+        let mut c = composer(&model, "");
+        c.set_preceding_text(context);
+        type_keys("18 q8 ", &mut c);
+        c.handle(KeyInput::Down);
+        c.select_candidate(index_of(&c, word));
+        assert_eq!(c.commit_all(), word);
+    }
+    for (context, expected) in [("麻", "巴趴"), ("媽", "八趴")] {
+        let mut c = composer(&model, "");
+        c.set_preceding_text(context);
+        type_keys("18 q8 ", &mut c);
+        c.set_reranker(Some(Box::new(move |sentences| {
+            Some(sentences.iter().position(|s| s.text() != expected).unwrap_or(0))
+        })));
+        assert_eq!(text(&c), expected, "reranker preserves the pick after {context}");
+    }
 }
 
 /// The binary fixture of `ZhuyinCoreChecks` (trigram, with an unknown-word shift).

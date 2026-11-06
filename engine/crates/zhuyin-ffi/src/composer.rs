@@ -5,7 +5,7 @@ use std::ffi::{c_char, c_void};
 
 use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput, KeyResult,
-    PunctuationKeys, ScoredSentence, SpaceAction, TypoTolerance,
+    PunctuationKeys, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::{Composer, VariantScores};
 
@@ -75,6 +75,14 @@ pub const ZT_KEY_SHIFT_RIGHT: u32 = 23;
 pub const ZT_KEY_SHIFT_DOWN: u32 = 24;
 /// `ZtKey::kind`: Shift+↑ (typing corrections first).
 pub const ZT_KEY_SHIFT_UP: u32 = 25;
+/// `ZtKey::kind`: toggle the width of future punctuation without changing the composition.
+pub const ZT_KEY_TOGGLE_PUNCTUATION_WIDTH: u32 = 26;
+/// Historical per-key punctuation mappings (the engine default).
+pub const ZT_PUNCTUATION_WIDTH_LEGACY: u32 = 0;
+/// Full-width future punctuation.
+pub const ZT_PUNCTUATION_WIDTH_FULL: u32 = 1;
+/// Half-width future punctuation.
+pub const ZT_PUNCTUATION_WIDTH_HALF: u32 = 2;
 
 /// A key (Swift's `KeyInput`).
 #[repr(C)]
@@ -115,6 +123,7 @@ fn key_input(key: ZtKey) -> Option<KeyInput> {
         ZT_KEY_SHIFT_RIGHT => KeyInput::ShiftRight,
         ZT_KEY_SHIFT_DOWN => KeyInput::ShiftDown,
         ZT_KEY_SHIFT_UP => KeyInput::ShiftUp,
+        ZT_KEY_TOGGLE_PUNCTUATION_WIDTH => KeyInput::TogglePunctuationWidth,
         _ => return None,
     })
 }
@@ -307,6 +316,40 @@ pub unsafe extern "C" fn zt_composer_set_options(composer: *mut ZtComposer, opti
     true
 }
 
+/// Width of future punctuation, one of `ZT_PUNCTUATION_WIDTH_*`; legacy for a NULL composer.
+///
+/// # Safety
+/// `composer` is NULL or a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_punctuation_width(composer: *const ZtComposer) -> u32 {
+    // SAFETY: per the contract above.
+    match unsafe { composer.as_ref() }.map(|c| c.composer.punctuation_width()) {
+        Some(PunctuationWidth::Full) => ZT_PUNCTUATION_WIDTH_FULL,
+        Some(PunctuationWidth::Half) => ZT_PUNCTUATION_WIDTH_HALF,
+        _ => ZT_PUNCTUATION_WIDTH_LEGACY,
+    }
+}
+
+/// Sets future punctuation width without changing composition; false for NULL or an unknown width.
+///
+/// # Safety
+/// `composer` is NULL or a live handle not used elsewhere during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_set_punctuation_width(composer: *mut ZtComposer, width: u32) -> bool {
+    let width = match width {
+        ZT_PUNCTUATION_WIDTH_LEGACY => PunctuationWidth::Legacy,
+        ZT_PUNCTUATION_WIDTH_FULL => PunctuationWidth::Full,
+        ZT_PUNCTUATION_WIDTH_HALF => PunctuationWidth::Half,
+        _ => return false,
+    };
+    // SAFETY: per the contract above.
+    if let Some(composer) = unsafe { composer_mut(composer) } {
+        composer.set_punctuation_width(width);
+        return true;
+    }
+    false
+}
+
 /// Handles a key at the current time.  An unknown key passes through.
 ///
 /// # Safety
@@ -330,6 +373,55 @@ pub unsafe extern "C" fn zt_composer_handle_at(composer: *mut ZtComposer, key: Z
     match (unsafe { composer_mut(composer) }, key_input(key)) {
         (Some(composer), Some(key)) => key_result(&composer.handle_at(key, time)),
         _ => key_result(&KeyResult::PASS_THROUGH),
+    }
+}
+
+/// A candidate's engine identity, independent of display forms and changes elsewhere after a pick.
+#[repr(C)]
+#[derive(Debug)]
+pub struct ZtCandidateDetails {
+    /// The engine's word text, before display-form conversion.
+    pub text: *mut c_char,
+    /// The reading used for learning (as typed); empty for a literal.
+    pub reading: *mut c_char,
+    /// Composition-token range, not UTF-16 or Unicode-scalar offsets.
+    pub range: ZtRange,
+}
+
+/// Candidate `index` before picking; NULL for a closed list or an invalid index.
+/// Free the snapshot with `zt_candidate_details_free`.
+///
+/// # Safety
+/// `composer` is NULL or a live handle not used elsewhere during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_candidate_details(
+    composer: *const ZtComposer,
+    index: usize,
+) -> *mut ZtCandidateDetails {
+    // SAFETY: the caller keeps the composer alive during this read.
+    let Some(candidate) = (unsafe { composer.as_ref() }).and_then(|c| c.composer.candidate(index)) else {
+        return std::ptr::null_mut();
+    };
+    Box::into_raw(Box::new(ZtCandidateDetails {
+        text: owned(&candidate.text),
+        reading: owned(&candidate.reading),
+        range: ZtRange { start: candidate.range.start, end: candidate.range.end },
+    }))
+}
+
+/// Frees a candidate snapshot. NULL is ignored.
+///
+/// # Safety
+/// `details` is NULL or an unfreed snapshot returned by `zt_composer_candidate_details`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_candidate_details_free(details: *mut ZtCandidateDetails) {
+    if !details.is_null() {
+        // SAFETY: the snapshot and its strings were allocated by this library.
+        unsafe {
+            let details = Box::from_raw(details);
+            crate::zt_string_free(details.text);
+            crate::zt_string_free(details.reading);
+        }
     }
 }
 

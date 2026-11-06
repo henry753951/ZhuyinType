@@ -22,8 +22,10 @@ pub enum KeyInput {
     ControlChar(char),
     /// Space.
     Space,
-    /// Shift+Space.
+    /// Insert a literal space (the historical Shift+Space action).
     ShiftSpace,
+    /// Toggle the width of subsequently typed punctuation, preserving the composition.
+    TogglePunctuationWidth,
     /// Return.
     Enter,
     /// Shift+Return.
@@ -208,6 +210,31 @@ impl Presentation {
     }
 }
 
+/// Width applied to future punctuation, independently of the keyboard style.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PunctuationWidth {
+    /// Preserve each keyboard style's historical mapping (Shift half-width and Control Chinese for Windows).
+    #[default]
+    Legacy,
+    /// Full-width punctuation; letters, digits, spaces and explicitly printed symbols are unchanged.
+    Full,
+    /// Half-width punctuation; letters, digits and spaces are unchanged.
+    Half,
+}
+
+impl PunctuationWidth {
+    /// The option named by a command-line argument or recording.
+    #[must_use]
+    pub fn from_raw(raw: &str) -> Option<Self> {
+        match raw {
+            "legacy" => Some(Self::Legacy),
+            "full" => Some(Self::Full),
+            "half" => Some(Self::Half),
+            _ => None,
+        }
+    }
+}
+
 /// What Shift with a symbol key types in Chinese mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum PunctuationKeys {
@@ -249,7 +276,7 @@ pub enum SpaceAction {
     Commit,
     /// Commits the composition, then the app receives the Space, so a space follows the text.
     CommitAndSpace,
-    /// Puts a space into the composition and keeps composing (what Shift+Space always does); nothing is sent yet.
+    /// Puts a space into the composition and keeps composing (the `ShiftSpace` action); nothing is sent yet.
     InsertSpace,
 }
 

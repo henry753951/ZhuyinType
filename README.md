@@ -4,7 +4,7 @@
 
 # ZhuyinType 注音
 
-開源、在本機運作的注音輸入法，支援 macOS、Windows 與 Linux。<br>
+開源、在本機運作的注音輸入法，目前提供 macOS 安裝檔。<br>
 整句選字、修正按錯的鍵、依前文調整用語，所有輸入都在這台電腦上處理。
 
 [![最新版本](https://img.shields.io/github/v/release/henry753951/ZhuyinType?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases/latest)
@@ -55,8 +55,8 @@
 | 平台 | 下載 | 需求 |
 |---|---|---|
 | macOS | [ZhuyinType-macOS.pkg](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-macOS.pkg) | macOS 14 或更新版本 |
-| Windows | [ZhuyinType-Windows-x64.zip](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Windows-x64.zip) | Windows 10 或 11（x64） |
-| Linux | [ZhuyinType-Linux-x86_64.tar.gz](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-x86_64.tar.gz) | Fcitx 5、Qt 6.8 以上，x86_64 |
+| Windows | 暫停提供編譯成品 | 原始碼保留供開發 |
+| Linux | 暫停提供編譯成品 | 原始碼保留供開發 |
 
 ### macOS
 
@@ -77,6 +77,8 @@
 
 ### Windows
 
+編譯成品已撤下，以下為既有開發版本的安裝方式。
+
 解壓縮 `ZhuyinType-Windows-x64.zip`，在資料夾中以 PowerShell 執行 `install.ps1`。安裝程式會：
 
 - 把程式放到 `%LOCALAPPDATA%\ZhuyinType`，並註冊「ZhuyinType 注音」輸入法；
@@ -90,6 +92,8 @@
 > 安裝檔尚未簽章，Windows 可能顯示 SmartScreen 提示；請確認來源為本發布頁後，選擇「其他資訊 → 仍要執行」。
 
 ### Linux
+
+編譯成品已撤下，以下為既有開發版本的安裝方式。
 
 Ubuntu 26.04 可用 `apt` 安裝需求：
 
@@ -118,6 +122,8 @@ sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6
 | ⌫ | 刪掉一個注音符號或游標前的字；清單開著時先關閉清單 |
 | Esc | 關閉清單；再按清除注音，再按清空組字 |
 | 單按 Shift | 中英切換 |
+| ⇧ 空白（macOS） | 切換中文標點的全形／半形；中文預設全形，英數與空白維持半形 |
+| ⌥ 空白（macOS） | 在組字中插入半形空白 |
 
 ## 功能
 
@@ -168,10 +174,11 @@ sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6
 #### 其他
 
 - 標點按法可在設定選擇：
-  - Windows（預設）：和 Windows 的微軟注音相同，Shift 加符號鍵打出鍵上的符號（例如 `<`、`_`），Control 加符號鍵打出中文標點（Control 加逗號是「，」）。
+  - Windows（預設）：Shift 加符號鍵沿用鍵面符號，Control 加符號鍵打出中文標點（Control 加逗號是「，」）。macOS 版預設輸出全形，例如「＜」「＿」，可用 Shift 加空白切換為半形。
   - macOS：和 macOS 內建注音相同，Shift 加符號鍵打出中文標點（Shift 加逗號是「，」）。
 - `[` `]` 打出「」，`'` 打出「、」。在標點上按 ↓ 可以換成同類的全形或半形標點。
 - 單按 Shift 切換中英文，Caps Lock 開啟時輸入英文。快捷鍵可重新指定。
+- macOS 的中文標點預設全形，Shift 加空白切換全形／半形。英文模式的字母、數字、標點與空白都是半形。
 - 有新版本時在你停止打字後自動更新，更新檔都經過簽章驗證，正在使用的輸入法在組字結束後換成新版。
 - 設定的「分析」頁回顧打了多少字、改了幾次字，以及輸入法每個按鍵的反應時間；只記錄次數與時間，存在這台電腦，可以關閉或清除。
 - 不常用的按鍵功能（打出注音本身、單字與修正清單、⌃ 與 ⌥ 的符號、Caps Lock 打英文等）可以個別關閉，按鍵交給 App；每個功能最多可以指定三個按鍵。

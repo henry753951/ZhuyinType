@@ -2,7 +2,7 @@
 //!
 //! Lookups are tables indexed by ASCII byte instead of hash maps: every key the composer sees is ASCII.
 
-use crate::api::{KeyInput, PunctuationKeys};
+use crate::api::{KeyInput, PunctuationKeys, PunctuationWidth};
 
 /// Keys of the standard layout, in the order of [`SYMBOL_ORDER`].
 const SYMBOL_KEYS: &str = "1qaz2wsxedcrfv5tgbyhnujm8ik,9ol.0p;/-";
@@ -211,6 +211,51 @@ pub fn literal(key: KeyInput, keys: PunctuationKeys) -> Option<String> {
         KeyInput::ControlChar(c) => control_punctuation(c),
         _ => None,
     }
+}
+
+/// A literal with the requested punctuation width; printed symbols and letters retain their original form.
+#[must_use]
+pub fn literal_with_width(key: KeyInput, keys: PunctuationKeys, width: PunctuationWidth) -> Option<String> {
+    let text = literal(key, keys)?;
+    if width == PunctuationWidth::Legacy
+        || matches!(key, KeyInput::Printed(_) | KeyInput::ShiftedChar('a'..='z' | 'A'..='Z'))
+    {
+        return Some(text);
+    }
+    if width == PunctuationWidth::Full {
+        return Some(
+            text.chars()
+                .map(|c| if c.is_ascii_punctuation() { char::from_u32(u32::from(c) + 0xfee0).unwrap_or(c) } else { c })
+                .collect(),
+        );
+    }
+    let chinese = match text.as_str() {
+        "，" | "、" => Some(","),
+        "。" => Some("."),
+        "「" => Some("["),
+        "」" => Some("]"),
+        "『" => Some("{"),
+        "』" => Some("}"),
+        "《" => Some("<"),
+        "》" => Some(">"),
+        "…" => Some("^"),
+        "——" => Some("_"),
+        _ => None,
+    };
+    Some(chinese.map_or_else(
+        || {
+            text.chars()
+                .map(|c| {
+                    if ('\u{ff01}'..='\u{ff5e}').contains(&c) {
+                        char::from_u32(u32::from(c) - 0xfee0).unwrap_or(c)
+                    } else {
+                        c
+                    }
+                })
+                .collect()
+        },
+        str::to_owned,
+    ))
 }
 
 /// Other forms of a punctuation mark, for the candidate window: the mark itself first.

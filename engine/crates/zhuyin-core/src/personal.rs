@@ -340,6 +340,10 @@ impl PersonalLanguageModel {
         if let Some(older) = history.older {
             keys.push(vec![older, history.previous, word]);
         }
+        // Release unconditional phrase protection; other contexts keep their own bigram picks.
+        if let Some(entry) = state.entries.get_mut(&vec![word]) {
+            entry.picks = 0;
+        }
         let (short, long) = (state.options.short_half_life, state.options.long_half_life);
         for key in keys {
             if let Some(entry) = state.entries.get_mut(&key) {

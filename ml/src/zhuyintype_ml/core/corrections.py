@@ -12,6 +12,10 @@ Each line is one composition in which the user corrected the engine (schema in d
 A replay asks whether the engine now gets the composition right without the correction: the keys of the final
 composition for a pick (and the other in-place corrections), the keys as first typed for a Backspace or Esc
 correction, and the previous composition's keys for a commit deleted and typed again.
+
+Schema 1 also permits optional pick fields candidate_text, candidate_reading, candidate_start and candidate_end:
+the engine word, learning reading and composition-token range, captured before selection. Older logs lack them;
+they do not replace the whole-composition diff or change replay truth.
 """
 
 from __future__ import annotations
@@ -91,6 +95,11 @@ def cli_options(settings: dict[str, Any]) -> list[str]:
     # 「接受常見的其他讀法」: zhuyin-cli --models turns the reading channel on as the app does; a record made with it
     # off replays with it off.
     channel = [] if settings.get("reading_channel", True) else ["--channel", "off"]
+    width = settings.get("punctuation_width")
+    if width is not None:
+        if width not in ("legacy", "full", "half"):
+            raise ValueError("unknown punctuation width in correction settings")
+        options += ["--punctuation-width", width]
     return options + (["--fuzzy", ",".join(fuzzy)] if fuzzy else []) + channel
 
 
@@ -124,6 +133,8 @@ def replay_items(record: dict[str, Any]) -> list[Item]:
                 continue
             deleted, previous = event["deleted"], event["previous_committed"]
             truth = previous[: len(previous) - len(deleted)] + record["committed"][: len(deleted)]
+            previous_settings = dict(record["settings"])
+            previous_settings["punctuation_width"] = event.get("previous_punctuation_width")
             items.append(
                 Item(
                     identity,
@@ -132,7 +143,7 @@ def replay_items(record: dict[str, Any]) -> list[Item]:
                     event["previous_typing"],
                     truth,
                     previous,
-                    options,
+                    tuple(cli_options(previous_settings)),
                 )
             )
         elif kind in RETYPED:

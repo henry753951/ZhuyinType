@@ -142,6 +142,7 @@ options.learningEnabled = ProcessInfo.processInfo.environment["ZHUYIN_BENCH_LEAR
 options.earlyCommitSyllables = earlyCommit
 if let maxSyllables { options.maxSyllables = maxSyllables }
 let composer = Composer(engine: engine, options: options)
+composer.punctuationWidth = .full
 if let (mode, window) = variantScores { composer.setVariantScores(mode: mode, window: window) }
 // A full composition's head is text before the rest while the rest is converted again (ControllerCore does the same).
 var sentDuringKey = ""

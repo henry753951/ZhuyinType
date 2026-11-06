@@ -26,8 +26,11 @@ final class ControllerCore {
     var showPanel: ((CandidateList?, String?, NSRect, String?, String?) -> Void)?
     var hidePanel: (() -> Void)?
     var modeChanged: ((Bool, NSRect) -> Void)?
+    var punctuationWidthChanged: ((PunctuationWidth) -> Void)?
     /// 「記錄改字」 when it is on: observes keys, clicks and commits, never changes what happens.
-    var recorder: CorrectionRecorder?
+    var recorder: CorrectionRecorder? {
+        didSet { recorder?.settings.punctuationWidth = composer.punctuationWidth.recordingValue }
+    }
     /// 「記錄使用統計」 when it is on: counts keys, picks and corrections, and times each key.  Never changes anything.
     var stats: UsageStatsObserver?
     /// Optional key features turned off on the 快捷鍵 page; their keys go to the app.
@@ -75,6 +78,7 @@ final class ControllerCore {
     init(engine: Engine, client: TextClient, options: ComposerOptions, isEnglish: Bool,
          reranker: NeuralReranker? = nil, characterModel: SyllableScorer? = nil) {
         self.composer = Composer(engine: engine, options: options)
+        self.composer.punctuationWidth = .full
         self.client = client
         self.isEnglish = isEnglish
         // A full composition commits its head before converting the rest: the head is text before the rest.
@@ -133,6 +137,7 @@ final class ControllerCore {
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
             if let input = command.input { return handle(input, time: time) }
+            if command == .togglePunctuationWidth { return togglePunctuationWidth() }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
@@ -143,6 +148,16 @@ final class ControllerCore {
             return false
         }
         return handle(key, time: time)
+    }
+
+    @discardableResult
+    func togglePunctuationWidth() -> Bool {
+        guard !rendering, !isEnglish else { return false }
+        composer.togglePunctuationWidth()
+        recorder?.punctuationWidthChanged(to: composer.punctuationWidth, presentation: composer.presentation,
+                                         secure: composer.learningSuspended || secureInput())
+        punctuationWidthChanged?(composer.punctuationWidth)
+        return true
     }
 
     /// ⌃ and ⌥ symbol keys whose feature is off go to the app.
@@ -163,6 +178,8 @@ final class ControllerCore {
         if key == .backspace, !composer.isComposing, disabledFeatures.contains(.deleteAfterCommit) { composer.breakContext() }
         let started = stats == nil ? 0 : DispatchTime.now().uptimeNanoseconds
         let before = composer.presentation
+        let candidate = recorder?.candidate(for: .key(key, time: time), composer: composer,
+                                             secure: composer.learningSuspended || secureInput())
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
         if let move = Self.listMove(key, vertical: composer.options.verticalList), let old = before.candidates,
            let new = composer.presentation.candidates, old.items.count == new.items.count, old.pageSize == new.pageSize,
@@ -172,7 +189,8 @@ final class ControllerCore {
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
         let latency = stats == nil ? nil : DispatchTime.now().uptimeNanoseconds - started
-        observe(.key(key, time: time), before: before, commit: commit, handled: result.handled, latency: latency)
+        observe(.key(key, time: time), before: before, commit: commit, handled: result.handled, latency: latency,
+                candidate: candidate)
         if !result.handled {
             // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)
             // may move it; the next composition reads the app again, or the remembered text ages out.
@@ -247,11 +265,11 @@ final class ControllerCore {
     }
 
     private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool,
-                         latency: UInt64? = nil) {
+                         latency: UInt64? = nil, candidate: CandidateDetails? = nil) {
         guard recorder != nil || stats != nil else { return }
         let secure = composer.learningSuspended || secureInput()
         recorder?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
-                          options: composer.options, secure: secure, context: recentText)
+                          options: composer.options, secure: secure, candidate: candidate, context: recentText)
         stats?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
                        options: composer.options, secure: secure, corrected: shownCorrected, latency: latency)
         if composer.presentation.isEmpty { shownCorrected = false }
@@ -271,10 +289,12 @@ final class ControllerCore {
         guard !rendering, let list = composer.presentation.candidates,
               list.items.indices.contains(index) else { return }
         let before = composer.presentation
+        let candidate = recorder?.candidate(for: .click(index: index), composer: composer,
+                                             secure: composer.learningSuspended || secureInput())
         let result = composer.selectCandidate(at: index)
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
-        observe(.click(index: index), before: before, commit: commit, handled: true)
+        observe(.click(index: index), before: before, commit: commit, handled: true, candidate: candidate)
     }
 
     /// The candidate window switches between every span from the target and its single character (Shift-↓).

@@ -138,6 +138,8 @@ final class ZhuyinInputController: IMKInputController {
     /// this, typing and inline text work but the candidate window stays hidden.
     private func claimActive() {
         guard !active || Self.activeController !== self else { return }
+        core?.composer.punctuationWidth = EngineHost.punctuationWidth
+        core?.recorder?.settings.punctuationWidth = EngineHost.punctuationWidth.recordingValue
         EngineHost.logger.info("Claimed the candidate window for \(self.textClient?.bundleIdentifier ?? "?", privacy: .private) without activateServer")
         Self.activeController = self
         active = true
@@ -277,6 +279,14 @@ final class ZhuyinInputController: IMKInputController {
                                   isEnglish: EngineHost.lastEnglishMode ?? preferences.startInEnglish,
                                   reranker: EngineHost.reranker, characterModel: EngineHost.characterModel)
         self.core = core
+        core.composer.punctuationWidth = EngineHost.punctuationWidth
+        core.punctuationWidthChanged = { [weak self, weak core] width in
+            EngineHost.punctuationWidth = width
+            guard let self, self.active, Self.activeController === self,
+                  self.showModeToast, let client = self.textClient, let core else { return }
+            ModeToast.shared.show(width == .half ? "半" : "全", caret: client.caretRect(cursorIndex: core.composer.presentation.cursor),
+                                  windowLevel: client.windowLevel)
+        }
         EngineHost.lastEnglishMode = core.isEnglish
         loggedNotReady = false
         core.showPanel = { [weak self] list, preview, caret, notice, zhuyinHint in

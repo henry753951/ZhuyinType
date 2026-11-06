@@ -8,12 +8,24 @@
 import AppKit
 import ZhuyinEngine
 
+extension PunctuationWidth {
+    var recordingValue: String {
+        switch self {
+        case .legacy: return "legacy"
+        case .full: return "full"
+        case .half: return "half"
+        }
+    }
+}
+
 /// Engine settings that change what the keys produce, recorded with each composition.
 struct CorrectionSettings: Encodable, Equatable {
     var typoTolerance = "standard"
     /// zh, ch, sh, en, an: the fuzzy pairs that are on (zhuyin-cli --fuzzy names).
     var fuzzySounds: [String] = []
     var punctuationKeys = "windows"
+    /// Initial punctuation width; absent in recordings made before width switching.
+    var punctuationWidth: String?
     var spaceAction = "commit"
     var characterForms = "common"
     var candidateAnchor = "after"
@@ -76,6 +88,12 @@ struct CorrectionEvent: Encodable {
     var start: Int?
     /// pick: 1 for the first item of the list.
     var rank: Int?
+    /// pick: the actual engine word and learning reading, with its composition-token range (end exclusive).
+    /// Independent of the whole-composition diff above; absent in earlier schema-1 records.
+    var candidateText: String?
+    var candidateReading: String?
+    var candidateStart: Int?
+    var candidateEnd: Int?
     /// pick: "key" or "click".
     var via: String?
     /// cursor: the cursor position after the moves, in Unicode scalars.
@@ -93,6 +111,7 @@ struct CorrectionEvent: Encodable {
     var previousTyping: String?
     var previousReplayable: Bool?
     var previousContext: String?
+    var previousPunctuationWidth: String?
 
     init(type: String, t: Int, shown: String) {
         self.type = type
@@ -193,6 +212,7 @@ final class CorrectionRecorder {
 
     private final class Session {
         let start: TimeInterval
+        var punctuationWidth: String?
         var context: String?
         var keys = ""
         var lastKey: TimeInterval?
@@ -226,6 +246,7 @@ final class CorrectionRecorder {
         var typing: String
         var replayable: Bool
         var context: String?
+        var punctuationWidth: String?
     }
 
     private var session: Session?
@@ -241,8 +262,42 @@ final class CorrectionRecorder {
         suspended = nil
     }
 
+    /// A width change is a state transition even when the marked text stays the same.
+    func punctuationWidthChanged(to width: PunctuationWidth, presentation: Presentation, secure: Bool) {
+        settings.punctuationWidth = width.recordingValue
+        if secure {
+            session = nil
+            suspended = nil
+            lastCommit = nil
+            return
+        }
+        guard let s = session ?? suspended?.session else { return }
+        let time = clock()
+        if let last = s.lastKey { s.keys += "<dt:\(milliseconds(time - last))>" }
+        s.keys += "<punct-width>"
+        s.lastKey = time
+        if s.retyping != nil { s.original.append(Key(label: "<punct-width>", time: time)) }
+        appendTyping(s, Key(label: "<punct-width>", time: time), after: presentation)
+    }
+
+    /// Called before the composer handles the input; only a real pick needs an engine snapshot.
+    func candidate(for input: Input, composer: Composer, secure: Bool) -> CandidateDetails? {
+        guard !secure, let list = composer.presentation.candidates else { return nil }
+        let index: Int
+        switch input {
+        case .click(let selected): index = selected
+        case .key(.enter, _): index = list.selection
+        case .key(.char(let character), _):
+            guard let number = composer.options.selectionKeys.firstIndex(of: character) else { return nil }
+            index = list.page * list.pageSize + number
+        default: return nil
+        }
+        return composer.candidateDetails(at: index)
+    }
+
     func observe(_ input: Input, before: Presentation, after: Presentation, commit: String?, handled: Bool,
-                 options: ComposerOptions, secure: Bool, context: @autoclosure () -> String) {
+                 options: ComposerOptions, secure: Bool, candidate: CandidateDetails? = nil,
+                 context: @autoclosure () -> String) {
         let time: TimeInterval
         if case .key(_, let keyTime?) = input { time = keyTime } else { time = clock() }
         let committed = commit.flatMap { $0.isEmpty ? nil : $0 }
@@ -266,6 +321,7 @@ final class CorrectionRecorder {
                 session = kept.session
             } else {
                 let fresh = Session(start: time)
+                fresh.punctuationWidth = settings.punctuationWidth
                 if recordsContext { fresh.context = context() }
                 if let last = lastCommit, last.deleted > last.passed {
                     let deleted = String(last.committed.suffix(last.deleted - last.passed))
@@ -275,6 +331,7 @@ final class CorrectionRecorder {
                     event.previousTyping = last.typing
                     event.previousReplayable = last.replayable
                     event.previousContext = last.context
+                    event.previousPunctuationWidth = last.punctuationWidth
                     fresh.events.append(event)
                     fresh.afterCommit = (deleted, last.committed)
                 }
@@ -301,7 +358,7 @@ final class CorrectionRecorder {
         case .commit:
             break
         case .click(let index):
-            pick(s, index: index, via: "click", before: before, after: after, t: t)
+            pick(s, index: index, via: "click", before: before, after: after, candidate: candidate, t: t)
         case .toggleCorrections:
             if let list = after.candidates, list != before.candidates {
                 var event = CorrectionEvent(type: "switch_list", t: t, shown: after.text)
@@ -310,7 +367,8 @@ final class CorrectionRecorder {
             }
         case .key(let key, _):
             if let list = before.candidates, Self.isListKey(key, options: options) {
-                listKey(s, key: key, list: list, before: before, after: after, options: options, t: t)
+                listKey(s, key: key, list: list, before: before, after: after, options: options,
+                        candidate: candidate, t: t)
             } else {
                 if before.candidates != nil {
                     s.events.append(CorrectionEvent(type: "close_list", t: t, shown: after.text))
@@ -338,7 +396,7 @@ final class CorrectionRecorder {
     // MARK: Keys with the list open
 
     private func listKey(_ s: Session, key: KeyInput, list: CandidateList, before: Presentation, after: Presentation,
-                         options: ComposerOptions, t: Int) {
+                         options: ComposerOptions, candidate: CandidateDetails?, t: Int) {
         endRetyping(s, after: after)
         s.literal = nil
         if key == .char("`") {
@@ -357,9 +415,10 @@ final class CorrectionRecorder {
         }
         if after.candidates == nil {
             if case .char(let character) = key, let number = options.selectionKeys.firstIndex(of: character) {
-                pick(s, index: list.page * list.pageSize + number, via: "key", before: before, after: after, t: t)
+                pick(s, index: list.page * list.pageSize + number, via: "key", before: before, after: after,
+                     candidate: candidate, t: t)
             } else if key == .enter {
-                pick(s, index: list.selection, via: "key", before: before, after: after, t: t)
+                pick(s, index: list.selection, via: "key", before: before, after: after, candidate: candidate, t: t)
             } else {
                 s.events.append(CorrectionEvent(type: "close_list", t: t, shown: after.text))
             }
@@ -370,7 +429,8 @@ final class CorrectionRecorder {
         }
     }
 
-    private func pick(_ s: Session, index: Int, via: String, before: Presentation, after: Presentation, t: Int) {
+    private func pick(_ s: Session, index: Int, via: String, before: Presentation, after: Presentation,
+                      candidate: CandidateDetails?, t: Int) {
         guard let list = before.candidates, after.candidates == nil else { return }
         endRetyping(s, after: after)
         s.literal = nil
@@ -382,6 +442,10 @@ final class CorrectionRecorder {
         event.removed = removed
         event.inserted = inserted
         event.rank = index + 1
+        event.candidateText = candidate?.text
+        event.candidateReading = candidate?.reading
+        event.candidateStart = candidate?.range.lowerBound
+        event.candidateEnd = candidate?.range.upperBound
         event.list = Self.kind(list)
         event.via = via
         s.events.append(event)
@@ -548,6 +612,11 @@ final class CorrectionRecorder {
         }
         let mark = s.history[index]
         let deleted = Array(s.typing[mark.typed...])
+        if deleted.contains(where: { $0.label == "<punct-width>" }) {
+            // shortcut: edits across a width toggle need state-aware deletion snapshots before they can be replayed.
+            s.replayable = false
+            s.originalReplayable = false
+        }
         s.typing.removeLast(s.typing.count - mark.typed)
         s.history.removeLast(s.history.count - index - 1)
         let deletedKeys = deleted.map(\.label).joined()
@@ -653,7 +722,9 @@ final class CorrectionRecorder {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = "yyyy-MM-dd"
-            sink(CorrectionRecord(date: formatter.string(from: today()), appVersion: appVersion, settings: settings,
+            var recordedSettings = settings
+            recordedSettings.punctuationWidth = s.punctuationWidth
+            sink(CorrectionRecord(date: formatter.string(from: today()), appVersion: appVersion, settings: recordedSettings,
                                   context: s.context, keys: s.keys, typing: typing, replayable: s.replayable,
                                   originalTyping: Self.serialize(s.original),
                                   originalReplayable: s.replayable && s.originalReplayable,
@@ -673,7 +744,8 @@ final class CorrectionRecorder {
             }
         }
         lastCommit = LastCommit(time: time, text: committed + passed, committed: committed, passed: passed.count,
-                                typing: typing, replayable: s.replayable, context: s.context)
+                                typing: typing, replayable: s.replayable, context: s.context,
+                                punctuationWidth: s.punctuationWidth)
     }
 
     private func followDeletion(at time: TimeInterval) {

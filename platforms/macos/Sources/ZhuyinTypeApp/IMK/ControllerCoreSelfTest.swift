@@ -325,8 +325,61 @@ enum ControllerCoreSelfTest {
             try expect(core.keyDown(keyCode: 44, modifiers: [.control, .shift]), "Control-Shift-/ was not consumed")
             try expect(core.keyDown(keyCode: 27, modifiers: .shift), "Shift-- was not consumed")
             try expect(!core.keyDown(keyCode: 33, modifiers: .control), "Control-[ was taken from the app")
-            try expect(client.inserts == ["你，？_"], "inserted \(client.inserts)")
+            try expect(client.inserts == ["你，？＿"], "inserted \(client.inserts)")
             try expect(KeyMapping.input(keyCode: 18, modifiers: .control) == nil, "Control-1 is the app's")
+        }
+        test("punctuation width preserves composition, list and Shift mode") {
+            let (core, client) = session()
+            try expect(core.composer.punctuationWidth == .full, "Chinese did not start full-width")
+            type("su", into: core)
+            let pending = core.composer.presentation
+            _ = core.flagsChanged(keyCode: 56, modifiers: .shift, physicallyDown: true, timestamp: 1)
+            try expect(core.keyDown(keyCode: 49, modifiers: .shift), "width shortcut was not consumed")
+            _ = core.flagsChanged(keyCode: 56, modifiers: [], physicallyDown: false, timestamp: 1.1)
+            try expect(!core.isEnglish && core.composer.punctuationWidth == .half, "Shift release changed the language")
+            try expect(core.composer.presentation == pending && client.inserts.isEmpty, "width changed pending input")
+            type("3", into: core)
+            _ = core.handle(.down)
+            let list = core.composer.presentation
+            _ = core.keyDown(keyCode: 49, modifiers: .shift)
+            try expect(core.composer.presentation == list && core.composer.punctuationWidth == .full, "width changed candidates")
+            _ = core.handle(.escape)
+            _ = core.keyDown(keyCode: 20, modifiers: .shift)
+            _ = core.keyDown(keyCode: 49, modifiers: .shift)
+            _ = core.keyDown(keyCode: 20, modifiers: .shift)
+            _ = core.keyDown(keyCode: 49, modifiers: .option)
+            try expect(core.composer.presentation.text.hasSuffix("＃# "), "punctuation or literal space width")
+        }
+        test("punctuation width leaves English, Caps Lock and secure context alone") {
+            let (english, client) = session(english: true)
+            for (code, flags) in [(UInt16(49), NSEvent.ModifierFlags.shift), (20, .shift), (47, .control), (0, [])] {
+                try expect(!english.keyDown(keyCode: code, modifiers: flags), "English key was consumed")
+            }
+            try expect(english.composer.punctuationWidth == .full && client.inserts.isEmpty, "English changed Chinese width")
+            let (chinese, _) = session()
+            try expect(!chinese.keyDown(keyCode: 49, modifiers: [.shift, .capsLock]), "Caps Lock width shortcut")
+            try expect(chinese.composer.punctuationWidth == .full, "Caps Lock changed width")
+            chinese.secureInput = { true }
+            try expect(chinese.keyDown(keyCode: 49, modifiers: .shift), "secure width shortcut")
+            try expect(chinese.recentText.isEmpty && !chinese.composer.isComposing, "width read or composed text")
+        }
+        test("new width shortcut yields to saved bindings and can be rebound") {
+            let saved = Preferences(defaults: MemorySettingsStorage())
+            saved.bindings = [.nextPage: [Shortcut("Space", shift: true)]]
+            let bindings = saved.activeBindings
+            try expect(bindings[.togglePunctuationWidth] == [] && bindings[.nextPage] == [Shortcut("Space", shift: true)],
+                       "new shortcut displaced an existing binding")
+            let (core, _) = session()
+            core.shortcuts = Dictionary(bindings.flatMap { command, keys in keys.map { ($0, command) } },
+                                        uniquingKeysWith: { first, _ in first })
+            type("su3", into: core)
+            _ = core.keyDown(keyCode: 49, modifiers: .shift)
+            try expect(core.composer.punctuationWidth == .full, "saved Shift+Space changed width")
+            core.shortcuts = [Shortcut("w", control: true): .togglePunctuationWidth]
+            _ = core.keyDown(keyCode: 13, modifiers: .control)
+            try expect(core.composer.punctuationWidth == .half, "rebound width shortcut did not work")
+            _ = core.keyDown(keyCode: 49, modifiers: .shift)
+            try expect(core.composer.punctuationWidth == .half, "unbound default still changed width")
         }
         test("popup app receives preview without marked text") {
             let (core, client) = session()
@@ -550,6 +603,85 @@ enum ControllerCoreSelfTest {
             try expect(record["shown"] as? String == "你好" && record["schema"] as? Int == 1
                        && record["context"] == nil && record["original_typing"] != nil, "record \(record)")
             try expect(events(record, "open_list").first?["list"] as? String == "normal", "open_list")
+        }
+        test("correction log: width changes retain the initial setting and replay key with a list open") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su3cl3<down>", into: core)
+            let before = core.composer.presentation
+            _ = core.togglePunctuationWidth()
+            try expect(core.composer.presentation == before, "width toggle changed the open list")
+            guard let list = before.candidates,
+                  let index = list.items.indices.first(where: { !before.text.hasSuffix(list.items[$0].text) }) else {
+                throw Failure(description: "no different candidate")
+            }
+            core.selectCandidate(at: index)
+            _ = core.handle(.shiftedChar("3"))
+            press("<enter>", into: core)
+            guard let record = records.all.first else { throw Failure(description: "no width record") }
+            let settings = record["settings"] as? [String: Any]
+            try expect(settings?["punctuation_width"] as? String == "full", "initial width was overwritten")
+            try expect(plain(record["typing"]) == "su3cl3<punct-width><S-3>"
+                       && plain(record["original_typing"]) == "su3cl3<punct-width><S-3>", "missing width replay key")
+            try expect((record["committed"] as? String)?.hasSuffix("#") == true, "half-width symbol missing")
+        }
+        test("correction log: a width change during retyping also survives in original typing") {
+            let (core, _) = session()
+            let records = recording(core)
+            press("su31j6<bs>", into: core)
+            _ = core.togglePunctuationWidth()
+            press("1j4", into: core)
+            _ = core.handle(.shiftedChar("3"))
+            press("<enter>", into: core)
+            guard let record = records.all.first else { throw Failure(description: "no retyping width record") }
+            try expect(plain(record["original_typing"]) == "su31j6<punct-width><S-3>"
+                       && record["original_replayable"] as? Bool == true, "original lost the width transition")
+            try expect(plain(record["typing"]) == "su3<punct-width>1j4<S-3>", "retyping lost the width transition")
+        }
+        test("correction log: recording after a width change starts in that width") {
+            let (core, _) = session()
+            _ = core.togglePunctuationWidth()
+            let records = recording(core)
+            press("su31j6<bs>1j4<enter>", into: core)
+            let settings = records.all.first?["settings"] as? [String: Any]
+            try expect(settings?["punctuation_width"] as? String == "half", "late recorder started in wrong width")
+        }
+        test("correction log: actual candidate identity differs from the text diff") {
+            for via in ["click", "key", "enter"] {
+                let tiny = try Engine(lexiconText: "ㄅㄚ\t八\t-3\nㄆㄚ\t趴\t-3\nㄅㄚ ㄆㄚ\t八趴\t-1\nㄅㄚ ㄆㄚ\t巴趴\t-2\n")
+                let client = FakeTextClient()
+                var options = ComposerOptions()
+                options.learningEnabled = false
+                options.typoTolerance = .off
+                let core = ControllerCore(engine: tiny, client: client, options: options, isEnglish: false)
+                core.secureInput = { false }
+                let records = recording(core)
+                press("18<space>q8<space><down>", into: core)
+                guard let list = core.composer.presentation.candidates,
+                      let index = list.items.firstIndex(where: { $0.text == "巴趴" }), index < 9 else {
+                    throw Failure(description: "synthetic candidate missing")
+                }
+                if via == "click" {
+                    core.selectCandidate(at: index)
+                } else if via == "key" {
+                    press(String(index + 1), into: core)
+                } else {
+                    for _ in 0..<index { _ = core.handle(.down) }
+                    press("<enter>", into: core)
+                }
+                try expect(records.all.isEmpty, "record emitted before commit")
+                press("<enter>", into: core)
+                guard let record = records.all.first, let pick = events(record, "pick").first else {
+                    throw Failure(description: "missing synthetic pick record")
+                }
+                try expect(pick["candidate_text"] as? String == "巴趴"
+                           && pick["candidate_reading"] as? String == "ㄅㄚ ㄆㄚ"
+                           && pick["candidate_start"] as? Int == 0 && pick["candidate_end"] as? Int == 2,
+                           "candidate identity missing for \(via)")
+                try expect(pick["removed"] as? String == "八" && pick["inserted"] as? String == "巴",
+                           "whole candidate confused with minimal diff")
+                try expect(record["schema"] as? Int == 1 && client.inserts == ["巴趴"], "schema or commit changed")
+            }
         }
         test("correction log: Backspace and retyping keep the deleted and retyped keys") {
             let (core, _) = session()

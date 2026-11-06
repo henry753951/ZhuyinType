@@ -19,6 +19,8 @@ enum EngineHost {
     /// Increases with every load; a controller whose core was built from an older one rebuilds it when idle.
     static private(set) var generation = 0
     static var lastEnglishMode: Bool?
+    /// Shared across fields during this process; every launch starts with full-width punctuation.
+    static var punctuationWidth: PunctuationWidth = .full
     /// Asks every controller whether it is in the middle of a composition.
     static var isComposing: () -> Bool = { false }
 

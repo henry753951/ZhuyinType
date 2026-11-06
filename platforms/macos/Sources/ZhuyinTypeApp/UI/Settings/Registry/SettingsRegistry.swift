@@ -126,7 +126,7 @@ enum SettingsRegistry {
                           write: { p, v in if case .bool(let on) = v { p.escapeClearsComposition = on } }),
         choice("punctuationKeys", "標點按法", place(.typing, SettingsRow.punctuationKeys), \.punctuationKeys,
                [(PunctuationKeys.windows, "Windows"), (.mac, "macOS")], demo: "punctuation",
-               detail: { $0.punctuationKeys == .windows ? "⇧ 加符號鍵打出鍵上的符號，例如 <" : "⇧ 加符號鍵打出中文標點，例如 ，" },
+               detail: { $0.punctuationKeys == .windows ? "⇧ 加符號鍵打出鍵上的符號，例如 ＜" : "⇧ 加符號鍵打出中文標點，例如 ，" },
                keywords: ["標點", "全形"]),
         feature(.controlPunctuation, "⌃ 加符號鍵打中文標點"),
         feature(.optionSymbols, "⌥ 加數字或符號鍵打鍵上的符號"),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,6 +33,24 @@ class CorrectionLogTest(unittest.TestCase):
             separated.write_text(first.rstrip()[:-1] + ', "note": "a\u2028b"}\n', encoding="utf-8")
             self.assertEqual(corrections.load(separated)[0]["note"], "a\u2028b")
 
+    def test_optional_candidate_identity_is_backward_compatible(self) -> None:
+        record = json.loads(json.dumps(self.records[0]))
+        pick = next(e for e in record["events"] if e["type"] == "pick")
+        pick.update(candidate_text="你郝", candidate_reading="ㄋㄧˇ ㄏㄠˇ", candidate_start=0, candidate_end=2)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mixed.jsonl"
+            path.write_text(
+                "\n".join(json.dumps(r, ensure_ascii=False) for r in [self.records[0], record]), encoding="utf-8"
+            )
+            old, new = corrections.load(path)
+        self.assertNotIn("candidate_text", next(e for e in old["events"] if e["type"] == "pick"))
+        new_pick = next(e for e in new["events"] if e["type"] == "pick")
+        self.assertEqual(
+            (new_pick["candidate_text"], new_pick["candidate_start"], new_pick["candidate_end"]), ("你郝", 0, 2)
+        )
+        self.assertEqual(corrections.replay_items(old), corrections.replay_items(new))
+        self.assertEqual(corrections.summarize([old]), corrections.summarize([new]))
+
     def test_replay_items(self) -> None:
         pick, backspace, escape, cursor, retype = (corrections.replay_items(r) for r in self.records)
         self.assertEqual(
@@ -48,6 +67,21 @@ class CorrectionLogTest(unittest.TestCase):
         options = corrections.cli_options({"typo_tolerance": "off", "fuzzy_sounds": ["zh", "an", "xx"]})
         self.assertEqual(options[:2], ["--typo", "off"])
         self.assertEqual(options[-2:], ["--fuzzy", "zh,an"])
+
+    def test_punctuation_width_and_historical_recordings(self) -> None:
+        self.assertNotIn("--punctuation-width", corrections.cli_options({}))
+        for width in ("legacy", "full", "half"):
+            options = corrections.cli_options({"punctuation_width": width})
+            self.assertEqual(options[options.index("--punctuation-width") + 1], width)
+        with self.assertRaises(ValueError):
+            corrections.cli_options({"punctuation_width": "unknown"})
+        record = {
+            **self.records[-1],
+            "settings": {"punctuation_width": "half"},
+            "events": [{**event, "previous_punctuation_width": "full"} for event in self.records[-1]["events"]],
+        }
+        options = corrections.replay_items(record)[0].options
+        self.assertEqual(options[options.index("--punctuation-width") + 1], "full")
 
     def test_syllables(self) -> None:
         self.assertEqual(corrections.syllables("s<dt:90>u3cl3"), ["ㄋㄧˇ", "ㄏㄠˇ"])

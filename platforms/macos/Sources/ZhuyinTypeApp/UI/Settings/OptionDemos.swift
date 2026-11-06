@@ -129,10 +129,10 @@ extension DemoFrame {
 struct PunctuationTable: View {
     let current: PunctuationKeys
     private static let rows: [(keys: [String], windows: String, mac: String)] = [
-        (["⇧", ","], "<", "，"),
-        (["⇧", "/"], "?", "？"),
-        (["⇧", "1"], "!", "！"),
-        (["⇧", "-"], "_", "——"),
+        (["⇧", ","], "＜", "，"),
+        (["⇧", "/"], "？", "？"),
+        (["⇧", "1"], "！", "！"),
+        (["⇧", "-"], "＿", "——"),
         (["⌃", ","], "，", "，"),
         (["⌥", ","], ",", ","),
     ]
@@ -155,7 +155,7 @@ struct PunctuationTable: View {
                     }
                 }
             }
-            Text("⌃ 加符號鍵打中文標點、⌥ 加符號鍵打鍵上的符號，兩種按法都能用。")
+            Text("表中為全形標點。可切換標點全半形，⌥ 加符號鍵輸入半形符號。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

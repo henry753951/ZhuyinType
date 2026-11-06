@@ -6,6 +6,8 @@
 
 mod candidates;
 mod scoring;
+#[cfg(test)]
+mod tests;
 
 use candidates::CandidateWindow;
 use std::collections::{BTreeSet, HashMap};
@@ -14,7 +16,7 @@ use std::sync::Arc;
 
 use crate::api::{
     Candidate, CandidateAnchor, CandidateList, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput,
-    KeyResult, Presentation, ScoredSentence, SpaceAction, TypoTolerance,
+    KeyResult, Presentation, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use crate::conversion::{CharacterScores, CompositionToken, ConversionCache, ConvertedWord, FixedWord, Request};
 use crate::engine::{CommittedWord, Engine, Match};
@@ -187,6 +189,8 @@ struct LastCommit {
 #[allow(clippy::struct_excessive_bools)]
 pub struct Composer {
     options: ComposerOptions,
+    // Only future punctuation observes this state; changing it leaves all composition state intact.
+    punctuation_width: PunctuationWidth,
     tuning: Tuning,
     engine: Arc<Engine>,
     tokens: Vec<CompositionToken>,
@@ -283,6 +287,7 @@ impl Composer {
     pub fn new(engine: Arc<Engine>, options: ComposerOptions) -> Self {
         Self {
             options,
+            punctuation_width: PunctuationWidth::Legacy,
             engine,
             tokens: vec![],
             cursor: 0,
@@ -335,6 +340,12 @@ impl Composer {
         self.last_commit.as_ref().map_or(&[], |c| c.words.as_slice())
     }
 
+    /// The actual candidate before a pick, with its token range and the reading used for learning.
+    #[must_use]
+    pub fn candidate(&self, index: usize) -> Option<&FixedWord> {
+        self.candidate_window.get(index)
+    }
+
     /// Whether a pick came through the reading channel (its annotation is not a keyboard slip to learn).
     fn picked_through_channel(&self, choice: &FixedWord) -> bool {
         self.engine.reading_channel().is_some()
@@ -349,6 +360,17 @@ impl Composer {
     #[must_use]
     pub fn options(&self) -> &ComposerOptions {
         &self.options
+    }
+
+    /// Width applied to subsequently typed punctuation (letters and spaces are unaffected).
+    #[must_use]
+    pub fn punctuation_width(&self) -> PunctuationWidth {
+        self.punctuation_width
+    }
+
+    /// Sets the width of future punctuation without changing the composition or candidate window.
+    pub fn set_punctuation_width(&mut self, width: PunctuationWidth) {
+        self.punctuation_width = width;
     }
 
     /// Changes the options: a change closes the candidate window and redraws.
@@ -591,6 +613,14 @@ impl Composer {
     }
 
     fn process(&mut self, key: KeyInput) -> KeyResult {
+        if key == KeyInput::TogglePunctuationWidth {
+            self.set_punctuation_width(if self.punctuation_width == PunctuationWidth::Half {
+                PunctuationWidth::Full
+            } else {
+                PunctuationWidth::Half
+            });
+            return KeyResult::CONSUMED;
+        }
         self.notice = None;
         if let Some((before, after)) = self.literal_undo.take()
             && (key == KeyInput::Char('`') || key == KeyInput::Escape)
@@ -616,7 +646,9 @@ impl Composer {
         let result: KeyResult;
         if key == KeyInput::Char('`') {
             result = self.key_literal(before_key);
-        } else if let Some(literal) = keyboard::literal(key, self.options.punctuation_keys) {
+        } else if let Some(literal) =
+            keyboard::literal_with_width(key, self.options.punctuation_keys, self.punctuation_width)
+        {
             result = self.key_punctuation(literal);
         } else {
             match key {
@@ -646,7 +678,11 @@ impl Composer {
                 }
                 KeyInput::Escape => result = self.key_escape(),
                 KeyInput::ControlChar(_) => return self.key_commit(false),
-                KeyInput::ShiftedChar(_) | KeyInput::Printed(_) | KeyInput::ShiftLeft | KeyInput::ShiftRight => {
+                KeyInput::ShiftedChar(_)
+                | KeyInput::Printed(_)
+                | KeyInput::ShiftLeft
+                | KeyInput::ShiftRight
+                | KeyInput::TogglePunctuationWidth => {
                     result = KeyResult::PASS_THROUGH;
                 }
             }
@@ -1817,15 +1853,7 @@ impl Composer {
             })
             .map(|i| self.conversion[i].clone())
             .collect();
-        let sentences: Vec<ScoredSentence> = self
-            .n_best(self.reranking_count.max(1))
-            .into_iter()
-            .filter(|sentence| {
-                remembered
-                    .iter()
-                    .all(|word| sentence.words.iter().any(|w| w.range == word.range && *w.text == *word.text))
-            })
-            .collect();
+        let sentences = self.reranking_sentences(&remembered, self.n_best(self.reranking_count.max(1)));
         if sentences.is_empty() {
             return;
         }
@@ -1864,6 +1892,56 @@ impl Composer {
                 }
             })
             .collect();
+    }
+
+    fn reranking_sentences(&self, remembered: &[ConvertedWord], sentences: Vec<ScoredSentence>) -> Vec<ScoredSentence> {
+        let has_data = self.engine.personal().has_data();
+        let mut candidates: Vec<_> = sentences
+            .into_iter()
+            .map(|sentence| {
+                let picks = if has_data { self.contextual_pick_ranges(&sentence) } else { Vec::new() };
+                (sentence, picks)
+            })
+            .collect();
+        for word in remembered {
+            candidates.retain(|(sentence, picks)| {
+                sentence.words.iter().any(|w| w.range == word.range && *w.text == *word.text)
+                    // A partial pick must not release protection for the rest of a recalled phrase.
+                    || picks.contains(&word.range)
+            });
+        }
+        let most = candidates.iter().map(|(_, picks)| picks.len()).max().unwrap_or(0);
+        candidates.into_iter().filter(|(_, picks)| picks.len() == most).map(|(sentence, _)| sentence).collect()
+    }
+
+    fn contextual_pick_ranges(&self, sentence: &ScoredSentence) -> Vec<Range<usize>> {
+        let model = self.engine.language_model();
+        let mut history = self.leading_history;
+        let mut picks = Vec::new();
+        for word in &sentence.words {
+            if word.reading.is_empty() {
+                history = LanguageModelHistory::default();
+                continue;
+            }
+            let id = self.engine.remembered_word_id(&word.text);
+            if id.is_some_and(|id| self.engine.personal().remembers(id, history, false)) {
+                picks.push(word.range.clone());
+            }
+            let parts = self
+                .fixed
+                .iter()
+                .find(|f| f.range == word.range && *f.text == word.text)
+                .map(|f| &f.components)
+                .filter(|parts| !parts.is_empty());
+            if let Some(parts) = parts {
+                for part in parts {
+                    history = history.appending(part.word_id, model.order());
+                }
+            } else {
+                history = history.appending(id, model.order());
+            }
+        }
+        picks
     }
 
     #[allow(clippy::too_many_lines)]

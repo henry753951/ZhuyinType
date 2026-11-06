@@ -58,6 +58,8 @@
 
 單按 Shift（`flagsChanged`，依實體按鍵狀態判斷，0.35 秒內放開）切換中英，切換前先送出組字。
 
+macOS 的「切換標點全半形」快捷鍵預設為 ⇧ 空白，插入組字空白改用 ⌥ 空白；既有自訂綁定優先。`ControllerCore` 在一般按鍵分派之前切換 `Composer.punctuationWidth`，保留所有組字與清單狀態。Rust 先依 Windows／macOS 按法取得標點，再依全形／半形狀態轉換；`printed` 的明確鍵面符號保留原樣。前端的執行期狀態由 `EngineHost` 保留，中文啟動預設為全形，英文模式直接交給 App。引擎與 CLI 預設 `legacy`，保留舊版混合標點映射；`--punctuation-width full|half|legacy` 與 `<punct-width>` 供明確設定與重播使用。舊 `<sspace>` 仍表示插入空白。
+
 `ControllerCore.handle` 在組字開始時（沒在組字，又按了會打字的鍵）先準備前文（§4），再以 `NSEvent.timestamp` 呼叫 `Composer.handle(_:at:)`。
 
 ## 4. 前文
@@ -183,7 +185,7 @@
 1. 找出目前首選裡使用者在同一個地方選過的字詞（`Engine.remembers`、`PersonalLanguageModel.remembers`）：
    - 單字：在同一個前一個詞後面選過；
    - 多字詞：在任何地方選過。
-2. 取引擎的前 16 句（`config.json` 的 `count`），只留下保留這些字詞的句子。一句都不剩時，維持引擎的首選。
+2. 取引擎的前 16 句（`config.json` 的 `count`），保留目前首選中上述記憶的字詞；候選句若在完全相同的詞範圍有明確前文選字證據，可取代該處的記憶。局部選字不能解除較長整段召回的保護。再留下符合最多前文選字證據的句子；沒有這類證據時沿用原篩選。一句都不剩時，維持引擎的首選。
 3. `NeuralReranker.choose` 從留下的句子中挑一句：
    - 留下的句子中，前兩名的引擎分數差達 τ = 8 時（`gateMargin`），直接採用第一名，不執行模型；
    - 其他時候，總分 = 引擎分數 + 1.0 × log P_v2b(整句 | 前文)；
@@ -322,7 +324,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 ### 9.4 改字記錄
 
-「記錄改字」開啟時（[DESIGN.md §2.7](../product/DESIGN.md#27-改字記錄)），`ZhuyinInputController.refreshPreferences` 給每個 `ControllerCore` 一個 `CorrectionRecorder`；關閉時拿掉。記錄器只觀察，不改變任何結果，引擎也不知道它存在，所以 Swift 與 Rust 兩版引擎都不需要修改。
+「記錄改字」開啟時（[DESIGN.md §2.7](../product/DESIGN.md#27-改字記錄)），`ZhuyinInputController.refreshPreferences` 給每個 `ControllerCore` 一個 `CorrectionRecorder`；關閉時拿掉。記錄器只觀察，不改變選字或學習。選字前經由唯讀 C 介面取得該候選的詞、學習讀音與組字 token 範圍，和整段畫面的文字差異分開記錄；只在記錄開啟且非安全輸入時查詢。
 
 - `ControllerCore.handle`、`selectCandidate`、`toggleCorrections` 與 `commit` 在畫面更新之後呼叫 `CorrectionRecorder.observe`，傳入按鍵（或點按、送出）、按下的時間（`NSEvent.timestamp`；點按用同一個時鐘的現在時間）、處理前後的 `Presentation`、送出的字與按鍵是否交給 App；`breakContext` 也通知它。
 - 記錄器依處理前的清單狀態分類按鍵：清單開著時，選字鍵、Return、方向鍵、翻頁、⇧↓ ⇧↑、Esc 與 ⌫ 是清單的鍵；其他鍵關閉清單後照組字中的規則處理。改變組字內容的鍵（注音、聲調、空白、標點、⌫、⌥⌫、⌦、Esc）是打字；開啟清單時順便完成音節的鍵（↓ 在未完成的注音上），以「該鍵加 `<esc>`」記在打字中，重播時效果相同。
@@ -361,4 +363,4 @@ Sparkle 下載的更新也在所有輸入框都沒有組字時安裝（`Updater.
 4. 評測：`zhuyin-cli` 使用和 app 相同的引擎，`ml/src/zhuyintype_ml/eval/*` 在開發集上調參數，測試集只用來追蹤。
 5. 發布：`platforms/macos/scripts/release.sh` 產生 pkg 與 Sparkle 更新檔。
 
-`zhuyin-cli` 的預設值和 app 不同：聊天模型、v3、v2b 要以 `--chat-lm`、`--v3`、`--reranker` 指定，重排權重 0.5、8 句，寫法用「臺」。要和 app 一致時以 `--rerank-weight 1.0 --rerank-count 16 --forms common` 指定。評測方式與指令見 [EVALUATION.md](../ml/EVALUATION.md)。
+`zhuyin-cli` 的預設值和 app 不同：聊天模型、v3、v2b 要以 `--chat-lm`、`--v3`、`--reranker` 指定，重排權重 0.5、8 句，寫法用「臺」。要和 app 一致時以 `--rerank-weight 1.0 --rerank-count 16 --forms common --punctuation-width full` 指定。macOS 的 `EngineBench` 也明確使用全形標點；舊改字紀錄仍以 `legacy` 映射重播。評測方式與指令見 [EVALUATION.md](../ml/EVALUATION.md)。

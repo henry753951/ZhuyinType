@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput,
-    KeyResult, PunctuationKeys, SpaceAction, TypoTolerance,
+    KeyResult, PunctuationKeys, PunctuationWidth, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::{Composer, VariantScores};
 use zhuyin_core::engine::{Engine, EngineConfig};
@@ -28,7 +28,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -62,6 +62,7 @@ struct Settings {
     timing: bool,
     fuzzy: FuzzySounds,
     options: ComposerOptions,
+    punctuation_width: PunctuationWidth,
     config: EngineConfig,
     costs: Costs,
     split_margin: Option<f64>,
@@ -121,6 +122,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         timing: false,
         fuzzy: FuzzySounds::NONE,
         options,
+        punctuation_width: PunctuationWidth::Legacy,
         config: EngineConfig::default(),
         costs: Costs::default(),
         split_margin: None,
@@ -234,6 +236,10 @@ fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> O
         "--punctuation" => {
             s.options.punctuation_keys =
                 PunctuationKeys::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        }
+        "--punctuation-width" => {
+            s.punctuation_width = PunctuationWidth::from_raw(next_value(arguments))
+                .unwrap_or_else(|| fail("--punctuation-width needs legacy, full or half"));
         }
         "--batch" => {
             s.batch = true;
@@ -539,6 +545,7 @@ fn special(name: &str) -> Option<KeyInput> {
         "tab" => KeyInput::Tab,
         "stab" => KeyInput::ShiftTab,
         "sspace" => KeyInput::ShiftSpace,
+        "punct-width" => KeyInput::TogglePunctuationWidth,
         "pgup" => KeyInput::PageUp,
         "pgdown" => KeyInput::PageDown,
         "sleft" => KeyInput::ShiftLeft,
@@ -895,6 +902,7 @@ fn main() {
     // the heads a full composition commits by itself (the commit listener).
     let model_context = Arc::new(Mutex::new(s.context.clone()));
     let mut composer = Composer::new(engine.clone(), s.options.clone());
+    composer.set_punctuation_width(s.punctuation_width);
     attach(&mut composer, &models, &s, &model_context);
     let mut tuning = composer.tuning();
     tuning.decoder_costs = s.costs;
@@ -918,6 +926,7 @@ fn main() {
                 line.pop();
             }
             composer.reset();
+            composer.set_punctuation_width(s.punctuation_width);
             composer.break_context();
             if !s.keep_memory {
                 engine.forget_all_learned();
@@ -1038,6 +1047,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn punctuation_width_is_opt_in_for_legacy_recordings() {
+        let (settings, _) = parse_arguments(vec!["<S-3><C-.>".to_owned()]);
+        assert_eq!(settings.punctuation_width, PunctuationWidth::Legacy);
+        for (name, expected) in
+            [("legacy", PunctuationWidth::Legacy), ("full", PunctuationWidth::Full), ("half", PunctuationWidth::Half)]
+        {
+            let (settings, _) =
+                parse_arguments(vec!["--punctuation-width".to_owned(), name.to_owned(), "<S-3><C-.>".to_owned()]);
+            assert_eq!(settings.punctuation_width, expected);
+        }
+        assert_eq!(PunctuationWidth::from_raw("unknown"), None);
+    }
+
+    #[test]
     fn key_syntax() {
         let keys = parse_keys(
             "a<space><bs><obs><del><left><right><home><end><up><down><enter><senter><esc><tab><S-x><sleft><sright>",
@@ -1077,5 +1100,7 @@ mod tests {
         assert!(matches!(parse_keys("<dt:6>").unwrap()[0], Typed::Delay(d) if d == 0.006));
         assert!(matches!(parse_keys("<C-,>").unwrap()[0], Typed::Key(_, KeyInput::ControlChar(','))));
         assert!(matches!(parse_keys("a<b").unwrap()[1], Typed::Key(_, KeyInput::Char('<'))));
+        assert!(matches!(parse_keys("<sspace>").unwrap()[0], Typed::Key(_, KeyInput::ShiftSpace)));
+        assert!(matches!(parse_keys("<punct-width>").unwrap()[0], Typed::Key(_, KeyInput::TogglePunctuationWidth)));
     }
 }

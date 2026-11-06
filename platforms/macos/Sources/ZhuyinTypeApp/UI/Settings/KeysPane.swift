@@ -237,8 +237,10 @@ struct KeysPane: View {
         case .punctuation:
             let windows = preferences.punctuationKeys == .windows
             return [
+                KeyItem(id: "punctuationWidth", title: "切換標點全半形", subtitle: "中文預設全形，英數與空白維持半形",
+                        keys: .command(.togglePunctuationWidth)),
                 KeyItem(id: "brackets", title: "「 」 、", subtitle: "固定", keys: .fixed(["[", "]", "'"])),
-                KeyItem(id: "shiftSymbols", title: windows ? "鍵上的符號：< > _ ? !" : "中文標點：，。？！：『』——",
+                KeyItem(id: "shiftSymbols", title: windows ? "鍵上的符號：＜ ＞ ＿ ？ ！" : "中文標點：，。？！：『』——",
                         keys: .fixed(["⇧", "符號鍵"]), link: ("標點按法在「打字」設定", SettingsPlace(.typing, row: SettingsRow.punctuationKeys))),
                 KeyItem(id: "controlPunctuation", title: "中文標點：，。、？！：；『』", subtitle: "兩種標點按法都能用",
                         keys: .fixed(["⌃", "符號鍵"]), feature: .controlPunctuation),
@@ -255,7 +257,7 @@ struct KeysPane: View {
             ]
         case .other:
             return [
-                KeyItem(id: "shiftSpace", title: "在組字中放一個空白", subtitle: "固定", keys: .fixed(["⇧", "空白"])),
+                KeyItem(id: "insertSpace", title: "在組字中放一個空白", keys: .command(.insertSpace)),
                 KeyItem(id: "forwardDelete", title: "刪掉游標後的字", subtitle: "固定", keys: .fixed(["⌦"])),
             ]
         }

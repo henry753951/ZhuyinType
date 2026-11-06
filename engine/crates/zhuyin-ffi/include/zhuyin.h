@@ -107,6 +107,18 @@
 // `ZtKey::kind`: Shift+↑ (typing corrections first).
 #define ZT_KEY_SHIFT_UP 25
 
+// `ZtKey::kind`: toggle the width of future punctuation without changing the composition.
+#define ZT_KEY_TOGGLE_PUNCTUATION_WIDTH 26
+
+// Historical per-key punctuation mappings (the engine default).
+#define ZT_PUNCTUATION_WIDTH_LEGACY 0
+
+// Full-width future punctuation.
+#define ZT_PUNCTUATION_WIDTH_FULL 1
+
+// Half-width future punctuation.
+#define ZT_PUNCTUATION_WIDTH_HALF 2
+
 // `ZtComposerOptions::space_action`: Space opens the candidate window.
 #define ZT_SPACE_OPEN_CANDIDATES 0
 
@@ -236,6 +248,16 @@ typedef struct {
   // One past the last unit.
   size_t end;
 } ZtRange;
+
+// A candidate's engine identity, independent of display forms and changes elsewhere after a pick.
+typedef struct {
+  // The engine's word text, before display-form conversion.
+  char *text;
+  // The reading used for learning (as typed); empty for a literal.
+  char *reading;
+  // Composition-token range, not UTF-16 or Unicode-scalar offsets.
+  ZtRange range;
+} ZtCandidateDetails;
 
 // One candidate.
 typedef struct {
@@ -509,6 +531,18 @@ void zt_composer_free(ZtComposer *composer);
 // `composer` is a live handle; `options` is valid.
 bool zt_composer_set_options(ZtComposer *composer, const ZtComposerOptions *options);
 
+// Width of future punctuation, one of `ZT_PUNCTUATION_WIDTH_*`; legacy for a NULL composer.
+//
+// # Safety
+// `composer` is NULL or a live handle.
+uint32_t zt_composer_punctuation_width(const ZtComposer *composer);
+
+// Sets future punctuation width without changing composition; false for NULL or an unknown width.
+//
+// # Safety
+// `composer` is NULL or a live handle not used elsewhere during the call.
+bool zt_composer_set_punctuation_width(ZtComposer *composer, uint32_t width);
+
 // Handles a key at the current time.  An unknown key passes through.
 //
 // # Safety
@@ -520,6 +554,19 @@ ZtKeyResult zt_composer_handle(ZtComposer *composer, ZtKey key);
 // # Safety
 // `composer` is a live handle.
 ZtKeyResult zt_composer_handle_at(ZtComposer *composer, ZtKey key, double time);
+
+// Candidate `index` before picking; NULL for a closed list or an invalid index.
+// Free the snapshot with `zt_candidate_details_free`.
+//
+// # Safety
+// `composer` is NULL or a live handle not used elsewhere during the call.
+ZtCandidateDetails *zt_composer_candidate_details(const ZtComposer *composer, size_t index);
+
+// Frees a candidate snapshot. NULL is ignored.
+//
+// # Safety
+// `details` is NULL or an unfreed snapshot returned by `zt_composer_candidate_details`.
+void zt_candidate_details_free(ZtCandidateDetails *details);
 
 // Picks candidate `index` of the open list.
 //

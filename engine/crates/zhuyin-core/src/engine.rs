@@ -1619,15 +1619,21 @@ impl Engine {
         if phrase && state.learned.get(&PhraseKey::new(&*word.reading, &*word.text)).is_some_and(|v| v.picks > 0) {
             return true;
         }
-        let id = word
-            .word_id
-            .or_else(|| self.model.word_id(&word.text))
-            .or_else(|| state.word_ids.get(&*word.text).copied())
-            .or_else(|| {
-                self.mapped.as_ref().and_then(|m| m.word_index(&word.text)).map(|i| FIRST_PERSONAL_ID + i as u32)
-            });
+        let id = word.word_id.or_else(|| self.known_word_id(&state, &word.text));
         let Some(id) = id else { return false };
         self.personal.remembers(id, history, phrase)
+    }
+
+    fn known_word_id(&self, state: &State, text: &str) -> Option<u32> {
+        self.model
+            .word_id(text)
+            .or_else(|| state.word_ids.get(text).copied())
+            .or_else(|| self.mapped.as_ref().and_then(|m| m.word_index(text)).map(|i| FIRST_PERSONAL_ID + i as u32))
+    }
+
+    /// A known word's ID, including personal words; querying does not allocate an ID.
+    pub(crate) fn remembered_word_id(&self, text: &str) -> Option<u32> {
+        self.known_word_id(&self.lock(), text)
     }
 
     /// The user picked something else where `text` was shown: weaken what made it the first choice.

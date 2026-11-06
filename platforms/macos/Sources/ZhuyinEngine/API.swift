@@ -55,6 +55,15 @@ public struct Candidate: Equatable, Sendable {
     }
 }
 
+/// Engine identity captured before a pick, independently of display forms or a whole-composition diff.
+public struct CandidateDetails: Equatable, Sendable {
+    public let text: String
+    /// Reading used for learning (as typed); empty for a literal.
+    public let reading: String
+    /// Composition-token range, not UTF-16 or Unicode-scalar offsets.
+    public let range: Range<Int>
+}
+
 public struct CandidateList: Equatable, Sendable {
     public var items: [Candidate]
     /// Highlighted index into `items`.
@@ -127,6 +136,11 @@ public enum PunctuationKeys: String, Sendable, CaseIterable {
     case mac
 }
 
+/// Width of future punctuation; the engine defaults to legacy and the macOS controller starts with full.
+public enum PunctuationWidth: UInt32, Sendable {
+    case legacy = 0, full = 1, half = 2
+}
+
 /// Space in a composition with no unfinished syllable.
 public enum SpaceAction: String, Sendable, CaseIterable {
     /// Opens the candidate window; in the window, Space turns the page.
@@ -135,7 +149,7 @@ public enum SpaceAction: String, Sendable, CaseIterable {
     case commit
     /// Commits the composition, then the app receives the Space, so a space follows the text.
     case commitAndSpace
-    /// Puts a space into the composition and keeps composing (what ⇧Space always does); nothing is sent yet.
+    /// Puts a half-width space into the composition and keeps composing; nothing is sent yet.
     case insertSpace
 }
 

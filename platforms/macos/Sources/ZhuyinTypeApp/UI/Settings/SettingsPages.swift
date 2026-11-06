@@ -88,6 +88,7 @@ extension ShortcutCommand {
         var place: SettingsPlace = {
             switch self {
             case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
+            case .togglePunctuationWidth, .insertSpace: return SettingsPlace(.typing, subpage: .punctuation)
             default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
             }
         }()
@@ -420,6 +421,11 @@ private struct PunctuationPage: View {
     @ObservedObject var preferences: Preferences
     var body: some View {
         SettingsForm {
+            SettingsSection("標點全半形") {
+                CommandKeyRows(preferences: preferences, commands: [.togglePunctuationWidth, .insertSpace])
+            } footer: {
+                Text("中文預設全形，英數與空白維持半形。英文模式使用半形。")
+            }
             SettingsSection("標點按法：\(preferences.punctuationKeys == .windows ? "Windows" : "macOS")") {
                 PunctuationTable(current: preferences.punctuationKeys)
             } footer: {
@@ -434,7 +440,6 @@ private struct PunctuationPage: View {
             SettingsSection("固定的按鍵") {
                 SettingRow(title: "「 」 、", subtitle: "固定") { KeyCombo(keys: ["[", "]", "'"]) }
                 SettingRow(title: "列出同類的標點", subtitle: "在標點上按") { KeyCombo(keys: ["↓"]) }
-                SettingRow(title: "在組字中放一個空白", subtitle: "固定") { KeyCombo(keys: ["⇧", "空白"]) }
             }
         }
     }
@@ -452,8 +457,7 @@ private struct TypingKeysPage: View {
                          ("送出", ["Return"], "送出整段組字"),
                          ("刪掉注音符號，或游標前的字", ["⌫"], "和一般的刪除鍵相同"),
                          ("刪掉游標後的字", ["⌦"], "和一般的刪除鍵相同"),
-                         ("在組字中移動游標", ["←", "→"], "Home、End 移到開頭或結尾"),
-                         ("在組字中放一個空白", ["⇧", "空白"], "空白本身用在一聲與送出")], id: \.0) { row in
+                         ("在組字中移動游標", ["←", "→"], "Home、End 移到開頭或結尾")], id: \.0) { row in
                     SettingRow(title: row.0, subtitle: row.2) { KeyCombo(keys: row.1) }
                 }
             } footer: {

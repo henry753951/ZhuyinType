@@ -115,6 +115,20 @@ public final class Composer {
     private let engine: Engine
     private var cached: Presentation?
 
+    /// Width of future punctuation; changing it preserves the current composition and candidates.
+    public var punctuationWidth: PunctuationWidth {
+        get { PunctuationWidth(rawValue: zt_composer_punctuation_width(handle)) ?? .legacy }
+        set {
+            // The enum contains only valid ABI values and handle is live for this object's lifetime.
+            _ = zt_composer_set_punctuation_width(handle, newValue.rawValue)
+        }
+    }
+
+    /// Toggles only future punctuation, without a text-input or candidate-selection action.
+    public func togglePunctuationWidth() {
+        _ = result(zt_composer_handle(handle, ZtKey(kind: UInt32(ZT_KEY_TOGGLE_PUNCTUATION_WIDTH), character: 0)))
+    }
+
     public var options: ComposerOptions {
         didSet {
             guard options != oldValue else { return }
@@ -175,6 +189,16 @@ public final class Composer {
         defer { cached = nil }
         guard index >= 0 else { return .consumed }
         return result(zt_composer_select_candidate(handle, index))
+    }
+
+    /// Queries just one candidate when a caller needs its identity before selecting it.
+    public func candidateDetails(at index: Int) -> CandidateDetails? {
+        guard index >= 0, let details = zt_composer_candidate_details(handle, index) else { return nil }
+        defer { zt_candidate_details_free(details) }
+        let d = details.pointee
+        guard let text = d.text, let reading = d.reading, d.range.start < d.range.end else { return nil }
+        return CandidateDetails(text: String(cString: text), reading: String(cString: reading),
+                                range: d.range.start..<d.range.end)
     }
 
     public func commitAll() -> String {
