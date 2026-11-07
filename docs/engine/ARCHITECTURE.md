@@ -62,16 +62,18 @@ macOS 的「切換標點全半形」快捷鍵預設為 ⇧ 空白，插入組字
 
 `ControllerCore.handle` 在組字開始時（沒在組字，又按了會打字的鍵）先準備前文（§4），再以 `NSEvent.timestamp` 呼叫 `Composer.handle(_:at:)`。
 
+Caps Lock 的「英／中」提示只反映暫時的大寫鎖定狀態，跨輸入框保存的模式讀 `ControllerCore.isEnglish`。修飾鍵事件及模式回呼先確認目前選取的輸入方式仍是 ZhuyinType；離開後的延遲事件不重新接管候選視窗、不覆寫模式。Caps Lock 也取消尚未完成的 Shift 單按判斷，避免同一組操作再次切換。
+
 ## 4. 前文
 
 前文是游標前的文字，由 `ControllerCore.prepareContext` 在組字開始時準備，存在 `recentText`。
 
 1. 安全輸入開著時（`IsSecureEventInputEnabled`，例如焦點在密碼欄），不讀也不保留前文，`recentText` 清空，這段組字也不學習（`Composer.learningSuspended`）。送出時同樣不記錄。
-2. `recentText` 超過 10 分鐘沒有更新就清空（`contextWindow` = 600 秒）。
-3. 設定「參考游標前的文字」關閉時到此為止。這時仍會用同一個輸入框裡剛送出的字，但不讀 App 的文字，也不跨輸入框保留。
+2. 同一個 App 最後一次送出或修改前文超過 1 分鐘後，備用前文到期（`contextWindow` = 60 秒）。只讀取前文、移動游標或開始組字不延長期限；新送出時保留最後 255 字。
+3. 設定「參考游標前的文字」關閉時，清除記憶體中的 App 前文；不讀取，也不在新組字帶入前文。
 4. 向 App 讀游標前最多 128 個 UTF-16 單位（`IMKTextClient.textBeforeInsertion`，用 `selectedRange` 與 `attributedSubstring`）。在文件開頭得到空字串。
-   - 讀得到時，這段文字成為 `recentText`，並交給 `Composer.setPrecedingText`。`Engine.adaptDomain` 依它調整聊天與百科的比例（§6），`Engine.trailingWords` 從最後一段中文（最多 12 字）由尾端以詞庫最長比對切出最後兩個詞，語言模型接著這兩個詞算。結尾是標點、空白或換行時從句首算。
-   - App 不提供時，若 `recentText` 是空的，改用同一個 App（依 bundle ID）10 分鐘內送出的字（`appContext`）。這段文字只給 v2b 與 v3 當前文，不調整聊天比例，也不改語言模型的接續。
+   - 不論讀到空字串或讀不到，都保留同一個 App 最近 1 分鐘的前文。讀到非空文字時合併：已包含的尾段只留一份，其餘以最長的尾端／開頭重疊接續；沒有重疊時以換行分開，游標前文字放在最後。App 無 bundle ID 時不共用前文，避免混用無法識別的 App。
+   - 合併後保留最多 255 字，同時交給 v2b、v3 與 `Composer.setPrecedingText`。因此備用前文也會調整聊天比例，並設定語言模型的接續；`Engine.trailingWords` 依最後一段中文切出最後兩個詞，結尾是標點、空白或換行時仍從句首算。
 
 前文的用途：
 
@@ -80,8 +82,8 @@ macOS 的「切換標點全半形」快捷鍵預設為 ⇧ 空白，插入組字
 | v3 前文編碼器 | 最後 255 字 |
 | v2b 整句重排 | 最後 24 字 |
 | v2b 候選字排序 | 最後 24 字，前文是 `recentText` 加上組字中候選前面的字 |
-| 語言模型的接續 | App 文字的最後兩個詞，或剛送出的最後兩個詞 |
-| 聊天與百科的比例 | 讀到的整段 App 文字 |
+| 語言模型的接續 | 合併後前文的最後兩個詞，或剛送出的最後兩個詞 |
+| 聊天與百科的比例 | 合併後的前文 |
 
 組字開始之後，前文這樣更新：
 

@@ -227,6 +227,13 @@ enum SettingsRegistry {
     static let keys: [SettingDescriptor] = ShortcutCommand.allCases.map { command in
         SettingDescriptor(id: "keys." + command.rawValue, title: command.label, kind: .keys(command), place: command.place,
                           preview: command.section == .list ? .list : nil,
+                          detail: { _ in
+                              switch command {
+                              case .togglePunctuationWidth: return "中文預設全形標點；英數、空白與英文模式維持半形"
+                              case .insertSpace: return "在組字中插入半形空白，繼續打字"
+                              default: return nil
+                              }
+                          },
                           read: { .keys($0.bindings[command] ?? []) },
                           write: { p, v in
                               guard case .keys(let list) = v else { return }

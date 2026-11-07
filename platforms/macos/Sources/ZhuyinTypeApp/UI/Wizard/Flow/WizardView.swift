@@ -589,6 +589,7 @@ private struct LessonDemoView: View {
                     .onAppear { director.pin(state) }
             case .space: SpaceInfo(current: preferences.spaceAction)
             case .punctuation: PunctuationTable(current: preferences.punctuationKeys)
+            case .punctuationWidth: PunctuationWidthInfo(preferences: preferences)
             case .typo: TypoInfo(current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList))
             case .fuzzy: FuzzyInfo()
             case .context: ContextIllustration(pinned: DemoPinning.still ? DemoPinning.context : nil)

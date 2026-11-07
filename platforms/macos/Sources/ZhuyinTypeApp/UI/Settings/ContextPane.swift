@@ -24,10 +24,10 @@ struct ContextPane: View {
             SettingsSection("讀取與保留") {
                 FactLabel(symbol: "text.viewfinder", title: "讀取", value: on ? "游標前最多 \(Self.readLimit) 個字" : "不讀取")
                 FactLabel(symbol: "text.append", title: "送出的字",
-                          value: on ? "接在前文後面，保留最近 \(Self.keptLimit) 個字" : "只接著這個輸入框剛送出的字")
+                          value: on ? "接在前文後面，保留最近 \(Self.keptLimit) 個字" : "不保留前文")
                 if on {
-                    FactLabel(symbol: "rectangle.on.rectangle", title: "App 不提供前文時",
-                              value: "沿用同一個 App \(Self.minutes) 分鐘內送出的字")
+                    FactLabel(symbol: "rectangle.on.rectangle", title: "同一個 App",
+                              value: "沿用最近 \(Self.minutes) 分鐘的前文，輸入框清空時也保留")
                 }
                 FactLabel(symbol: "lock.fill", title: "密碼欄位", value: "不讀取，也不學習")
                 FactLabel(symbol: "memorychip", title: "存放位置", value: "只在記憶體中")
@@ -59,7 +59,7 @@ struct ContextIllustration: View {
     private static let captions = [
         "開始組字時，讀取游標前最多 \(ContextPane.readLimit) 個字",
         "接著打的字，依前文選字",
-        "App 不提供前文時，沿用同一個 App \(ContextPane.minutes) 分鐘內送出的字",
+        "同一個 App 最近 \(ContextPane.minutes) 分鐘的前文，輸入框清空時仍可接續",
         "密碼欄位：不讀取，也不學習",
     ]
 

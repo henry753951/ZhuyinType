@@ -64,9 +64,17 @@ final class ControllerCore {
     /// The text before the composition, as the models read it.
     private var modelContext: String { recentText + sentDuringKey }
     /// Read the app's text before the insertion point and remember commits per app (a setting).
-    var usesPrecedingText = true
+    var usesPrecedingText = true {
+        didSet {
+            if !usesPrecedingText && oldValue {
+                recentText = ""
+                Self.appContext.removeAll()
+                composer.breakContext()
+            }
+        }
+    }
     /// How long what was committed in an app stays context once typing there stops.
-    static let contextWindow: TimeInterval = 600
+    static let contextWindow: TimeInterval = 60
     /// Characters read from the app before the insertion point, and kept as context: the character model reads up to
     /// 255, the reranker its last 24.
     static let contextRead = 128
@@ -194,13 +202,13 @@ final class ControllerCore {
         if !result.handled {
             // Keys the app receives extend or trim the text before the insertion point.  Others (arrows, shortcuts)
             // may move it; the next composition reads the app again, or the remembered text ages out.
+            if !(0...Self.contextWindow).contains(now().timeIntervalSince(recentTime)) { recentText = "" }
             switch key {
-            case .backspace: recentText = String(recentText.dropLast())
-            case .space: recentText += " "
-            case .enter, .shiftEnter: recentText += "\n"
+            case .backspace: recentText = String(recentText.dropLast()); remember()
+            case .space: recentText += " "; remember()
+            case .enter, .shiftEnter: recentText += "\n"; remember()
             default: break
             }
-            remember()
         }
         return result.handled
     }
@@ -247,21 +255,30 @@ final class ControllerCore {
         // nothing is learned from this composition.
         secureComposition = secureInput()
         composer.learningSuspended = secureComposition
-        if secureComposition {
+        if secureComposition || !usesPrecedingText {
             recentText = ""
+            sentDuringKey = ""
+            Self.appContext.removeValue(forKey: client.bundleIdentifier)
+            composer.breakContext()
             return
         }
         let time = now()
-        if time.timeIntervalSince(recentTime) > Self.contextWindow { recentText = "" }
-        guard usesPrecedingText else { return }
-        if let text = client.textBeforeInsertion(maxLength: Self.contextRead) {
-            recentText = text
-            composer.setPrecedingText(text)
-        } else if recentText.isEmpty, let saved = Self.appContext[client.bundleIdentifier],
-                  time.timeIntervalSince(saved.time) <= Self.contextWindow {
-            recentText = saved.text
+        Self.appContext = Self.appContext.filter { (0...Self.contextWindow).contains(time.timeIntervalSince($0.value.time)) }
+        let saved = client.bundleIdentifier.isEmpty ? nil : Self.appContext[client.bundleIdentifier]
+        recentTime = saved?.time ?? .distantPast
+        let before = client.textBeforeInsertion(maxLength: Self.contextRead) ?? ""
+        recentText = String(Self.joinedContext(saved?.text ?? "", before).suffix(Self.contextKept))
+        composer.setPrecedingText(recentText)
+    }
+
+    /// The same text may be both a recent commit and the app's document; include their overlap only once.
+    private static func joinedContext(_ recent: String, _ before: String) -> String {
+        if recent.isEmpty || before.hasSuffix(recent) { return before }
+        if before.isEmpty || recent.hasSuffix(before) { return recent }
+        for length in stride(from: min(recent.count, before.count), through: 1, by: -1) {
+            if recent.suffix(length) == before.prefix(length) { return recent + before.dropFirst(length) }
         }
-        recentTime = time
+        return recent + "\n" + before
     }
 
     private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool,
@@ -279,10 +296,14 @@ final class ControllerCore {
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
 
     private func remember() {
-        guard !secureInput() else { recentText = ""; return }
+        guard !secureComposition, !secureInput(), usesPrecedingText else {
+            recentText = ""
+            Self.appContext.removeValue(forKey: client.bundleIdentifier)
+            return
+        }
         recentText = String(recentText.suffix(Self.contextKept))
         recentTime = now()
-        if usesPrecedingText { Self.appContext[client.bundleIdentifier] = (recentText, recentTime) }
+        if !client.bundleIdentifier.isEmpty { Self.appContext[client.bundleIdentifier] = (recentText, recentTime) }
     }
 
     func selectCandidate(at index: Int) {
@@ -323,6 +344,8 @@ final class ControllerCore {
                       physicallyDown: Bool, timestamp: TimeInterval) -> Bool {
         guard !rendering else { return false }
         if keyCode == 57 {
+            shiftTap = nil
+            heldShifts.removeAll()
             let on = modifiers.contains(.capsLock)
             // With 「Caps Lock 打英文」 off, Caps Lock neither sends the composition nor shows the badge.
             if disabledFeatures.contains(.capsLockEnglish) { capsLock = on; return false }

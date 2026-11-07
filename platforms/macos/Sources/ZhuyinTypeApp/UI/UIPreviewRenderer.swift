@@ -218,6 +218,7 @@ enum UIPreviewRenderer {
                 ChoiceDemo(title: "清除整段組字", selected: true, frames: OptionDemos.escape(clearsComposition: true), pinned: 99)
             })),
             ("punctuation", AnyView(InfoCard(title: "標點按法") { PunctuationTable(current: .windows) })),
+            ("punctuation-width", AnyView(InfoCard(title: "標點全半形") { PunctuationWidthInfo(preferences: Preferences.shared) })),
             ("anchor", AnyView(InfoCard(title: "游標在句中時改") {
                 VStack(alignment: .leading, spacing: 14) {
                     ChoiceDemo(title: "游標右邊的字", selected: true, frames: OptionDemos.anchor(.after), pinned: 99)

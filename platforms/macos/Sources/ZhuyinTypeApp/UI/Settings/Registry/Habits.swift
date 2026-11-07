@@ -206,7 +206,7 @@ struct PracticeTask {
 /// What a lesson shows beside its choices: the real preview at a state, or one of the ⓘ demos.
 enum LessonDemo {
     case preview(PreviewState)
-    case space, punctuation, typo, fuzzy, context, correctionLog
+    case space, punctuation, punctuationWidth, typo, fuzzy, context, correctionLog
 }
 
 /// One step of the setup wizard: a feature (or a few), how to use it, the choices, and practice.
@@ -227,6 +227,7 @@ struct Lesson: Identifiable {
         switch id {
         case "typing": return .space
         case "punctuation": return .punctuation
+        case "punctuationWidth": return .punctuationWidth
         case "fuzzy": return .fuzzy
         case "context": return .context
         case "correctionLog": return .correctionLog
@@ -242,6 +243,8 @@ struct Lesson: Identifiable {
         Lesson(id: "punctuation", title: "標點", detail: "按住修飾鍵，再按符號鍵打出標點。",
                level: .basic, groups: [Habits.punctuation],
                tasks: [PracticeTask(prompt: "打出「好，謝謝。」") { $0.text.contains("，") && $0.text.contains("。") }]),
+        Lesson(id: "punctuationWidth", title: "標點全半形", detail: "中文預設全形標點，英數與空白維持半形。切換只影響之後輸入的標點。",
+               level: .full, groups: [], tasks: [], since: "0.5.1"),
         Lesson(id: "modeSwitch", title: "中英切換", detail: "切換時，正在組的字會先送出。",
                level: .basic, preview: .mode, groups: [Habits.modeSwitch],
                tasks: [PracticeTask(prompt: "切換到英文打「OK」，再切回中文打「好」") {

@@ -4,7 +4,7 @@ import SwiftUI
 import ZhuyinEngine
 
 private final class FakeTextClient: TextClient {
-    var bundleIdentifier = "org.zhuyintype.self-test"
+    var bundleIdentifier = "org.zhuyintype.self-test." + UUID().uuidString
     var markedRange = NSRange(location: NSNotFound, length: 0)
     var selectedRange = NSRange(location: 0, length: 0)
     var inserts: [String] = []
@@ -168,6 +168,24 @@ enum ControllerCoreSelfTest {
             shift(core)
             try expect(core.isEnglish && toggles == 1, "Shift no longer switches in a text field")
         }
+        test("Caps Lock is temporary, duplicate flags are ignored, and it cancels a pending Shift tap") {
+            let (core, client) = session()
+            var badges: [Bool] = []
+            core.modeChanged = { english, _ in badges.append(english) }
+            type("su3", into: core)
+            let visible = core.composer.presentation.text
+            _ = core.flagsChanged(keyCode: 56, modifiers: .shift, physicallyDown: true, timestamp: 1)
+            _ = core.flagsChanged(keyCode: 57, modifiers: [.shift, .capsLock], physicallyDown: true, timestamp: 1.1)
+            _ = core.flagsChanged(keyCode: 57, modifiers: [.shift, .capsLock], physicallyDown: true, timestamp: 1.1)
+            try expect(client.inserts == [visible] && badges == [true], "Caps Lock duplicated commit or badge")
+            try expect(!core.isEnglish, "Caps Lock became the persistent mode")
+            _ = core.flagsChanged(keyCode: 57, modifiers: .shift, physicallyDown: false, timestamp: 1.2)
+            _ = core.flagsChanged(keyCode: 56, modifiers: [], physicallyDown: false, timestamp: 1.25)
+            try expect(!core.isEnglish && badges == [true, false], "Caps Lock caused a second Shift toggle")
+            core.endSession()
+            shift(core, 56, 2)
+            try expect(core.isEnglish, "normal Shift stopped working after Caps Lock")
+        }
         test("Chromium duplicate and phantom Shift flags") {
             let (core, _) = session()
             var toggles = 0
@@ -238,6 +256,90 @@ enum ControllerCoreSelfTest {
             try expect(core.composer.presentation.text == "是" && alone != "是",
                        "after 我們: \(core.composer.presentation.text), alone: \(alone)")
             try expect(core.recentText == "我們", "reranker context \(core.recentText)")
+        }
+        test("recent app context survives empty and unavailable documents, including a new controller") {
+            for document: String? in [nil, ""] {
+                let (first, client) = session()
+                for c in "我們" { _ = first.handle(.printed(c)) }
+                first.commit()
+                first.breakContext()
+                let expected = first.recentText
+                let (next, nextClient) = session()
+                nextClient.bundleIdentifier = client.bundleIdentifier
+                nextClient.documentText = document
+                type("g4", into: next)
+                try expect(next.recentText == expected, "lost recent text for document \(String(describing: document))")
+                try expect(!next.recentText.isEmpty, "empty recent context")
+            }
+        }
+        test("fallback context reaches the statistical language model") {
+            let (core, client) = session()
+            // Commit a known prefix without relying on a model's preferred spelling.
+            _ = core.handle(.printed("我"))
+            _ = core.handle(.printed("們"))
+            core.commit()
+            client.documentText = ""
+            core.breakContext()
+            type("g4", into: core)
+            try expect(core.recentText.hasSuffix("我們") && core.composer.presentation.text == "是",
+                       "fallback was not given to setPrecedingText: \(core.composer.presentation.text)")
+        }
+        test("recent context merges document overlap once and keeps the visible document last") {
+            let (core, client) = session()
+            for c in "測試文字" { _ = core.handle(.printed(c)) }
+            core.commit()
+            client.documentText = "文字接續"
+            type("su3", into: core)
+            try expect(core.recentText == "測試文字接續", "overlap duplicated: \(core.recentText)")
+            core.composer.reset()
+            client.documentText = "測試文字接續"
+            type("su3", into: core)
+            try expect(core.recentText == "測試文字接續", "whole document duplicated")
+            core.composer.reset()
+            client.documentText = "另一段"
+            type("su3", into: core)
+            try expect(core.recentText == "測試文字\n另一段", "visible context was not last: \(core.recentText)")
+        }
+        test("recent context expires from the last commit, not from reading or arrow keys") {
+            let (core, client) = session()
+            var time = Date(timeIntervalSince1970: 1000)
+            core.now = { time }
+            _ = core.handle(.printed("我")); _ = core.handle(.printed("們")); core.commit()
+            time += 30
+            client.documentText = ""
+            type("g4", into: core)
+            try expect(core.recentText == "我們", "recent context expired early")
+            core.composer.reset()
+            _ = core.handle(.left)
+            time += 31
+            type("g4", into: core)
+            try expect(core.recentText.isEmpty && core.composer.presentation.text != "是", "stale context was refreshed")
+        }
+        test("recent context stays in its app and is bounded, disabled and secure") {
+            let (core, client) = session()
+            for _ in 0..<270 { _ = core.handle(.printed("字")) }
+            core.commit()
+            try expect(core.recentText.count == ControllerCore.contextKept, "unbounded context")
+            let (other, _) = session()
+            type("su3", into: other)
+            try expect(other.recentText.isEmpty, "context crossed apps")
+            core.usesPrecedingText = false
+            core.composer.reset()
+            client.documentText = "不能讀取"
+            type("su3", into: core)
+            try expect(core.recentText.isEmpty, "disabled context was read")
+            core.composer.reset()
+            core.usesPrecedingText = true
+            client.documentText = nil
+            type("su3", into: core)
+            try expect(core.recentText.isEmpty, "disabled context reappeared")
+            core.commit()
+            core.secureInput = { true }
+            type("su3", into: core)
+            core.commit()
+            core.secureInput = { false }
+            type("su3", into: core)
+            try expect(core.recentText.isEmpty, "secure input kept app context")
         }
         test("Shift-Up switches the corrections list; Option combinations stay the app's") {
             let (core, client) = session()
@@ -1477,6 +1579,27 @@ enum ControllerCoreSelfTest {
             try expect(SettingsSnapshot(original) == SettingsRegistry.defaults, "the sandbox wrote through to the original")
         }
 
+        test("punctuation width has a direct settings home, searchable keys and a demo following rebindings") {
+            let p = Preferences(defaults: MemorySettingsStorage())
+            let item = KeyItem(id: "width", title: "切換標點全半形", keys: .command(.togglePunctuationWidth))
+            for query in ["半型", "全型", "全形", "全型半型", "Shift 空白", "Shift＋空白", "shift+space"] {
+                try expect(item.matches(query, CurrentKeys(p)), "width missing for query \(query)")
+            }
+            for command in [ShortcutCommand.togglePunctuationWidth, .insertSpace] {
+                try expect(command.place.pane == .typing && command.place.subpage == nil,
+                           "command still hidden one level down")
+                try expect(SettingsRegistry.setting("keys." + command.rawValue)?.detail?(p) != nil,
+                           "command has no explanation")
+            }
+            var bindings = p.bindings
+            bindings[.togglePunctuationWidth] = [Shortcut("w", control: true), Shortcut("f", control: true, option: true)]
+            p.bindings = bindings
+            try expect(item.matches("control option f", CurrentKeys(p)), "alternate binding missing from search")
+            try expect(!item.matches("shift space", CurrentKeys(p)), "search kept the old shortcut")
+            let frames = OptionDemos.punctuationWidth(CurrentKeys(p).caps(.togglePunctuationWidth))
+            try expect(frames.contains { $0.keys == ["⌃", "W"] }, "demo did not follow custom keys")
+            try expect(OptionDemos.punctuationWidth(nil).count == 1, "demo simulated an unbound shortcut")
+        }
         test("settings registry: defaults, and 原本 → 改成 changes apply and revert") {
             let defaults = SettingsRegistry.defaults
             let fresh = Preferences(defaults: MemorySettingsStorage())
@@ -1534,7 +1657,9 @@ enum ControllerCoreSelfTest {
             let quick = WizardModel(original: original, mode: .quick)
             try expect(quick.steps.count == 2 + 6 + 2, "快速設定 has \(quick.steps.count) steps")
             try expect(WizardModel(original: original, mode: .full).steps.count == 2 + Lesson.all.count + 2, "完整導覽 steps")
-            try expect(WizardModel(original: original, mode: .newSince("0.4.2")).lessons.isEmpty, "新功能導覽 listed old lessons")
+            try expect(WizardModel(original: original, mode: .newSince("0.4.2")).lessons.map(\.id) == ["punctuationWidth"],
+                       "new feature tour omitted punctuation width or listed old lessons")
+            try expect(WizardModel(original: original, mode: .newSince("0.5.1")).lessons.isEmpty, "tour repeated seen lessons")
             quick.choosePreset(.mac)
             quick.sandbox.typoTolerance = .aggressive
             try expect(original.spaceAction == .commitAndSpace && original.typoTolerance == .standard, "the sandbox wrote through")

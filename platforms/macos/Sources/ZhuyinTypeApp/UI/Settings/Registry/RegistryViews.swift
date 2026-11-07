@@ -54,7 +54,11 @@ struct RegistryRow: View {
             if case .number = setting.kind { return setting.label(current) }
             return nil
         }()
-        SettingRow(title: setting.title, subtitle: setting.detail?(preferences), value: value, dimmed: dimmed,
+        let customized: Bool = {
+            if case .keys(let command) = setting.kind { return preferences.isCustomized(command) }
+            return false
+        }()
+        SettingRow(title: setting.title, subtitle: setting.detail?(preferences), value: value, dimmed: dimmed, marked: customized,
                    accessory: accessory, anchor: setting.place.row) {
             SettingControl(setting: setting, preferences: preferences, segmented: segmented).disabled(dimmed)
         }

@@ -52,6 +52,15 @@ enum OptionDemos {
         }
     }
 
+    static func punctuationWidth(_ toggle: [String]?) -> [DemoFrame] {
+        let full = DemoFrame(keys: ["⇧", "3"], line: [DemoSegment("＃")], caption: "中文預設全形標點", hold: 1.5)
+        guard let toggle else { return [full] }
+        return [full,
+                DemoFrame(keys: toggle, line: [DemoSegment("＃")], caption: "切換為半形，保留已打的字", hold: 1.5),
+                DemoFrame(keys: ["⇧", "3"], line: [DemoSegment("＃#")], caption: "之後輸入半形標點", hold: 1.5),
+                DemoFrame(keys: toggle, line: [DemoSegment("＃#")], caption: "再按一次切回全形", hold: 1.5)]
+    }
+
     // MARK: Esc
 
     static func escape(clearsComposition: Bool) -> [DemoFrame] {
@@ -174,5 +183,17 @@ struct PunctuationTable: View {
             .font(.system(size: 15, weight: keys == current ? .medium : .regular))
             .foregroundStyle(keys == current ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
             .frame(minWidth: 64, alignment: .leading)
+    }
+}
+
+struct PunctuationWidthInfo: View {
+    @ObservedObject var preferences: Preferences
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            MiniDemo(frames: OptionDemos.punctuationWidth(CurrentKeys(preferences).caps(.togglePunctuationWidth)),
+                     pinned: DemoPinning.mini)
+            Text("只切換標點；英文字母、數字與空白維持半形。英文模式使用半形。")
+                .font(.callout).foregroundStyle(.secondary)
+        }
     }
 }

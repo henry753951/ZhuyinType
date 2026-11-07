@@ -88,7 +88,7 @@ extension ShortcutCommand {
         var place: SettingsPlace = {
             switch self {
             case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
-            case .togglePunctuationWidth, .insertSpace: return SettingsPlace(.typing, subpage: .punctuation)
+            case .togglePunctuationWidth, .insertSpace: return SettingsPlace(.typing)
             default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
             }
         }()
@@ -351,7 +351,6 @@ private struct TypingPane: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        let keys = CurrentKeys(preferences)
         let punctuationOff = [KeyFeature.controlPunctuation, .optionSymbols].filter { !preferences.isEnabled($0) }.count
         SettingsForm {
             SettingsSection("空白與 Esc") {
@@ -360,7 +359,10 @@ private struct TypingPane: View {
             }
             SettingsSection("標點") {
                 RegistryRow("punctuationKeys", preferences, accessory: .info(title: "標點按法", content: AnyView(PunctuationTable(current: preferences.punctuationKeys))))
-                DrillRow(model: model, title: "標點與符號", subtitle: "⌃ 加符號鍵打中文標點、⌥ 加符號鍵打鍵上的符號",
+                RegistryRow("keys.togglePunctuationWidth", preferences,
+                            accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
+                RegistryRow("keys.insertSpace", preferences)
+                DrillRow(model: model, title: "標點與符號的按鍵與說明", subtitle: "中文預設全形；英數與空白維持半形",
                          value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
             }
             SettingsSection("中英切換") {
@@ -422,7 +424,9 @@ private struct PunctuationPage: View {
     var body: some View {
         SettingsForm {
             SettingsSection("標點全半形") {
-                CommandKeyRows(preferences: preferences, commands: [.togglePunctuationWidth, .insertSpace])
+                RegistryRow("keys.togglePunctuationWidth", preferences,
+                            accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
+                RegistryRow("keys.insertSpace", preferences)
             } footer: {
                 Text("中文預設全形，英數與空白維持半形。英文模式使用半形。")
             }
@@ -556,7 +560,6 @@ struct CandidatesPane: View {
         let corrections = keys.text(.correctionsList)
         let single = keys.text(.singleCharacterList)
         let switches = [single.map { "\($0) 單字" }, corrections.map { "\($0) 修正" }].compactMap { $0 }
-        let vertical = preferences.candidateLayout == .vertical
         SettingsForm {
             // One preview at the top, with the real window; it plays its states, and a change below switches it to the
             // state that shows it.  It scrolls away like the rest.

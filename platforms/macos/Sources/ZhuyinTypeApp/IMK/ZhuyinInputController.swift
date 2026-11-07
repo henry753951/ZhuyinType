@@ -170,7 +170,10 @@ final class ZhuyinInputController: IMKInputController {
     private static let keyLog = Logger(subsystem: "org.zhuyintype", category: "key")
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        guard let event, bind(sender) else { return false }
+        guard let event else { return false }
+        // The system may deliver the final Caps Lock flags after selecting its English input source.
+        if event.type == .flagsChanged, !EngineHost.currentInputSourceIsOurs() { return false }
+        guard bind(sender) else { return false }
         claimActive()
         replaceStaleCore()
         makeCoreIfReady()
@@ -301,10 +304,12 @@ final class ZhuyinInputController: IMKInputController {
         core.hidePanel = { [weak self] in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.hide() }
         }
-        core.modeChanged = { [weak self] english, caret in
-            EngineHost.lastEnglishMode = english
-            guard let self, self.active, Self.activeController === self,
-                  self.showModeToast, let client = self.textClient else { return }
+        core.modeChanged = { [weak self, weak core] english, caret in
+            guard let self, let core, self.active, Self.activeController === self,
+                  EngineHost.currentInputSourceIsOurs() else { return }
+            // Caps Lock's badge is temporary; only the Shift-selected mode carries across fields.
+            EngineHost.lastEnglishMode = core.isEnglish
+            guard self.showModeToast, let client = self.textClient else { return }
             ModeToast.shared.show(english ? "英" : "中", caret: caret, windowLevel: client.windowLevel)
         }
         refreshPreferences()

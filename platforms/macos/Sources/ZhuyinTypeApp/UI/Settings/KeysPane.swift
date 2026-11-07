@@ -9,7 +9,7 @@ import ZhuyinEngine
 
 /// The sections of the 快捷鍵 page; other pages link to them.
 enum KeySection: String, CaseIterable, Identifiable {
-    case composing, list, editing, punctuation, mode, other
+    case composing, punctuation, list, editing, mode, other
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -47,7 +47,7 @@ extension Preferences {
 }
 
 /// One row of the page.
-private struct KeyItem: Identifiable {
+struct KeyItem: Identifiable {
     enum Keys {
         /// Read-only keys; a second group is an alternative.
         case fixed([String], [String] = [])
@@ -80,14 +80,21 @@ private struct KeyItem: Identifiable {
 
     func matches(_ query: String, _ keys: CurrentKeys) -> Bool {
         let query = query.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: "全型", with: "全形").replacingOccurrences(of: "半型", with: "半形")
+            .replacingOccurrences(of: "全形半形", with: "全半形")
+            .replacingOccurrences(of: "+", with: " ").replacingOccurrences(of: "＋", with: " ")
         guard !query.isEmpty else { return true }
-        var text = title + " " + (subtitle ?? "")
+        var text = (title + " " + (subtitle ?? "")).replacingOccurrences(of: "全半形", with: "全形 半形 全半形")
         switch self.keys {
         case .fixed(let a, let b): text += " " + (a + b).joined(separator: " ")
-        case .command(let command): text += " " + keys.assigned(command).joined()
+        case .command(let command): text += " " + (keys.bindings[command] ?? []).map { shortcut in
+            shortcut.keycaps.joined(separator: " ") + " " + shortcut.keycaps.map {
+                ["⇧": "shift", "⌃": "control", "⌥": "option", "空白": "space"][$0] ?? $0
+            }.joined(separator: " ")
+        }.joined(separator: " ")
         case .shiftTap: text += " shift"
         }
-        return text.lowercased().contains(query)
+        return query.split(whereSeparator: \.isWhitespace).allSatisfy { text.lowercased().contains($0) }
     }
 }
 

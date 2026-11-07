@@ -400,6 +400,7 @@ struct FactRow: View {
 /// off, the selection keys, the Shift toggle.  Nothing on the pages spells a configurable key itself, and a key whose
 /// feature is off is not shown.
 struct CurrentKeys {
+    let bindings: [ShortcutCommand: [Shortcut]]
     let shortcuts: [ShortcutCommand: Shortcut]
     let disabled: Set<KeyFeature>
     let pageKeys: [String]
@@ -407,6 +408,7 @@ struct CurrentKeys {
     let selectionKeySet: SelectionKeySet
 
     init(_ preferences: Preferences) {
+        bindings = preferences.bindings
         shortcuts = preferences.shortcuts
         disabled = preferences.disabledKeyFeatures
         pageKeys = preferences.pageSelectionKeys.map { String($0).uppercased() }
