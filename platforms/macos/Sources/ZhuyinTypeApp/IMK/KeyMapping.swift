@@ -16,7 +16,7 @@ enum KeyMapping {
     static let shifted: [Character: Character] = Dictionary(uniqueKeysWithValues:
         zip(Array("1234567890-=[]\\;',./`"), Array("!@#$%^&*()_+{}|:\"<>?~")))
 
-    /// The event's device bits preserve which Shift changed, even after the physical key has been released.
+    /// Decode side-specific flags; IMK events may omit these bits, so native input uses the system snapshot below.
     static func modifierIsDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         switch keyCode {
         case 56: return modifiers.rawValue & 0x02 != 0 // NX_DEVICELSHIFTKEYMASK
@@ -24,6 +24,12 @@ enum KeyMapping {
         case 57: return modifiers.contains(.capsLock)
         default: return false
         }
+    }
+
+    /// Per-key state queries can report right Shift as up; the system flags retain both side bits.
+    static func systemModifierIsDown(keyCode: UInt16,
+                                     flags: CGEventFlags = CGEventSource.flagsState(.combinedSessionState)) -> Bool {
+        modifierIsDown(keyCode: keyCode, modifiers: NSEvent.ModifierFlags(rawValue: UInt(flags.rawValue)))
     }
 
     static func input(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> KeyInput? {

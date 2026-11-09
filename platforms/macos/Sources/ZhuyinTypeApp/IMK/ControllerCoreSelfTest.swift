@@ -218,7 +218,7 @@ enum ControllerCoreSelfTest {
             shift(core, 60, 5)
             try expect(!core.isEnglish, "disabled Shift toggled")
         }
-        test("native modifier flags switch either Shift under every side setting without a live keyboard query") {
+        test("direct event side flags switch either Shift under every side setting") {
             let sides: [(UInt16, UInt)] = [(56, 0x02), (60, 0x04)]
             for setting in [ShiftToggle.both, .left, .right, .none] {
                 for (key, bit) in sides {
@@ -247,6 +247,41 @@ enum ControllerCoreSelfTest {
             }
             try expect(!KeyMapping.modifierIsDown(keyCode: 60, modifiers: .shift), "aggregate-only event became a right press")
             try expect(KeyMapping.modifierIsDown(keyCode: 57, modifiers: .capsLock), "Caps Lock flag was lost")
+        }
+        test("IMK events without side bits use the measured system snapshot for both Shift keys") {
+            for setting in [ShiftToggle.both, .left, .right, .none] {
+                for (key, bit): (UInt16, UInt64) in [(56, 0x02), (60, 0x04)] {
+                    for english in [false, true] {
+                        let (core, _) = session(english: english)
+                        core.shiftToggle = setting
+                        var toggles = 0
+                        core.modeChanged = { _, _ in toggles += 1 }
+                        let inputFlags = NSEvent.ModifierFlags.shift
+                        let systemDown = CGEventFlags(rawValue: CGEventFlags.maskShift.rawValue | bit)
+                        try expect(!KeyMapping.modifierIsDown(keyCode: key, modifiers: inputFlags),
+                                   "regression fixture unexpectedly has event-side bits")
+                        try expect(KeyMapping.systemModifierIsDown(keyCode: key, flags: systemDown),
+                                   "measured system state lost side \(key)")
+                        for _ in 0..<2 {
+                            _ = core.flagsChanged(keyCode: key, modifiers: inputFlags,
+                                                 physicallyDown: KeyMapping.systemModifierIsDown(keyCode: key, flags: systemDown), timestamp: 1)
+                        }
+                        for _ in 0..<2 {
+                            _ = core.flagsChanged(keyCode: key, modifiers: [],
+                                                 physicallyDown: KeyMapping.systemModifierIsDown(keyCode: key, flags: []), timestamp: 1.1)
+                        }
+                        let allowed = setting == .both || (setting == .left && key == 56) || (setting == .right && key == 60)
+                        try expect(core.isEnglish == (allowed ? !english : english) && toggles == (allowed ? 1 : 0),
+                                   "stripped IMK flags: key \(key), setting \(setting), initial English \(english)")
+                    }
+                }
+            }
+            let (core, _) = session()
+            _ = core.flagsChanged(keyCode: 60, modifiers: .shift,
+                                 physicallyDown: KeyMapping.systemModifierIsDown(keyCode: 60, flags: []), timestamp: 1)
+            _ = core.flagsChanged(keyCode: 60, modifiers: [],
+                                 physicallyDown: KeyMapping.systemModifierIsDown(keyCode: 60, flags: []), timestamp: 1.1)
+            try expect(!core.isEnglish, "an aggregate-only synthetic event with no physical Shift toggled")
         }
         test("native side flags handle either Shift release order, right chords and synthetic aggregate flags") {
             func flags(_ core: ControllerCore, _ key: UInt16, _ raw: UInt, _ time: TimeInterval) {
