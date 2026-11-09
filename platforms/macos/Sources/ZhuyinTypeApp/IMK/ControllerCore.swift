@@ -338,7 +338,7 @@ final class ControllerCore {
         _ = handle(.char("`"))
     }
 
-    // Physical state rejects Chromium's synthetic Shift-down events; remembered state rejects duplicates.
+    // Side-specific state rejects aggregate-only synthetic events; remembered state rejects duplicates.
     @discardableResult
     func flagsChanged(keyCode: UInt16, modifiers: NSEvent.ModifierFlags,
                       physicallyDown: Bool, timestamp: TimeInterval) -> Bool {

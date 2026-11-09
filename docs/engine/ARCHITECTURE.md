@@ -56,7 +56,7 @@
 3. 比對快捷鍵表（`ShortcutCommand`，可在設定重新指定），對上的鍵換成對應的指令。
 4. 其他鍵由 `KeyMapping.input` 依 US 配置的鍵位轉成 `KeyInput`，所以不論使用者選了哪種鍵盤配置，注音鍵位都相同。⌃ 加符號鍵轉成 `.controlChar`（⌃ 加數字、字母或 ⌥ 時除外）。轉不了的鍵（例如 ⌘ 組合鍵）先送出組字、前文回到句首，再交給 App。
 
-單按 Shift（`flagsChanged`，依實體按鍵狀態判斷，0.35 秒內放開）切換中英，切換前先送出組字。
+單按 Shift（`flagsChanged`，0.35 秒內放開）切換中英，切換前先送出組字。正式輸入與練習欄位共用 `KeyMapping.modifierIsDown`，依事件中的左右 Shift 位元（左 `0x02`、右 `0x04`）判斷按下或放開，不再於處理事件時另外查詢即時鍵盤狀態。只有整體 Shift 旗標、沒有側鍵位元的合成事件不構成單按；兩側同時按下、修飾鍵組合與重複事件仍交由核心的既有規則處理。
 
 macOS 的「切換標點全半形」快捷鍵預設為 ⇧ 空白，插入組字空白改用 ⌥ 空白；既有自訂綁定優先。`ControllerCore` 在一般按鍵分派之前切換 `Composer.punctuationWidth`，保留所有組字與清單狀態。Rust 先依 Windows／macOS 按法取得標點，再依全形／半形狀態轉換；`printed` 的明確鍵面符號保留原樣。前端的執行期狀態由 `EngineHost` 保留，中文啟動預設為全形，英文模式直接交給 App。引擎與 CLI 預設 `legacy`，保留舊版混合標點映射；`--punctuation-width full|half|legacy` 與 `<punct-width>` 供明確設定與重播使用。舊 `<sspace>` 仍表示插入空白。
 

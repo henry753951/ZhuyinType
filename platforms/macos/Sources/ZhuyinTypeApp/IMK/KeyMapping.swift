@@ -16,6 +16,16 @@ enum KeyMapping {
     static let shifted: [Character: Character] = Dictionary(uniqueKeysWithValues:
         zip(Array("1234567890-=[]\\;',./`"), Array("!@#$%^&*()_+{}|:\"<>?~")))
 
+    /// The event's device bits preserve which Shift changed, even after the physical key has been released.
+    static func modifierIsDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        switch keyCode {
+        case 56: return modifiers.rawValue & 0x02 != 0 // NX_DEVICELSHIFTKEYMASK
+        case 60: return modifiers.rawValue & 0x04 != 0 // NX_DEVICERSHIFTKEYMASK
+        case 57: return modifiers.contains(.capsLock)
+        default: return false
+        }
+    }
+
     static func input(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> KeyInput? {
         if modifiers.contains(.command) { return nil }
         if modifiers.contains(.control) {

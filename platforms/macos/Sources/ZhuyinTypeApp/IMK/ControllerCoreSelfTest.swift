@@ -218,6 +218,63 @@ enum ControllerCoreSelfTest {
             shift(core, 60, 5)
             try expect(!core.isEnglish, "disabled Shift toggled")
         }
+        test("native modifier flags switch either Shift under every side setting without a live keyboard query") {
+            let sides: [(UInt16, UInt)] = [(56, 0x02), (60, 0x04)]
+            for setting in [ShiftToggle.both, .left, .right, .none] {
+                for (key, bit) in sides {
+                    for english in [false, true] {
+                        let (core, _) = session(english: english)
+                        core.shiftToggle = setting
+                        var toggles = 0
+                        core.modeChanged = { _, _ in toggles += 1 }
+                        let down = NSEvent.ModifierFlags.shift.union(NSEvent.ModifierFlags(rawValue: bit))
+                        try expect(KeyMapping.modifierIsDown(keyCode: key, modifiers: down), "side bit not recognised")
+                        try expect(!KeyMapping.modifierIsDown(keyCode: key == 56 ? 60 : 56, modifiers: down),
+                                   "opposite side read as held")
+                        for _ in 0..<2 {
+                            _ = core.flagsChanged(keyCode: key, modifiers: down,
+                                                 physicallyDown: KeyMapping.modifierIsDown(keyCode: key, modifiers: down), timestamp: 1)
+                        }
+                        for _ in 0..<2 {
+                            _ = core.flagsChanged(keyCode: key, modifiers: [],
+                                                 physicallyDown: KeyMapping.modifierIsDown(keyCode: key, modifiers: []), timestamp: 1.1)
+                        }
+                        let allowed = setting == .both || (setting == .left && key == 56) || (setting == .right && key == 60)
+                        try expect(core.isEnglish == (allowed ? !english : english) && toggles == (allowed ? 1 : 0),
+                                   "key \(key), setting \(setting), initial English \(english): wrong toggle")
+                    }
+                }
+            }
+            try expect(!KeyMapping.modifierIsDown(keyCode: 60, modifiers: .shift), "aggregate-only event became a right press")
+            try expect(KeyMapping.modifierIsDown(keyCode: 57, modifiers: .capsLock), "Caps Lock flag was lost")
+        }
+        test("native side flags handle either Shift release order, right chords and synthetic aggregate flags") {
+            func flags(_ core: ControllerCore, _ key: UInt16, _ raw: UInt, _ time: TimeInterval) {
+                let modifiers = NSEvent.ModifierFlags(rawValue: raw)
+                _ = core.flagsChanged(keyCode: key, modifiers: modifiers,
+                                     physicallyDown: KeyMapping.modifierIsDown(keyCode: key, modifiers: modifiers), timestamp: time)
+            }
+            let shift = NSEvent.ModifierFlags.shift.rawValue
+            for leftFirst in [true, false] {
+                let (core, _) = session()
+                flags(core, 56, shift | 0x02, 1)
+                flags(core, 60, shift | 0x06, 1.02)
+                flags(core, leftFirst ? 56 : 60, shift | (leftFirst ? 0x04 : 0x02), 1.05)
+                flags(core, leftFirst ? 60 : 56, 0, 1.1)
+                try expect(!core.isEnglish, "overlapping native Shift flags toggled")
+                flags(core, 60, shift | 0x04, 2)
+                flags(core, 60, 0, 2.1)
+                try expect(core.isEnglish, "right Shift failed after overlap")
+            }
+            let (core, _) = session()
+            flags(core, 60, shift, 1)
+            flags(core, 60, 0, 1.1)
+            try expect(!core.isEnglish, "synthetic aggregate flags toggled")
+            flags(core, 60, shift | 0x04, 2)
+            _ = core.keyDown(keyCode: 0, modifiers: .shift)
+            flags(core, 60, 0, 2.1)
+            try expect(!core.isEnglish && core.composer.presentation.text == "A", "right Shift chord became a toggle")
+        }
         test("overlapping Shift presses do not poison the next tap") {
             let (core, _) = session()
             _ = core.flagsChanged(keyCode: 56, modifiers: .shift, physicallyDown: true, timestamp: 1)

@@ -202,7 +202,7 @@ final class ZhuyinInputController: IMKInputController {
             return handled
         case .flagsChanged:
             return core.flagsChanged(keyCode: event.keyCode, modifiers: event.modifierFlags,
-                                     physicallyDown: CGEventSource.keyState(.combinedSessionState, key: event.keyCode),
+                                     physicallyDown: KeyMapping.modifierIsDown(keyCode: event.keyCode, modifiers: event.modifierFlags),
                                      timestamp: event.timestamp)
         default:
             return false

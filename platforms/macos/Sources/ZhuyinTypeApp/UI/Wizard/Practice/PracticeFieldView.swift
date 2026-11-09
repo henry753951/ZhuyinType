@@ -362,16 +362,9 @@ final class PracticeTextView: NSView {
                                time: event.timestamp)
     }
 
-    /// Shift and Caps Lock.  Whether the Shift key itself is down comes from the device bits of the event (left 0x2,
-    /// right 0x4), which the window server sets for real presses.
+    /// Shift and Caps Lock use the same event-side state as the input method.
     func handleFlags(_ event: NSEvent) {
-        let raw = event.modifierFlags.rawValue
-        let down: Bool
-        switch event.keyCode {
-        case 56: down = raw & 0x02 != 0
-        case 60: down = raw & 0x04 != 0
-        default: down = event.modifierFlags.contains(.capsLock)
-        }
+        let down = KeyMapping.modifierIsDown(keyCode: event.keyCode, modifiers: event.modifierFlags)
         session.flagsChanged(keyCode: event.keyCode, modifiers: event.modifierFlags, physicallyDown: down, time: event.timestamp)
     }
 
