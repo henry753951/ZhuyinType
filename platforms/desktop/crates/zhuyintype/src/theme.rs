@@ -191,9 +191,18 @@ pub fn ui_font() -> &'static str {
 /// The CJK fonts, in fallback order, for each system.
 pub fn cjk_fallbacks() -> Vec<String> {
     let list: &[&str] = if cfg!(target_os = "windows") {
-        &["Microsoft JhengHei UI", "Microsoft JhengHei", "Segoe UI Symbol", "Segoe UI Emoji"]
+        &["Microsoft JhengHei UI", "Microsoft JhengHei", "Segoe UI", "Segoe UI Symbol", "Segoe UI Emoji"]
     } else {
-        &["Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "WenQuanYi Micro Hei", "Noto Color Emoji"]
+        // DejaVu Sans and Noto Sans Symbols 2 have ⇧ ⌫ and the arrows, which the CJK fonts lack.
+        &[
+            "Noto Sans CJK TC",
+            "Noto Sans TC",
+            "Source Han Sans TC",
+            "WenQuanYi Micro Hei",
+            "DejaVu Sans",
+            "Noto Sans Symbols 2",
+            "Noto Color Emoji",
+        ]
     };
     list.iter().map(|name| (*name).to_owned()).collect()
 }

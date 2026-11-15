@@ -20,6 +20,12 @@ anyhow.workspace = true
 log.workspace = true
 async-channel.workspace = true
 chrono.workspace = true
+zhuyin-core.workspace = true
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Moving, showing and hiding the override-redirect candidate window on X11 (GPUI only resizes windows).
+x11rb = { version = "0.13", features = ["shape"] }
 
 [lints]
 workspace = true

@@ -8,6 +8,8 @@ pub mod controls;
 pub mod list;
 pub mod row;
 pub mod section;
+pub mod slider;
+pub mod stepper;
 
 pub use controls::*;
 pub use row::{Accessory, Row, row, setting_row};

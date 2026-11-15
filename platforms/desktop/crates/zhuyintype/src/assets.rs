@@ -76,6 +76,8 @@ icon_assets!(
         ClockArrowUp,
         Quote,
         ClipboardPen,
+        ArrowBigUp,
+        CornerDownLeft,
     ]
 );
 

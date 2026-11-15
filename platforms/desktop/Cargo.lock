@@ -8391,8 +8391,11 @@ dependencies = [
  "chrono",
  "gpui-kit",
  "log",
+ "raw-window-handle",
  "serde",
  "serde_json",
+ "x11rb",
+ "zhuyin-core",
  "zt-core",
 ]
 

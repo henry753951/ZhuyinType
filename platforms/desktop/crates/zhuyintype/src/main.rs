@@ -8,6 +8,7 @@
 
 mod app;
 mod assets;
+mod candidate;
 mod card_window;
 mod pages;
 mod shell;
@@ -16,7 +17,7 @@ mod ui;
 mod wizard;
 
 use pages::Page;
-use zt_core::service::{AlreadyRunning, Service, ServiceConfig, UiEvent};
+use zt_core::service::{AlreadyRunning, Service, ServiceConfig};
 use zt_core::settings::Settings;
 
 struct Args {
@@ -39,6 +40,10 @@ struct Args {
     no_broker: bool,
     /// `--data DIR`: the engine data (else ZT_DATA_DIR, beside the executable, the system data dir, data/build).
     data_dir: Option<std::path::PathBuf>,
+    /// `--panel VARIANT`: only a candidate window over a few document lines (screenshots; `candidate::showcase`).
+    panel: Option<String>,
+    /// `--popup demo`: the real floating windows at a caret, with an example list.
+    popup: Option<String>,
 }
 
 fn parse_args() -> Args {
@@ -53,6 +58,8 @@ fn parse_args() -> Args {
         background: false,
         no_broker: false,
         data_dir: None,
+        panel: None,
+        popup: None,
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -76,6 +83,8 @@ fn parse_args() -> Args {
             "--background" => args.background = true,
             "--no-broker" => args.no_broker = true,
             "--data" => args.data_dir = iter.next().map(Into::into),
+            "--panel" => args.panel = iter.next(),
+            "--popup" => args.popup = iter.next(),
             _ => {}
         }
     }
@@ -110,11 +119,19 @@ fn main() {
         theme::load_fonts(cx);
         cx.set_global(app::AppState { settings, service, service_error });
         if let Some(events) = events {
-            run_events(events, cx);
+            candidate::popup::run(events, cx);
         }
         if let Some(id) = &args.popover {
             card_window::open(id, args.dark, args.size, cx).expect("the card window opens");
             cx.activate(true);
+            return;
+        }
+        if let Some(variant) = args.panel.clone() {
+            candidate::showcase::open(variant, args.dark == Some(true), cx).expect("the panel window opens");
+            return;
+        }
+        if args.popup.is_some() {
+            candidate::showcase::popup_demo(cx);
             return;
         }
         if args.background {
@@ -133,20 +150,6 @@ fn main() {
         }
         cx.activate(true);
     });
-}
-
-/// Handles the service's events on the UI thread for as long as the app runs.
-fn run_events(events: async_channel::Receiver<UiEvent>, cx: &mut gpui_kit::App) {
-    cx.spawn(async move |cx| {
-        while let Ok(event) = events.recv().await {
-            cx.update(|cx| match event {
-                UiEvent::ShowSettings => shell::show(cx),
-                // The candidate window and the mode toast (crate::candidate) take these.
-                UiEvent::Popup(_) | UiEvent::ModeToast { .. } | UiEvent::Boundary(_) => {}
-            });
-        }
-    })
-    .detach();
 }
 
 /// Logs to stderr; `RUST_LOG` picks the level (default: warnings).
