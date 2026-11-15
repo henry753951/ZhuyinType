@@ -28,6 +28,8 @@ SetCompressorDictSize 64
 !include "FileFunc.nsh"
 !include "WinVer.nsh"
 !include "x64.nsh"
+!include "StrFunc.nsh"
+${StrStr}
 
 !define PRODUCT "ZhuyinType"
 !define PUBLISHER "ZhuyinType"
@@ -80,7 +82,7 @@ VIAddVersionKey /LANG=1028 "LegalCopyright" "AGPL-3.0-only"
 !define MUI_WELCOMEPAGE_TITLE "安裝 ${PRODUCT} ${VERSION}"
 !define MUI_WELCOMEPAGE_TEXT "ZhuyinType 是開源的注音輸入法。$\r$\n$\r$\n安裝程式會把 ZhuyinType 加入「繁體中文」的輸入法清單，並在您登入時自動啟動。您原本的輸入法與設定不會改變。$\r$\n$\r$\n如果已經安裝舊版，會直接更新；您的自訂詞與學習記錄都會保留。$\r$\n$\r$\n$_CLICK"
 !insertmacro MUI_PAGE_WELCOME
-!define MUI_LICENSEPAGE_TEXT_TOP "ZhuyinType 以 GNU AGPL 第 3 版授權。您可以自由使用；修改或散布時須依照這份授權。"
+!define MUI_LICENSEPAGE_TEXT_TOP "ZhuyinType 以 GNU AGPL 第 3 版授權，可以自由使用。"
 !define MUI_LICENSEPAGE_BUTTON "下一步(&N) >"
 !define MUI_LICENSEPAGE_TEXT_BOTTOM "按「下一步」繼續。"
 !insertmacro MUI_PAGE_LICENSE "${STAGE}/licenses/LICENSE.txt"
@@ -100,13 +102,31 @@ VIAddVersionKey /LANG=1028 "LegalCopyright" "AGPL-3.0-only"
 !insertmacro MUI_UNPAGE_COMPONENTS
 !insertmacro MUI_UNPAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "ZhuyinType 已移除"
-!define MUI_FINISHPAGE_TEXT "ZhuyinType 已從這台電腦移除。"
+!define MUI_FINISHPAGE_TEXT "ZhuyinType 已從這台電腦移除。$\r$\n$\r$\n仍在使用輸入法的程式結束後就不再載入它；剩下的檔案會在下次重新開機時刪除。"
 !insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "TradChinese"
+; The system UI font of Traditional Chinese Windows, instead of the language file's 新細明體.
+SetFont /LANG=${LANG_TRADCHINESE} "Microsoft JhengHei UI" 9
 
 ; ---------------------------------------------------------------------------------------------------------------
 ; Helpers
+
+Var AppWasRunning
+
+; Whether the app runs in this session, so an upgrade started there (silently, by an update) can start it again.
+Function RecordAppRunning
+  StrCpy $AppWasRunning 0
+  System::Call 'kernel32::GetCurrentProcessId() i .r0'
+  System::Call 'kernel32::ProcessIdToSessionId(i r0, *i .r1)'
+  nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /NH /FI "IMAGENAME eq ${APP}" /FI "SESSION eq $1"'
+  Pop $0
+  Pop $2
+  ${StrStr} $3 $2 "${APP}"
+  ${If} $3 != ""
+    StrCpy $AppWasRunning 1
+  ${EndIf}
+FunctionEnd
 
 ; Ends the running app (the input method host) for every user: first politely, then for good.
 !macro StopApp
@@ -119,7 +139,8 @@ VIAddVersionKey /LANG=1028 "LegalCopyright" "AGPL-3.0-only"
 !macroend
 
 ; Moves a DLL that applications still have loaded out of the way: Windows lets a loaded DLL be renamed, not
-; replaced.  Those applications keep the old copy until they exit; it is deleted then, or at the next restart.
+; replaced.  Those applications keep the old copy until they exit; the next install or the next restart deletes it.
+; Nothing needs a restart, so the finish page does not offer one.
 !macro MoveAside FILE
   ${If} ${FileExists} "${FILE}"
     Delete "${FILE}"
@@ -127,6 +148,7 @@ VIAddVersionKey /LANG=1028 "LegalCopyright" "AGPL-3.0-only"
       System::Call 'kernel32::GetTickCount() i .r9'
       Rename "${FILE}" "${FILE}.$9.old"
       Delete /REBOOTOK "${FILE}.$9.old"
+      SetRebootFlag false
     ${EndIf}
   ${EndIf}
 !macroend
@@ -163,6 +185,7 @@ Section "ZhuyinType" SecMain
   SectionIn RO
   SetShellVarContext all
   SetOutPath "$INSTDIR"
+  Call RecordAppRunning
   !insertmacro StopApp
   !insertmacro DeleteOldCopies
   !insertmacro MoveAside "$INSTDIR\${TSF64}"
@@ -221,8 +244,12 @@ Section "ZhuyinType" SecMain
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKLM "${UNINSTALL_KEY}" "EstimatedSize" "$0"
 
-  ; A silent install (deployment tools, upgrades) leaves starting the app to the next sign-in; the finish page
-  ; offers it otherwise.
+  ; The finish page offers to start the app.  A silent install starts it again only if it was running in this
+  ; session (an upgrade); otherwise it starts at the next sign-in.
+  ${If} ${Silent}
+  ${AndIf} $AppWasRunning == 1
+    Call LaunchAsUser
+  ${EndIf}
 SectionEnd
 
 ; ---------------------------------------------------------------------------------------------------------------
@@ -258,6 +285,7 @@ Section "un.ZhuyinType" UnSecMain
   RMDir /r "$INSTDIR\licenses"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /REBOOTOK "$INSTDIR"
+  SetRebootFlag false
 
   DeleteRegKey HKLM "${UNINSTALL_KEY}"
   DeleteRegKey HKLM "Software\${PRODUCT}"
