@@ -1,7 +1,11 @@
 //! The design system's components.  Pages are composed only from these and the tokens in `theme`; a page that needs
 //! something new adds a component here rather than styling raw elements.
 
+pub mod actions;
+pub mod alert;
+pub mod content;
 pub mod controls;
+pub mod list;
 pub mod row;
 pub mod section;
 
