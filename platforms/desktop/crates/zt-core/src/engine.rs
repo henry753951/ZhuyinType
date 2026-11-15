@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context as _, Result, anyhow, bail, ensure};
+use anyhow::{Context as _, Result, anyhow, ensure};
 use serde_json::{Map, Value};
 use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyInput, PunctuationKeys, PunctuationWidth,
@@ -410,6 +410,18 @@ impl EngineSession {
         self.open.as_mut().map(|open| &mut open.composer)
     }
 
+    /// Candidate `index` of the open list as the engine knows it (for the correction log), before a pick.
+    #[must_use]
+    pub fn candidate_details(&self, index: usize) -> Option<crate::corrections::CandidateDetails> {
+        let candidate = self.open.as_ref()?.composer.candidate(index)?;
+        Some(crate::corrections::CandidateDetails {
+            text: candidate.text.to_string(),
+            reading: candidate.reading.to_string(),
+            start: candidate.range.start,
+            end: candidate.range.end,
+        })
+    }
+
     /// What the composer shows now.
     #[must_use]
     pub fn presentation(&self) -> &Presentation {
@@ -801,12 +813,4 @@ impl EngineSession {
         let text = self.require()?.engine.export_personal_data();
         settings::write_atomically(path, text.as_bytes()).context("無法匯出個人資料。")
     }
-}
-
-/// Fails with the session's "not open" message (for callers that need the same wording).
-///
-/// # Errors
-/// Always.
-pub fn not_open<T>() -> Result<T> {
-    bail!(NOT_OPEN)
 }
