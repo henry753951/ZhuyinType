@@ -119,7 +119,7 @@ pub fn stage(
         .child(h().gap(px(1.5)).children(scene.marked.iter().map(|segment| {
             line_text(segment.text.clone())
                 .when(!segment.focus, |this| this.border_b_1().border_color(p.text_secondary))
-                .when(segment.focus, |this| this.border_b_2().border_color(p.accent))
+                .when(segment.focus, |this| this.bg(p.selection).border_b_2().border_color(p.accent))
         })))
         .child(caret)
         .child(line_text(scene.after.to_owned()))

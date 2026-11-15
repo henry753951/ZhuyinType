@@ -38,7 +38,7 @@ pub enum SegmentStyle {
     Document,
     /// Composed text: a thin underline per word.
     Marked,
-    /// The part the candidate window changes: a thick accent underline on an accent wash.
+    /// The part the candidate window changes: a thick accent underline on a neutral wash.
     Focus,
     /// The character ↓ would change: a thick accent underline.
     Target,
@@ -371,7 +371,7 @@ fn segment(segment: &Segment, font_size: Pixels, p: &Palette) -> AnyElement {
             div()
                 .relative()
                 .text_color(p.text)
-                .when(style == SegmentStyle::Focus, |this| this.bg(p.accent_faint))
+                .when(style == SegmentStyle::Focus, |this| this.bg(p.selection))
                 .child(label)
                 .child(
                     div()
