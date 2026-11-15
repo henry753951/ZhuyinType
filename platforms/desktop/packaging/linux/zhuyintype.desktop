@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ZhuyinType 設定
+GenericName=注音輸入法設定
+Comment=設定 ZhuyinType 注音輸入法、練習打字、查看使用統計
+Exec=zhuyintype
+TryExec=zhuyintype
+Icon=zhuyintype
+Terminal=false
+Categories=Settings;
+Keywords=注音;輸入法;ㄅㄆㄇ;Zhuyin;Bopomofo;Fcitx;input method;
+SingleMainWindow=true

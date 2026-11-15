@@ -1,0 +1,139 @@
+# ZhuyinType's .deb and .rpm, both from one staging tree.  scripts/build.sh fills the staging tree, exports the
+# ZT_* variables and replaces the `# @shlibs@` lines with the libraries the binaries link (dpkg-shlibdeps for the
+# .deb, the ELF sonames and symbol versions for the .rpm).  Entries marked `packager:` go into one format only.
+name: zhuyintype
+arch: amd64
+platform: linux
+version: ${ZT_VERSION}
+release: 1
+section: utils
+priority: optional
+maintainer: ${ZT_MAINTAINER}
+vendor: ZhuyinType
+homepage: https://github.com/henry753951/ZhuyinType
+license: AGPL-3.0-only
+description: |-
+  ZhuyinType 注音輸入法（Fcitx 5）
+  ZhuyinType 是開源的注音輸入法，以整句選字為主，詞庫與語言模型隨套件安裝。
+  這個套件包含 Fcitx 5 的輸入法 addon、設定程式「ZhuyinType 設定」，以及登入後
+  在背景執行的輸入法服務。安裝後在 Fcitx 5 的輸入方式中加入 ZhuyinType 即可使用。
+
+depends:
+  - fcitx5 (>= 5.1.9)
+  - libvulkan1
+  - libegl1
+  - libwayland-client0
+  - libwayland-egl1
+  - fontconfig
+  # @shlibs@
+recommends:
+  - fonts-noto-cjk
+  - mesa-vulkan-drivers | vulkan-icd
+
+overrides:
+  rpm:
+    depends:
+      - fcitx5 >= 5.1.9
+      - libvulkan.so.1()(64bit)
+      - libEGL.so.1()(64bit)
+      - libwayland-client.so.0()(64bit)
+      - libwayland-egl.so.1()(64bit)
+      - fontconfig
+      # @shlibs@
+    recommends:
+      - font(notosanscjktc)
+      - mesa-vulkan-drivers
+
+contents:
+  # The Fcitx addon directory differs: Debian's multiarch path, and lib64 on Fedora and openSUSE.
+  - src: ${ZT_STAGE}/addon/libzhuyintype.so
+    dst: /usr/lib/x86_64-linux-gnu/fcitx5/libzhuyintype.so
+    packager: deb
+    expand: true
+  - src: ${ZT_STAGE}/addon/libzhuyintype.so
+    dst: /usr/lib64/fcitx5/libzhuyintype.so
+    packager: rpm
+    expand: true
+  # Debian's copyright file and changelog (an RPM carries its licences as %license and its changelog in the header).
+  - src: ${ZT_STAGE}/deb/copyright
+    dst: /usr/share/doc/zhuyintype/copyright
+    packager: deb
+    expand: true
+  - src: ${ZT_STAGE}/deb/changelog.gz
+    dst: /usr/share/doc/zhuyintype/changelog.gz
+    packager: deb
+    expand: true
+  - src: ${ZT_STAGE}/usr/bin/zhuyintype
+    dst: /usr/bin/zhuyintype
+    expand: true
+  - src: ${ZT_STAGE}/usr/lib/zhuyintype
+    dst: /usr/lib/zhuyintype
+    type: tree
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/fcitx5/addon/zhuyintype.conf
+    dst: /usr/share/fcitx5/addon/zhuyintype.conf
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/fcitx5/inputmethod/zhuyintype.conf
+    dst: /usr/share/fcitx5/inputmethod/zhuyintype.conf
+    expand: true
+  # The lexicon, language models and their notices.
+  - src: ${ZT_STAGE}/usr/share/zhuyintype
+    dst: /usr/share/zhuyintype
+    type: tree
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/applications/zhuyintype.desktop
+    dst: /usr/share/applications/zhuyintype.desktop
+    expand: true
+  # Starts the host at sign-in.  A conffile: an administrator can disable it (Hidden=true) and keep that on upgrade.
+  - src: ${ZT_STAGE}/etc/xdg/autostart/zhuyintype.desktop
+    dst: /etc/xdg/autostart/zhuyintype.desktop
+    type: config|noreplace
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/16x16/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/16x16/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/22x22/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/22x22/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/24x24/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/24x24/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/32x32/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/32x32/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/48x48/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/48x48/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/64x64/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/64x64/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/128x128/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/128x128/apps/zhuyintype.png
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/icons/hicolor/256x256/apps/zhuyintype.png
+    dst: /usr/share/icons/hicolor/256x256/apps/zhuyintype.png
+    expand: true
+  - dst: /usr/share/licenses/zhuyintype
+    type: dir
+  # @licenses@ (build.sh: each staged licence file; `type: license`, %license, in the .rpm)
+  - dst: /usr/share/doc/zhuyintype
+    type: dir
+  # `type: doc` (%doc) exists in an .rpm only; the .deb takes the same file as a plain one.
+  - src: ${ZT_STAGE}/usr/share/doc/zhuyintype/README.md
+    dst: /usr/share/doc/zhuyintype/README.md
+    type: doc
+    packager: rpm
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/doc/zhuyintype/README.md
+    dst: /usr/share/doc/zhuyintype/README.md
+    packager: deb
+    expand: true
+
+scripts:
+  preremove: ${ZT_PACKAGING}/scripts/preremove.sh
+
+deb:
+  compression: xz
+rpm:
+  compression: zstd
+  summary: ZhuyinType 注音輸入法（Fcitx 5）
