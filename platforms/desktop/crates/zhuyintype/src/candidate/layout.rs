@@ -2,7 +2,7 @@
 //! `CandidateContentView.update(list:…)` with the same numbers, so the window has the macOS sizes at every font size,
 //! density and layout.  Pure geometry over measured text widths; the panel draws what this returns.
 
-use gpui_kit::{FontWeight, Pixels, TextRun, Window, font, px};
+use gpui_kit::{FontWeight, TextRun, Window, font, px};
 use zt_core::presentation::Presentation;
 
 use super::style::{Layout, PanelStyle};
@@ -454,7 +454,64 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
     }
 }
 
-/// Logical pixels.
-pub fn px_of(value: f32) -> Pixels {
-    px(value)
+#[cfg(test)]
+mod tests {
+    use zt_core::presentation::Presentation;
+
+    use super::*;
+    use crate::candidate::sample;
+    use crate::candidate::style::PanelStyle;
+
+    /// Every character as wide as the font is tall (CJK), Latin half that.
+    struct Fixed;
+
+    impl Measure for Fixed {
+        fn width(&mut self, text: &str, size: f32, _: bool) -> f32 {
+            text.chars().map(|c| if c.is_ascii() { size / 2. } else { size }).sum()
+        }
+    }
+
+    fn list(page_size: usize) -> Presentation {
+        let keys: Vec<char> = "123456789".chars().collect();
+        sample::list(sample::PANEL_WORDS, &[], false, page_size, 1).presentation("", &keys)
+    }
+
+    #[test]
+    fn vertical_window_has_the_macos_geometry() {
+        let style = PanelStyle::default();
+        let layout = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        // Rows 28 tall (18 × 1.55), padding 6, the reading row 26, the footer 25.
+        assert_eq!(layout.row_height, 28.);
+        assert_eq!(layout.rows.len(), 9);
+        assert_eq!(layout.rows_area.y, 6. + 26.);
+        assert_eq!(layout.height, 6. + 26. + 9. * 28. + 25. + 6.);
+        // The text starts at 6 + 8 + ceil(18 × 0.68) + 8.
+        assert_eq!(layout.text_inset, 6. + 8. + 13. + 8.);
+        assert!(layout.pager.as_ref().is_some_and(|pager| pager.label == "1 / 2" && !pager.previous_enabled));
+        assert_eq!(layout.selected_frame().map(|frame| frame.y), Some(28.));
+    }
+
+    #[test]
+    fn last_page_keeps_the_full_page_height_and_steady_width() {
+        let style = PanelStyle::default();
+        let first = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        let keys: Vec<char> = "123456789".chars().collect();
+        let mut preview = sample::list(sample::PANEL_WORDS, &[], false, 9, 1);
+        preview.turn_page(1);
+        let last = compute(&preview.presentation("", &keys), Extras::default(), &style, 4000., (first.width, first.height), &mut Fixed);
+        assert_eq!(last.rows.len(), 8);
+        assert_eq!((last.width, last.height), (first.width, first.height));
+    }
+
+    #[test]
+    fn notice_alone_is_a_pill() {
+        let p = Presentation { notice: Some("Enter 加入自訂詞：王小明".into()), ..Presentation::default() };
+        let layout = compute(&p, Extras::default(), &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        let notice = layout.notice.expect("a notice");
+        assert_eq!(notice.key.as_deref(), Some("↩"));
+        assert_eq!(notice.label, "加入自訂詞");
+        assert_eq!(notice.value, "：王小明");
+        assert_eq!(layout.height, 6. + 23. + 6.);
+        assert!(layout.rows.is_empty() && layout.pager.is_none());
+    }
 }

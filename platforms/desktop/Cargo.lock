@@ -8387,10 +8387,14 @@ name = "zhuyintype"
 version = "0.5.3"
 dependencies = [
  "anyhow",
+ "async-channel",
  "gpui-kit",
  "log",
+ "raw-window-handle",
  "serde",
  "serde_json",
+ "x11rb",
+ "zhuyin-core",
  "zt-core",
 ]
 

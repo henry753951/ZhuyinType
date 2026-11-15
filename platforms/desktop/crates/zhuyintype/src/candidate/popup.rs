@@ -51,6 +51,7 @@ fn popups(cx: &mut App) -> &mut Popups {
 }
 
 /// Drains the service's events on the foreground executor for as long as the app runs.  Call once.
+#[allow(dead_code, reason = "main.rs calls it once Service::start is ported")]
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
     cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
@@ -177,16 +178,19 @@ impl Render for CandidateWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
         let palette = self.appearance.palette(system_dark);
+        // After the event: the answer may update this window again, which cannot happen inside its own update.
         let actions: ActionHandler = Rc::new(|action, _, cx| {
-            let sink = popups(cx).sink.clone();
-            match sink {
-                Some(sink) => sink(action, cx),
-                None => {
-                    if let Some(service) = app::service(cx) {
-                        service.popup_action(action);
+            cx.defer(move |cx| {
+                let sink = popups(cx).sink.clone();
+                match sink {
+                    Some(sink) => sink(action, cx),
+                    None => {
+                        if let Some(service) = app::service(cx) {
+                            service.popup_action(action);
+                        }
                     }
                 }
-            }
+            });
         });
         let (mut alpha, mut dy) = (1., 0.);
         if let Some((started, from)) = self.appeared {
@@ -455,6 +459,7 @@ fn show_toast(english: bool, anchor: Rect, cx: &mut App) {
 }
 
 /// Hides the badge at once (the app deactivated).
+#[allow(dead_code, reason = "for the service's deactivation once ported")]
 pub fn hide_toast(cx: &mut App) {
     let popups = popups(cx);
     popups.toast_generation += 1;

@@ -151,6 +151,18 @@ impl CurrentKeys {
         }
     }
 
+    /// The keys `command` has whether or not its feature is on (what 「關閉時，… 交給 App」 hands over).
+    pub fn assigned(&self, command: &str) -> Vec<String> {
+        match &self.service {
+            Some(shortcuts) => shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect(),
+            None => DEFAULTS
+                .iter()
+                .find(|(id, _, _)| *id == command)
+                .map(|(_, _, keys)| keys.iter().map(|key| (*key).to_owned()).collect())
+                .unwrap_or_default(),
+        }
+    }
+
     /// The command's first key, or "" when it has none or its feature is off.
     pub fn text(&self, command: &str) -> String {
         match &self.service {
@@ -209,5 +221,35 @@ pub fn split_caps(label: &str) -> Vec<String> {
             caps.push(rest.to_owned());
             return caps;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn labels_split_into_caps() {
+        assert_eq!(split_caps("⇧↓"), ["⇧", "↓"]);
+        assert_eq!(split_caps("Alt+↓"), ["Alt", "↓"]);
+        assert_eq!(split_caps("Ctrl+Alt+K"), ["Ctrl", "Alt", "K"]);
+        assert_eq!(split_caps("Tab"), ["Tab"]);
+        assert_eq!(split_caps("⇧"), ["⇧"]);
+    }
+
+    #[test]
+    fn keys_follow_the_feature_switches() {
+        let settings = Settings::open(None);
+        let keys = CurrentKeys::new(&settings, None);
+        assert_eq!(keys.text("correctionsList"), "⇧↑");
+        assert_eq!(keys.selection(), "1–9");
+        settings.set("feature.correctionsList", false.into()).unwrap();
+        settings.set("selectionKeys", "asdfghjkl".into()).unwrap();
+        settings.set("candidatesPerPage", 5.into()).unwrap();
+        let keys = CurrentKeys::new(&settings, None);
+        assert_eq!(keys.text("correctionsList"), "");
+        assert_eq!(keys.assigned("correctionsList"), ["⇧↑"]);
+        assert_eq!(keys.selection(), "A S D F G");
+        assert_eq!(PanelStyle::from_settings(&settings, &keys).keys.corrections, "");
     }
 }

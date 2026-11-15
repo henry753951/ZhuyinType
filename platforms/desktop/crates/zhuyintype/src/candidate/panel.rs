@@ -8,7 +8,7 @@
 //! once: keys never wait for motion.
 
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
@@ -32,7 +32,7 @@ pub type ActionHandler = Rc<dyn Fn(PopupAction, &mut Window, &mut App)>;
 
 /// How a page change and the end of the list move (macOS `PageMotion`): short, eased out, a few pixels along the list.
 pub mod motion {
-    pub const DURATION: f32 = 140.;
+    pub const DURATION: f32 = crate::theme::motion::PAGE_TURN.as_millis() as f32;
     /// The old rows are gone after the first 35 % and the new ones start at 30 %, so two pages of text are never
     /// legible at once.
     pub const OUT_DURATION: f32 = 50.;
@@ -220,15 +220,6 @@ impl CandidatePanel {
         self.old_label = None;
     }
 
-    /// Whether something still moves (the owner keeps redrawing until it stops).
-    pub fn moving(&self) -> bool {
-        let now = Instant::now();
-        self.turn.is_some_and(|turn| now - turn.started < Duration::from_millis(motion::DURATION as u64))
-            || self.bounce.is_some_and(|bounce| {
-                now - bounce.started < Duration::from_millis((motion::BOUNCE_OUT + motion::BOUNCE_BACK) as u64)
-            })
-    }
-
     /// The content drawn now, on its surface.  `actions` makes the rows and buttons clickable.
     pub fn render(&self, palette: &Palette, actions: Option<ActionHandler>, window: &mut Window) -> AnyElement {
         let Some(layout) = &self.layout else { return div().into_any_element() };
@@ -408,7 +399,7 @@ pub fn surface_shadow(p: &Palette) -> Vec<BoxShadow> {
     let black = |alpha: f32| Hsla { h: 0., s: 0., l: 0., a: alpha };
     vec![
         BoxShadow {
-            color: black(if p.dark { 0.5 } else { 0.2 }),
+            color: p.shadow,
             offset: point(px(0.), px(5.)),
             blur_radius: px(16.),
             spread_radius: px(0.),

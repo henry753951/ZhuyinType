@@ -6,6 +6,8 @@ pub mod layout;
 pub mod panel;
 pub mod platform;
 pub mod popup;
+pub mod preview;
 pub mod sample;
+pub mod scene;
 pub mod showcase;
 pub mod style;

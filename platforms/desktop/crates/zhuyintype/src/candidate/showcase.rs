@@ -55,7 +55,10 @@ fn configure(variant: &str, cx: &mut App) {
     }
 }
 
-fn presentation_for(variant: &str, cx: &App) -> (Presentation, Option<String>, Option<&'static str>, Option<(PreviewList, Pinned)>) {
+/// A variant's content: the presentation, the composition shown in the window, the badge, and a frozen motion.
+type Content = (Presentation, Option<String>, Option<&'static str>, Option<(PreviewList, Pinned)>);
+
+fn presentation_for(variant: &str, cx: &App) -> Content {
     let settings = app::settings(cx);
     let keys = selection_keys(settings);
     let per_page = keys.len();
