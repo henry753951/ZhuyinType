@@ -68,6 +68,24 @@ tested on the Proxmox VM `zt-windows` (ssh alias; Windows 11 zh-TW).
 - Keys cross the boundary as `zt_core::keys::Key` (Qt key code + Qt modifier flags + text + Shift side), the values
   the IPC protocol already uses; the UI converts GPUI keystrokes to it.
 
+## Engine data and user files
+
+The engine (`zhuyin-core`, used directly) loads, from the first directory with a lexicon among `ZT_DATA_DIR`, the
+configured data directory, `<exe dir>/data` (Windows) or `/usr/share/zhuyintype/data` (Linux), and the checkout's
+`data/build` (`zt_core::engine::DataFiles::search_path`):
+
+- `lexicon.bin` (or `lexicon.tsv`), required;
+- `lm/lm.bin` (or `lm/{unigram,bigram,backoff}.tsv`), the language model;
+- `lm_chat/lm.bin` (or its TSV files), the chat-domain model, when shipped;
+- `channel.bin`, the reading channel (「接受常見的其他讀法」), when shipped;
+- the notices beside them for the 關於 page (`lm/NOTICE.md`, `lm/articles.tsv.gz`, `channel/NOTICE.md`, …).
+
+`tools/zt data fetch engine && tools/zt data compile` makes them in `data/build`, as for the macOS app. The neural
+models (reranker, character model) are Core ML on macOS and not loaded here; their seam is the composer's hooks
+(`EngineSession::composer_mut`). Personal data, `stats.json` and `corrections.jsonl` live in `zt_core::paths::data_dir`;
+settings and the keys in `zt_core::paths::settings_file`. Practice sessions open an engine of their own on the same
+`EngineData` with personal data in memory; the mapped files are shared.
+
 ## UI rules
 
 - Pages compose only `ui/` components and `theme` tokens; no colour, size or duration literal in `pages/`.
