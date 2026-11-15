@@ -25,7 +25,7 @@ pub fn grouped(value: i64) -> String {
     let digits = value.unsigned_abs().to_string();
     let mut out = String::new();
     for (index, c) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
@@ -55,6 +55,8 @@ pub fn stat_tile(icon: IconName, title: impl Into<SharedString>, value: impl Int
 
 /// Tiles in `columns` equal columns, wrapping to fewer when a tile would be narrower than `min_width`.
 pub fn tile_grid(columns: usize, min_width: f32, tiles: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
+    let tiles: Vec<AnyElement> = tiles.into_iter().collect();
+    let fillers = (columns - tiles.len() % columns) % columns;
     // Each tile starts at `min_width` and grows; it is never narrower than a share that would let one more column
     // in, so a row holds at most `columns`.
     let share = 1. / (columns as f32 + 1.) + 0.01;
@@ -65,16 +67,20 @@ pub fn tile_grid(columns: usize, min_width: f32, tiles: impl IntoIterator<Item =
             .flex_wrap()
             .items_stretch()
             .gap(px(TILE_SPACING))
-            .children(tiles.into_iter().map(move |tile| {
-                div()
-                    .flex_grow(1.)
-                    .flex_shrink(1.)
-                    .flex_basis(px(min_width))
-                    .min_w(relative(share))
-                    .flex()
-                    .flex_col()
-                    .child(tile)
-            })),
+            .children(
+                tiles
+                    .into_iter()
+                    .map(Some)
+                    .chain(std::iter::repeat_with(|| None).take(fillers))
+                    .map(move |tile| {
+                        let cell = div().flex_grow(1.).flex_shrink(1.).flex_basis(px(min_width)).min_w(relative(share));
+                        match tile {
+                            Some(tile) => cell.flex().flex_col().child(tile),
+                            // Keeps the last row's tiles in their columns; takes no room when it wraps alone.
+                            None => cell.h(px(0.)).mt(px(-TILE_SPACING)),
+                        }
+                    }),
+            ),
     )
 }
 

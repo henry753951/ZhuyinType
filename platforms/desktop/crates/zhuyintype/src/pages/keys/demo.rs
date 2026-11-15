@@ -58,10 +58,8 @@ pub fn apply(cx: &mut App) {
             app::set_setting(feature, json!(false), cx);
         }
         app::set_setting("shiftSwitch", json!(false), cx);
-        let stored = json!({
-            "nextPage": [k(code::TAB, 0), k(code::LEFT, modifier::CONTROL | modifier::SHIFT)],
-            "selectLeft": [k(code::LEFT, modifier::SHIFT), k(code::LEFT, modifier::CONTROL | modifier::SHIFT)],
-        });
+        // Two commands with the same key: 往右選取 takes 只列一個字's only default, which then keeps it too.
+        let stored = json!({ "selectRight": [k(code::RIGHT, modifier::SHIFT), k(code::DOWN, modifier::SHIFT)] });
         app::set_setting("shortcuts", stored, cx);
     }
     if active("chips") {

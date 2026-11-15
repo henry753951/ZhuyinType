@@ -15,7 +15,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, FocusHandle, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, Rgba,
+    AnyElement, App, Context, FocusHandle, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
     SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, img, px, rgb,
 };
 use zt_core::practice::{PracticeEvent, PracticeSession};
@@ -394,7 +394,7 @@ impl Render for IntroPage {
                 feature_card(
                     SharedString::from(format!("feature-{}", feature.title)),
                     feature.icon,
-                    Rgba::from(rgb(feature.tint)).into(),
+                    rgb(feature.tint).into(),
                     feature.title,
                     feature.text,
                     feature.link,

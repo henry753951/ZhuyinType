@@ -122,6 +122,7 @@ impl ShortcutField {
     }
 
     /// While disabled, a link under the chips to where the feature is turned on (「在「選字」開啟」).
+    #[allow(dead_code, reason = "for the feature pages' 快捷鍵 rows, built on other branches")]
     pub fn off_link(mut self, label: impl Into<SharedString>, place: Place) -> Self {
         self.off_link = Some((label.into(), place));
         self
@@ -208,6 +209,7 @@ fn on_keystroke(keystroke: &Keystroke, _window: &mut Window, cx: &mut App) {
     }
     let plain = keystroke::qt_modifiers(&keystroke.modifiers) == 0;
     if keystroke.key == "escape" && plain {
+        fields(cx).states.entry(command).or_default().problem = None;
         stop(cx);
         return;
     }
@@ -640,11 +642,6 @@ fn conflict_line(command: &'static str, index: usize, other: &'static str, cx: &
                     app::go(store::command_place(other), cx);
                 })),
         )
-}
-
-/// Ends recording (the page went away).
-pub fn cancel_recording(cx: &mut App) {
-    stop(cx);
 }
 
 /// The chips' height, for rows that line other content up with them.

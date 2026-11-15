@@ -8,7 +8,7 @@ mod data;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariant, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonVariant};
 use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -438,7 +438,7 @@ fn clock(time: chrono::DateTime<chrono::Local>) -> String {
         12..=17 => "下午",
         _ => "晚上",
     };
-    let twelve = if hour % 12 == 0 { 12 } else { hour % 12 };
+    let twelve = if hour.is_multiple_of(12) { 12 } else { hour % 12 };
     format!("{part} {twelve}:{:02}", time.minute())
 }
 

@@ -24,7 +24,7 @@ use crate::app::{self, Navigation};
 use crate::theme::{self, size, text};
 use crate::ui::charts::fill_column;
 use crate::ui::shortcuts::{self, key_chip, store};
-use crate::ui::{self, h, v};
+use crate::ui::{self, h};
 
 pub struct KeysPage {
     search: Entity<InputState>,
@@ -233,20 +233,29 @@ impl Render for KeysPage {
             }))
             .when(!fixed.is_empty(), |this| {
                 let toggle = entity.clone();
-                let disclosure = ui::row("fixed-keys", "固定的按鍵")
-                    .subtitle("打注音、聲調、送出與移動游標的按鍵，無法更改")
-                    .trailing(
-                        Icon::new(IconName::ChevronRight)
-                            .size(px(13.))
-                            .text_color(p.text_tertiary)
-                            .rotate(gpui_kit::radians(if open { std::f32::consts::FRAC_PI_2 } else { 0. })),
-                    )
+                // The whole row toggles; its chevron turns down while open.
+                let disclosure = div()
+                    .id("fixed-keys-toggle")
+                    .w_full()
+                    .cursor_pointer()
+                    .hover(|style| style.bg(p.hover))
+                    .active(|style| style.bg(p.pressed))
                     .on_click(move |_, _, cx| {
                         toggle.update(cx, |page, cx| {
                             page.shows_fixed = !page.shows_fixed;
                             cx.notify();
                         });
-                    });
+                    })
+                    .child(
+                        ui::row("fixed-keys", "固定的按鍵")
+                            .subtitle("打注音、聲調、送出與移動游標的按鍵，無法更改")
+                            .trailing(
+                                Icon::new(IconName::ChevronRight)
+                                    .size(px(13.))
+                                    .text_color(p.text_tertiary)
+                                    .rotate(gpui_kit::radians(if open { std::f32::consts::FRAC_PI_2 } else { 0. })),
+                            ),
+                    );
                 let mut section = ui::section("").row(disclosure);
                 if open {
                     section = section.rows(fixed.iter().map(|item| Self::item_row(item, &keys, cx)));

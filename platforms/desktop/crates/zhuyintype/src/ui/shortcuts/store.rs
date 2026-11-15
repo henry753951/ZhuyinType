@@ -187,7 +187,7 @@ pub enum KeyStore {
 pub fn store(cx: &App) -> KeyStore {
     match app::service(cx) {
         Some(service) => KeyStore::Core(service.shortcuts().clone()),
-        None => KeyStore::Local(LocalShortcuts { settings: app::settings(cx).clone() }),
+        None => KeyStore::Local(LocalShortcuts::new(app::settings(cx).clone())),
     }
 }
 

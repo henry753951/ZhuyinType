@@ -67,7 +67,10 @@ impl RenderOnce for Section {
                         .child(title),
                 )
             })
-            .when(count > 0 && !self.card, |this| this.children(self.rows.drain(..)))
+            .when(count > 0 && !self.card, |this| {
+                let probe = arrival.clone().map(|(title, _)| anchor_probe(title));
+                this.child(v().relative().w_full().children(self.rows.drain(..)).children(probe))
+            })
             .when(count > 0 && self.card, |this| {
                 this.child(
                     v().w_full()
