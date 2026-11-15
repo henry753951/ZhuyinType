@@ -562,8 +562,9 @@ pub fn show_on_first_use(cx: &mut App) {
 /// `SPEC` is `MODE[@STEP][;OPTION…]`: MODE `quick`, `full`, `new:VERSION` or `keys`; STEP `welcome`, `preset`,
 /// `finish`, `keys` or a lesson id; OPTIONs `set=KEY:VALUE` (a draft setting; VALUE is JSON or text),
 /// `preset=ID`, `type=KEYS` (typed into the practice field, see `PracticeField::feed`), `done` (the lesson's
-/// practice is complete), `transition=PERCENT` (the transition from the step before, held there), `edit=ID` and
-/// `changes` (a popover open), `live` (animations play).
+/// practice is complete), `transition=PERCENT` (the transition from the step before, held there), `edit=ID`,
+/// `changes` and `rest` (a popover open), `live` (animations play).  A lesson only the full tour has (`quick@look`)
+/// opens the full tour.
 pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f32)>, cx: &mut App) {
     let mut parts = spec.split(';');
     let head = parts.next().unwrap_or_default();
@@ -614,8 +615,18 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
                 }
             }
             if let Some(step) = &step
-                && let Some(index) =
-                    wizard.steps().iter().position(|s| s.id() == *step || s.id() == format!("lesson-{step}"))
+            // A lesson only the full tour has (`quick@look`) switches to it rather than staying on the welcome.
+            let position = |wizard: &WizardWindow, step: &str| {
+                wizard.steps().iter().position(|s| s.id() == step || s.id() == format!("lesson-{step}"))
+            };
+                && wizard.mode == Mode::Quick
+                && position(wizard, step).is_none()
+                && LESSONS.iter().any(|lesson| lesson.id == step)
+            {
+                wizard.mode = Mode::Full;
+            }
+            if let Some(step) = &step
+                && let Some(index) = position(wizard, step)
             {
                 wizard.index = index;
                 wizard.enter(window, cx);
@@ -634,6 +645,7 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
                     "edit" => wizard.popover = Some(Popover::Edit(value.clone())),
                     "changes" => wizard.popover = Some(Popover::PresetChanges),
                     _ => {}
+                    "rest" => wizard.popover = Some(Popover::Rest),
                 }
             }
             window.activate_window();
