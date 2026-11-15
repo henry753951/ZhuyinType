@@ -187,8 +187,10 @@ pub fn transparent_windows() -> bool {
         }
         x11::compositing()
     }
+    // Windows: the popup is square and edge to edge; DWM rounds it and draws its shadow like the system's own
+    // menus (`platform::windows::make_non_activating`), which needs no transparent window.
     #[cfg(not(target_os = "linux"))]
     {
-        true
+        false
     }
 }
