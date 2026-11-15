@@ -52,16 +52,20 @@ cp "$desktop/crates/zt-tsf/logo.ico" "$stage/logo.ico"
 cp "$desktop/crates/zhuyintype/windows/zhuyintype.ico" "$stage/zhuyintype.ico"
 for binary in zhuyintype.exe zhuyintype-tsf-x64.dll zhuyintype-tsf-x86.dll; do sign "$stage/$binary"; done
 
-# The engine data, at <exe dir>\data: the lexicon and the language model compiled for mmap (lexicon.bin,
-# lm/lm.bin), with the language model's notice and the attribution list of its training text.
+# The engine data, at <exe dir>\data, the same set as the Linux packages and the macOS app (build-app.sh): the
+# lexicon, the reading channel and both language models compiled for mmap, with their notices.
 echo "== 引擎資料"
-(cd "$root" && tools/zt data fetch engine && tools/zt data compile --no-channel --quiet "$stage/data")
+(cd "$root" && tools/zt data fetch lexicon lm lm_chat && tools/zt data compile --quiet "$stage/data")
+mkdir -p "$stage/data/channel"
 cp "$data_dir/lm/NOTICE.md" "$data_dir/lm/articles.tsv.gz" "$stage/data/lm/"
+cp "$data_dir/lm_chat/NOTICE.md" "$data_dir/lm_chat/attribution.jsonl" "$data_dir/lm_chat/source-manifest.json" \
+  "$stage/data/lm_chat/"
+cp "$data_dir/channel/NOTICE.md" "$stage/data/channel/"
 # These archived notices describe our code under its old licence (the same edit as the macOS build).
 sed -i -e 's/Code: MIT\./Code: AGPL-3.0-only./g' -e 's/Scripts are MIT-licensed\./Scripts are AGPL-3.0-only./g' \
   -e 's/is separately licensed under MIT\./is separately licensed under GNU AGPL version 3 (AGPL-3.0-only)./g' \
-  "$stage/data/lm/NOTICE.md"
-for file in lexicon.bin lm/lm.bin lm/NOTICE.md lm/articles.tsv.gz; do
+  "$stage/data"/{lm,lm_chat,channel}/NOTICE.md
+for file in lexicon.bin channel.bin lm/lm.bin lm/NOTICE.md lm/articles.tsv.gz lm_chat/lm.bin channel/NOTICE.md; do
   [[ -s $stage/data/$file ]] || { echo "build.sh: 缺少引擎資料 data/$file" >&2; exit 1; }
 done
 
