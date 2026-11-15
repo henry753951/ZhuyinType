@@ -161,8 +161,9 @@ mod layout {
     pub const MAX_W: f32 = 680.;
     pub const MARGIN: f32 = 32.;
     pub const HEADER: f32 = 52.;
-    pub const FOOTER: f32 = 64.;
-    pub const TOP_INSET: f32 = 6.;
+    /// The footer's `H_LG` buttons sit in its middle: 24 px above the window's bottom edge.
+    pub const FOOTER: f32 = 80.;
+    pub const TOP_INSET: f32 = 8.;
 }
 
 pub struct WizardWindow {
@@ -614,11 +615,11 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
                     _ => {}
                 }
             }
-            if let Some(step) = &step
             // A lesson only the full tour has (`quick@look`) switches to it rather than staying on the welcome.
             let position = |wizard: &WizardWindow, step: &str| {
                 wizard.steps().iter().position(|s| s.id() == step || s.id() == format!("lesson-{step}"))
             };
+            if let Some(step) = &step
                 && wizard.mode == Mode::Quick
                 && position(wizard, step).is_none()
                 && LESSONS.iter().any(|lesson| lesson.id == step)
@@ -644,8 +645,8 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
                     }
                     "edit" => wizard.popover = Some(Popover::Edit(value.clone())),
                     "changes" => wizard.popover = Some(Popover::PresetChanges),
-                    _ => {}
                     "rest" => wizard.popover = Some(Popover::Rest),
+                    _ => {}
                 }
             }
             window.activate_window();

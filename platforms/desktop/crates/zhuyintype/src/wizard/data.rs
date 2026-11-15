@@ -744,15 +744,12 @@ pub fn apply(changes: &[Change], original: &Settings, draft: &Settings) -> anyho
 
 // MARK: - Key summary
 
-/// A card of 你會用到的按鍵: its title, icon and keys (each a list of chips) with what they do.
+/// A group of 你會用到的按鍵: its title, icon and keys (each a list of key labels) with what they do.
 pub struct KeyGroup {
     pub title: &'static str,
     pub icon: IconName,
     pub items: Vec<(Vec<String>, String)>,
 }
-
-/// The first keys of each card.
-pub const KEYS_PER_CARD: usize = 4;
 
 /// The keys of `settings`, by what they are for, only what is on (macOS `KeySummary.groups`).
 pub fn key_groups(settings: &Settings) -> Vec<KeyGroup> {
