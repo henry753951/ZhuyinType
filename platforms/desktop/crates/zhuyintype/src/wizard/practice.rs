@@ -20,9 +20,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Bounds, Context, EventEmitter, FocusHandle, Font, FontWeight, InteractiveElement, IntoElement,
-    KeyDownEvent, KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, Render,
-    SharedString, Styled, TextRun, Window, black, canvas, div, px,
+    AnyElement, App, Bounds, Context, EventEmitter, FocusHandle, Font, InteractiveElement, IntoElement, KeyDownEvent,
+    KeyUpEvent, ModifiersChangedEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, Render, SharedString,
+    Styled, TextRun, Window, black, canvas, div, px,
 };
 use zt_core::keys::{Key, code, modifier};
 use zt_core::practice::{PracticeEvent, PracticeSession};
@@ -36,7 +36,7 @@ use crate::candidate::panel::{ActionHandler, CandidatePanel, ease_out, mode_badg
 use crate::candidate::sample;
 use crate::candidate::scene::panel_layout;
 use crate::candidate::style::{CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
-use crate::theme::{self, text};
+use crate::theme::{self, size, space, text, weight};
 use crate::ui::demo::field_fill;
 use crate::ui::shortcuts::keystroke;
 use crate::ui::{h, v};
@@ -46,12 +46,18 @@ const FONT: f32 = 18.;
 const BOX_H: f32 = 46.;
 const LINE_H: f32 = 24.;
 const PADDING: f32 = 14.;
-const RADIUS: f32 = 9.;
+/// The box's radius: the inputs' (`size::R_SM`).
+const RADIUS: Pixels = size::R_SM;
+/// Between the task and the box.
+const TASK_GAP: Pixels = space::S12;
 /// Between the line and the window (macOS `InputPanelPlacement.gap`).
 const GAP: f32 = 4.;
 /// The window's entrance: it starts this much further from the caret (macOS `PanelMotion.slide`, `.appear`).
 const SLIDE: f32 = 4.;
 const APPEAR_MS: f32 = 120.;
+/// The window may reach this far past the box's sides: it stays inside the stage the field sits on (the wizard's
+/// `S16` padding), `S8` from its edge.
+const STAGE_MARGIN: f32 = 8.;
 /// The window may reach this close to the wizard window's sides.
 const EDGE: f32 = 12.;
 /// The 中/英 badge: shown, then faded (macOS `ModeToast`).
@@ -505,26 +511,26 @@ impl PracticeField {
             }
             // A spring: grows from 60 % with a little overshoot (only a fade under Reduce Motion).
             let scale = if cx.reduce_motion() { 1. } else { 0.6 + 0.4 * back_out(t) };
-            h().gap(px(4.))
+            h().gap(space::S4)
                 .flex_shrink_0()
                 .opacity(t.min(1.))
                 .text_size(px(f32::from(text::HEADLINE) * scale))
-                .font_weight(FontWeight::SEMIBOLD)
+                .font_weight(weight::SEMIBOLD)
                 .text_color(p.success)
-                .child(Icon::new(IconName::CircleCheck).size(px(16. * scale)))
+                .child(Icon::new(IconName::CircleCheck).size(px(f32::from(size::ICON_MD) * scale)))
                 .child("完成")
         });
         Some(
-            v().gap(px(4.))
+            v().gap(space::S4)
                 .child(
-                    h().gap(px(8.))
-                        .child(Icon::new(IconName::Keyboard).size(px(17.)).text_color(p.text))
+                    h().gap(space::S8)
+                        .child(Icon::new(IconName::Keyboard).size(size::ICON_MD).text_color(p.text_secondary))
                         .child(
                             div()
                                 .flex_1()
                                 .min_w(px(0.))
                                 .text_size(text::HEADLINE)
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(weight::SEMIBOLD)
                                 .text_color(p.text)
                                 .child(task.prompt),
                         )
@@ -694,7 +700,7 @@ impl Render for PracticeField {
                 .top(px(line_top))
                 .w(px(mark.w.max(1.)))
                 .h(px(LINE_H + 1.))
-                .when(mark.style == MarkStyle::Focus, |this| this.bg(p.accent_faint))
+                .when(mark.style == MarkStyle::Focus, |this| this.bg(p.selection))
                 .child(div().absolute().left_0().bottom_0().w_full().h(px(if thick { 2. } else { 1. })).bg(if thick {
                     p.accent
                 } else {
@@ -720,7 +726,7 @@ impl Render for PracticeField {
             .top(px(box_top))
             .w_full()
             .h(px(BOX_H))
-            .rounded(px(RADIUS))
+            .rounded(RADIUS)
             .bg(field_fill(&p))
             .border(px(border_w))
             .border_color(border)
@@ -764,11 +770,17 @@ impl Render for PracticeField {
         // The window, lined up with the composition below (or above) the line, kept inside the wizard window.
         let anchor_x = PADDING + composition_x - scroll;
         let line_y = box_top + line_top;
+        // Within the stage around the field (its padding less `STAGE_MARGIN`) when it fits there, else within the
+        // wizard window.
         let place_x = |width: f32, inset: f32| {
             let x = anchor_x - inset;
-            let min = EDGE - field_x;
-            let max = (viewport_w - EDGE - field_x - width).max(min);
-            x.clamp(min, max)
+            let min = (EDGE - field_x).max(-STAGE_MARGIN);
+            let max = (viewport_w - EDGE - field_x - width).min(box_w + STAGE_MARGIN - width);
+            if max >= min {
+                x.clamp(min, max)
+            } else {
+                x.clamp(EDGE - field_x, (viewport_w - EDGE - field_x - width).max(EDGE - field_x))
+            }
         };
         let panel = (shows_panel && panel_size.0 > 0.).then(|| {
             let (w, height) = panel_size;
@@ -814,7 +826,7 @@ impl Render for PracticeField {
             self.badge = None;
         }
 
-        v().w_full().gap(px(10.)).children(self.task_line(window, cx)).child(
+        v().w_full().gap(TASK_GAP).children(self.task_line(window, cx)).child(
             div()
                 .id("practice-field")
                 .relative()
@@ -840,22 +852,24 @@ impl Render for PracticeField {
 pub fn placeholder(task: &Task, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
     v().w_full()
-        .gap(px(10.))
+        .gap(TASK_GAP)
         .child(
-            v().gap(px(4.))
+            v().gap(space::S4)
                 .child(
-                    h().gap(px(8.)).child(Icon::new(IconName::Keyboard).size(px(17.)).text_color(p.text)).child(
-                        div()
-                            .text_size(text::HEADLINE)
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(p.text)
-                            .child(task.prompt),
-                    ),
+                    h().gap(space::S8)
+                        .child(Icon::new(IconName::Keyboard).size(size::ICON_MD).text_color(p.text_secondary))
+                        .child(
+                            div()
+                                .text_size(text::HEADLINE)
+                                .font_weight(weight::SEMIBOLD)
+                                .text_color(p.text)
+                                .child(task.prompt),
+                        ),
                 )
                 .when_some(task.hint, |this, hint| {
                     this.child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(hint))
                 }),
         )
-        .child(div().w_full().h(px(BOX_H)).rounded(px(RADIUS)).bg(field_fill(&p)).border_1().border_color(p.separator))
+        .child(div().w_full().h(px(BOX_H)).rounded(RADIUS).bg(field_fill(&p)).border_1().border_color(p.separator))
         .into_any_element()
 }
