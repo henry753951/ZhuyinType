@@ -15,8 +15,10 @@ skip() {
 host=$(realpath "$host")
 work=$(mktemp -d)
 pid=
+xvfb=
 cleanup() {
     status=$?
+    if [[ -n $xvfb ]]; then kill "$xvfb" 2>/dev/null || true; fi
     if [[ -n $pid ]]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi
     if [[ $status != 0 && $status != 77 ]]; then tail -30 "$work/host.log"; fi
     rm -rf "$work"
@@ -31,7 +33,16 @@ cat > "$work/assets/lexicon.tsv" <<'LEXICON'
 ㄏㄠˇ	好	-3
 ㄋㄧˇ ㄏㄠˇ	你好	-2
 LEXICON
-# The host reads the lexicon through the engine; the addon only sees the broker endpoint.
+# The host reads the lexicon through the engine; the addon only sees the broker endpoint.  The host is a GPUI app
+# and ends when it has no display, so a headless run (CTest, CI) gives it a virtual one.
+if [[ -z ${DISPLAY:-} && -z ${WAYLAND_DISPLAY:-} ]]; then
+    command -v Xvfb >/dev/null || skip "the host needs a display: install xvfb"
+    display=:$((200 + RANDOM % 300))
+    Xvfb "$display" -nolisten tcp >/dev/null 2>&1 &
+    xvfb=$!
+    export DISPLAY=$display
+    for ((attempt=0; attempt<50; ++attempt)); do [[ -e /tmp/.X11-unix/X${display#:} ]] && break; sleep 0.05; done
+fi
 "$host" --background --ime-socket "$ZT_IME_SOCKET" --lexicon "$work/assets/lexicon.tsv" > "$work/host.log" 2>&1 &
 pid=$!
 for ((attempt=0; attempt<100; ++attempt)); do
