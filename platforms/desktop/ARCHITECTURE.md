@@ -1,80 +1,60 @@
-# ZhuyinType for Linux and Windows (GPUI)
+# ZhuyinType：Linux 與 Windows 版（GPUI）
 
-The Linux and Windows front end: one Rust process draws the settings window, the candidate window, the mode toast and
-the setup wizard with [GPUI](https://www.gpui.rs/) (through `gpui-kit`), owns the engine, and serves the native input
-method adapters. It replaces the Qt client (removed 2026-11).
+Linux 與 Windows 的前端是一個 Rust 行程：用 [GPUI](https://www.gpui.rs/)（透過 `gpui-kit`）繪製設定視窗、候選字視窗、中英提示與設定嚮導，持有引擎，並接受原生輸入法介面的連線。它取代了 Qt 客戶端（2026-11 移除）。
 
-The **functional layout is the macOS app's**: the same pages, sections, rows, sub-pages, wizard steps, candidate window
-variants and links between them, in the same order with the same wording (`platforms/macos/Sources/ZhuyinTypeApp/UI/`).
-The visual language is ZhuyinType's own (tokens in `crates/zhuyintype/src/theme.rs`), with the macOS app's motion
-(durations, the 140 ms page turn, push/pop of sub-pages) and its hierarchy (grouped rows on cards). The window has no
-system frame: the app draws its title bar and window controls, like Discord or Claude.
+**功能與版面和 macOS 版相同**：頁面、區塊、設定列、子頁面、嚮導步驟、候選字視窗的各種樣式與頁面之間的連結，順序與文字都一樣（`platforms/macos/Sources/ZhuyinTypeApp/UI/`）。視覺是 ZhuyinType 自己的一套（`crates/zhuyintype/src/theme.rs` 的 token），動態沿用 macOS 版（時間長度、140 ms 翻頁、子頁面推入與返回），層次也相同（卡片上的分組設定列）。視窗不使用系統邊框：標題列與視窗按鈕由 App 自己繪製，和 Discord、Claude 桌面版一樣。
 
-## Layout
+## 目錄
 
 ```text
 platforms/desktop/
-  settings.json             setting descriptors shared by every page and the wizard (moved from platforms/qt)
-  IPC.md                    the broker protocol between the host and the native adapters
-  crates/zt-core/           no UI: settings, paths, engine session, input controller, shortcuts, usage statistics,
-                            correction log, practice sessions, the broker (Unix socket / named pipe)
-  crates/zhuyintype/        the GPUI app (binary `zhuyintype`): theme, ui/ components, pages/, candidate/, wizard/
-  crates/zt-tsf/            Windows only: the TSF text service DLL and its registration, in Rust (`windows` crate)
-  packaging/windows/        NSIS installer (zh-TW UI, one UAC prompt, registers TSF, autostart, uninstaller)
-  packaging/linux/          nfpm .deb/.rpm, desktop entries, autostart, Fcitx5 addon config
-  scripts/                  remote.sh (Mac → GPU host), build.sh (host: Linux + Windows + packages), screenshot.sh
-platforms/linux/            the Fcitx5 addon (C++, talks to the broker; unchanged protocol)
+  settings.json             所有頁面與嚮導共用的設定描述（從 platforms/qt 移來）
+  IPC.md                    服務與原生輸入法介面之間的通訊協定
+  crates/zt-core/           不含介面：設定、路徑、引擎工作階段、輸入控制、快捷鍵、使用統計、改字記錄、
+                            試打工作階段、通訊服務（Unix socket／named pipe）
+  crates/zhuyintype/        GPUI App（執行檔 `zhuyintype`）：theme、ui/ 元件、pages/、candidate/、wizard/
+  crates/zt-tsf/            只用於 Windows：TSF 文字服務 DLL 與登記，以 Rust（`windows` crate）撰寫
+  packaging/windows/        NSIS 安裝程式（正體中文介面、一次 UAC、登記 TSF、登入啟動、解除安裝）
+  packaging/linux/          nfpm 產生 .deb／.rpm、桌面項目、自動啟動、Fcitx5 外掛設定
+  scripts/                  remote.sh（Mac → GPU 主機）、build.sh（主機：Linux、Windows 與安裝檔）、screenshot.sh
+platforms/linux/            Fcitx5 外掛（C++，透過通訊服務連線；協定不變）
 ```
 
-## Building: on the GPU host only
+## 建置：只在 GPU 主機上
 
-Nothing is built on the Mac (the user's disk stays clean). From the Mac:
+Mac 上不建置任何東西，不占用使用者的硬碟。在 Mac 上執行：
 
 ```sh
-platforms/desktop/scripts/remote.sh cargo build                      # Linux debug build on the host
+platforms/desktop/scripts/remote.sh cargo build                      # 在主機上建置 Linux 版（debug）
 platforms/desktop/scripts/remote.sh cargo test -p zt-core
-platforms/desktop/scripts/remote.sh scripts/screenshot.sh ~/zhuyintype/shots/NAME   # every page, light + dark
-platforms/desktop/scripts/remote.sh --fetch zhuyintype/shots/NAME /tmp/shots       # copy them back to look at
+platforms/desktop/scripts/remote.sh scripts/screenshot.sh ~/zhuyintype/shots/NAME   # 每一頁的淺色與深色截圖
+platforms/desktop/scripts/remote.sh --fetch zhuyintype/shots/NAME /tmp/shots       # 把截圖取回來看
 ```
 
-Windows binaries are cross-compiled on the host with `cargo xwin build --target x86_64-pc-windows-msvc` (MSVC ABI,
-clang-cl/lld, the Windows SDK fetched by xwin); the installer is made with `makensis` on Linux. Windows behaviour is
-tested on the Proxmox VM `zt-windows` (ssh alias; Windows 11 zh-TW).
+Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-msvc` 交叉編譯（MSVC ABI、clang-cl／lld，Windows SDK 由 xwin 下載）；安裝程式在 Linux 上用 `makensis` 產生。Windows 上的行為在 Proxmox 的測試 VM（ssh 別名 `zt-windows`，Windows 11 正體中文）上驗證。
 
-## Threads and the core ↔ UI boundary
+## 執行緒與核心／介面的分界
 
 ```text
- Fcitx5 addon / TSF DLL ──IPC.md──▶ broker thread (zt-core) ──▶ InputController ──▶ EngineSession (zhuyin-core)
-                                          │ UiEvent (async channel)
-                                          ▼
-                                GPUI main thread: candidate popup, mode toast, settings window
+ Fcitx5 外掛／TSF DLL ──IPC.md──▶ 通訊執行緒（zt-core）──▶ InputController ──▶ EngineSession（zhuyin-core）
+                                        │ UiEvent（非同步 channel）
+                                        ▼
+                              GPUI 主執行緒：候選字視窗、中英提示、設定視窗
 ```
 
-- The broker runs on its own thread and never waits for the GPUI thread, so the app's own text fields can use the
-  input method (the TSF DLL in our process talks to our broker) without deadlock.
-- `zt_core::service::Service` bundles the shared state (`Settings`, `EngineSession`, `InputController`, `Shortcuts`,
-  `UsageStats`, `CorrectionLog`) behind `Arc`/`Mutex`; it is cheap to clone. The UI calls it directly for settings,
-  personal data, statistics and candidate-window clicks (`Service::popup_action`).
-- `Service::start` returns `async_channel::Receiver<UiEvent>`; the UI drains it on GPUI's foreground executor:
-  - `UiEvent::Popup(Option<PopupState>)`: show/update/hide the candidate window (`PopupState` = presentation +
-    caret rectangle in screen logical pixels + whether the app shows the composition inline);
-  - `UiEvent::ModeToast { english, anchor }`; `UiEvent::ShowSettings`; `UiEvent::Boundary(direction)`.
-- `zt_core::presentation::Presentation` is the one snapshot every view draws: composition, reading, UTF-16 cursor,
-  clauses, the current page's candidate rows, selection, page/page count/page size, single-character and corrections
-  flags, notice. The candidate panel element draws it identically in the floating window, the 視窗與提示 preview, the
-  介紹 typing demo and the wizard.
-- `PracticeSession` is an in-process sandbox (own `InputController`, in-memory personal data, the shared read-only
-  engine data) for the 介紹 try-it field and the wizard's practice tasks, like macOS `PracticeField`.
-- Keys cross the boundary as `zt_core::keys::Key` (Qt key code + Qt modifier flags + text + Shift side), the values
-  the IPC protocol already uses; the UI converts GPUI keystrokes to it.
+- 通訊服務在自己的執行緒上執行，從不等待 GPUI 執行緒，所以 App 自己的文字欄位也能使用輸入法（同一個行程裡的 TSF DLL 連到自己的服務）而不會互相卡住。
+- `zt_core::service::Service` 把共用狀態（`Settings`、`EngineSession`、`InputController`、`Shortcuts`、`UsageStats`、`CorrectionLog`）放在 `Arc`／`Mutex` 後面，複製的成本很低。介面直接呼叫它處理設定、個人資料、統計與候選字視窗上的點選（`Service::popup_action`）。
+- `Service::start` 回傳 `async_channel::Receiver<UiEvent>`，介面在 GPUI 的前景 executor 上讀取：
+  - `UiEvent::Popup(Option<PopupState>)`：顯示、更新或隱藏候選字視窗（`PopupState` 是畫面資料、以螢幕邏輯像素表示的游標矩形，以及應用程式是否自己顯示組字）；
+  - `UiEvent::ModeToast { english, anchor }`、`UiEvent::ShowSettings`、`UiEvent::Boundary(direction)`。
+- `zt_core::presentation::Presentation` 是所有畫面共用的一份資料：組字、注音、UTF-16 游標、分段、目前這一頁的候選字、選取、頁碼、單字與修正清單、提示。浮動的候選字視窗、「視窗與提示」的預覽、「介紹」的試打與嚮導都用同一個候選字元件畫它。
+- `PracticeSession` 是行程內的沙盒（自己的 `InputController`、只在記憶體中的個人資料、共用的唯讀引擎資料），用於「介紹」的試打欄與嚮導的練習，和 macOS 的 `PracticeField` 相同。
+- 按鍵以 `zt_core::keys::Key`（Qt 按鍵碼、Qt 修飾鍵旗標、文字、左右 Shift）跨過分界，和通訊協定使用的數值相同；介面把 GPUI 的按鍵轉成它。
 
-## UI rules
+## 介面規則
 
-- Pages compose only `ui/` components and `theme` tokens; no colour, size or duration literal in `pages/`.
-- Every page and sub-page matches its macOS counterpart's rows, order, wording and links. References: the Swift
-  sources and the renders made by the macOS app (`ZhuyinType --render-ui DIR`, kept outside git in `.reference/`).
-- Animations use `theme::motion` and are skipped when the system asks for reduced motion.
-- The candidate window and the mode toast never take keyboard focus (Windows: `WS_EX_NOACTIVATE`; X11:
-  override-redirect, no input focus).
-- Headless runs (screenshots, tests) never open a window on the user's desktop; they run on the host's virtual
-  display.
+- 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。
+- 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
+- 動畫使用 `theme::motion`，系統要求減少動態效果時略過。
+- 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
+- 不顯示畫面的執行（截圖、測試）不在使用者的桌面開視窗，而在主機的虛擬顯示器上執行。
