@@ -42,20 +42,19 @@ impl SettingsWindow {
             .h_full()
             .flex_shrink_0()
             .bg(p.sidebar)
-            .border_r_1()
-            .border_color(p.separator)
-            .px(px(10.))
+            .px(px(12.))
+            .pt(px(4.))
             .pb(px(12.))
             .overflow_y_scroll()
-            .children(Page::GROUPS.iter().map(|(title, pages)| {
-                v().pt(px(14.))
-                    .gap(px(1.))
+            .children(Page::GROUPS.iter().enumerate().map(|(index, (title, pages))| {
+                v().when(index > 0, |this| this.pt(px(16.)))
+                    .gap(px(2.))
                     .child(
                         div()
                             .px(px(10.))
                             .pb(px(4.))
                             .text_size(text::CAPTION)
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(FontWeight::MEDIUM)
                             .text_color(p.text_tertiary)
                             .child(*title),
                     )
@@ -63,96 +62,81 @@ impl SettingsWindow {
                         let active = page == selected;
                         h().id(SharedString::from(format!("sidebar-{}", page.id())))
                             .h(sz::SIDEBAR_ROW)
-                            .px(px(8.))
+                            .px(px(10.))
                             .gap(px(10.))
                             .rounded(sz::RADIUS_CONTROL)
                             .cursor_pointer()
-                            .when(active, |this| this.bg(p.accent))
+                            .when(active, |this| this.bg(p.pressed))
                             .when(!active, |this| {
                                 this.hover(|style| style.bg(p.hover)).active(|style| style.bg(p.pressed))
                             })
                             .on_click(move |_, _, cx| app::go(Place::page(page), cx))
-                            .child(
-                                div()
-                                    .size(sz::SIDEBAR_ICON)
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(px(6.))
-                                    .bg(page.tint())
-                                    .child(Icon::new(page.icon()).size(px(14.)).text_color(gpui_kit::white())),
-                            )
+                            .child(Icon::new(page.icon()).size(sz::SIDEBAR_ICON).text_color(if active {
+                                p.text
+                            } else {
+                                p.text_secondary
+                            }))
                             .child(
                                 div()
                                     .text_size(text::BODY)
-                                    .text_color(if active { p.on_accent } else { p.text })
+                                    .when(active, |this| this.font_weight(FontWeight::MEDIUM))
+                                    .text_color(if active { p.text } else { p.text_secondary })
                                     .child(page.title()),
                             )
                     }))
             }))
     }
 
+    /// The title bar: the app's mark over the sidebar, a drag area, the window controls.  Page titles live in the
+    /// page itself.
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
+        TitleBar::new().h(sz::TITLE_BAR).pl(px(0.)).bg(p.window).border_b_0().child(
+            h().h_full().px(px(22.)).gap(px(9.)).child(img("app-icon.png").size(px(18.)).rounded(px(5.))).child(
+                div().text_size(text::BODY).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child("ZhuyinType"),
+            ),
+        )
+    }
+
+    /// The page's heading: a back link to the parent page on a sub-page, then the large title.
+    fn page_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let nav = app::nav(cx);
         let page = nav.page;
         let subpage = nav.subpage.as_ref().map(|id| pages::subpage_title(page, id).unwrap_or(id.as_ref()).to_owned());
-        TitleBar::new().h(sz::TITLE_BAR).pl(px(0.)).bg(p.window).border_b_1().border_color(p.separator).child(
-            h().h_full()
-                .child(
-                    h().w(sz::SIDEBAR)
-                        .h_full()
-                        .flex_shrink_0()
-                        .px(px(16.))
-                        .gap(px(9.))
-                        .bg(p.sidebar)
-                        .border_r_1()
-                        .border_color(p.separator)
-                        .child(img("app-icon.png").size(px(20.)).rounded(px(5.)))
-                        .child(
-                            div()
-                                .text_size(text::BODY)
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(p.text)
-                                .child("ZhuyinType"),
-                        ),
+        let title: SharedString = subpage.clone().unwrap_or_else(|| page.title().to_owned()).into();
+        let shows_title = pages::shows_title(page, nav.subpage.as_deref());
+        v().when(shows_title, |this| this.pb(px(20.)))
+            .when(subpage.is_some(), |this| {
+                this.child(
+                    h().id("back")
+                        .mb(px(6.))
+                        .ml(px(-6.))
+                        .h(px(24.))
+                        .pl(px(2.))
+                        .pr(px(8.))
+                        .gap(px(2.))
+                        .rounded(sz::RADIUS_SMALL)
+                        .cursor_pointer()
+                        .text_size(text::SUBTITLE)
+                        .text_color(p.text_secondary)
+                        .hover(|style| style.bg(p.hover).text_color(p.text))
+                        .active(|style| style.bg(p.pressed))
+                        .on_click(|_, _, cx| app::back(cx))
+                        .child(Icon::new(IconName::ChevronLeft).size(px(15.)))
+                        .child(page.title()),
                 )
-                .child(match subpage {
-                    None => div()
-                        .pl(sz::PAGE_PADDING_X)
-                        .text_size(text::HEADLINE)
+            })
+            .when(shows_title, |this| {
+                this.child(
+                    div()
+                        .px(sz::ROW_PADDING_X)
+                        .text_size(text::PAGE_TITLE)
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(p.text)
-                        .child(page.title())
-                        .into_any_element(),
-                    Some(title) => h()
-                        .pl(px(14.))
-                        .gap(px(6.))
-                        .child(
-                            h().id("back")
-                                .h(px(28.))
-                                .pl(px(4.))
-                                .pr(px(8.))
-                                .gap(px(2.))
-                                .rounded(sz::RADIUS_CONTROL)
-                                .cursor_pointer()
-                                .text_color(p.accent)
-                                .hover(|style| style.bg(p.hover))
-                                .active(|style| style.bg(p.pressed))
-                                .on_click(|_, _, cx| app::back(cx))
-                                .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
-                                .child(div().text_size(text::BODY).child(page.title())),
-                        )
-                        .child(
-                            div()
-                                .text_size(text::HEADLINE)
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(p.text)
-                                .child(title),
-                        )
-                        .into_any_element(),
-                }),
-        )
+                        .child(title),
+                )
+            })
     }
 }
 
@@ -174,6 +158,7 @@ impl Render for SettingsWindow {
             .px(sz::PAGE_PADDING_X)
             .pt(sz::PAGE_PADDING_TOP)
             .pb(px(40.))
+            .child(self.page_header(cx))
             .child(view)
             .with_animation(
                 SharedString::from(format!("page-{generation}")),
@@ -189,24 +174,25 @@ impl Render for SettingsWindow {
                 },
             );
         window_border().child(
-            v().size_full()
-                .bg(p.window)
-                .text_color(p.text)
-                .font_family(theme::ui_font())
-                .child(self.title_bar(cx))
-                .child(
-                    h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
+            v().size_full().bg(p.window).text_color(p.text).font(theme::font()).child(self.title_bar(cx)).child(
+                h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
+                    div().flex_1().min_w(px(0.)).h_full().pr(sz::SURFACE_INSET).pb(sz::SURFACE_INSET).child(
                         div()
                             .id("page")
-                            .flex_1()
+                            .size_full()
                             // Without this the page grows to its rows' unwrapped width in a narrow window.
                             .min_w(px(0.))
-                            .h_full()
+                            .bg(p.surface)
+                            .rounded(sz::RADIUS_SURFACE)
+                            .border_1()
+                            .border_color(p.separator)
+                            .shadow_xs()
                             .overflow_y_scroll()
                             .track_scroll(&scroll)
                             .child(content),
                     ),
                 ),
+            ),
         )
     }
 }

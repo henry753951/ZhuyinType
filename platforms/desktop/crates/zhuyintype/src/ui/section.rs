@@ -1,5 +1,6 @@
-//! A section: a small grey header over a card of rows separated by hairlines (macOS `SettingsSection`).  When a link
-//! leads to the section (its title as the place's row), the header turns accent and the card tints once.
+//! A section (macOS `SettingsSection`, in this app's own look): a heading, then its rows as a list with hairlines
+//! between them, open on the page surface rather than boxed in a filled card.  When a link leads to the section (its
+//! title as the place's row), the heading turns accent and the rows tint once.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px};
@@ -54,14 +55,17 @@ impl RenderOnce for Section {
         let count = self.rows.len();
         let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
         v().w_full()
-            .gap(px(7.))
+            .gap(px(0.))
             .when_some(self.title, |this, title| {
                 this.child(
                     div()
                         .px(size::ROW_PADDING_X)
+                        .pb(px(10.))
+                        .border_b_1()
+                        .border_color(p.separator)
                         .text_size(text::SECTION)
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(if arrival.is_some() { p.accent } else { p.text_secondary })
+                        .text_color(if arrival.is_some() { p.accent } else { p.text })
                         .child(title),
                 )
             })
@@ -73,11 +77,6 @@ impl RenderOnce for Section {
                 this.child(
                     v().w_full()
                         .relative()
-                        .rounded(size::RADIUS_CARD)
-                        .bg(p.card)
-                        .border_1()
-                        .border_color(p.separator)
-                        .overflow_hidden()
                         .when_some(arrival.clone(), |this, (title, generation)| {
                             this.child(arrival_tint(format!("section-{title}"), generation, cx))
                                 .child(anchor_probe(title))
@@ -85,16 +84,19 @@ impl RenderOnce for Section {
                         .children(self.rows.into_iter().enumerate().map(|(index, row)| {
                             div()
                                 .w_full()
-                                .when(index > 0, |this| {
-                                    this.child(div().mx(size::ROW_PADDING_X).h(px(1.)).bg(p.separator))
-                                })
+                                .when(index > 0, |this| this.child(div().h(px(1.)).bg(p.separator)))
                                 .child(row)
                         })),
                 )
             })
             .when_some(self.footer, |this, footer| {
                 this.child(
-                    div().px(size::ROW_PADDING_X).text_size(text::SUBTITLE).text_color(p.text_secondary).child(footer),
+                    div()
+                        .px(size::ROW_PADDING_X)
+                        .pt(px(6.))
+                        .text_size(text::SUBTITLE)
+                        .text_color(p.text_secondary)
+                        .child(footer),
                 )
             })
     }

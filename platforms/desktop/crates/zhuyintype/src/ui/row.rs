@@ -174,7 +174,7 @@ pub(crate) fn anchor_probe(anchor: SharedString) -> impl IntoElement {
 pub(crate) fn arrival_tint(key: impl Into<SharedString>, generation: usize, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let key: SharedString = key.into();
-    div().absolute().inset(px(4.)).rounded(size::RADIUS_CARD - px(4.)).bg(p.accent).with_animation(
+    div().absolute().inset(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.accent).with_animation(
         SharedString::from(format!("arrival-{key}-{generation}")),
         Animation::new(Duration::from_millis(1600)),
         |this, t| {
@@ -217,7 +217,10 @@ impl RenderOnce for Row {
             })
             .when(self.dimmed, |this| this.opacity(0.5))
             .when(clickable, |this| {
-                this.cursor_pointer().hover(|style| style.bg(p.hover)).active(|style| style.bg(p.pressed))
+                this.cursor_pointer()
+                    .rounded(size::RADIUS_CONTROL)
+                    .hover(|style| style.bg(p.hover))
+                    .active(|style| style.bg(p.pressed))
             })
             .when_some(self.on_click, |this, handler| this.on_click(handler))
             .child(

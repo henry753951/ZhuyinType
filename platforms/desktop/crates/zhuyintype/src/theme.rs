@@ -1,8 +1,10 @@
 //! Design tokens: every colour, radius, size and duration the UI uses comes from here, never from a literal in a page.
 //!
-//! The palette follows the macOS app's hierarchy (grouped rows on cards over a slightly darker window, a sidebar,
-//! one accent) with ZhuyinType's own accent taken from the app icon.  Light and dark are complete sets; the system
-//! appearance picks one and switching is live.
+//! ZhuyinType's own design language for Linux and Windows: not a copy of macOS nor of Windows.  Warm neutral
+//! surfaces, monochrome line icons, hairline dividers between rows instead of filled cards, one calm indigo accent
+//! used sparingly, Inter for Latin text and digits over the system's CJK font.  The window is the sidebar's colour;
+//! the page sits on an inset rounded surface.  Light and dark are complete sets; the system appearance picks one and
+//! switching is live.
 
 use std::time::Duration;
 
@@ -13,12 +15,16 @@ use gpui_kit::{App, Global, Hsla, Pixels, Window, WindowAppearance, px, rgb, rgb
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub dark: bool,
-    /// The window behind the cards.
+    /// The window: title bar and the frame around the page surface.
     pub window: Hsla,
-    /// The sidebar and the title bar over it.
+    /// The sidebar (the same as the window: one continuous frame).
     pub sidebar: Hsla,
-    /// Cards that group rows.
+    /// The page surface the content sits on.
+    pub surface: Hsla,
+    /// Raised things: inputs, menus, popovers, demo frames.
     pub card: Hsla,
+    /// A faint fill: key caps, segment tracks, chips, the selected sidebar row.
+    pub subtle: Hsla,
     /// A row under the pointer.
     pub hover: Hsla,
     /// A pressed control.
@@ -67,52 +73,56 @@ impl Palette {
     pub fn light() -> Self {
         Self {
             dark: false,
-            window: c(0xf3f3f5),
-            sidebar: c(0xe9e9ec),
+            window: c(0xf1efe9),
+            sidebar: c(0xf1efe9),
+            surface: c(0xfbfaf7),
             card: c(0xffffff),
-            hover: ca(0x0000000a),
-            pressed: ca(0x00000014),
-            separator: ca(0x0000001a),
-            text: c(0x1d1d1f),
-            text_secondary: c(0x6e6e73),
-            text_tertiary: c(0x9a9aa0),
-            accent: c(0x2f6bf2),
+            subtle: ca(0x1e1c180d),
+            hover: ca(0x1e1c180a),
+            pressed: ca(0x1e1c1814),
+            separator: ca(0x1e1c1817),
+            text: c(0x1f1e1b),
+            text_secondary: c(0x6b6962),
+            text_tertiary: c(0x9d9a92),
+            accent: c(0x4257d8),
             on_accent: c(0xffffff),
-            accent_faint: ca(0x2f6bf21f),
+            accent_faint: ca(0x4257d81c),
             control: c(0xffffff),
-            control_border: ca(0x00000024),
+            control_border: ca(0x1e1c1824),
             knob: c(0xffffff),
-            danger: c(0xe5484d),
-            success: c(0x2fa84f),
-            panel: ca(0xfbfbfdf5),
-            panel_border: ca(0x0000001f),
-            shadow: ca(0x00000026),
+            danger: c(0xd5483f),
+            success: c(0x2f8f5b),
+            panel: ca(0xfffffff7),
+            panel_border: ca(0x1e1c181f),
+            shadow: ca(0x1e1c1822),
         }
     }
 
     pub fn dark() -> Self {
         Self {
             dark: true,
-            window: c(0x1c1c1f),
-            sidebar: c(0x232327),
-            card: c(0x2a2a2e),
-            hover: ca(0xffffff0d),
-            pressed: ca(0xffffff1a),
-            separator: ca(0xffffff17),
-            text: c(0xf2f2f4),
-            text_secondary: c(0xa1a1a8),
-            text_tertiary: c(0x6f6f76),
-            accent: c(0x4b82ff),
-            on_accent: c(0xffffff),
-            accent_faint: ca(0x4b82ff2e),
-            control: c(0x3a3a3f),
-            control_border: ca(0xffffff1f),
-            knob: c(0xf5f5f7),
-            danger: c(0xff6369),
-            success: c(0x46c46a),
-            panel: ca(0x2a2a2ef5),
-            panel_border: ca(0xffffff24),
-            shadow: ca(0x00000066),
+            window: c(0x1b1a18),
+            sidebar: c(0x1b1a18),
+            surface: c(0x232220),
+            card: c(0x2c2b28),
+            subtle: ca(0xfffcf00f),
+            hover: ca(0xfffcf00b),
+            pressed: ca(0xfffcf017),
+            separator: ca(0xfffcf014),
+            text: c(0xedebe5),
+            text_secondary: c(0xa6a39b),
+            text_tertiary: c(0x716f68),
+            accent: c(0x8a9cf5),
+            on_accent: c(0x14151f),
+            accent_faint: ca(0x8a9cf526),
+            control: c(0x2c2b28),
+            control_border: ca(0xfffcf01f),
+            knob: c(0xf5f3ee),
+            danger: c(0xf0766d),
+            success: c(0x5cc28a),
+            panel: ca(0x2c2b28f7),
+            panel_border: ca(0xfffcf024),
+            shadow: ca(0x0000006b),
         }
     }
 }
@@ -121,37 +131,44 @@ impl Palette {
 pub mod size {
     use super::*;
 
-    pub const TITLE_BAR: Pixels = px(40.);
-    pub const SIDEBAR: Pixels = px(216.);
-    pub const SIDEBAR_ROW: Pixels = px(34.);
-    pub const SIDEBAR_ICON: Pixels = px(22.);
+    pub const TITLE_BAR: Pixels = px(44.);
+    pub const SIDEBAR: Pixels = px(228.);
+    pub const SIDEBAR_ROW: Pixels = px(32.);
+    pub const SIDEBAR_ICON: Pixels = px(16.);
+    /// The page surface's inset from the window edge (right and bottom; the sidebar is on the left).
+    pub const SURFACE_INSET: Pixels = px(8.);
     /// The page's content column never grows past this, centred in wide windows.
-    pub const CONTENT_MAX: Pixels = px(720.);
-    pub const PAGE_PADDING_X: Pixels = px(28.);
-    pub const PAGE_PADDING_TOP: Pixels = px(20.);
-    pub const SECTION_GAP: Pixels = px(22.);
-    pub const ROW_MIN: Pixels = px(44.);
-    pub const ROW_PADDING_X: Pixels = px(14.);
-    pub const ROW_PADDING_Y: Pixels = px(9.);
+    pub const CONTENT_MAX: Pixels = px(760.);
+    pub const PAGE_PADDING_X: Pixels = px(36.);
+    pub const PAGE_PADDING_TOP: Pixels = px(28.);
+    pub const SECTION_GAP: Pixels = px(32.);
+    pub const ROW_MIN: Pixels = px(52.);
+    pub const ROW_PADDING_X: Pixels = px(10.);
+    pub const ROW_PADDING_Y: Pixels = px(12.);
+    pub const RADIUS_SURFACE: Pixels = px(12.);
     pub const RADIUS_CARD: Pixels = px(10.);
-    pub const RADIUS_CONTROL: Pixels = px(6.);
-    pub const RADIUS_SMALL: Pixels = px(4.);
+    pub const RADIUS_CONTROL: Pixels = px(8.);
+    pub const RADIUS_SMALL: Pixels = px(6.);
+    pub const CONTROL_H: Pixels = px(30.);
     pub const WINDOW_MIN_W: Pixels = px(640.);
     pub const WINDOW_MIN_H: Pixels = px(440.);
-    pub const WINDOW_W: Pixels = px(860.);
-    pub const WINDOW_H: Pixels = px(600.);
+    pub const WINDOW_W: Pixels = px(900.);
+    pub const WINDOW_H: Pixels = px(640.);
 }
 
 /// Text sizes.
 pub mod text {
     use super::*;
 
+    /// The page's own title.
+    pub const PAGE_TITLE: Pixels = px(22.);
     pub const TITLE: Pixels = px(20.);
     pub const HEADLINE: Pixels = px(15.);
     pub const BODY: Pixels = px(14.);
-    pub const SUBTITLE: Pixels = px(12.5);
-    pub const SECTION: Pixels = px(12.5);
-    pub const CAPTION: Pixels = px(11.5);
+    pub const SUBTITLE: Pixels = px(13.);
+    /// Section headings: primary colour, semibold, a little larger than body.
+    pub const SECTION: Pixels = px(14.5);
+    pub const CAPTION: Pixels = px(12.);
 }
 
 /// Motion: the macOS app's durations.  Every animation checks `Motion::reduced` first.
@@ -165,9 +182,43 @@ pub mod motion {
     pub const PAGE_TURN: Duration = Duration::from_millis(140);
 }
 
-/// The fonts, in fallback order: the UI font of each system, then a CJK font that has Zhuyin.
+/// The UI font: Inter (bundled, `assets/fonts`) for Latin text and digits; CJK and Zhuyin fall back to the
+/// system's font.
 pub fn ui_font() -> &'static str {
-    if cfg!(target_os = "windows") { "Microsoft JhengHei UI" } else { "Noto Sans CJK TC" }
+    "Inter"
+}
+
+/// The CJK fonts, in fallback order, for each system.
+pub fn cjk_fallbacks() -> Vec<String> {
+    let list: &[&str] = if cfg!(target_os = "windows") {
+        &["Microsoft JhengHei UI", "Microsoft JhengHei", "Segoe UI Symbol", "Segoe UI Emoji"]
+    } else {
+        &["Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "WenQuanYi Micro Hei", "Noto Color Emoji"]
+    };
+    list.iter().map(|name| (*name).to_owned()).collect()
+}
+
+/// The font every view starts from: Inter with the CJK fallbacks.
+pub fn font() -> gpui_kit::Font {
+    gpui_kit::Font {
+        family: ui_font().into(),
+        features: gpui_kit::FontFeatures::default(),
+        fallbacks: Some(gpui_kit::FontFallbacks::from_fonts(cjk_fallbacks())),
+        weight: gpui_kit::FontWeight::NORMAL,
+        style: gpui_kit::FontStyle::Normal,
+    }
+}
+
+/// Registers the bundled fonts with the text system.  Call once at start-up.
+pub fn load_fonts(cx: &App) {
+    let fonts: Vec<std::borrow::Cow<'static, [u8]>> = vec![
+        std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/Inter-Regular.ttf")),
+        std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/Inter-Medium.ttf")),
+        std::borrow::Cow::Borrowed(include_bytes!("../assets/fonts/Inter-SemiBold.ttf")),
+    ];
+    if let Err(error) = cx.text_system().add_fonts(fonts) {
+        log::warn!("loading the bundled fonts: {error:#}");
+    }
 }
 
 /// The current palette and appearance, a global every view reads.
@@ -224,9 +275,9 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     theme.radius_lg = size::RADIUS_CARD;
     theme.shadow = true;
     let colors = &mut theme.colors;
-    colors.background = p.window;
+    colors.background = p.surface;
     colors.foreground = p.text;
-    colors.muted = p.control;
+    colors.muted = p.subtle;
     colors.muted_foreground = p.text_secondary;
     colors.border = p.separator;
     colors.input = p.control_border;
@@ -236,6 +287,10 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.accent = p.hover;
     colors.accent_foreground = p.text;
     colors.popover = p.card;
+    colors.secondary = p.subtle;
+    colors.secondary_foreground = p.text;
+    colors.secondary_hover = p.pressed;
+    colors.secondary_active = p.pressed;
     colors.popover_foreground = p.text;
     colors.selection = p.accent_faint;
     colors.switch = if p.dark { c(0x48484e) } else { c(0xd5d5da) };

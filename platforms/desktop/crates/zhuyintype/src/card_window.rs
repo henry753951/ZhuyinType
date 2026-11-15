@@ -35,7 +35,7 @@ impl Render for CardWindow {
             Some((title, content)) => ui::info_card(title.into(), content(window, cx), cx),
             None => div().p(px(20.)).child(format!("沒有 {} 這張說明卡", self.id)).into_any_element(),
         };
-        div().size_full().bg(p.window).text_color(p.text).font_family(theme::ui_font()).p(px(16.)).child(
+        div().size_full().bg(p.window).text_color(p.text).font(theme::font()).p(px(16.)).child(
             div().rounded(sz::RADIUS_CARD).bg(p.card).border_1().border_color(p.separator).shadow_lg().child(content),
         )
     }

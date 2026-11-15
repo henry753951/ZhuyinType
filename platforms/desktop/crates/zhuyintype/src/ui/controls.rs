@@ -71,16 +71,19 @@ pub fn popup_button<T: Clone + PartialEq + 'static>(
             gpui_kit::component::button::ButtonCustomVariant::new(cx)
                 .color(p.control)
                 .foreground(p.text)
-                .hover(p.control)
+                .hover(p.subtle)
                 .active(p.pressed)
-                .shadow(true),
+                .shadow(false),
         )
+        .h(size::CONTROL_H)
+        .px(px(10.))
+        .rounded(size::RADIUS_CONTROL)
         .border_1()
         .border_color(p.control_border)
         .child(
-            h().gap(px(6.))
+            h().gap(px(8.))
                 .child(div().text_size(text::BODY).child(label))
-                .child(Icon::new(IconName::ChevronsUpDown).size(px(12.)).text_color(p.text_secondary)),
+                .child(Icon::new(IconName::ChevronDown).size(px(14.)).text_color(p.text_tertiary)),
         )
         .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
             for (label, value) in options.iter().cloned() {
@@ -107,18 +110,24 @@ pub fn segmented<T: Clone + PartialEq + 'static>(
     let p = theme::palette(cx);
     let id = id.into();
     let on_pick = Rc::new(on_pick);
-    h().p(px(2.)).gap(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.pressed).children(options.into_iter().enumerate().map(
+    h().p(px(3.)).gap(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.subtle).children(options.into_iter().enumerate().map(
         |(index, (label, value))| {
             let selected = value == current;
             let on_pick = on_pick.clone();
             div()
                 .id(SharedString::from(format!("{id}-{index}")))
-                .px(px(10.))
-                .py(px(3.))
+                .px(px(12.))
+                .py(px(4.))
                 .rounded(size::RADIUS_SMALL)
                 .text_size(text::SUBTITLE)
                 .cursor_pointer()
-                .when(selected, |this| this.bg(p.control).shadow_sm().text_color(p.text))
+                .when(selected, |this| {
+                    this.bg(p.card)
+                        .border_1()
+                        .border_color(p.control_border)
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(p.text)
+                })
                 .when(!selected, |this| this.text_color(p.text_secondary).hover(|style| style.text_color(p.text)))
                 .on_click(move |_, window, cx| on_pick(value.clone(), window, cx))
                 .child(label)
@@ -128,7 +137,7 @@ pub fn segmented<T: Clone + PartialEq + 'static>(
 
 /// The › at the end of a row that goes somewhere.
 pub fn chevron(cx: &App) -> impl IntoElement {
-    Icon::new(IconName::ChevronRight).size(px(13.)).text_color(theme::palette(cx).text_tertiary)
+    Icon::new(IconName::ChevronRight).size(px(15.)).text_color(theme::palette(cx).text_tertiary)
 }
 
 /// A key drawn as a key cap ("⇧", "空白", "Return").  `tint`: a conflict (red) or a highlight.
@@ -160,18 +169,17 @@ impl RenderOnce for Keycap {
         let p = theme::palette(cx);
         let tint = self.tint.unwrap_or(p.text_secondary);
         div()
-            .h(if self.large { px(26.) } else { px(21.) })
-            .min_w(if self.large { px(26.) } else { px(21.) })
-            .px(px(6.))
+            .h(if self.large { px(26.) } else { px(22.) })
+            .min_w(if self.large { px(26.) } else { px(22.) })
+            .px(px(7.))
             .flex()
             .items_center()
             .justify_center()
             .rounded(size::RADIUS_SMALL)
-            .bg(p.control)
+            .bg(p.subtle)
             .border_1()
-            .border_color(if self.tint.is_some() { tint } else { p.control_border })
-            .border_b_2()
-            .text_size(if self.large { text::BODY } else { text::SUBTITLE })
+            .border_color(if self.tint.is_some() { tint } else { p.separator })
+            .text_size(if self.large { text::BODY } else { text::CAPTION })
             .font_weight(FontWeight::MEDIUM)
             .text_color(if self.tint.is_some() { tint } else { p.text })
             .child(self.label)
@@ -197,7 +205,7 @@ pub fn info_button(
         .trigger(
             Button::new("info-trigger")
                 .ghost()
-                .xsmall()
+                .small()
                 .icon(Icon::new(IconName::Info).size(px(16.)).text_color(p.text_tertiary))
                 .tooltip(title.clone()),
         )

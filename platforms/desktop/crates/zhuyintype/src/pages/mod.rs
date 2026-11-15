@@ -147,3 +147,8 @@ pub fn subpage_title(page: Page, id: &str) -> Option<&'static str> {
         Page::About => about::subpage_title(id),
     }
 }
+
+/// Whether the shell draws the page's large title above it (介紹 opens with its own header instead).
+pub fn shows_title(page: Page, subpage: Option<&str>) -> bool {
+    !(page == Page::Intro && subpage.is_none())
+}

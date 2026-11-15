@@ -107,6 +107,7 @@ fn main() {
     );
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        theme::load_fonts(cx);
         cx.set_global(app::AppState { settings, service, service_error });
         if let Some(events) = events {
             run_events(events, cx);

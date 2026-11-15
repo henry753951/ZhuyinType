@@ -2,7 +2,7 @@
 
 Linux 與 Windows 的前端是一個 Rust 行程：用 [GPUI](https://www.gpui.rs/)（透過 `gpui-kit`）繪製設定視窗、候選字視窗、中英提示與設定嚮導，持有引擎，並接受原生輸入法介面的連線。它取代了 Qt 客戶端（2026-11 移除）。
 
-**功能與版面和 macOS 版相同**：頁面、區塊、設定列、子頁面、嚮導步驟、候選字視窗的各種樣式與頁面之間的連結，順序與文字都一樣（`platforms/macos/Sources/ZhuyinTypeApp/UI/`）。視覺是 ZhuyinType 自己的一套（`crates/zhuyintype/src/theme.rs` 的 token），動態沿用 macOS 版（時間長度、140 ms 翻頁、子頁面推入與返回），層次也相同（卡片上的分組設定列）。視窗不使用系統邊框：標題列與視窗按鈕由 App 自己繪製，和 Discord、Claude 桌面版一樣。
+**功能與版面和 macOS 版相同**：頁面、區塊、設定列、子頁面、嚮導步驟、候選字視窗的各種樣式與頁面之間的連結，順序與文字都一樣（`platforms/macos/Sources/ZhuyinTypeApp/UI/`）。視覺是 ZhuyinType 自己的一套現代設計語言（`crates/zhuyintype/src/theme.rs` 的 token），不模仿 macOS，也不模仿 Windows 原生外觀：暖色中性的表面、單色線條圖示、以細分隔線區隔設定列而不是填色卡片、強調色只用在少數地方，拉丁文字與數字用內嵌的 Inter，中文用系統字型。動態沿用 macOS 版的節奏（140 ms 翻頁、子頁面推入與返回）。macOS 版維持原生外觀，不受影響。視窗不使用系統邊框：標題列與視窗按鈕由 App 自己繪製，和 Discord、Claude 桌面版一樣。
 
 ## 目錄
 
