@@ -147,6 +147,11 @@ impl StoryClock {
         if reduced {
             clock.index = resting.unwrap_or(last).min(last);
         }
+        // `ZT_DEMO_FRAME=N`: every demo holds still on frame N (the last one when shorter), for screenshots.
+        if let Some(frame) = std::env::var("ZT_DEMO_FRAME").ok().and_then(|text| text.parse::<usize>().ok()) {
+            clock.index = frame.min(last);
+            clock.playing = false;
+        }
         clock.schedule(cx);
         clock
     }
@@ -515,7 +520,8 @@ impl RenderOnce for MiniDemo {
                 field(cx).h(px(if has_list { 112. } else { 38. })).px(px(10.)).py(px(8.)).child(
                     v().gap(px(4.))
                         .child(demo_line(frame.line.clone()).caret(frame.caret))
-                        .when_some(frame.list.clone(), |this, list| this.child(mini_list(list))),
+                        // In a row, so the list keeps its own width as the candidate window does.
+                        .when_some(frame.list.clone(), |this, list| this.child(h().child(mini_list(list)))),
                 ),
             )
             .child(
