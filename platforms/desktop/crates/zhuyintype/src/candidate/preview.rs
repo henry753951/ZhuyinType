@@ -18,7 +18,7 @@ use gpui_kit::{
 use zt_core::presentation::Presentation;
 use zt_core::settings::Settings;
 
-use super::layout::{Extras, WindowMeasure};
+use super::layout::{Extras, Measure as _, WindowMeasure};
 use super::panel::CandidatePanel;
 use super::sample;
 use super::scene::{Card, Scene, SceneLayout, focus, scene_card, seg};
@@ -26,7 +26,7 @@ use super::style::{CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_k
 use crate::app;
 use crate::pages::Page;
 use crate::theme::{self, size, text};
-use crate::ui::{h, v};
+use crate::ui::{self, h, v};
 
 /// What the preview can show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -606,6 +606,7 @@ impl Render for UnifiedPreview {
         let scene = frames[frame].clone();
         let scene_width = geometry.scene_width;
         let scene_height = geometry.heights.iter().find(|(s, _)| *s == state).map_or(120., |(_, h)| *h);
+        let stage_height = geometry.heights.iter().map(|(_, h)| *h).fold(scene_height, f32::max);
         let mut layout = SceneLayout::new(&scene, scene_width, &style, above, &mut WindowMeasure(window));
         layout.fit(scene_height);
 
@@ -658,37 +659,25 @@ impl Render for UnifiedPreview {
                         .text_color(p.text_secondary)
                         .child(SharedString::from(note_text(state, &settings, &keys))),
                 )
-                .with_animation(
-                    SharedString::from(format!("note-{}", self.generation)),
-                    Animation::new(Duration::from_millis(340)),
-                    |this, t| this.opacity(((t - 0.35) / 0.65).clamp(0., 1.)),
-                )
         });
-        let tabs = self.tabs.then(|| {
-            div().flex().flex_row().flex_wrap().gap(px(6.)).children(flows.states.iter().map(|&tab| {
-                let selected = tab == state;
-                div()
-                    .id(SharedString::from(format!("preview-tab-{tab:?}")))
-                    .h(px(24.))
-                    .px(px(10.))
-                    .flex()
-                    .items_center()
-                    .rounded_full()
-                    .cursor_pointer()
-                    .text_size(text::SUBTITLE)
-                    .when(selected, |this| {
-                        this.bg(p.accent_faint).text_color(p.accent).font_weight(FontWeight::SEMIBOLD)
-                    })
-                    .when(!selected, |this| {
-                        this.bg(p.hover).text_color(p.text_secondary).hover(|style| style.text_color(p.text))
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.show(tab, false);
-                        cx.notify();
-                    }))
-                    .child(tab.title())
-            }))
-        });
+        // The first state is drawn at once; a new state cross-fades in (never from nothing, so the preview is never
+        // blank, not even for a frame).
+        let generation = self.generation;
+        let fade_in = move |element: gpui_kit::Div, name: &str| -> AnyElement {
+            if generation == 0 {
+                element.into_any_element()
+            } else {
+                element
+                    .with_animation(
+                        SharedString::from(format!("{name}-{generation}")),
+                        Animation::new(Duration::from_millis(220)),
+                        |this, t| this.opacity(0.35 + 0.65 * t),
+                    )
+                    .into_any_element()
+            }
+        };
+        let note = note.map(|note| fade_in(note, "note"));
+        let tabs = self.tabs.then(|| self.tabs(&flows.states, state, available, window, cx));
         let width_probe = {
             let width = self.width.clone();
             let in_view = self.in_view.clone();
@@ -696,7 +685,8 @@ impl Render for UnifiedPreview {
             canvas(
                 move |bounds: Bounds<Pixels>, window, cx| {
                     let w = f32::from(bounds.size.width);
-                    if (w - width.get()).abs() > 0.5 {
+                    // Not laid out yet (0 wide): keep the last width rather than drawing a scene 0 wide.
+                    if w >= 1. && (w - width.get()).abs() > 0.5 {
                         width.set(w);
                         window.refresh();
                     }
@@ -724,15 +714,13 @@ impl Render for UnifiedPreview {
                 h().relative()
                     .w_full()
                     .min_w(px(0.))
+                    // As tall as the tallest state, so the box never jumps (nor collapses) between states.
+                    .min_h(px(stage_height))
                     .overflow_hidden()
                     .items_start()
                     .gap(px(NOTE_GAP))
                     .child(width_probe)
-                    .child(div().flex_shrink_0().child(card).with_animation(
-                        SharedString::from(format!("scene-{}", self.generation)),
-                        Animation::new(Duration::from_millis(340)),
-                        |this, t| this.opacity(((t - 0.35) / 0.65).clamp(0., 1.)),
-                    ))
+                    .child(fade_in(div().flex_shrink_0().child(card), "scene"))
                     .children(note),
             )
             .children(flash)
@@ -740,6 +728,65 @@ impl Render for UnifiedPreview {
 }
 
 impl UnifiedPreview {
+    /// The state tabs: the settings' segmented control (neutral: the picked one raised on a faint track), wrapped onto
+    /// more lines when the preview is too narrow for one.
+    fn tabs(
+        &self,
+        states: &[PreviewState],
+        current: PreviewState,
+        available: f32,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let preview = cx.entity().downgrade();
+        let pick = move |tab: PreviewState, _: &mut Window, cx: &mut App| {
+            let _ = preview.update(cx, |preview, cx| {
+                preview.show(tab, false);
+                cx.notify();
+            });
+        };
+        let mut measure = WindowMeasure(window);
+        let needed: f32 = states.iter().map(|state| measure.width(state.title(), 13., true) + 26.).sum::<f32>()
+            + states.len() as f32 * 2.
+            + 8.;
+        if needed <= available {
+            let options = states.iter().map(|state| (SharedString::from(state.title()), *state)).collect();
+            return div().flex().child(ui::segmented("preview-tabs", options, current, pick, cx)).into_any_element();
+        }
+        let p = theme::palette(cx);
+        let pick = Rc::new(pick);
+        div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .p(px(3.))
+            .gap(px(2.))
+            .rounded(size::RADIUS_CONTROL)
+            .bg(p.subtle)
+            .children(states.iter().map(|&tab| {
+                let selected = tab == current;
+                let pick = pick.clone();
+                div()
+                    .id(SharedString::from(format!("preview-tab-{tab:?}")))
+                    .px(px(12.))
+                    .py(px(4.))
+                    .rounded(size::RADIUS_SMALL)
+                    .text_size(text::SUBTITLE)
+                    .cursor_pointer()
+                    .when(selected, |this| {
+                        this.bg(p.card)
+                            .border_1()
+                            .border_color(p.control_border)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(p.text)
+                    })
+                    .when(!selected, |this| this.text_color(p.text_secondary).hover(|style| style.text_color(p.text)))
+                    .on_click(move |_, window, cx| pick(tab, window, cx))
+                    .child(tab.title())
+            }))
+            .into_any_element()
+    }
+
     /// The floating preview after a change: beside the pointer, above it when there is room.
     fn flash_overlay(
         &mut self,
