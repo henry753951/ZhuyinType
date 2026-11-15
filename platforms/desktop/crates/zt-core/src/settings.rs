@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context as _, Result};
 use parking_lot::RwLock;
@@ -100,8 +101,12 @@ impl Descriptor {
         match self.kind {
             Kind::Toggle => value.is_boolean(),
             Kind::Choice => self.options.iter().any(|choice| &choice.value == value),
+            // Every number setting is whole (font size, candidates per page).
             Kind::Number => value.as_f64().is_some_and(|number| {
-                self.min.is_none_or(|min| number >= min) && self.max.is_none_or(|max| number <= max)
+                number.is_finite()
+                    && number.fract() == 0.0
+                    && self.min.is_none_or(|min| number >= min)
+                    && self.max.is_none_or(|max| number <= max)
             }),
             Kind::Text => value.is_string(),
         }
@@ -131,6 +136,7 @@ struct Inner {
     path: Option<PathBuf>,
     values: RwLock<BTreeMap<String, Value>>,
     listeners: RwLock<Vec<Listener>>,
+    revision: AtomicU64,
 }
 
 impl Settings {
@@ -138,7 +144,14 @@ impl Settings {
     /// tests).
     pub fn open(path: Option<PathBuf>) -> Self {
         let values = path.as_deref().and_then(|path| read(path).ok()).unwrap_or_default();
-        Self { inner: Arc::new(Inner { path, values: RwLock::new(values), listeners: RwLock::default() }) }
+        Self {
+            inner: Arc::new(Inner {
+                path,
+                values: RwLock::new(values),
+                listeners: RwLock::default(),
+                revision: AtomicU64::new(0),
+            }),
+        }
     }
 
     /// The value of `key`: the stored one when valid, else the default.
@@ -180,10 +193,64 @@ impl Settings {
         if self.get(key) == value {
             return Ok(());
         }
-        self.inner.values.write().insert(key.to_owned(), value);
-        self.save()?;
+        let previous = self.inner.values.write().insert(key.to_owned(), value);
+        if let Err(error) = self.save() {
+            let mut values = self.inner.values.write();
+            match previous {
+                Some(previous) => values.insert(key.to_owned(), previous),
+                None => values.remove(key),
+            };
+            return Err(error);
+        }
         self.notify(key);
         Ok(())
+    }
+
+    /// Sets several values at once, all or none (the wizard's copy and 套用).  Unknown keys are stored as they are.
+    ///
+    /// # Errors
+    /// When a value is invalid (nothing changes) or the file cannot be written (nothing changes).
+    pub fn assign(&self, values: &BTreeMap<String, Value>) -> Result<()> {
+        for (key, value) in values {
+            if let Some(descriptor) = descriptor(key) {
+                anyhow::ensure!(descriptor.accepts(value), "「{}」的值無效。", descriptor.title);
+            }
+        }
+        let changed: Vec<String> = values.iter().filter(|(k, v)| self.get(k) != **v).map(|(k, _)| k.clone()).collect();
+        if changed.is_empty() {
+            return Ok(());
+        }
+        let before = self.inner.values.read().clone();
+        self.inner.values.write().extend(values.iter().map(|(k, v)| (k.clone(), v.clone())));
+        if let Err(error) = self.save() {
+            *self.inner.values.write() = before;
+            return Err(error);
+        }
+        for key in changed {
+            self.notify(&key);
+        }
+        Ok(())
+    }
+
+    /// The stored values (only what differs from the defaults, plus keys without a descriptor).
+    #[must_use]
+    pub fn stored(&self) -> BTreeMap<String, Value> {
+        self.inner.values.read().clone()
+    }
+
+    /// An in-memory copy of these settings (the wizard's and the practice field's sandbox): changes to it never
+    /// reach this store or its file.
+    #[must_use]
+    pub fn sandbox(&self) -> Settings {
+        let copy = Settings::open(None);
+        *copy.inner.values.write() = self.stored();
+        copy
+    }
+
+    /// Increases with every change; cheap to read on every key.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.inner.revision.load(Ordering::Acquire)
     }
 
     /// Back to the default.
@@ -195,9 +262,16 @@ impl Settings {
         Ok(())
     }
 
-    /// Every setting back to its default.
+    /// Every setting of the registry back to its default; other stored values (keys, app lists) stay.
     pub fn reset_all(&self) -> Result<()> {
-        let keys: Vec<String> = std::mem::take(&mut *self.inner.values.write()).into_keys().collect();
+        let keys: Vec<String> = {
+            let mut values = self.inner.values.write();
+            let keys: Vec<String> = values.keys().filter(|key| descriptor(key).is_some()).cloned().collect();
+            for key in &keys {
+                values.remove(key);
+            }
+            keys
+        };
         self.save()?;
         for key in keys {
             self.notify(&key);
@@ -211,6 +285,7 @@ impl Settings {
     }
 
     fn notify(&self, key: &str) {
+        self.inner.revision.fetch_add(1, Ordering::AcqRel);
         for listener in self.inner.listeners.read().iter() {
             listener(key);
         }

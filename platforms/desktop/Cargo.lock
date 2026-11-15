@@ -8424,11 +8424,16 @@ name = "zt-core"
 version = "0.5.3"
 dependencies = [
  "anyhow",
+ "async-channel",
+ "chrono",
  "dirs 6.0.0",
  "log",
  "parking_lot",
+ "rustix",
  "serde",
  "serde_json",
+ "uuid",
+ "windows-sys 0.61.2",
  "zhuyin-core",
 ]
 
