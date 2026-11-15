@@ -1,0 +1,6 @@
+# The same toolchain as engine/ (GPUI needs a recent stable).
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+profile = "minimal"

@@ -1,0 +1,20 @@
+[package]
+name = "zt-core"
+description = "ZhuyinType desktop core without UI: settings, engine session, input controller, shortcuts, statistics, correction log and the input method broker"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zhuyin-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+dirs.workspace = true
+
+[lints]
+workspace = true

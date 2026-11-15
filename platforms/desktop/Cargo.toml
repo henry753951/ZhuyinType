@@ -1,0 +1,44 @@
+# ZhuyinType for Linux and Windows: the GPUI app (settings, candidate window, setup wizard, input method host),
+# its UI-free core, and the Windows TSF text service.  Built on the GPU host, never on the Mac
+# (scripts/build.sh; `tools/zt --remote build desktop`).
+[workspace]
+resolver = "3"
+members = ["crates/zt-core", "crates/zhuyintype"]
+
+[workspace.package]
+edition = "2024"
+version = "0.5.3"
+license = "AGPL-3.0-only"
+publish = false
+rust-version = "1.98"
+
+[workspace.dependencies]
+zhuyin-core = { path = "../../engine/crates/zhuyin-core" }
+zt-core = { path = "crates/zt-core" }
+gpui-kit = { version = "=0.9.1" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+parking_lot = "0.12"
+dirs = "6"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true
+opt-level = 3
+
+# Fast debug builds for the UI loop; dependencies optimised so GPUI stays smooth.
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+[profile.dev.package."*"]
+opt-level = 3
