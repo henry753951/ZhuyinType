@@ -22,14 +22,15 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
-    DwmSetWindowAttribute,
+    DWMWCP_ROUND, DwmSetWindowAttribute,
 };
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE, SW_HIDE,
-    SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, GetWindowRect, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE,
+    SW_HIDE, SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
     SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE, WM_NCDESTROY,
-    WM_NCHITTEST, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    WM_NCHITTEST, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT,
 };
 
 use crate::candidate::platform::DeviceRect;
@@ -96,6 +97,41 @@ unsafe extern "system" fn subclass(
         }
         DefSubclassProc(window, message, wparam, lparam)
     }
+}
+
+/// The settings and wizard windows: the app draws the title bar, but the window keeps everything else of a native
+/// Windows 11 window, as Discord's or Claude's do — rounded corners, the shadow, the minimise/maximise animations,
+/// Snap and Snap Layouts.  GPUI makes its client-drawn windows without `WS_CAPTION`, and Windows gives a window
+/// without a caption none of those; with the caption style back, GPUI's `WM_NCCALCSIZE` still gives the caption's
+/// height to the client area, so no system title bar shows.  Rounded corners are asked for explicitly (Windows 11
+/// leaves them out when the display has no hardware acceleration, as in a basic-display VM).  Call once after the
+/// window opens.
+#[allow(clippy::unnecessary_cast)]
+pub fn native_frame(window: &Window) -> bool {
+    let Some(window) = hwnd(window) else { return false };
+    // SAFETY: the window's own HWND, on its thread; the attribute is a 4-byte value as DWM expects (it fails
+    // harmlessly before Windows 11).
+    unsafe {
+        let style = GetWindowLongPtrW(window, GWL_STYLE) as isize;
+        SetWindowLongPtrW(window, GWL_STYLE, (style | WS_CAPTION.0 as isize) as _);
+        let corner = DWMWCP_ROUND.0 as u32;
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            (&raw const corner).cast(),
+            size_of::<u32>() as u32,
+        );
+        let _ = SetWindowPos(
+            window,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOACTIVATE,
+        );
+    }
+    true
 }
 
 /// Never lets the window take focus: `WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW` (no taskbar button,

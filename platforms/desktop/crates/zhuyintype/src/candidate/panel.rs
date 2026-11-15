@@ -281,7 +281,7 @@ impl CandidatePanel {
             .relative()
             .w(px(layout.width))
             .h(px(layout.height))
-            .when(self.rounded, |this| this.rounded(size::RADIUS_CARD))
+            .when(self.rounded, |this| this.rounded(size::RADIUS_SURFACE))
             .bg(p.panel)
             .border_1()
             .border_color(p.panel_border)
@@ -331,7 +331,7 @@ impl CandidatePanel {
                         .w(px(selected.w))
                         .h(px(selected.h - 2.))
                         .rounded(px(layout.row_radius))
-                        .bg(p.accent_faint),
+                        .bg(p.selection),
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
@@ -398,15 +398,25 @@ fn at(frame: Frame) -> Div {
     div().absolute().left(px(frame.x)).top(px(frame.y)).w(px(frame.w)).h(px(frame.h))
 }
 
-/// The floating surface's shadow: one soft shadow under a hairline border.
+/// The floating surface's shadow under its hairline border: a tight contact shadow and a wide soft one, the way
+/// modern menus and command palettes float.
 pub fn surface_shadow(p: &Palette) -> Vec<BoxShadow> {
-    vec![BoxShadow {
-        color: p.shadow,
-        offset: point(px(0.), px(4.)),
-        blur_radius: px(16.),
-        spread_radius: px(0.),
-        inset: false,
-    }]
+    vec![
+        BoxShadow {
+            color: p.shadow.opacity(0.6),
+            offset: point(px(0.), px(1.)),
+            blur_radius: px(2.),
+            spread_radius: px(0.),
+            inset: false,
+        },
+        BoxShadow {
+            color: p.shadow,
+            offset: point(px(0.), px(8.)),
+            blur_radius: px(24.),
+            spread_radius: px(-4.),
+            inset: false,
+        },
+    ]
 }
 
 /// The room a floating window keeps around its surface for the shadow.
@@ -428,10 +438,10 @@ fn page_element(
         let frame = row.frame;
         let index = row.index;
         let small = fs * 0.68;
-        // The selection is an accent-tinted fill (drawn under the pages); its text takes the accent.
-        let text_color = if selected { p.accent } else { p.text };
-        let key_color = if selected { p.accent } else { p.text_secondary };
-        let annotation_color = if selected { p.accent.opacity(0.75) } else { p.text_tertiary };
+        // The selection is a neutral fill (drawn under the pages); its number and reading come forward.
+        let text_color = p.text;
+        let key_color = if selected { p.text_secondary } else { p.text_tertiary };
+        let annotation_color = if selected { p.text_secondary } else { p.text_tertiary };
         let actions = actions.clone();
         let cell = |left: f32, width: f32| {
             div().absolute().left(px(left)).top_0().bottom_0().w(px(width.max(0.))).flex().items_center()
@@ -477,7 +487,7 @@ fn page_element(
     }))
 }
 
-/// A key cap of the reading row or the footer: a rounded outline (or the accent, filled, while on).
+/// A key cap of the reading row or the footer: a rounded outline (filled, while on).
 fn keycap(width: f32, height: f32, key: &str, on: bool, p: &Palette) -> Div {
     div()
         .absolute()
@@ -489,9 +499,9 @@ fn keycap(width: f32, height: f32, key: &str, on: bool, p: &Palette) -> Div {
         .items_center()
         .justify_center()
         .rounded(size::RADIUS_SMALL)
-        .when(on, |this| this.bg(p.accent_faint).text_color(p.accent))
+        .when(on, |this| this.bg(p.selection).border_1().border_color(p.control_border).text_color(p.text))
         .when(!on, |this| this.border_1().border_color(p.control_border).text_color(p.text_secondary))
-        .child(key_glyphs(key, SMALL_FONT, if on { p.accent } else { p.text_secondary }))
+        .child(key_glyphs(key, SMALL_FONT, if on { p.text } else { p.text_secondary }))
 }
 
 /// A key's label with the symbols every system draws differently (⇧ ↑ ↓ ← → ↩) as icons, so key caps look the same
@@ -558,7 +568,7 @@ fn toggle_element(
     action: PopupAction,
     actions: Option<ActionHandler>,
 ) -> impl IntoElement {
-    let color = if toggle.on { p.accent } else { p.text_secondary };
+    let color = if toggle.on { p.text } else { p.text_secondary };
     at(toggle.frame)
         .id(toggle.label)
         .child(keycap(toggle.keycap_w, KEYCAP_HEIGHT, &toggle.key, toggle.on, p))

@@ -27,6 +27,8 @@ for page in "${pages[@]}"; do
     spec=$page; name=${spec//\//-}; name=${name//#/-}
     extra=()
     if [ -n "${ZT_SHOT_SIZE:-}" ]; then extra+=(--size "$ZT_SHOT_SIZE"); name=$name-$ZT_SHOT_SIZE; fi
+    case $spec in panel:*) extra+=(--panel "${spec#panel:}"); name=panel-${spec#panel:}; spec=intro;; esac
+    case $spec in wizard:*) extra+=(--wizard "${ZT_WIZARD:-quick@${spec#wizard:}}"); name=wizard-${spec#wizard:}; spec=intro;; esac
     case $spec in popover:*) extra+=(--popover "${spec#popover:}"); name=popover-${spec#popover:}${ZT_SHOT_SIZE:+-$ZT_SHOT_SIZE}; spec=intro;; esac
     case $spec in *'#'*) extra+=(--row "${spec#*#}"); spec=${spec%%#*};; esac
     case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac

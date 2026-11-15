@@ -515,6 +515,8 @@ fn open_window(mode: Mode, opening: Opening, cx: &mut App) -> anyhow::Result<(An
         if !cx.has_global::<theme::Tokens>() {
             theme::init(window.appearance(), cx);
         }
+        #[cfg(windows)]
+        crate::platform::windows::native_frame(window);
         cx.new(|cx| WizardWindow::new(mode, dark, still, window, cx))
     })?;
     cx.set_global(OpenWizard(Some((handle, view.clone()))));

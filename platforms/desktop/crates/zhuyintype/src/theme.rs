@@ -25,6 +25,8 @@ pub struct Palette {
     pub card: Hsla,
     /// A faint fill: key caps, segment tracks, chips, the selected sidebar row.
     pub subtle: Hsla,
+    /// The selected candidate and other selected list rows: a neutral fill, never the accent.
+    pub selection: Hsla,
     /// A row under the pointer.
     pub hover: Hsla,
     /// A pressed control.
@@ -78,6 +80,7 @@ impl Palette {
             surface: c(0xfbfaf7),
             card: c(0xffffff),
             subtle: ca(0x1e1c180d),
+            selection: ca(0x1e1c1814),
             hover: ca(0x1e1c180a),
             pressed: ca(0x1e1c1814),
             separator: ca(0x1e1c1817),
@@ -92,7 +95,7 @@ impl Palette {
             knob: c(0xffffff),
             danger: c(0xd5483f),
             success: c(0x2f8f5b),
-            panel: ca(0xfffffff7),
+            panel: c(0xfefdfb),
             panel_border: ca(0x1e1c181f),
             shadow: ca(0x1e1c1822),
         }
@@ -106,6 +109,7 @@ impl Palette {
             surface: c(0x232220),
             card: c(0x2c2b28),
             subtle: ca(0xfffcf00f),
+            selection: ca(0xfffcf01c),
             hover: ca(0xfffcf00b),
             pressed: ca(0xfffcf017),
             separator: ca(0xfffcf014),
@@ -120,7 +124,7 @@ impl Palette {
             knob: c(0xf5f3ee),
             danger: c(0xf0766d),
             success: c(0x5cc28a),
-            panel: ca(0x2c2b28f7),
+            panel: c(0x2a2927),
             panel_border: ca(0xfffcf024),
             shadow: ca(0x0000006b),
         }
@@ -282,6 +286,8 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     theme.font_size = text::BODY;
     theme.radius = size::RADIUS_CONTROL;
     theme.radius_lg = size::RADIUS_CARD;
+    // Linux with client-side decorations: rounded corners, a hairline and the shadow window_border draws.
+    theme.window_radius = size::RADIUS_SURFACE;
     theme.shadow = true;
     let colors = &mut theme.colors;
     colors.background = p.surface;
@@ -305,6 +311,7 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.switch = if p.dark { c(0x48484e) } else { c(0xd5d5da) };
     colors.title_bar = p.sidebar;
     colors.title_bar_border = p.separator;
+    colors.window_border = if p.dark { ca(0xfffcf021) } else { ca(0x1e1c182e) };
     colors.sidebar = p.sidebar;
     colors.sidebar_foreground = p.text;
     colors.sidebar_border = p.separator;

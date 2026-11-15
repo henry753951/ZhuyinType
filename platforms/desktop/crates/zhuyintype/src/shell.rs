@@ -236,6 +236,8 @@ pub fn open(
         if !cx.has_global::<theme::Tokens>() {
             theme::init(window.appearance(), cx);
         }
+        #[cfg(windows)]
+        crate::platform::windows::native_frame(window);
         cx.new(|cx| SettingsWindow::new(dark, window, cx))
     })?;
     cx.set_global(OpenSettings(Some(handle)));
