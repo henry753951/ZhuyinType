@@ -524,9 +524,9 @@ impl InputController {
         }
         let time = self.clock();
         let tap = self.shift_tap.take();
-        let toggle = tap.is_some_and(|(side, at)| {
-            side == key.shift_side && time >= at && time - at <= SHIFT_TAP_SECONDS
-        }) && self.held_shifts.is_empty()
+        let toggle = tap
+            .is_some_and(|(side, at)| side == key.shift_side && time >= at && time - at <= SHIFT_TAP_SECONDS)
+            && self.held_shifts.is_empty()
             && key.modifiers & !modifier::SHIFT == 0
             && self.settings.bool("shiftSwitch");
         if toggle && !self.secure {
@@ -750,7 +750,9 @@ impl InputController {
             let secure = self.secure;
             let context = self.recent_text.clone();
             if let Some(recorder) = &mut self.recorder {
-                recorder.observe(&input, before, &after, commit, handled, secure, candidate, time, &move || context.clone());
+                recorder.observe(&input, before, &after, commit, handled, secure, candidate, time, &move || {
+                    context.clone()
+                });
             }
         }
         if counting {

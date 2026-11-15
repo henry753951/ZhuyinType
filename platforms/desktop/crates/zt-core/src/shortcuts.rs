@@ -108,32 +108,136 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
         action,
     };
     vec![
-        command("singleCharacterList", "只列一個字", "只列一個字，再按一次還原", "appearance",
-            Some("feature.singleCharacterList"), false, &[b(code::DOWN, SHIFT)], Action::Input(KeyInput::ShiftDown)),
-        command("correctionsList", "列出修正的字", "列出按錯修正的字，再按一次還原", "choosing",
-            Some("feature.correctionsList"), false, &[b(code::UP, SHIFT)], Action::Input(KeyInput::ShiftUp)),
-        command("typeZhuyin", "打出注音本身", "打出注音本身", "choosing", Some("feature.typeZhuyin"), false,
-            &[b(code::QUOTE_LEFT, 0)], Action::Input(KeyInput::Char('`'))),
-        command("nextPage", "下一頁", "下一頁", "appearance", Some("feature.pageKeys"), false,
-            &[b(code::TAB, 0), b(code::PAGE_DOWN, 0), b(code::DOWN, ALT)], Action::Input(KeyInput::Tab)),
-        command("previousPage", "上一頁", "上一頁", "appearance", Some("feature.pageKeys"), false,
-            &[b(code::TAB, SHIFT), b(code::PAGE_UP, 0), b(code::UP, ALT)], Action::Input(KeyInput::ShiftTab)),
-        command("selectLeft", "往左選取", "往左選取，再按 Return 加入自訂詞", "choosing", Some("feature.selectPhrase"),
-            false, &[b(code::LEFT, SHIFT)], Action::Input(KeyInput::ShiftLeft)),
-        command("selectRight", "往右選取", "往右選取，再按 Return 加入自訂詞", "choosing", Some("feature.selectPhrase"),
-            false, &[b(code::RIGHT, SHIFT)], Action::Input(KeyInput::ShiftRight)),
-        command("deleteWord", "刪掉一個詞", "刪掉一個詞", "typing", Some("feature.deleteWord"), false,
-            &[b(code::BACKSPACE, ALT)], Action::Input(KeyInput::OptionBackspace)),
-        command("commitWithNewline", "送出並換行", "送出並換行", "typing", None, true, &[b(code::RETURN, SHIFT)],
-            Action::Input(KeyInput::ShiftEnter)),
-        command("previousCharacter", "改前一個字", "清單開著時改前一個字", "appearance", None, true,
-            &[b(code::LEFT, ALT)], Action::Neighbour(-1)),
-        command("nextCharacter", "改後一個字", "清單開著時改後一個字", "appearance", None, true, &[b(code::RIGHT, ALT)],
-            Action::Neighbour(1)),
-        command("togglePunctuationWidth", "標點全半形", "切換標點全半形", "typing", None, false,
-            &[b(code::SPACE, SHIFT)], Action::TogglePunctuationWidth),
-        command("insertSpace", "插入空白", "在組字中放一個空白", "typing", None, false, &[b(code::SPACE, ALT)],
-            Action::Input(KeyInput::ShiftSpace)),
+        command(
+            "singleCharacterList",
+            "只列一個字",
+            "只列一個字，再按一次還原",
+            "appearance",
+            Some("feature.singleCharacterList"),
+            false,
+            &[b(code::DOWN, SHIFT)],
+            Action::Input(KeyInput::ShiftDown),
+        ),
+        command(
+            "correctionsList",
+            "列出修正的字",
+            "列出按錯修正的字，再按一次還原",
+            "choosing",
+            Some("feature.correctionsList"),
+            false,
+            &[b(code::UP, SHIFT)],
+            Action::Input(KeyInput::ShiftUp),
+        ),
+        command(
+            "typeZhuyin",
+            "打出注音本身",
+            "打出注音本身",
+            "choosing",
+            Some("feature.typeZhuyin"),
+            false,
+            &[b(code::QUOTE_LEFT, 0)],
+            Action::Input(KeyInput::Char('`')),
+        ),
+        command(
+            "nextPage",
+            "下一頁",
+            "下一頁",
+            "appearance",
+            Some("feature.pageKeys"),
+            false,
+            &[b(code::TAB, 0), b(code::PAGE_DOWN, 0), b(code::DOWN, ALT)],
+            Action::Input(KeyInput::Tab),
+        ),
+        command(
+            "previousPage",
+            "上一頁",
+            "上一頁",
+            "appearance",
+            Some("feature.pageKeys"),
+            false,
+            &[b(code::TAB, SHIFT), b(code::PAGE_UP, 0), b(code::UP, ALT)],
+            Action::Input(KeyInput::ShiftTab),
+        ),
+        command(
+            "selectLeft",
+            "往左選取",
+            "往左選取，再按 Return 加入自訂詞",
+            "choosing",
+            Some("feature.selectPhrase"),
+            false,
+            &[b(code::LEFT, SHIFT)],
+            Action::Input(KeyInput::ShiftLeft),
+        ),
+        command(
+            "selectRight",
+            "往右選取",
+            "往右選取，再按 Return 加入自訂詞",
+            "choosing",
+            Some("feature.selectPhrase"),
+            false,
+            &[b(code::RIGHT, SHIFT)],
+            Action::Input(KeyInput::ShiftRight),
+        ),
+        command(
+            "deleteWord",
+            "刪掉一個詞",
+            "刪掉一個詞",
+            "typing",
+            Some("feature.deleteWord"),
+            false,
+            &[b(code::BACKSPACE, ALT)],
+            Action::Input(KeyInput::OptionBackspace),
+        ),
+        command(
+            "commitWithNewline",
+            "送出並換行",
+            "送出並換行",
+            "typing",
+            None,
+            true,
+            &[b(code::RETURN, SHIFT)],
+            Action::Input(KeyInput::ShiftEnter),
+        ),
+        command(
+            "previousCharacter",
+            "改前一個字",
+            "清單開著時改前一個字",
+            "appearance",
+            None,
+            true,
+            &[b(code::LEFT, ALT)],
+            Action::Neighbour(-1),
+        ),
+        command(
+            "nextCharacter",
+            "改後一個字",
+            "清單開著時改後一個字",
+            "appearance",
+            None,
+            true,
+            &[b(code::RIGHT, ALT)],
+            Action::Neighbour(1),
+        ),
+        command(
+            "togglePunctuationWidth",
+            "標點全半形",
+            "切換標點全半形",
+            "typing",
+            None,
+            false,
+            &[b(code::SPACE, SHIFT)],
+            Action::TogglePunctuationWidth,
+        ),
+        command(
+            "insertSpace",
+            "插入空白",
+            "在組字中放一個空白",
+            "typing",
+            None,
+            false,
+            &[b(code::SPACE, ALT)],
+            Action::Input(KeyInput::ShiftSpace),
+        ),
     ]
 });
 
@@ -316,7 +420,9 @@ fn parse(value: &Value) -> Result<State, String> {
         for item in list {
             let row = item.as_object().filter(|row| row.len() == 2).ok_or(UNREADABLE)?;
             let number = |name| {
-                row.get(name).and_then(Value::as_f64).filter(|n| n.fract() == 0.0 && *n >= 0.0 && *n <= f64::from(i32::MAX))
+                row.get(name)
+                    .and_then(Value::as_f64)
+                    .filter(|n| n.fract() == 0.0 && *n >= 0.0 && *n <= f64::from(i32::MAX))
             };
             let (Some(key), Some(modifiers)) = (number("key"), number("modifiers")) else {
                 return Err(UNREADABLE.to_owned());
@@ -651,7 +757,8 @@ impl Shortcuts {
             for (index, other) in self.conflicts_of(command.id) {
                 let pair = if command.id < other { (command.id, other) } else { (other, command.id) };
                 if seen.insert(pair) {
-                    let label = all.get(command.id).and_then(|list| list.get(index)).map(|b| b.label()).unwrap_or_default();
+                    let label =
+                        all.get(command.id).and_then(|list| list.get(index)).map(|b| b.label()).unwrap_or_default();
                     result.push(Conflict { command: command.id, other, label });
                 }
             }

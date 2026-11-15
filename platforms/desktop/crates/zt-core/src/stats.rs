@@ -28,11 +28,18 @@ pub enum PickList {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UsageEvent {
     /// A key the input method saw; `composing` when it was handled while composing (counted, latency kept).
-    Key { latency_ms: f64, composing: bool },
+    Key {
+        latency_ms: f64,
+        composing: bool,
+    },
     /// A key interval inside a burst of typing, measured by the controller.
-    Interval { ms: f64 },
+    Interval {
+        ms: f64,
+    },
     /// A thinking pause (over the pause threshold, under a minute), measured by the controller.
-    Pause { ms: f64 },
+    Pause {
+        ms: f64,
+    },
     /// Text sent to the app.
     Commit {
         characters: i64,
@@ -179,7 +186,8 @@ const AWAY_AFTER_SECONDS: f64 = 60.0;
 const LATENCY_BOUNDS: &[f64] =
     &[1., 2., 3., 4., 5., 6., 8., 10., 12., 15., 20., 25., 30., 40., 50., 75., 100., 150., 250., 500., 1000.];
 const INTERVAL_BOUNDS: &[f64] = &[
-    0.04, 0.06, 0.08, 0.1, 0.12, 0.15, 0.18, 0.22, 0.26, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0, 3.0, 4.0, 6.0,
+    0.04, 0.06, 0.08, 0.1, 0.12, 0.15, 0.18, 0.22, 0.26, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0, 3.0, 4.0,
+    6.0,
 ];
 const PAUSE_BOUNDS: &[f64] = &[2., 3., 4., 5., 6., 8., 10., 13., 16., 20., 25., 30., 40., 50., 60.];
 
@@ -426,8 +434,8 @@ impl Store {
         let mut rhythm = Rhythm::new();
         if let Some(stored) = object.get("rhythm").and_then(Value::as_object) {
             // As on macOS, a rhythm of an older shape starts empty rather than failing the whole file.
-            rhythm.intervals =
-                Buckets::decode(stored.get("intervals"), INTERVAL_BOUNDS).unwrap_or_else(|| Buckets::new(INTERVAL_BOUNDS));
+            rhythm.intervals = Buckets::decode(stored.get("intervals"), INTERVAL_BOUNDS)
+                .unwrap_or_else(|| Buckets::new(INTERVAL_BOUNDS));
             rhythm.pauses =
                 Buckets::decode(stored.get("pauses"), PAUSE_BOUNDS).unwrap_or_else(|| Buckets::new(PAUSE_BOUNDS));
             rhythm.longest_run = count(stored.get("longestRun")).unwrap_or(0);
@@ -658,11 +666,8 @@ impl Store {
             }
             streak += 1;
         }
-        let best_day = self
-            .days
-            .iter()
-            .filter(|(_, c)| c.characters > 0)
-            .fold(None::<DayCount>, |best, (date, c)| match best {
+        let best_day =
+            self.days.iter().filter(|(_, c)| c.characters > 0).fold(None::<DayCount>, |best, (date, c)| match best {
                 Some(best) if best.characters >= c.characters => Some(best),
                 _ => Some(DayCount { date: *date, characters: c.characters }),
             });
@@ -863,7 +868,13 @@ pub fn process_metrics() -> ProcessMetrics {
     static LAUNCHED: std::sync::OnceLock<(DateTime<Local>, std::time::Instant)> = std::sync::OnceLock::new();
     let (launched, started) = *LAUNCHED.get_or_init(|| (Local::now(), std::time::Instant::now()));
     let (cpu_seconds, memory_bytes, peak_memory_bytes) = platform::sample();
-    ProcessMetrics { launched, running_seconds: started.elapsed().as_secs_f64(), cpu_seconds, memory_bytes, peak_memory_bytes }
+    ProcessMetrics {
+        launched,
+        running_seconds: started.elapsed().as_secs_f64(),
+        cpu_seconds,
+        memory_bytes,
+        peak_memory_bytes,
+    }
 }
 
 #[cfg(unix)]

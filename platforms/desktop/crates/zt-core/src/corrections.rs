@@ -63,17 +63,12 @@ pub fn width_name(width: PunctuationWidth) -> &'static str {
 /// `CorrectionSettings`).
 #[must_use]
 pub fn correction_settings(settings: &Settings, punctuation_width: Option<PunctuationWidth>) -> Map<String, Value> {
-    let fuzzy: Vec<Value> = [
-        ("fuzzy.zZh", "zh"),
-        ("fuzzy.cCh", "ch"),
-        ("fuzzy.sSh", "sh"),
-        ("fuzzy.enEng", "en"),
-        ("fuzzy.anAng", "an"),
-    ]
-    .into_iter()
-    .filter(|(key, _)| settings.bool(key))
-    .map(|(_, name)| Value::from(name))
-    .collect();
+    let fuzzy: Vec<Value> =
+        [("fuzzy.zZh", "zh"), ("fuzzy.cCh", "ch"), ("fuzzy.sSh", "sh"), ("fuzzy.enEng", "en"), ("fuzzy.anAng", "an")]
+            .into_iter()
+            .filter(|(key, _)| settings.bool(key))
+            .map(|(_, name)| Value::from(name))
+            .collect();
     let space = match settings.string("spaceAction").as_str() {
         "candidates" => "openCandidates",
         "insert" => "insertSpace",
@@ -370,7 +365,13 @@ impl CorrectionRecorder {
     }
 
     /// The punctuation width changed (標點全半形): a state change even when the composition stays the same.
-    pub fn punctuation_width_changed(&mut self, width: PunctuationWidth, after: &Presentation, secure: bool, time: f64) {
+    pub fn punctuation_width_changed(
+        &mut self,
+        width: PunctuationWidth,
+        after: &Presentation,
+        secure: bool,
+        time: f64,
+    ) {
         self.settings.insert("punctuation_width".into(), width_name(width).into());
         if secure {
             self.session = None;
@@ -438,7 +439,8 @@ impl CorrectionRecorder {
                 Some((kept, at)) if time - at < self.window => self.session = Some(kept),
                 _ => {
                     let mut fresh = Session::new(time);
-                    fresh.punctuation_width = self.settings.get("punctuation_width").and_then(Value::as_str).map(str::to_owned);
+                    fresh.punctuation_width =
+                        self.settings.get("punctuation_width").and_then(Value::as_str).map(str::to_owned);
                     if self.records_context {
                         fresh.context = Some(context());
                     }
@@ -895,7 +897,8 @@ fn deletion(
         return;
     }
     let kind = if key == KeyInput::Escape { "escape" } else { "backspace" };
-    let cleared = (key == KeyInput::Escape).then(|| if after.is_empty() { "composition" } else { "symbols" }.to_owned());
+    let cleared =
+        (key == KeyInput::Escape).then(|| if after.is_empty() { "composition" } else { "symbols" }.to_owned());
     let removed = difference(&before.composition, &after.composition).1;
     let shape = Shape::of(&after.composition);
     // The typing keys behind what was removed: back to the last time the screen had the shape it has now.

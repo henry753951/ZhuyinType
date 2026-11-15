@@ -443,7 +443,9 @@ impl EngineSession {
     /// The selection keys of the current options.
     #[must_use]
     pub fn selection_keys(&self) -> Vec<char> {
-        self.open.as_ref().map_or_else(|| self.values.options().selection_keys, |o| o.composer.options().selection_keys.clone())
+        self.open
+            .as_ref()
+            .map_or_else(|| self.values.options().selection_keys, |o| o.composer.options().selection_keys.clone())
     }
 
     /// How long the last `open` took to load the lexicon and language models, in ms.  The reranker and character
@@ -799,7 +801,8 @@ impl EngineSession {
     pub fn import_personal(&mut self, path: &Path) -> Result<usize> {
         self.require()?;
         let data = std::fs::read(path).with_context(|| format!("無法讀取備份檔：{}", path.display()))?;
-        let count = self.require()?.engine.import_personal_data(&data).map_err(|error| anyhow!("備份格式無效：{error}"))?;
+        let count =
+            self.require()?.engine.import_personal_data(&data).map_err(|error| anyhow!("備份格式無效：{error}"))?;
         self.personal_changed()?;
         Ok(count)
     }

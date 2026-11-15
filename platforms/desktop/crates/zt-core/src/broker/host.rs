@@ -216,12 +216,19 @@ impl Host {
                 None => Some(ShiftSide::Unknown),
                 value => integer(value, 0.0, 2.0).and_then(|side| ShiftSide::from_wire(side as i64)),
             };
-            let (Some(code), Some(modifiers), Some(release), Some(shift_side)) = (code, modifiers, flag("release"), side)
+            let (Some(code), Some(modifiers), Some(release), Some(shift_side)) =
+                (code, modifiers, flag("release"), side)
             else {
                 return Err("按鍵格式無效。");
             };
             key = Some((
-                Key { code: code as i32, modifiers: modifiers as u32, repeat: flag("repeat") == Some(true), shift_side, ..Key::default() },
+                Key {
+                    code: code as i32,
+                    modifiers: modifiers as u32,
+                    repeat: flag("repeat") == Some(true),
+                    shift_side,
+                    ..Key::default()
+                },
                 release,
             ));
         }

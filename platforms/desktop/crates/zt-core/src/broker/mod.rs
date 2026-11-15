@@ -140,9 +140,11 @@ pub(crate) fn serve(handler: &Arc<dyn Handler>, reader: impl Read, mut writer: i
             break;
         }
         let Ok(Value::Object(request)) = serde_json::from_slice::<Value>(&line) else { break };
-        let Some(id) = request.get("id").and_then(Value::as_f64).filter(|id| {
-            id.is_finite() && id.fract() == 0.0 && (1.0..=MAX_ID).contains(id) && *id > last_id
-        }) else {
+        let Some(id) = request
+            .get("id")
+            .and_then(Value::as_f64)
+            .filter(|id| id.is_finite() && id.fract() == 0.0 && (1.0..=MAX_ID).contains(id) && *id > last_id)
+        else {
             break;
         };
         last_id = id;

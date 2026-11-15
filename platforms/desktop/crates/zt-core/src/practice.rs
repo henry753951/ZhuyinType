@@ -169,8 +169,7 @@ impl PracticeSession {
         controller.set_usage_sink(Some(sink));
         controller.set_correction_log(Some(corrections.clone()), "practice");
         controller.take_events();
-        let known_phrases =
-            controller.session().user_phrases().into_iter().map(|p| (p.reading, p.word)).collect();
+        let known_phrases = controller.session().user_phrases().into_iter().map(|p| (p.reading, p.word)).collect();
         let mut field = Self {
             user_settings: user_settings.clone(),
             settings,
@@ -439,7 +438,8 @@ impl PracticeSession {
             }
             PopupAction::ToggleCorrections => self.perform(None, InputController::toggle_corrections),
             PopupAction::TypeReading
-                if p.reading.as_deref().is_some_and(|r| !r.is_empty()) && self.settings.bool("feature.zhuyinRowClick") =>
+                if p.reading.as_deref().is_some_and(|r| !r.is_empty())
+                    && self.settings.bool("feature.zhuyinRowClick") =>
             {
                 self.perform(None, |c| c.feed(&Key::new(code::QUOTE_LEFT, 0)));
             }

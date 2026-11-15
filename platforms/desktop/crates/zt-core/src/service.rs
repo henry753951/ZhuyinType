@@ -161,11 +161,8 @@ impl Service {
     /// an engine and [`Service::engine_error`] says why.
     pub fn start(config: ServiceConfig) -> Result<(Service, async_channel::Receiver<UiEvent>)> {
         let reservation = if config.broker {
-            let endpoint = config
-                .endpoint
-                .clone()
-                .or_else(broker::endpoint)
-                .ok_or_else(|| anyhow!("無法取得使用者通訊端。"))?;
+            let endpoint =
+                config.endpoint.clone().or_else(broker::endpoint).ok_or_else(|| anyhow!("無法取得使用者通訊端。"))?;
             match broker::reserve(&endpoint) {
                 Ok(reservation) => Some(reservation),
                 Err(ReserveError::AlreadyRunning) => {
@@ -232,6 +229,14 @@ impl Service {
                 app_version: config.app_version.clone(),
             }),
         };
+        // A changed setting reaches the composition at once (a list open with the old page size, English mode turned
+        // on while composing), not only at the next key.  Nothing sets a setting while holding the service's lock.
+        let weak = Arc::downgrade(&service.inner);
+        service.inner.settings.observe(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                Service { inner }.with_controller(InputController::refresh_settings);
+            }
+        });
         if let Some(reservation) = reservation {
             let broker = reservation.listen(Arc::new(Serving(Arc::downgrade(&service.inner))))?;
             *service.inner.broker.lock() = Some(broker);

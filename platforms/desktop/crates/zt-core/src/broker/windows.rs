@@ -122,7 +122,8 @@ impl Reservation {
         if !endpoint.starts_with(r"\\.\pipe\") {
             return Err(failed("無法取得使用者通訊端。"));
         }
-        let directory: PathBuf = dirs::data_local_dir().ok_or_else(|| failed("無法建立服務鎖定目錄。"))?.join("ZhuyinType");
+        let directory: PathBuf =
+            dirs::data_local_dir().ok_or_else(|| failed("無法建立服務鎖定目錄。"))?.join("ZhuyinType");
         std::fs::create_dir_all(&directory).map_err(|_| failed("無法建立服務鎖定目錄。"))?;
         let lock = OpenOptions::new()
             .create(true)
