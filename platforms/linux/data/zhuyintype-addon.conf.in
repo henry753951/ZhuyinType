@@ -1,7 +1,7 @@
 [Addon]
 Name=ZhuyinType
 Category=InputMethod
-Version=0.1.0
+Version=@PROJECT_VERSION@
 Library=libzhuyintype
 Type=SharedLibrary
 OnDemand=True

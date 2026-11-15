@@ -1,0 +1,42 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ZhuyinType
+Upstream-Contact: https://github.com/henry753951/ZhuyinType/issues
+Source: https://github.com/henry753951/ZhuyinType
+Comment:
+ The full licence texts, the third-party notices and the list of data sources are installed in
+ /usr/share/licenses/zhuyintype: AGPL-3.0.txt, NOTICE.txt, SOURCES.md, sources.json, Rust-crates.txt (every Rust
+ crate linked into /usr/bin/zhuyintype with its licence), nlohmann-json.txt and the data licences.
+
+Files: *
+Copyright: 2026 Henry753951 and ZhuyinType contributors
+License: AGPL-3.0-only
+ This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General
+ Public License as published by the Free Software Foundation, version 3.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more
+ details.
+ .
+ The full text is in /usr/share/licenses/zhuyintype/AGPL-3.0.txt.
+
+Files: usr/share/zhuyintype/data/lexicon.bin usr/share/zhuyintype/data/channel.bin
+Copyright: CC-CEDICT contributors, Unicode, Inc., the McBopomofo developers, wordfreq contributors and others
+License: CC-BY-SA-4.0
+ The lexicon and the reading channel combine CC-CEDICT, Unicode Unihan, Wiktionary, CNS11643, BabelStone IDS,
+ McBopomofo and wordfreq data; attributions are in /usr/share/licenses/zhuyintype/LEXICON.txt and SOURCES.md, the
+ licence texts beside them.
+
+Files: usr/share/zhuyintype/data/lm/* usr/share/zhuyintype/data/lm_chat/*
+Copyright: Chinese Wikipedia contributors, the Legislative Yuan of Taiwan, OpenFun Ltd., Common Voice contributors
+ and ZhuyinType contributors
+License: CC-BY-SA-4.0
+ Trained from Chinese Wikipedia (CC BY-SA 4.0), Legislative Yuan gazettes through LYAPI (OGDL 1.0, CC BY 4.0) and
+ Common Voice sentences (CC0 1.0).  Each model directory has its NOTICE.md and attribution files (articles.tsv.gz,
+ attribution.jsonl, source-manifest.json), which must stay with the model.  Licence text:
+ /usr/share/licenses/zhuyintype/CC-BY-SA-4.0.txt.
+
+Files: usr/lib/*/fcitx5/libzhuyintype.so
+Copyright: 2026 Henry753951 and ZhuyinType contributors
+ 2013-2023 Niels Lohmann (nlohmann/json, header-only, compiled in)
+License: AGPL-3.0-only and MIT
+ The nlohmann/json notice is in /usr/share/licenses/zhuyintype/nlohmann-json.txt.

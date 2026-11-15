@@ -1,0 +1,107 @@
+# ZhuyinType for Linux and Windows on every change to platforms/desktop or platforms/linux: the .deb and .rpm (built
+# in the Debian 13 image by scripts/build.sh, then installed and removed in clean containers) and the Windows
+# installer (cross-compiled with cargo-xwin, NSIS), kept as artifacts.  Releases still come from release.yml.
+name: Desktop
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "platforms/desktop/**"
+      - "platforms/linux/**"
+      - "engine/crates/zhuyin-core/**"
+      - "resources/assets.json"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "platforms/desktop/**"
+      - "platforms/linux/**"
+      - "engine/crates/zhuyin-core/**"
+      - "resources/assets.json"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ZT_TOOLCHAINS: ${{ github.workspace }}/.cache/toolchains
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends imagemagick
+      - name: Data assets
+        uses: actions/cache@v6
+        with:
+          path: .cache/assets
+          key: assets-desktop-${{ hashFiles('resources/assets.json') }}
+      - name: Cargo cache of the builder image
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            .cache/toolchains
+            platforms/desktop/target/builder-debian13
+          key: desktop-linux-${{ hashFiles('platforms/desktop/Cargo.lock', 'platforms/desktop/rust-toolchain.toml', 'platforms/desktop/packaging/linux/Dockerfile') }}
+          restore-keys: desktop-linux-
+      - name: Packages
+        run: |
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          platforms/desktop/scripts/build.sh linux --package
+      - name: Install and remove in clean containers
+        run: platforms/desktop/packaging/linux/verify.sh dist/desktop
+      - run: platforms/desktop/packaging/linux/verify.sh dist/desktop --lint
+      - uses: actions/upload-artifact@v6
+        with:
+          name: zhuyintype-linux
+          path: |
+            dist/desktop/*.deb
+            dist/desktop/*.rpm
+            dist/desktop/SHA256SUMS-linux
+          if-no-files-found: error
+
+  windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - id: script
+        run: |
+          if [ -f platforms/desktop/packaging/windows/build.sh ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::platforms/desktop/packaging/windows/build.sh does not exist yet; no Windows installer"; fi
+      - if: steps.script.outputs.present == 'true'
+        uses: astral-sh/setup-uv@v7
+      - if: steps.script.outputs.present == 'true'
+        name: Cross toolchain (clang-cl, lld, NSIS, cargo-xwin)
+        working-directory: platforms/desktop
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld llvm nsis imagemagick
+          rustup show active-toolchain || rustup toolchain install
+          cargo install --locked cargo-xwin
+      - if: steps.script.outputs.present == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cache/cargo-xwin
+            platforms/desktop/target
+          key: desktop-windows-${{ hashFiles('platforms/desktop/Cargo.lock', 'platforms/desktop/rust-toolchain.toml') }}
+          restore-keys: desktop-windows-
+      - if: steps.script.outputs.present == 'true'
+        name: Installer
+        run: platforms/desktop/scripts/build.sh windows --package
+      - if: steps.script.outputs.present == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: zhuyintype-windows
+          path: dist/desktop/*.exe
+          if-no-files-found: error

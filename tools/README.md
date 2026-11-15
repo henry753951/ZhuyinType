@@ -62,8 +62,10 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 | `zt build app` | `dist/ZhuyinType.app`（macOS，需要 Xcode）；`--debug` |
 | `zt build install` | 建置並安裝到 `~/Library/Input Methods` |
 | `zt build pkg` | `dist/ZhuyinType-<版本>.pkg` |
+| `zt build desktop` | Linux／Windows 版（`platforms/desktop`）：執行 `platforms/desktop/scripts/build.sh`，建置 `zhuyintype` 與 Fcitx 5 addon（debug）；`--release`；`--target windows\|all` |
+| `zt build desktop --package` | `dist/desktop/zhuyintype_<版本>_amd64.deb` 與 `zhuyintype-<版本>.x86_64.rpm`，在 Debian 13 建置映像中編譯（docker 或 podman；`--native` 改在本機編譯）；`--target windows` 為 Windows 安裝程式 |
 
-共用 Qt 設定介面與輸入法服務使用 `zt build desktop`；`zt check desktop` 另執行狀態測試與全部頁面的深淺色渲染，不包含在 `check all`。`zt build input-method` 另建置目前系統的 Fcitx5／TSF 原生介面；`zt check input-method` 再執行原生測試。Windows 的系統派送與互動桌面測試另依平台文件執行，不包含在無桌面的 CTest。環境需求與 Windows 指令見 [Qt 客戶端](../platforms/qt/README.md)。
+Linux／Windows 版只在 Linux 上建置（GPU 主機或 CI），在 Mac 上執行會停止並提示改用 `--remote`。從 Mac 建置套件並取回：`tools/zt --remote --pull dist/desktop build desktop --package`。套件內容與安裝方式見 [Linux 套件](../platforms/desktop/packaging/linux/README.md)。
 
 ### 檢查
 
@@ -71,6 +73,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 |---|---|
 | `zt check engine` | 引擎的測試（`cargo test --release`）：行為、golden 摘要與真實資料上的延遲目標；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
 | `zt check app` | 已建置 App 的自我測試與封裝檢查 |
+| `zt check desktop` | Linux／Windows 版：Linux debug 建置、`cargo test` 與 Fcitx 5 addon 的 CTest（Linux；從 Mac 用 `zt --remote check desktop`） |
 | `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄（相對於 `ml/` 或版本庫根目錄都可以） |
 | `zt check lint` | ruff；`--fix` 自動修正，`--format` 一併檢查排版 |
 | `zt check types` | mypy，範圍在 `pyproject.toml` 的 `[tool.mypy] files` |
@@ -141,7 +144,7 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 檔案 | 說明 |
 |---|---|
-| `zt.ps1` | Windows PowerShell 啟動程式，使用相同 uv 專案與指令；例如 `./tools/zt.ps1 check desktop` |
+| `zt.ps1` | Windows PowerShell 啟動程式，使用相同 uv 專案與指令；例如 `./tools/zt.ps1 check python` |
 | `zt` | 啟動程式（POSIX sh）：找到版本庫與 uv，執行 `uv run --project ml python -m zhuyintype_ml.cli` |
 | `check-public.sh` | 發布前的隱私檢查 |
 | `../ml/pyproject.toml`、`../ml/uv.lock`、`../ml/.python-version` | uv 專案、相依群組、ruff 與 mypy 設定、固定的版本 |

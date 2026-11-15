@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ZhuyinType
+Comment=ZhuyinType 注音輸入法的背景服務
+Exec=zhuyintype --background
+TryExec=zhuyintype
+Icon=zhuyintype
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
