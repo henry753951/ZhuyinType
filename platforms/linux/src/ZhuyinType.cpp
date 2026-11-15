@@ -123,7 +123,7 @@ bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     state.inlinePreedit = ic.capabilityFlags().test(fcitx::CapabilityFlag::Preedit);
     static uint64_t serial = 0;
     state.context = "fcitx-" + std::to_string(getpid()) + "-" + std::to_string(++serial);
-    if (!broker_.connect()) { clear(ic); return false; }
+    if (!broker_.connect()) { Broker::launchHost(); clear(ic); return false; }
     auto fields = geometry(ic);
     fields.update({{"secure", state.secure}, {"inlinePreedit", state.inlinePreedit}});
     if (!state.secure) addContext(ic, fields);

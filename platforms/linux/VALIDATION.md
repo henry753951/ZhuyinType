@@ -1,5 +1,7 @@
 # Linux 原生整合驗證
 
+這份紀錄是 addon 搭配舊的 Qt 服務（`zhuyintype-desktop --ime-host`，2026-11 移除）的驗證。服務改為 `platforms/desktop` 的 `zhuyintype` 後，addon 的協定與行為不變；套件的安裝驗證見 [Linux 套件驗證](../desktop/packaging/linux/VALIDATION.md)，broker 完成後在新服務上重新執行的結果會補在這裡。文中的 `install-host.sh`、`~/.local/bin/zhuyintype-ime-host` 與 `tools/zt check input-method` 已由套件與 `tools/zt check desktop` 取代。
+
 日期：2026-10-29。Xfce／X11 的實際使用者 profile、登入啟動與正式服務已設定，真實應用程式送達、共用 Qt 候選字視窗、滑鼠操作與同 host 設定欄位均通過。
 
 ## 環境與建置
