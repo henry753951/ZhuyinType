@@ -3,6 +3,7 @@
 #   scripts/screenshot.sh OUT_DIR [BINARY] [page ...]
 # Every page in light and dark at 860×600; the app runs with a temporary settings file.
 # A page may be written page/subpage (`typing/punctuation`) or page#row (`choosing#typo`).
+# `popover:ID` shows one ⓘ card on its own (`--popover ID`, 420×820 unless ZT_SHOT_SIZE is set).
 # ZT_SHOT_SIZE=640x600 takes the narrow layout (files get a -640x600 suffix).
 set -euo pipefail
 out=${1:?output directory}; shift
@@ -24,6 +25,7 @@ for page in "${pages[@]}"; do
     spec=$page; name=${spec//\//-}; name=${name//#/-}
     extra=()
     if [ -n "${ZT_SHOT_SIZE:-}" ]; then extra+=(--size "$ZT_SHOT_SIZE"); name=$name-$ZT_SHOT_SIZE; fi
+    case $spec in popover:*) extra+=(--popover "${spec#popover:}"); name=popover-${spec#popover:}${ZT_SHOT_SIZE:+-$ZT_SHOT_SIZE}; spec=intro;; esac
     case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac
     case $spec in *'#'*) extra+=(--row "${spec#*#}"); spec=${spec%%#*};; esac
     "$bin" --page "$spec" "${extra[@]}" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$name-$theme.log" &

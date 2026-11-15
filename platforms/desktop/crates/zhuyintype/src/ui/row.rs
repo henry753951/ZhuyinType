@@ -38,6 +38,7 @@ pub struct Row {
     marked: bool,
     indent: bool,
     dimmed: bool,
+    wrap_value: bool,
     on_click: Option<ClickHandler>,
 }
 
@@ -55,6 +56,7 @@ pub fn row(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Row {
         marked: false,
         indent: false,
         dimmed: false,
+        wrap_value: false,
         on_click: None,
     }
 }
@@ -116,6 +118,13 @@ impl Row {
     /// Greyed out: its feature is off.
     pub fn dimmed(mut self, dimmed: bool) -> Self {
         self.dimmed = dimmed;
+        self
+    }
+
+    /// A long value (a fact, not a control): the title keeps its width and the value wraps, right-aligned, instead
+    /// of pushing the row wider than a narrow window.
+    pub fn wrap_value(mut self, wrap: bool) -> Self {
+        self.wrap_value = wrap;
         self
     }
 
@@ -199,6 +208,7 @@ impl RenderOnce for Row {
             .child(
                 v().flex_1()
                     .min_w(px(0.))
+                    .when(self.wrap_value, |this| this.flex_none())
                     .gap(px(3.))
                     .when(self.indent, |this| this.pl(px(18.)))
                     .child(
@@ -221,7 +231,14 @@ impl RenderOnce for Row {
             .child(
                 h().flex_shrink_0()
                     .gap(px(8.))
-                    .when_some(self.value, |this, value| this.child(controls::value_text(value, cx)))
+                    .when(self.wrap_value, |this| this.flex_1().min_w(px(0.)).justify_end())
+                    .when_some(self.value, |this, value| {
+                        if self.wrap_value {
+                            this.child(div().text_right().text_size(text::BODY).text_color(p.text_secondary).child(value))
+                        } else {
+                            this.child(controls::value_text(value, cx))
+                        }
+                    })
                     .when_some(self.trailing, |this, trailing| this.child(trailing))
                     .when_some(accessory, |this, accessory| this.child(accessory)),
             )
