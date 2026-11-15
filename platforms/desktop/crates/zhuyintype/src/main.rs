@@ -8,6 +8,7 @@
 
 mod app;
 mod assets;
+mod candidate;
 mod pages;
 mod shell;
 mod theme;
@@ -28,10 +29,14 @@ struct Args {
     dark: Option<bool>,
     /// `--settings-file PATH`: keep settings there (screenshots and tests use a temporary file).
     settings_file: Option<std::path::PathBuf>,
+    /// `--panel VARIANT`: only a candidate window over a few document lines (screenshots; `candidate::showcase`).
+    panel: Option<String>,
+    /// `--popup demo`: the real floating windows at a caret, with an example list.
+    popup: Option<String>,
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None };
+    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None, panel: None, popup: None };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -50,6 +55,8 @@ fn parse_args() -> Args {
             }
             "--theme" => args.dark = iter.next().map(|theme| theme == "dark"),
             "--settings-file" => args.settings_file = iter.next().map(Into::into),
+            "--panel" => args.panel = iter.next(),
+            "--popup" => args.popup = iter.next(),
             _ => {}
         }
     }
@@ -63,6 +70,14 @@ fn main() {
         gpui_kit::init(cx);
         // The service starts here once zt-core's port lands (Service::start); until then pages show empty states.
         cx.set_global(app::AppState { settings, service: None, service_error: None });
+        if let Some(variant) = args.panel.clone() {
+            candidate::showcase::open(variant, args.dark == Some(true), cx).expect("the panel window opens");
+            return;
+        }
+        if args.popup.is_some() {
+            candidate::showcase::popup_demo(cx);
+            return;
+        }
         shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
         if args.subpage.is_some() || args.row.is_some() {
             app::go(

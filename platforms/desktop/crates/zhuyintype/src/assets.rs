@@ -36,6 +36,8 @@ icon_assets!(
         ArrowUp,
         ArrowLeft,
         ArrowRight,
+        ArrowBigUp,
+        CornerDownLeft,
     ]
 );
 
