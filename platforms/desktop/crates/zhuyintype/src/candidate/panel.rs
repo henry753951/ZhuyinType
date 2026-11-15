@@ -14,18 +14,19 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, BoxShadow, Div, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
-    SharedString, Styled, Window, div, point, px,
+    AnyElement, App, Div, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, SharedString,
+    Styled, Window, div, px,
 };
 use zt_core::presentation::Presentation;
 use zt_core::service::PopupAction;
 
 use super::layout::{
-    self, BADGE_FONT, BADGE_H, BADGE_W, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, NoticeLayout, PanelLayout,
-    RowLayout, SMALL_FONT, ToggleLayout,
+    self, BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, NoticeLayout,
+    PanelLayout, RowLayout, SMALL_FONT, ToggleLayout,
 };
 use super::style::PanelStyle;
-use crate::theme::{self, Palette, size, text};
+use crate::theme::candidate::{self as tokens, Colors};
+use crate::theme::{self, Palette};
 
 /// A click in the window.
 pub type ActionHandler = Rc<dyn Fn(PopupAction, &mut Window, &mut App)>;
@@ -115,11 +116,23 @@ pub struct CandidatePanel {
     pub hover: bool,
     /// The 動畫 setting (the wizard's practice field follows its own draft settings).
     pub animates: bool,
-    /// The surface draws its own shadow (inside another window, or a floating window with room around it).
-    pub shadow: bool,
-    /// Rounded corners (a floating window without a compositor is square: its corners would show black).
-    pub rounded: bool,
+    /// How the surface's edge is drawn: by itself (rounded, hairline, shadow), square, or by the system.
+    pub chrome: Chrome,
     pub pinned: Option<Pinned>,
+}
+
+/// Who draws the surface's edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Chrome {
+    /// Rounded, with its hairline border and shadows: inside another window (previews, the 介紹 stage, the wizard),
+    /// or a floating window with a transparent margin around it (Linux with a compositor).
+    Floating,
+    /// Square with its hairline border: a floating window that cannot be transparent (X11 without a compositor,
+    /// where rounded corners would show black).
+    Square,
+    /// Square and edge to edge, no border or shadow of its own: the system rounds the window and draws its border
+    /// and shadow (Windows: DWM, as for the system's own menus).
+    System,
 }
 
 impl Default for CandidatePanel {
@@ -141,8 +154,7 @@ impl CandidatePanel {
             bounce: None,
             hover: true,
             animates: true,
-            shadow: true,
-            rounded: true,
+            chrome: Chrome::Floating,
             pinned: None,
         }
     }
@@ -277,19 +289,12 @@ impl CandidatePanel {
         }
 
         let fs = layout.font_size;
-        let mut surface = div()
-            .relative()
-            .w(px(layout.width))
-            .h(px(layout.height))
-            .when(self.rounded, |this| this.rounded(size::RADIUS_SURFACE))
-            .bg(p.panel)
-            .border_1()
-            .border_color(p.panel_border)
-            .font_family(theme::ui_font())
-            .text_color(p.text)
-            .when(self.shadow, |this| this.shadow(surface_shadow(p)));
+        let colors = tokens::colors(p);
+        let c = &colors;
+        let mut surface =
+            shell(self.chrome, c, layout.radius).relative().w(px(layout.width)).h(px(layout.height)).text_color(p.text);
         if let Some(notice) = &layout.notice {
-            surface = surface.child(notice_element(notice, p));
+            surface = surface.child(notice_element(notice, p, c));
         }
         if let Some((frame, text, text_w)) = &layout.preview {
             surface = surface.child(
@@ -317,7 +322,7 @@ impl CandidatePanel {
             );
         }
         if let Some(hint) = &layout.hint {
-            surface = surface.child(hint_element(hint, p, actions.clone()));
+            surface = surface.child(hint_element(hint, layout.row_radius, p, c, actions.clone()));
         }
         if layout.list_open {
             let area = layout.rows_area;
@@ -331,19 +336,22 @@ impl CandidatePanel {
                         .w(px(selected.w))
                         .h(px(selected.h - 2.))
                         .rounded(px(layout.row_radius))
-                        .bg(p.selection),
+                        .bg(c.selection),
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
-                clip = clip.child(page_element(rows, layout, p, (x, y, alpha), false, None, "out"));
+                clip = clip.child(page_element(rows, layout, p, c, (x, y, alpha), false, None, "out"));
             }
-            clip = clip.child(page_element(&layout.rows, layout, p, incoming, self.hover, actions.clone(), "in"));
+            clip = clip.child(page_element(&layout.rows, layout, p, c, incoming, self.hover, actions.clone(), "in"));
             surface = surface.child(clip);
+        }
+        if let Some(rule) = layout.footer_rule {
+            surface = surface.child(at(rule).bg(c.hairline));
         }
         for toggle in [&layout.single, &layout.corrections].into_iter().flatten() {
             let action =
                 if toggle.label == "單字" { PopupAction::ToggleSingle } else { PopupAction::ToggleCorrections };
-            surface = surface.child(toggle_element(toggle, p, action, actions.clone()));
+            surface = surface.child(toggle_element(toggle, p, c, action, actions.clone()));
         }
         if let Some(pager) = &layout.pager {
             let label = |text: &str, alpha: f32| {
@@ -351,8 +359,9 @@ impl CandidatePanel {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(text::CAPTION)
+                    .text_size(px(SMALL_FONT))
                     .line_height(px(16.))
+                    .font_features(tokens::tabular())
                     .text_color(p.text_secondary)
                     .opacity(alpha)
                     .child(SharedString::from(text.to_owned()))
@@ -374,22 +383,21 @@ impl CandidatePanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(size::RADIUS_SMALL)
-                        .when(actions.is_some(), |this| this.cursor_pointer().hover(|style| style.bg(p.hover)))
+                        .rounded(px(tokens::KEYCAP_RADIUS))
+                        .text_color(if enabled { p.text_tertiary } else { p.text_tertiary.opacity(0.3) })
+                        .when(actions.is_some(), |this| {
+                            this.cursor_pointer().hover(|style| style.bg(c.hover).text_color(p.text))
+                        })
                         .when_some(actions, |this, actions| {
                             this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                                 actions(PopupAction::TurnPage(delta), window, cx)
                             })
                         })
-                        .child(Icon::new(icon).size(px(14.)).text_color(if enabled {
-                            p.text_secondary
-                        } else {
-                            p.text_tertiary
-                        })),
+                        .child(Icon::new(icon).size(px(tokens::CHEVRON))),
                 );
             }
         }
-        surface.into_any_element()
+        surface.children(edge(self.chrome, c, layout.radius)).into_any_element()
     }
 }
 
@@ -398,34 +406,44 @@ fn at(frame: Frame) -> Div {
     div().absolute().left(px(frame.x)).top(px(frame.y)).w(px(frame.w)).h(px(frame.h))
 }
 
-/// The floating surface's shadow under its hairline border: a tight contact shadow and a wide soft one, the way
+/// The window's surface for `chrome`: its own colour and, unless the system frames it, a hairline border; when it
+/// floats on its own, rounded with a tight contact shadow and a wide soft one (and a dark outer ring in dark), the way
 /// modern menus and command palettes float.
-pub fn surface_shadow(p: &Palette) -> Vec<BoxShadow> {
-    vec![
-        BoxShadow {
-            color: p.shadow.opacity(0.6),
-            offset: point(px(0.), px(1.)),
-            blur_radius: px(2.),
-            spread_radius: px(0.),
-            inset: false,
-        },
-        BoxShadow {
-            color: p.shadow,
-            offset: point(px(0.), px(8.)),
-            blur_radius: px(24.),
-            spread_radius: px(-4.),
-            inset: false,
-        },
-    ]
+///
+/// The hairline is drawn by `edge` on top of the content rather than as the box's border, so the content's
+/// coordinates start at the surface's edge whether or not it has one (the layout's insets are exact, and the text
+/// lines up with the composition on every platform).
+pub fn shell(chrome: Chrome, c: &Colors, radius: f32) -> Div {
+    div()
+        .relative()
+        .bg(c.surface)
+        .font_family(theme::ui_font())
+        .when(chrome == Chrome::Floating, |this| this.rounded(px(radius)).shadow(c.shadow_list()))
+}
+
+/// The surface's hairline border, laid over its content (see `shell`); none when the system draws the edge.
+pub fn edge(chrome: Chrome, c: &Colors, radius: f32) -> Option<Div> {
+    (chrome != Chrome::System).then(|| {
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .border_1()
+            .border_color(c.border)
+            .when(chrome == Chrome::Floating, |this| this.rounded(px(radius)))
+    })
 }
 
 /// The room a floating window keeps around its surface for the shadow.
 pub const SHADOW_MARGIN: f32 = 18.;
 
+#[allow(clippy::too_many_arguments, reason = "one page of rows and everything it is drawn with")]
 fn page_element(
     rows: &[RowLayout],
     layout: &PanelLayout,
     p: &Palette,
+    c: &Colors,
     (x, y, alpha): (f32, f32, f32),
     hover: bool,
     actions: Option<ActionHandler>,
@@ -437,11 +455,13 @@ fn page_element(
         let selected = row.selected;
         let frame = row.frame;
         let index = row.index;
-        let small = fs * 0.68;
+        let small = layout::annotation_font(fs);
+        let number = layout.number_font;
         // The selection is a neutral fill (drawn under the pages); its number and reading come forward.
         let text_color = p.text;
         let key_color = if selected { p.text_secondary } else { p.text_tertiary };
         let annotation_color = if selected { p.text_secondary } else { p.text_tertiary };
+        let hover_fill = c.hover;
         let actions = actions.clone();
         let cell = |left: f32, width: f32| {
             div().absolute().left(px(left)).top_0().bottom_0().w(px(width.max(0.))).flex().items_center()
@@ -454,19 +474,25 @@ fn page_element(
             .w(px(frame.w))
             .h(px(frame.h - 2.))
             .rounded(px(radius))
-            .when(hover && !selected, |this| this.hover(|style| style.bg(p.hover)))
+            .when(hover && !selected, |this| this.hover(|style| style.bg(hover_fill)))
             .when_some(actions, |this, actions| {
                 this.cursor_pointer().on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     actions(PopupAction::Pick(index), window, cx)
                 })
             })
+            // The selection key, right-aligned in its fixed column, on the candidate's baseline.
             .child(
-                cell(row.key_inset, row.text_inset - row.key_inset - 4.)
-                    .text_size(px(small))
-                    .line_height(px(small * 1.3))
+                cell(row.key_inset, layout.number_width)
+                    .top(px(layout.number_shift))
+                    .bottom(px(-layout.number_shift))
+                    .justify_end()
+                    .text_size(px(number))
+                    .line_height(px(number * 1.3))
                     .font_weight(FontWeight::MEDIUM)
+                    .font_features(tokens::tabular())
                     .text_color(key_color)
-                    .child(div().truncate().child(SharedString::from(row.key.clone()))),
+                    .whitespace_nowrap()
+                    .child(SharedString::from(row.key.clone())),
             )
             .child(
                 cell(row.text_inset, row.main_width + 1.)
@@ -477,7 +503,9 @@ fn page_element(
             )
             .when_some(row.annotation.clone(), |this, annotation| {
                 this.child(
-                    cell(row.text_inset + row.main_width + 10., row.annotation_width + 1.)
+                    cell(row.text_inset + row.main_width + 8., row.annotation_width + 1.)
+                        .top(px(layout::number_baseline_shift(fs, small)))
+                        .bottom(px(-layout::number_baseline_shift(fs, small)))
                         .text_size(px(small))
                         .line_height(px(small * 1.3))
                         .text_color(annotation_color)
@@ -487,21 +515,26 @@ fn page_element(
     }))
 }
 
-/// A key cap of the reading row or the footer: a rounded outline (filled, while on).
-fn keycap(width: f32, height: f32, key: &str, on: bool, p: &Palette) -> Div {
+/// A key cap of the reading row, the footer or a notice: borderless on a faint fill (stronger, with the label in the
+/// text colour, while its switch is on), vertically centred in a control box `box_h` tall.
+fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) -> Div {
+    let color = if on { p.text } else { p.text_secondary };
+    // A lone punctuation key (「`」, 「'」) is a speck at the key caps' size: drawn larger so the cap reads as a key.
+    let speck = key.chars().count() == 1 && key.chars().all(|c| c.is_ascii_punctuation());
+    let font = if speck { tokens::KEYCAP_FONT + 4. } else { tokens::KEYCAP_FONT };
     div()
         .absolute()
-        .left(px(0.5))
-        .top(px(((22. - height) / 2.).max(0.)))
+        .left_0()
+        .top(px(((box_h - KEYCAP_HEIGHT) / 2.).max(0.).round()))
         .w(px(width))
-        .h(px(height))
+        .h(px(KEYCAP_HEIGHT))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(size::RADIUS_SMALL)
-        .when(on, |this| this.bg(p.selection).border_1().border_color(p.control_border).text_color(p.text))
-        .when(!on, |this| this.border_1().border_color(p.control_border).text_color(p.text_secondary))
-        .child(key_glyphs(key, SMALL_FONT, if on { p.text } else { p.text_secondary }))
+        .rounded(px(tokens::KEYCAP_RADIUS))
+        .bg(if on { c.keycap_on } else { c.keycap })
+        .font_weight(FontWeight::MEDIUM)
+        .child(key_glyphs(key, font, color))
 }
 
 /// A key's label with the symbols every system draws differently (⇧ ↑ ↓ ← → ↩) as icons, so key caps look the same
@@ -536,19 +569,27 @@ pub fn key_glyphs(label: &str, size: f32, color: Hsla) -> Div {
     row
 }
 
-fn hint_element(hint: &HintLayout, p: &Palette, actions: Option<ActionHandler>) -> impl IntoElement {
+fn hint_element(
+    hint: &HintLayout,
+    radius: f32,
+    p: &Palette,
+    c: &Colors,
+    actions: Option<ActionHandler>,
+) -> impl IntoElement {
     let actions = actions.filter(|_| hint.clickable);
-    let text_x = 0.5 + hint.keycap_w + 8.;
+    let group_w = hint.keycap_w + 6. + hint.key_label_w;
+    let key_room = if hint.keycap_w > 0. { group_w + hint.keycap_right + 12. } else { 0. };
+    let hover_fill = c.hover;
     at(hint.frame)
         .id("zhuyin-hint")
-        .when(!hint.key.is_empty(), |this| this.child(keycap(hint.keycap_w, KEYCAP_HEIGHT, &hint.key, false, p)))
+        .rounded(px(radius))
         .child(
             div()
                 .absolute()
-                .left(px(text_x))
+                .left(px(hint.text_x))
                 .top_0()
                 .bottom_0()
-                .w(px((hint.frame.w - text_x).max(0.)))
+                .w(px((hint.frame.w - hint.text_x - key_room).max(0.)))
                 .flex()
                 .items_center()
                 .text_size(px(SMALL_FONT))
@@ -556,8 +597,34 @@ fn hint_element(hint: &HintLayout, p: &Palette, actions: Option<ActionHandler>) 
                 .text_color(p.text_secondary)
                 .child(div().truncate().child(SharedString::from(hint.hint.clone()))),
         )
+        .when(hint.keycap_w > 0., |this| {
+            this.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right(px(hint.keycap_right))
+                    .w(px(group_w))
+                    .child(keycap(hint.keycap_w, hint.frame.h, &hint.key, false, p, c))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(hint.keycap_w + 6.))
+                            .top_0()
+                            .bottom_0()
+                            .flex()
+                            .items_center()
+                            .text_size(px(SMALL_FONT))
+                            .line_height(px(SMALL_FONT * 1.3))
+                            .text_color(p.text_tertiary)
+                            .whitespace_nowrap()
+                            .child(hint.key_label),
+                    ),
+            )
+        })
         .when_some(actions, |this, actions| {
             this.cursor_pointer()
+                .hover(|style| style.bg(hover_fill))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| actions(PopupAction::TypeReading, window, cx))
         })
 }
@@ -565,64 +632,55 @@ fn hint_element(hint: &HintLayout, p: &Palette, actions: Option<ActionHandler>) 
 fn toggle_element(
     toggle: &ToggleLayout,
     p: &Palette,
+    c: &Colors,
     action: PopupAction,
     actions: Option<ActionHandler>,
 ) -> impl IntoElement {
     let color = if toggle.on { p.text } else { p.text_secondary };
+    let hover_color = p.text;
     at(toggle.frame)
         .id(toggle.label)
-        .child(keycap(toggle.keycap_w, KEYCAP_HEIGHT, &toggle.key, toggle.on, p))
+        .text_color(color)
+        .child(keycap(toggle.keycap_w, CONTROL_H, &toggle.key, toggle.on, p, c))
         .child(
             div()
                 .absolute()
-                .left(px(0.5 + toggle.keycap_w + 7.))
+                .left(px(toggle.keycap_w + 6.))
                 .top_0()
                 .bottom_0()
                 .flex()
                 .items_center()
                 .text_size(px(SMALL_FONT))
                 .line_height(px(SMALL_FONT * 1.3))
-                .text_color(color)
                 .whitespace_nowrap()
                 .child(toggle.label),
         )
         .when_some(actions, |this, actions| {
-            this.cursor_pointer().on_mouse_down(MouseButton::Left, move |_, window, cx| actions(action, window, cx))
+            this.cursor_pointer()
+                .hover(|style| style.text_color(hover_color))
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| actions(action, window, cx))
         })
 }
 
-fn notice_element(notice: &NoticeLayout, p: &Palette) -> impl IntoElement {
+fn notice_element(notice: &NoticeLayout, p: &Palette, c: &Colors) -> impl IntoElement {
     let fs = notice.font_size;
     let line = px(fs * 1.3);
+    let icon = tokens::NOTICE_ICON;
     at(notice.frame)
         .when_some(notice.key.clone(), |this, key| {
-            this.child(
-                div()
-                    .absolute()
-                    .left(px(0.5))
-                    .top(px(((notice.frame.h - notice.keycap_h) / 2.).round() + 0.5))
-                    .w(px(notice.keycap_w - 1.))
-                    .h(px(notice.keycap_h - 1.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(size::RADIUS_SMALL)
-                    .border_1()
-                    .border_color(p.control_border)
-                    .child(key_glyphs(&key, fs, p.text_secondary)),
-            )
+            this.child(keycap(notice.keycap_w, notice.frame.h, &key, false, p, c))
         })
         .when(notice.key.is_none() && notice.done, |this| {
             this.child(
                 div()
                     .absolute()
                     .left_0()
-                    .top(px((notice.frame.h - fs) / 2.))
-                    .size(px(fs))
+                    .top(px(((notice.frame.h - icon) / 2.).round()))
+                    .size(px(icon))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(Icon::new(IconName::Check).size(px(fs)).text_color(p.success)),
+                    .child(Icon::new(IconName::Check).size(px(icon)).text_color(p.success)),
             )
         })
         .child(
@@ -642,34 +700,30 @@ fn notice_element(notice: &NoticeLayout, p: &Palette) -> impl IntoElement {
                     div().flex_shrink_0().text_color(p.text_secondary).child(SharedString::from(notice.label.clone())),
                 )
                 .child(
-                    div()
-                        .min_w(px(0.))
-                        .truncate()
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.text)
-                        .child(SharedString::from(notice.value.clone())),
+                    div().min_w(px(0.)).truncate().text_color(p.text).child(SharedString::from(notice.value.clone())),
                 ),
         )
 }
 
-/// The 中/英 badge (macOS `ModeBadgeView` on its surface); `shadow` also rounds it (see `CandidatePanel::rounded`).
-pub fn mode_badge(text: &str, p: &Palette, shadow: bool) -> AnyElement {
-    div()
+/// The 中/英 badge on its floating surface (`floating`: rounded with its shadow; otherwise square, see `Chrome`).
+pub fn mode_badge(text: &str, p: &Palette, floating: bool) -> AnyElement {
+    mode_badge_in(text, p, if floating { Chrome::Floating } else { Chrome::Square })
+}
+
+/// The 中/英 badge with the edge `chrome` asks for.
+pub fn mode_badge_in(text: &str, p: &Palette, chrome: Chrome) -> AnyElement {
+    let c = tokens::colors(p);
+    shell(chrome, &c, tokens::RADIUS)
         .w(px(BADGE_W))
         .h(px(BADGE_H))
         .flex()
         .items_center()
         .justify_center()
-        .when(shadow, |this| this.rounded(size::RADIUS_CARD))
-        .bg(p.panel)
-        .border_1()
-        .border_color(p.panel_border)
-        .when(shadow, |this| this.shadow(surface_shadow(p)))
-        .font_family(theme::ui_font())
         .text_size(px(BADGE_FONT))
-        .line_height(px(30.))
+        .line_height(px(BADGE_FONT * 1.3))
         .font_weight(FontWeight::MEDIUM)
         .text_color(p.text)
         .child(SharedString::from(text.to_owned()))
+        .children(edge(chrome, &c, tokens::RADIUS))
         .into_any_element()
 }

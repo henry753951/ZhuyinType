@@ -194,3 +194,9 @@ pub fn transparent_windows() -> bool {
         false
     }
 }
+
+/// The system draws the floating windows' edge: Windows rounds them (DWM, small corners) and draws their border and
+/// shadow like the system's own menus, so the surface is square and edge to edge with no border of its own.
+pub fn system_frames_popups() -> bool {
+    cfg!(windows)
+}

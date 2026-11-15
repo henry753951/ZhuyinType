@@ -22,7 +22,7 @@ use zt_core::presentation::{Rect, popup_position};
 use zt_core::service::{PopupAction, PopupState, UiEvent};
 
 use super::layout::{BADGE_H, BADGE_W, Extras, WindowMeasure};
-use super::panel::{ActionHandler, CandidatePanel, SHADOW_MARGIN, ease_out, mode_badge, motion};
+use super::panel::{ActionHandler, CandidatePanel, Chrome, SHADOW_MARGIN, ease_out, mode_badge_in, motion};
 use super::platform::{self, DeviceRect};
 use super::style::{CurrentKeys, PanelAppearance, PanelStyle};
 use crate::app;
@@ -145,6 +145,18 @@ fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
     }
 }
 
+/// The floating windows' edge: their own (rounded, shadowed) with a transparent margin around them, the system's
+/// (Windows), or square with a hairline (no compositor).
+fn popup_chrome(margin: f32) -> Chrome {
+    if platform::system_frames_popups() {
+        Chrome::System
+    } else if margin > 0. {
+        Chrome::Floating
+    } else {
+        Chrome::Square
+    }
+}
+
 // MARK: - The candidate window
 
 pub struct CandidateWindow {
@@ -162,8 +174,7 @@ pub struct CandidateWindow {
 impl CandidateWindow {
     fn new(margin: f32) -> Self {
         let mut panel = CandidatePanel::new();
-        panel.shadow = margin > 0.;
-        panel.rounded = margin > 0.;
+        panel.chrome = popup_chrome(margin);
         Self {
             panel,
             margin,
@@ -371,10 +382,10 @@ impl Render for ToastWindow {
                 }
             }
         }
-        div().size_full().p(px(self.margin)).child(div().opacity(alpha).child(mode_badge(
+        div().size_full().p(px(self.margin)).child(div().opacity(alpha).child(mode_badge_in(
             self.text,
             &palette,
-            self.margin > 0.,
+            popup_chrome(self.margin),
         )))
     }
 }
