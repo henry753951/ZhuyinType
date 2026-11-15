@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -35,7 +36,7 @@ struct PhraseSheet {
     word: Entity<InputState>,
     reading: Entity<InputState>,
     editing: Option<ListItem>,
-    _word_events: Subscription,
+    _events: [Subscription; 2],
 }
 
 pub struct WordsPage {
@@ -428,6 +429,14 @@ fn configure_phrases(list: &mut ListView, page: WeakEntity<WordsPage>) {
     });
 }
 
+/// Return in a field of the sheet: the same as its 加入 or 儲存.
+fn submit_sheet(page: &mut WordsPage, window: &mut Window, cx: &mut Context<WordsPage>) {
+    if page.sheet.is_some() {
+        window.close_dialog(cx);
+        page.commit_sheet(window, cx);
+    }
+}
+
 /// The sheet that adds or edits a phrase: 詞 and 讀音, the lexicon's readings of the word as suggestions.
 fn open_sheet(page: &WeakEntity<WordsPage>, word: &str, reading: &str, editing: Option<ListItem>, window: &mut Window, cx: &mut App) {
     if !data::available(cx) {
@@ -440,25 +449,31 @@ fn open_sheet(page: &WeakEntity<WordsPage>, word: &str, reading: &str, editing: 
     let adding = editing.is_none();
     entity.update(cx, |page, cx| {
         let target = reading_input.clone();
-        let subscription = cx.subscribe_in(&word_input, window, move |_, input, event, window, cx| {
-            if !matches!(event, InputEvent::Change) {
-                return;
+        let word_events = cx.subscribe_in(&word_input, window, move |page, input, event, window, cx| match event {
+            InputEvent::Change => {
+                let word = input.read(cx).value().trim().to_owned();
+                let readings = data::readings(&word, cx);
+                let current = target.read(cx).value().to_string();
+                if let Some(first) = readings.first()
+                    && !readings.contains(&current)
+                {
+                    let first = first.clone();
+                    target.update(cx, |input, cx| input.set_value(first, window, cx));
+                }
             }
-            let word = input.read(cx).value().trim().to_owned();
-            let readings = data::readings(&word, cx);
-            let current = target.read(cx).value().to_string();
-            if let Some(first) = readings.first()
-                && !readings.contains(&current)
-            {
-                let first = first.clone();
-                target.update(cx, |input, cx| input.set_value(first, window, cx));
+            InputEvent::PressEnter { .. } => submit_sheet(page, window, cx),
+            _ => {}
+        });
+        let reading_events = cx.subscribe_in(&reading_input, window, |page, _, event, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                submit_sheet(page, window, cx);
             }
         });
         page.sheet = Some(PhraseSheet {
             word: word_input.clone(),
             reading: reading_input.clone(),
             editing,
-            _word_events: subscription,
+            _events: [word_events, reading_events],
         });
     });
     let commit_page = page.clone();
