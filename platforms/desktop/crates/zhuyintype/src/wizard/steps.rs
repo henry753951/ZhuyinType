@@ -15,9 +15,9 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, TitleBar, window_border};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, PathBuilder, Render, SharedString, StatefulInteractiveElement, Styled, Window,
-    anchored, canvas, deferred, div, img, linear_color_stop, linear_gradient, point, px,
+    AnchoredPositionMode, AnyElement, App, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, PathBuilder, Render, SharedString, StatefulInteractiveElement, Styled,
+    Window, anchored, canvas, deferred, div, img, linear_color_stop, linear_gradient, point, px,
 };
 use serde_json::Value;
 use zt_core::settings::{self, Kind};
@@ -232,19 +232,22 @@ fn choice_card(
 fn popover_card(content: impl IntoElement, on_close: impl Fn(&mut Window, &mut App) + 'static, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
     deferred(
-        anchored().snap_to_window_with_margin(px(8.)).child(
-            div()
-                .mt(px(6.))
-                .p(px(14.))
-                .rounded(size::RADIUS_CARD)
-                .bg(p.card)
-                .border_1()
-                .border_color(p.separator)
-                .shadow_lg()
-                .occlude()
-                .on_mouse_down_out(move |_, window, cx| on_close(window, cx))
-                .child(content),
-        ),
+        anchored()
+            .position_mode(AnchoredPositionMode::Local)
+            .position(point(px(-14.), px(24.)))
+            .snap_to_window_with_margin(px(8.))
+            .child(
+                div()
+                    .p(px(14.))
+                    .rounded(size::RADIUS_CARD)
+                    .bg(p.card)
+                    .border_1()
+                    .border_color(p.separator)
+                    .shadow_lg()
+                    .occlude()
+                    .on_mouse_down_out(move |_, window, cx| on_close(window, cx))
+                    .child(content),
+            ),
     )
     .with_priority(2)
     .into_any_element()
@@ -314,9 +317,12 @@ fn drawn_check(arrival: Arrival, window: &mut Window, cx: &App) -> impl IntoElem
                     if check > 0. {
                         let inset = 13.;
                         let (x0, y0, w, hgt) = (ox + inset, oy + inset, side - inset * 2., side - inset * 2.);
-                        let points = [(x0, y0 + hgt * 0.54), (x0 + w * 0.36, y0 + hgt * 0.88), (x0 + w, y0 + hgt * 0.12)];
-                        let lengths =
-                            [((points[1].0 - points[0].0).hypot(points[1].1 - points[0].1)), ((points[2].0 - points[1].0).hypot(points[2].1 - points[1].1))];
+                        let points =
+                            [(x0, y0 + hgt * 0.54), (x0 + w * 0.36, y0 + hgt * 0.88), (x0 + w, y0 + hgt * 0.12)];
+                        let lengths = [
+                            ((points[1].0 - points[0].0).hypot(points[1].1 - points[0].1)),
+                            ((points[2].0 - points[1].0).hypot(points[2].1 - points[1].1)),
+                        ];
                         let mut remaining = (lengths[0] + lengths[1]) * check;
                         let mut path = PathBuilder::stroke(px(3.));
                         path.move_to(point(px(points[0].0), px(points[0].1)));
@@ -372,6 +378,13 @@ impl Render for WizardWindow {
         } else if progress.is_some() && pinned.is_none() {
             window.request_animation_frame();
         }
+        // The practice field takes the keyboard back when nothing else has it (a click on a choice, on the page).
+        if let Step::Lesson(id) = step
+            && data::lesson(id).is_some_and(|lesson| lesson.task.is_some())
+            && self.focus.is_focused(window)
+        {
+            self.field.update(cx, |field, cx| field.focus(window, cx));
+        }
         let arrival = Arrival { started: self.arrived, reduced, rest: self.still };
         let current = self.page(step, true, arrival, window, cx);
         let mut layers: Vec<AnyElement> = Vec::new();
@@ -379,7 +392,8 @@ impl Render for WizardWindow {
             let rest = Arrival { started: self.arrived, reduced, rest: true };
             let old = self.page(leaving.step, false, rest, window, cx);
             let (eased, dir) = (if reduced { t } else { step_curve(t) }, leaving.direction as f32);
-            let (old_x, new_x) = if reduced { (0., 0.) } else { (-dir * STEP_OUT * eased, dir * STEP_IN * (1. - eased)) };
+            let (old_x, new_x) =
+                if reduced { (0., 0.) } else { (-dir * STEP_OUT * eased, dir * STEP_IN * (1. - eased)) };
             let old_opacity = if reduced { 1. - t } else { (1. - t * 1.6).max(0.) };
             layers.push(div().absolute().inset_0().left(px(old_x)).opacity(old_opacity).child(old).into_any_element());
             layers.push(div().absolute().inset_0().left(px(new_x)).opacity(eased).child(current).into_any_element());
@@ -454,15 +468,13 @@ impl WizardWindow {
                 .gap(px(5.))
                 .child(h().gap(px(4.)).children((1..=count).map(|number| {
                     let current = number == index;
-                    div()
-                        .h(px(4.))
-                        .w(px(if current { segment * 1.8 } else { segment }))
-                        .rounded_full()
-                        .bg(if number <= index {
+                    div().h(px(4.)).w(px(if current { segment * 1.8 } else { segment })).rounded_full().bg(
+                        if number <= index {
                             p.accent.opacity(if current { 1. } else { 0.55 })
                         } else {
                             p.text.opacity(0.12)
-                        })
+                        },
+                    )
                 })))
                 .child(
                     div()
@@ -495,7 +507,14 @@ impl WizardWindow {
     }
 
     /// A step's page: its content from the top, never scrolled, and its footer.
-    fn page(&mut self, step: Step, live: bool, arrival: Arrival, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn page(
+        &mut self,
+        step: Step,
+        live: bool,
+        arrival: Arrival,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let (content, footer) = match step {
             Step::Welcome => self.welcome(live, arrival, window, cx),
             Step::Preset => self.preset_step(arrival, window, cx),
@@ -552,38 +571,56 @@ impl WizardWindow {
         let basic = LESSONS.iter().filter(|lesson| lesson.level == Level::Basic).count();
         let quick = self.mode == Mode::Quick;
         let full = self.mode == Mode::Full;
-        let preview: AnyElement = if live {
-            self.welcome_preview.clone().into_any_element()
-        } else {
-            div().h(px(160.)).into_any_element()
-        };
+        let preview: AnyElement =
+            if live { self.welcome_preview.clone().into_any_element() } else { div().h(px(160.)).into_any_element() };
         let content = v()
             .size_full()
             .items_center()
             .justify_center()
             .child(
-                div().size(px(64.)).flex().items_center().justify_center().opacity(icon_t).child(
-                    img("app-icon.png").size(px(icon_side)).rounded(px(icon_side * 0.22)),
+                div()
+                    .size(px(64.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .opacity(icon_t)
+                    .child(img("app-icon.png").size(px(icon_side)).rounded(px(icon_side * 0.22))),
+            )
+            .child(
+                arrival.at(
+                    0.42,
+                    8.,
+                    div()
+                        .pt(px(14.))
+                        .text_size(px(28.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(p.text)
+                        .child("歡迎使用 ZhuyinType"),
+                    window,
                 ),
             )
-            .child(arrival.at(
-                0.42,
-                8.,
-                div()
-                    .pt(px(14.))
-                    .text_size(px(28.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(p.text)
-                    .child("歡迎使用 ZhuyinType"),
-                window,
-            ))
-            .child(arrival.at(
-                0.56,
-                8.,
-                div().pt(px(6.)).text_size(text::HEADLINE).text_color(p.text_secondary).child("選好你的打字習慣，再實際試打。"),
-                window,
-            ))
-            .child(arrival.at(0.72, 8., div().pt(px(22.)).w_full().child(glass(&p).w_full().p(px(14.)).child(preview)), window).w_full())
+            .child(
+                arrival.at(
+                    0.56,
+                    8.,
+                    div()
+                        .pt(px(6.))
+                        .text_size(text::HEADLINE)
+                        .text_color(p.text_secondary)
+                        .child("選好你的打字習慣，再實際試打。"),
+                    window,
+                ),
+            )
+            .child(
+                arrival
+                    .at(
+                        0.72,
+                        8.,
+                        div().pt(px(22.)).w_full().child(glass(&p).w_full().p(px(14.)).child(preview)),
+                        window,
+                    )
+                    .w_full(),
+            )
             .child(
                 arrival
                     .at(
@@ -624,7 +661,13 @@ impl WizardWindow {
             .child(arrival.at(
                 0.84,
                 0.,
-                primary_button("wizard-start", "開始", true, cx.listener(|this, _, window, cx| this.next(window, cx)), cx),
+                primary_button(
+                    "wizard-start",
+                    "開始",
+                    true,
+                    cx.listener(|this, _, window, cx| this.next(window, cx)),
+                    cx,
+                ),
                 window,
             ))
             .into_any_element();
@@ -633,7 +676,12 @@ impl WizardWindow {
 
     // MARK: 習慣組合
 
-    fn preset_step(&mut self, arrival: Arrival, window: &mut Window, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+    fn preset_step(
+        &mut self,
+        arrival: Arrival,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, AnyElement) {
         let p = theme::palette(cx);
         let draft = self.draft(cx);
         let changes = data::changes(&self.original, &draft);
@@ -645,7 +693,9 @@ impl WizardWindow {
                     .lines
                     .iter()
                     .take(3)
-                    .map(|(keys, words)| (keys.iter().map(|k| SharedString::from(*k)).collect(), SharedString::from(*words)))
+                    .map(|(keys, words)| {
+                        (keys.iter().map(|k| SharedString::from(*k)).collect(), SharedString::from(*words))
+                    })
                     .collect();
                 arrival
                     .part(
@@ -670,21 +720,17 @@ impl WizardWindow {
         let mut cards = cards.into_iter();
         let mut rows = Vec::new();
         while let Some(first) = cards.next() {
-            rows.push(
-                div().flex().flex_row().gap(px(14.)).child(first).children(cards.next()).into_any_element(),
-            );
+            rows.push(div().flex().flex_row().gap(px(14.)).child(first).children(cards.next()).into_any_element());
         }
         let count = changes.len();
         let showing = self.popover == Some(Popover::PresetChanges);
         let summary = h()
             .gap(px(8.))
-            .child(
-                div().text_size(text::BODY).text_color(p.text_secondary).child(if count == 0 {
-                    "和目前的設定相同".to_owned()
-                } else {
-                    format!("會改變 {count} 項設定")
-                }),
-            )
+            .child(div().text_size(text::BODY).text_color(p.text_secondary).child(if count == 0 {
+                "和目前的設定相同".to_owned()
+            } else {
+                format!("會改變 {count} 項設定")
+            }))
             .when(count > 0, |this| {
                 this.child(
                     v().child(link_button(
@@ -756,13 +802,17 @@ impl WizardWindow {
             let across = groups.len() == 1;
             v().gap(px(18.))
                 .child(arrival.part(0, step_title(lesson.title, lesson.detail, 26., cx), window))
-                .child(arrival.part(
-                    1,
-                    div().flex().flex_row().items_start().gap(px(20.)).children(
-                        groups.iter().map(|group| div().flex_1().min_w(px(0.)).child(self.group_view(group, across, cx))),
+                .child(
+                    arrival.part(
+                        1,
+                        div().flex().flex_row().items_start().gap(px(20.)).children(
+                            groups
+                                .iter()
+                                .map(|group| div().flex_1().min_w(px(0.)).child(self.group_view(group, across, cx))),
+                        ),
+                        window,
                     ),
-                    window,
-                ))
+                )
                 .child(arrival.part(2, demo, window))
                 .into_any_element()
         } else {
@@ -819,7 +869,13 @@ impl WizardWindow {
 
     /// The lesson's one live demo: the practice field (with the real window), or for a lesson without practice its
     /// preview or ⓘ demo.
-    fn lesson_demo(&mut self, lesson: &data::Lesson, live: bool, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn lesson_demo(
+        &mut self,
+        lesson: &data::Lesson,
+        live: bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = theme::palette(cx);
         if let Some(task) = &lesson.task {
             return if live && self.field_task == Some(lesson.id) {
@@ -865,7 +921,8 @@ impl WizardWindow {
     fn group_view(&self, group: &Group, across: bool, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
         let draft = self.draft(cx);
-        let title = div().text_size(text::HEADLINE).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child(group.title);
+        let title =
+            div().text_size(text::HEADLINE).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child(group.title);
         if !group.exclusive {
             let boxes = group.styles.iter().enumerate().map(|(index, style)| {
                 let on = style.is_active(&draft);
@@ -882,14 +939,26 @@ impl WizardWindow {
                         this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
                     })
                     .child(check_box(on, &p))
-                    .child(div().text_size(text::BODY).text_color(p.text).whitespace_nowrap().child(SharedString::from(
-                        group.styles[index].title.clone(),
-                    )))
+                    .child(
+                        div()
+                            .text_size(text::BODY)
+                            .text_color(p.text)
+                            .whitespace_nowrap()
+                            .child(SharedString::from(group.styles[index].title.clone())),
+                    )
             });
             return v()
                 .gap(px(8.))
                 .child(title)
-                .child(div().flex().flex_row().flex_wrap().gap_x(px(if across { 16. } else { 12. })).gap_y(px(8.)).children(boxes))
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .flex_wrap()
+                        .gap_x(px(if across { 16. } else { 12. }))
+                        .gap_y(px(8.))
+                        .children(boxes),
+                )
                 .into_any_element();
         }
         let options = group.styles.iter().enumerate().map(|(index, style)| {
@@ -929,7 +998,9 @@ impl WizardWindow {
                 v().gap(px(6.)).children(options).into_any_element()
             })
             .when_some(detail, |this, detail| {
-                this.child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(SharedString::from(detail)))
+                this.child(
+                    div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(SharedString::from(detail)),
+                )
             })
             .into_any_element()
     }
@@ -946,7 +1017,11 @@ impl WizardWindow {
         let fit = (((Self::room(window) - fixed - 30.) / ROW).floor() as usize).max(2);
         let shown = if changes.len() <= fit { changes.len() } else { fit - 1 };
         let rest: Vec<Change> = changes[shown..].to_vec();
-        let detail = if changes.is_empty() { "沒有要改變的設定。" } else { "按「套用」之前，還可以改回任何一項。" };
+        let detail = if changes.is_empty() {
+            "沒有要改變的設定。"
+        } else {
+            "按「套用」之前，還可以改回任何一項。"
+        };
         let mut list = v();
         for (index, change) in changes.iter().take(shown).enumerate() {
             if index > 0 {
@@ -1020,7 +1095,12 @@ impl WizardWindow {
             .w_full()
             .gap(px(10.))
             .child(div().flex_1())
-            .child(secondary_button("wizard-discard", "全部捨棄", cx.listener(|this, _, window, cx| this.discard(window, cx)), cx))
+            .child(secondary_button(
+                "wizard-discard",
+                "全部捨棄",
+                cx.listener(|this, _, window, cx| this.discard(window, cx)),
+                cx,
+            ))
             .child(primary_button(
                 "wizard-apply",
                 "套用",
@@ -1057,24 +1137,26 @@ impl WizardWindow {
             .gap(px(10.))
             .text_size(text::BODY)
             .child(
-                v().w(px(170.)).flex_shrink_0().child(
-                    h().id(SharedString::from(format!("change-{id}")))
-                        .gap(px(4.))
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.popover = Some(Popover::Edit(open_id.clone()));
-                            cx.notify();
-                        }))
-                        .child(
-                            div()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(p.text)
-                                .truncate()
-                                .child(SharedString::from(change.title.clone())),
-                        )
-                        .child(Icon::new(IconName::ChevronDown).size(px(11.)).text_color(p.text_tertiary)),
-                )
-                .children(editor),
+                v().w(px(170.))
+                    .flex_shrink_0()
+                    .child(
+                        h().id(SharedString::from(format!("change-{id}")))
+                            .gap(px(4.))
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.popover = Some(Popover::Edit(open_id.clone()));
+                                cx.notify();
+                            }))
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(p.text)
+                                    .truncate()
+                                    .child(SharedString::from(change.title.clone())),
+                            )
+                            .child(Icon::new(IconName::ChevronDown).size(px(11.)).text_color(p.text_tertiary)),
+                    )
+                    .children(editor),
             )
             .child(
                 div()
@@ -1102,7 +1184,12 @@ impl WizardWindow {
     }
 
     /// The control of a change's setting, on the draft (macOS `SettingControl`).
-    fn change_editor(&self, change: &Change, draft: &zt_core::settings::Settings, cx: &mut Context<Self>) -> AnyElement {
+    fn change_editor(
+        &self,
+        change: &Change,
+        draft: &zt_core::settings::Settings,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = theme::palette(cx);
         let title = div()
             .pb(px(8.))
@@ -1128,7 +1215,11 @@ impl WizardWindow {
                                     });
                                 }
                             }))
-                            .child(div().text_size(text::BODY).text_color(p.text_secondary).child(if on { "開啟" } else { "關閉" }))
+                            .child(div().text_size(text::BODY).text_color(p.text_secondary).child(if on {
+                                "開啟"
+                            } else {
+                                "關閉"
+                            }))
                             .into_any_element()
                     }
                     Kind::Choice => v()
@@ -1150,7 +1241,12 @@ impl WizardWindow {
                                     this.draft_changed(cx);
                                 }))
                                 .child(radio(on, &p))
-                                .child(div().text_size(text::BODY).text_color(p.text).child(SharedString::from(choice.label.clone())))
+                                .child(
+                                    div()
+                                        .text_size(text::BODY)
+                                        .text_color(p.text)
+                                        .child(SharedString::from(choice.label.clone())),
+                                )
                         }))
                         .into_any_element(),
                     Kind::Number => {
@@ -1164,12 +1260,19 @@ impl WizardWindow {
                                     .text_color(p.text)
                                     .child(SharedString::from(data::value_label(descriptor, &current))),
                             )
-                            .child(stepper(format!("edit-{key}"), value, min, max, move |next, _, cx| {
-                                let _ = weak.update(cx, |this, cx| {
-                                    let _ = this.draft(cx).set(key, Value::from(next));
-                                    this.draft_changed(cx);
-                                });
-                            }, cx))
+                            .child(stepper(
+                                format!("edit-{key}"),
+                                value,
+                                min,
+                                max,
+                                move |next, _, cx| {
+                                    let _ = weak.update(cx, |this, cx| {
+                                        let _ = this.draft(cx).set(key, Value::from(next));
+                                        this.draft_changed(cx);
+                                    });
+                                },
+                                cx,
+                            ))
                             .into_any_element()
                     }
                     Kind::Text => div().into_any_element(),
@@ -1204,33 +1307,33 @@ impl WizardWindow {
             .iter()
             .enumerate()
             .map(|(index, group)| {
-                let card = glass(&p)
-                    .w_full()
-                    .p(px(14.))
-                    .child(
-                        v().gap(px(9.))
-                            .child(
-                                h().gap(px(8.))
-                                    .child(Icon::new(group.icon).size(px(16.)).text_color(p.text))
-                                    .child(
-                                        div()
-                                            .text_size(text::HEADLINE)
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(p.text)
-                                            .child(group.title),
-                                    ),
-                            )
-                            .children(group.items.iter().take(KEYS_PER_CARD).map(|(keys, action)| {
-                                h().gap(px(10.))
-                                    .child(
-                                        h().w(px(92.))
-                                            .flex_shrink_0()
-                                            .gap(px(4.))
-                                            .children(keys.iter().map(|key| keycap(SharedString::from(key.clone())))),
-                                    )
-                                    .child(div().text_size(text::BODY).text_color(p.text).child(SharedString::from(action.clone())))
-                            })),
-                    );
+                let card = glass(&p).w_full().p(px(14.)).child(
+                    v().gap(px(9.))
+                        .child(
+                            h().gap(px(8.)).child(Icon::new(group.icon).size(px(16.)).text_color(p.text)).child(
+                                div()
+                                    .text_size(text::HEADLINE)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(p.text)
+                                    .child(group.title),
+                            ),
+                        )
+                        .children(group.items.iter().take(KEYS_PER_CARD).map(|(keys, action)| {
+                            h().gap(px(10.))
+                                .child(
+                                    h().w(px(92.))
+                                        .flex_shrink_0()
+                                        .gap(px(4.))
+                                        .children(keys.iter().map(|key| keycap(SharedString::from(key.clone())))),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(text::BODY)
+                                        .text_color(p.text)
+                                        .child(SharedString::from(action.clone())),
+                                )
+                        })),
+                );
                 arrival.part(1 + index, card, window).flex_1().min_w(px(0.)).into_any_element()
             })
             .collect();
@@ -1242,13 +1345,23 @@ impl WizardWindow {
         }
         let content = v()
             .gap(px(20.))
-            .child(arrival.part(0, step_title("你會用到的按鍵", "依你的設定產生；之後可以在「介紹」再看一次。", 26., cx), window))
+            .child(arrival.part(
+                0,
+                step_title("你會用到的按鍵", "依你的設定產生；之後可以在「介紹」再看一次。", 26., cx),
+                window,
+            ))
             .child(v().gap(px(14.)).children(rows))
             .into_any_element();
         let footer = h()
             .w_full()
             .child(div().flex_1())
-            .child(primary_button("wizard-done", "完成", true, cx.listener(|this, _, window, cx| this.close(window, cx)), cx))
+            .child(primary_button(
+                "wizard-done",
+                "完成",
+                true,
+                cx.listener(|this, _, window, cx| this.close(window, cx)),
+                cx,
+            ))
             .into_any_element();
         (content, footer)
     }

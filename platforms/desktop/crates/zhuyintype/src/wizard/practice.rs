@@ -60,6 +60,19 @@ const BADGE_FADE: f32 = 0.2;
 /// 「完成」: the outline turns green over this long.
 const DONE_MS: f32 = 200.;
 
+gpui_kit::actions!(practice_field, [PracticeTab, PracticeBackTab]);
+
+/// The key context of the field: Tab and ⇧Tab are the input method's here (翻頁), not the window's focus keys.
+const CONTEXT: &str = "PracticeField";
+
+/// Takes Tab and ⇧Tab from the window's focus navigation while the field has the keyboard.  Call once.
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([
+        gpui_kit::KeyBinding::new("tab", PracticeTab, Some(CONTEXT)),
+        gpui_kit::KeyBinding::new("shift-tab", PracticeBackTab, Some(CONTEXT)),
+    ]);
+}
+
 /// What the field tells the wizard.
 pub enum FieldEvent {
     /// The task's goals were all met (once).
@@ -265,6 +278,15 @@ impl PracticeField {
         self.changed(cx);
     }
 
+    /// Tab and ⇧Tab, which arrive as actions (the window binds them to focus navigation).
+    fn tab(&mut self, back: bool, cx: &mut Context<Self>) {
+        let Some(session) = &mut self.session else { return };
+        let key = Key::new(code::TAB, if back { modifier::SHIFT } else { 0 });
+        session.key_down(&key);
+        session.key_up(&key);
+        self.changed(cx);
+    }
+
     fn key_up(&mut self, event: &KeyUpEvent, cx: &mut Context<Self>) {
         if event.keystroke.is_modifier_key() {
             return;
@@ -376,8 +398,8 @@ impl PracticeField {
             let keys = CurrentKeys::sandboxed(&self.settings);
             let style = PanelStyle::from_settings(&self.settings, &keys);
             let selection = selection_keys(&self.settings);
-            let sample = sample::list(sample::PANEL_WORDS, &[], false, selection.len().max(1), 0)
-                .presentation("", &selection);
+            let sample =
+                sample::list(sample::PANEL_WORDS, &[], false, selection.len().max(1), 0).presentation("", &selection);
             let height = panel_layout(&sample, &style, &mut WindowMeasure(window)).height;
             self.look = Some(Look {
                 key,
@@ -403,8 +425,14 @@ fn measure(window: &Window, font: &Font, text: &str) -> f32 {
     if text.is_empty() {
         return 0.;
     }
-    let run =
-        TextRun { len: text.len(), font: font.clone(), color: black(), background_color: None, underline: None, strikethrough: None };
+    let run = TextRun {
+        len: text.len(),
+        font: font.clone(),
+        color: black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
     f32::from(window.text_system().layout_line(text, px(FONT), &[run], None).width)
 }
 
@@ -471,11 +499,7 @@ impl PracticeField {
         let task = self.task?;
         let p = theme::palette(cx);
         let done = self.done.map(|at| {
-            let t = if self.still || cx.reduce_motion() {
-                1.
-            } else {
-                (at.elapsed().as_secs_f32() / 0.3).min(1.)
-            };
+            let t = if self.still || cx.reduce_motion() { 1. } else { (at.elapsed().as_secs_f32() / 0.3).min(1.) };
             if t < 1. {
                 window.request_animation_frame();
             }
@@ -634,7 +658,13 @@ impl Render for PracticeField {
         });
         let resting = if focused { p.accent.opacity(0.6) } else { p.separator };
         let border = if self.done.is_some() { mix(resting, p.success, done_t) } else { resting };
-        let border_w = if self.done.is_some() { 2. } else if focused { 1.5 } else { 1. };
+        let border_w = if self.done.is_some() {
+            2.
+        } else if focused {
+            1.5
+        } else {
+            1.
+        };
 
         let caret = (focused && self.session.is_some()).then(|| {
             let bar = div()
@@ -665,15 +695,11 @@ impl Render for PracticeField {
                 .w(px(mark.w.max(1.)))
                 .h(px(LINE_H + 1.))
                 .when(mark.style == MarkStyle::Focus, |this| this.bg(p.accent_faint))
-                .child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .bottom_0()
-                        .w_full()
-                        .h(px(if thick { 2. } else { 1. }))
-                        .bg(if thick { p.accent } else { p.text }),
-                )
+                .child(div().absolute().left_0().bottom_0().w_full().h(px(if thick { 2. } else { 1. })).bg(if thick {
+                    p.accent
+                } else {
+                    p.text
+                }))
                 .into_any_element()
         });
         let placed_cell = self.placed.clone();
@@ -700,7 +726,10 @@ impl Render for PracticeField {
             .border_color(border)
             .overflow_hidden()
             .cursor_text()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &MouseDownEvent, window, cx| this.click(event, window, cx)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| this.click(event, window, cx)),
+            )
             .child(probe)
             .children(mark_elements)
             .when(empty, |this| {
@@ -785,25 +814,25 @@ impl Render for PracticeField {
             self.badge = None;
         }
 
-        v().w_full()
-            .gap(px(10.))
-            .children(self.task_line(window, cx))
-            .child(
-                div()
-                    .id("practice-field")
-                    .relative()
-                    .w_full()
-                    .h(px(area_h))
-                    .track_focus(&self.focus)
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
-                    .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| this.key_up(event, cx)))
-                    .on_modifiers_changed(
-                        cx.listener(|this, event: &ModifiersChangedEvent, _, cx| this.modifiers_changed(event, cx)),
-                    )
-                    .child(the_box)
-                    .children(panel)
-                    .children(badge),
-            )
+        v().w_full().gap(px(10.)).children(self.task_line(window, cx)).child(
+            div()
+                .id("practice-field")
+                .relative()
+                .w_full()
+                .h(px(area_h))
+                .track_focus(&self.focus)
+                .key_context(CONTEXT)
+                .on_action(cx.listener(|this, _: &PracticeTab, _, cx| this.tab(false, cx)))
+                .on_action(cx.listener(|this, _: &PracticeBackTab, _, cx| this.tab(true, cx)))
+                .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
+                .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| this.key_up(event, cx)))
+                .on_modifiers_changed(
+                    cx.listener(|this, event: &ModifiersChangedEvent, _, cx| this.modifiers_changed(event, cx)),
+                )
+                .child(the_box)
+                .children(panel)
+                .children(badge),
+        )
     }
 }
 
@@ -815,28 +844,18 @@ pub fn placeholder(task: &Task, cx: &App) -> AnyElement {
         .child(
             v().gap(px(4.))
                 .child(
-                    h().gap(px(8.))
-                        .child(Icon::new(IconName::Keyboard).size(px(17.)).text_color(p.text))
-                        .child(
-                            div()
-                                .text_size(text::HEADLINE)
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(p.text)
-                                .child(task.prompt),
-                        ),
+                    h().gap(px(8.)).child(Icon::new(IconName::Keyboard).size(px(17.)).text_color(p.text)).child(
+                        div()
+                            .text_size(text::HEADLINE)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(p.text)
+                            .child(task.prompt),
+                    ),
                 )
                 .when_some(task.hint, |this, hint| {
                     this.child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(hint))
                 }),
         )
-        .child(
-            div()
-                .w_full()
-                .h(px(BOX_H))
-                .rounded(px(RADIUS))
-                .bg(field_fill(&p))
-                .border_1()
-                .border_color(p.separator),
-        )
+        .child(div().w_full().h(px(BOX_H)).rounded(px(RADIUS)).bg(field_fill(&p)).border_1().border_color(p.separator))
         .into_any_element()
 }

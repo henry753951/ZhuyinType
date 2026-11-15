@@ -97,7 +97,9 @@ impl Mode {
         match self {
             Self::Quick => LESSONS.iter().filter(|lesson| lesson.level == Level::Basic).collect(),
             Self::Full => LESSONS.iter().collect(),
-            Self::NewSince(version) => LESSONS.iter().filter(|lesson| data::version_after(lesson.since, version)).collect(),
+            Self::NewSince(version) => {
+                LESSONS.iter().filter(|lesson| data::version_after(lesson.since, version)).collect()
+            }
             Self::KeysOnly => Vec::new(),
         }
     }
@@ -474,13 +476,13 @@ pub fn open(kind: WizardKind, cx: &mut App) {
     }
 }
 
-fn open_window(
-    mode: Mode,
-    opening: Opening,
-    cx: &mut App,
-) -> anyhow::Result<(AnyWindowHandle, Entity<WizardWindow>)> {
+fn open_window(mode: Mode, opening: Opening, cx: &mut App) -> anyhow::Result<(AnyWindowHandle, Entity<WizardWindow>)> {
     if !cx.has_global::<Navigation>() {
         cx.set_global(Navigation::new(Page::Intro));
+    }
+    if !cx.has_global::<OpenWizard>() {
+        practice::bind_keys(cx);
+        cx.set_global(OpenWizard(None));
     }
     if let Some((handle, view)) = cx.try_global::<OpenWizard>().and_then(|open| open.0.clone()) {
         let reopened = handle.update(cx, |_, window, cx| {
@@ -567,7 +569,9 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
         },
     };
     let options: Vec<(String, String)> = parts
-        .map(|part| part.split_once('=').map_or((part.to_owned(), String::new()), |(k, v)| (k.to_owned(), v.to_owned())))
+        .map(|part| {
+            part.split_once('=').map_or((part.to_owned(), String::new()), |(k, v)| (k.to_owned(), v.to_owned()))
+        })
         .collect();
     let live = options.iter().any(|(key, _)| key == "live");
     let opening = Opening { dark, size: window_size, still: !live };
@@ -579,50 +583,53 @@ pub fn open_preview(spec: &str, dark: Option<bool>, window_size: Option<(f32, f3
         }
     };
     let step = step.map(str::to_owned);
-    let _ = handle.update(cx, move |_, window, cx| view.update(cx, |wizard, cx| {
-        for (key, value) in &options {
-            match key.as_str() {
-                "preset" => {
-                    if let Some(index) = PRESETS.iter().position(|preset| preset.id == value) {
-                        wizard.choose_preset(index, cx);
-                    }
-                }
-                "set" => {
-                    if let Some((setting, text)) = value.split_once(':') {
-                        let parsed = serde_json::from_str(text).unwrap_or_else(|_| Value::from(text));
-                        let draft = wizard.draft(cx);
-                        if let Err(error) = draft.set(setting, parsed) {
-                            log::warn!("--wizard set {setting}: {error:#}");
+    let _ = handle.update(cx, move |_, window, cx| {
+        view.update(cx, |wizard, cx| {
+            for (key, value) in &options {
+                match key.as_str() {
+                    "preset" => {
+                        if let Some(index) = PRESETS.iter().position(|preset| preset.id == value) {
+                            wizard.choose_preset(index, cx);
                         }
-                        wizard.draft_changed(cx);
                     }
-                }
-                _ => {}
-            }
-        }
-        if let Some(step) = &step
-            && let Some(index) = wizard.steps().iter().position(|s| s.id() == *step || s.id() == format!("lesson-{step}"))
-        {
-            wizard.index = index;
-            wizard.enter(window, cx);
-        }
-        for (key, value) in &options {
-            match key.as_str() {
-                "type" => wizard.field.update(cx, |field, cx| field.feed(value, cx)),
-                "done" => {
-                    if let Step::Lesson(id) = wizard.step() {
-                        wizard.completed.insert(id);
+                    "set" => {
+                        if let Some((setting, text)) = value.split_once(':') {
+                            let parsed = serde_json::from_str(text).unwrap_or_else(|_| Value::from(text));
+                            let draft = wizard.draft(cx);
+                            if let Err(error) = draft.set(setting, parsed) {
+                                log::warn!("--wizard set {setting}: {error:#}");
+                            }
+                            wizard.draft_changed(cx);
+                        }
                     }
+                    _ => {}
                 }
-                "transition" => {
-                    wizard.pinned_transition = value.parse::<f32>().ok().map(|percent| percent / 100.);
-                }
-                "edit" => wizard.popover = Some(Popover::Edit(value.clone())),
-                "changes" => wizard.popover = Some(Popover::PresetChanges),
-                _ => {}
             }
-        }
-        window.activate_window();
-        cx.notify();
-    }));
+            if let Some(step) = &step
+                && let Some(index) =
+                    wizard.steps().iter().position(|s| s.id() == *step || s.id() == format!("lesson-{step}"))
+            {
+                wizard.index = index;
+                wizard.enter(window, cx);
+            }
+            for (key, value) in &options {
+                match key.as_str() {
+                    "type" => wizard.field.update(cx, |field, cx| field.feed(value, cx)),
+                    "done" => {
+                        if let Step::Lesson(id) = wizard.step() {
+                            wizard.completed.insert(id);
+                        }
+                    }
+                    "transition" => {
+                        wizard.pinned_transition = value.parse::<f32>().ok().map(|percent| percent / 100.);
+                    }
+                    "edit" => wizard.popover = Some(Popover::Edit(value.clone())),
+                    "changes" => wizard.popover = Some(Popover::PresetChanges),
+                    _ => {}
+                }
+            }
+            window.activate_window();
+            cx.notify();
+        })
+    });
 }

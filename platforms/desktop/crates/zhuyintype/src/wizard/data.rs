@@ -276,13 +276,23 @@ pub const PRESETS: [Preset; 4] = [
     Preset {
         id: "windows",
         title: "Windows 注音的習慣",
-        lines: &[(&["Shift"], "單按切換中英"), (&["Ctrl", "，"], "打中文標點"), (&["1–9"], "選字"), (&[], "和目前的預設相同")],
+        lines: &[
+            (&["Shift"], "單按切換中英"),
+            (&["Ctrl", "，"], "打中文標點"),
+            (&["1–9"], "選字"),
+            (&[], "和目前的預設相同"),
+        ],
         values: windows_values,
     },
     Preset {
         id: "mac",
         title: "macOS 注音的習慣",
-        lines: &[(&["空白"], "開啟候選字視窗"), (&["Caps Lock"], "切換中英"), (&["Shift"], "不切換中英"), (&["1–9"], "選字")],
+        lines: &[
+            (&["空白"], "開啟候選字視窗"),
+            (&["Caps Lock"], "切換中英"),
+            (&["Shift"], "不切換中英"),
+            (&["1–9"], "選字"),
+        ],
         values: mac_values,
     },
     Preset {
@@ -291,7 +301,12 @@ pub const PRESETS: [Preset; 4] = [
         lines: &[(&["空白"], "送出並輸入空白"), (&["Ctrl", "，"], "打中文標點"), (&["Shift"], "單按切換中英")],
         values: default_values,
     },
-    Preset { id: "custom", title: "自訂", lines: &[(&[], "從目前的設定開始"), (&[], "每一步自己選")], values: no_values },
+    Preset {
+        id: "custom",
+        title: "自訂",
+        lines: &[(&[], "從目前的設定開始"), (&[], "每一步自己選")],
+        values: no_values,
+    },
 ];
 
 /// Every setting and the keys of `settings`, to copy into another store.
@@ -460,7 +475,12 @@ pub const LESSONS: [Lesson; 13] = [
         detail: "候選字的排列，和用來選字的鍵。",
         level: Level::Basic,
         groups: &["layout", "selection"],
-        task: Some(Task { prompt: "打 ㄇㄧㄥˊ，用選字鍵選「名」", hint: None, initial: "", goals: &[Goal::Pick("名")] }),
+        task: Some(Task {
+            prompt: "打 ㄇㄧㄥˊ，用選字鍵選「名」",
+            hint: None,
+            initial: "",
+            goals: &[Goal::Pick("名")],
+        }),
         demo: None,
         since: BASE,
     },
@@ -545,7 +565,12 @@ pub const LESSONS: [Lesson; 13] = [
         detail: "選取 1 到 6 個字，按 Return 加入。",
         level: Level::Full,
         groups: &[],
-        task: Some(Task { prompt: "選取「王小明」，按 Return 加入", hint: None, initial: "", goals: &[Goal::AnyPhrase] }),
+        task: Some(Task {
+            prompt: "選取「王小明」，按 Return 加入",
+            hint: None,
+            initial: "",
+            goals: &[Goal::AnyPhrase],
+        }),
         demo: None,
         since: BASE,
     },
@@ -743,19 +768,20 @@ pub fn key_groups(settings: &Settings) -> Vec<KeyGroup> {
             })
             .collect()
     };
-    let space = settings::descriptor("spaceAction")
-        .map(|d| value_label(d, &settings.get("spaceAction")))
-        .unwrap_or_default();
-    let escape = if settings.string("escape") == "composition" { "清除注音，再按一次清除組字" } else { "清除注音" };
+    let space =
+        settings::descriptor("spaceAction").map(|d| value_label(d, &settings.get("spaceAction"))).unwrap_or_default();
+    let escape = if settings.string("escape") == "composition" {
+        "清除注音，再按一次清除組字"
+    } else {
+        "清除注音"
+    };
     let mut typing = vec![(vec!["空白".to_owned()], space), (vec!["Esc".to_owned()], escape.to_owned())];
     if let Some(mode) = current.mode_key() {
         typing.push((vec![mode], "切換中英".to_owned()));
     }
     typing.extend(commands(&["commitWithNewline", "deleteWord"]));
-    let mut list = vec![
-        (vec!["↓".to_owned()], "開啟候選字清單".to_owned()),
-        (vec![current.selection()], "選字".to_owned()),
-    ];
+    let mut list =
+        vec![(vec!["↓".to_owned()], "開啟候選字清單".to_owned()), (vec![current.selection()], "選字".to_owned())];
     list.extend(commands(&[
         "nextPage",
         "previousPage",
