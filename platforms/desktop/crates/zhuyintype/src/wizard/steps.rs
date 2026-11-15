@@ -238,7 +238,7 @@ fn popover_card(content: impl IntoElement, on_close: impl Fn(&mut Window, &mut A
             .child(
                 div()
                     .p(px(14.))
-                    .rounded(size::RADIUS_CARD)
+                    .rounded(size::R_LG)
                     .bg(p.card)
                     .border_1()
                     .border_color(p.separator)
@@ -430,7 +430,7 @@ impl WizardWindow {
                 .h(px(28.))
                 .px(px(8.))
                 .gap(px(4.))
-                .rounded(size::RADIUS_CONTROL)
+                .rounded(size::R_MD)
                 .cursor_pointer()
                 .text_size(text::BODY)
                 .text_color(p.text_secondary)

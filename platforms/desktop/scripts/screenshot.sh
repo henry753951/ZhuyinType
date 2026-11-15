@@ -11,7 +11,7 @@ bin=${1:-${CARGO_TARGET_DIR:-target}/debug/zhuyintype}; shift || true
 pages=("$@"); [ ${#pages[@]} -eq 0 ] && pages=(intro analytics typing choosing words candidates keys advanced about)
 mkdir -p "$out"
 display=:$((100 + RANDOM % 400))
-Xvfb "$display" -screen 0 1400x1000x24 -nolisten tcp >/dev/null 2>&1 &
+Xvfb "$display" -screen 0 1400x1600x24 -nolisten tcp >/dev/null 2>&1 &
 xvfb=$!
 trap 'kill $xvfb 2>/dev/null || true' EXIT
 sleep 1

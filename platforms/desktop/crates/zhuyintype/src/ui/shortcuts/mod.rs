@@ -1,8 +1,8 @@
-//! The one view of a command's keys, wherever they are shown or set (macOS `ShortcutField`): each binding is one chip
-//! with its modifiers inside (「⇧↓」「Alt+↓」「PgDn」), alternatives are more chips.  At rest nothing else shows.  With the
-//! pointer on the row: a ghost ＋ chip to add a key and 還原預設 beside the field when the keys differ from the
-//! defaults; on a chip: its ✕.  Click a chip to record a new combination (Esc cancels): the chip becomes an accent
-//! outline with the modifiers held so far and a breathing caret.  An accepted key settles with a small hop, a refused
+//! The one view of a command's keys, wherever they are shown or set (macOS `ShortcutField`): each binding is its key
+//! caps (「⇧」「↓」, `ui::keycap`), alternatives are more bindings further apart.  At rest nothing else shows.  With the
+//! pointer on the row: a ghost ＋ to add a key and 還原預設 beside the field when the keys differ from the defaults; on
+//! a binding: its ✕.  Click a binding to record a new combination (Esc cancels): it becomes an accent outline with the
+//! modifiers held so far and a breathing caret.  An accepted key settles with a small hop, a refused
 //! one shakes and the reason slides in below in red.  A key another command also uses is drawn in red with that
 //! command's name, 改按鍵 and 前往.  With `max_visible`, more keys than that fold into 「+N」.
 //!
@@ -23,17 +23,26 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyElement, App, FocusHandle, Global, Hsla, InteractiveElement, IntoElement,
     Keystroke, MouseButton, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Window, div, ease_in_out, ease_out_quint, linear_color_stop, linear_gradient, px, relative,
+    Window, div, ease_in_out, ease_out_quint, px, relative,
 };
 use zt_core::shortcuts::MAX_BINDINGS;
 
 use self::store::KeyStore;
+use super::keycap::{binding, key_glyphs};
 use super::{h, v};
 use crate::app::{self, Place};
-use crate::theme::{self, text};
+use crate::theme::{self, size, space, text};
 
-/// The chips' height (macOS `Keycap.height(12)`).
-const CHIP_H: f32 = 22.;
+/// The field's line height: a key cap's.
+const CHIP_H: gpui_kit::Pixels = size::H_XS;
+/// Between the bindings of one command (the caps of one binding are `S4` apart).
+const BINDING_GAP: gpui_kit::Pixels = space::S12;
+/// A refusal's message wraps at this width.
+const PROBLEM_MAX_W: gpui_kit::Pixels = px(280.);
+/// The room 「新增按鍵」 takes in a field without keys.
+const EMPTY_W: gpui_kit::Pixels = px(96.);
+/// The ✕ that removes a binding.
+const REMOVE_BADGE: gpui_kit::Pixels = px(16.);
 
 /// A state to draw without interaction (screenshots), set with [`set_preview`].
 #[derive(Clone, Debug, PartialEq)]
@@ -132,14 +141,7 @@ impl ShortcutField {
     }
 }
 
-/// The colours of a chip.
-fn chip_colors(cx: &App) -> (Hsla, Hsla, Hsla) {
-    let p = theme::palette(cx);
-    let fill = if p.dark { p.control } else { p.sidebar };
-    (fill, p.separator, p.text_secondary)
-}
-
-/// One binding as a key chip: 「⇧↓」.  `tint`: a conflict (red) or the accepted accent.
+/// One binding as key caps: 「⇧」「↓」.  `tint`: a conflict (red) or the accepted accent.
 #[derive(IntoElement)]
 pub struct KeyChip {
     text: SharedString,
@@ -158,27 +160,22 @@ impl KeyChip {
 }
 
 impl RenderOnce for KeyChip {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let (fill, border, ink) = chip_colors(cx);
-        chip_box(cx)
-            .bg(fill)
-            .border_1()
-            .border_color(self.tint.map_or(border, |tint| tint.opacity(0.7)))
-            .text_color(self.tint.unwrap_or(ink))
-            .when_some(self.tint, |this, tint| this.bg(tint.opacity(0.1)))
-            .child(self.text)
+    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
+        binding(&self.text, self.tint)
     }
 }
 
-fn chip_box(_cx: &App) -> gpui_kit::Div {
-    h().h(px(CHIP_H))
-        .min_w(px(CHIP_H))
-        .px(px(7.))
+/// A key cap's box for things that are not keys (「+2」, the recorder).
+fn cap_box(cx: &App) -> gpui_kit::Div {
+    let p = theme::palette(cx);
+    h().h(CHIP_H)
+        .min_w(CHIP_H)
+        .px(space::S6)
         .justify_center()
-        .rounded(px(5.))
+        .rounded(size::R_XS)
         .flex_shrink_0()
-        .text_size(text::SUBTITLE)
-        .font_weight(gpui_kit::FontWeight::MEDIUM)
+        .bg(p.subtle)
+        .text_size(text::CAPTION)
         .whitespace_nowrap()
 }
 
@@ -328,7 +325,7 @@ impl RenderOnce for ShortcutField {
         let mut chips: Vec<AnyElement> = Vec::new();
         if !bindings.is_empty() && bindings.len() < MAX_BINDINGS && !self.disabled {
             let count = bindings.len();
-            let ghost = ghost_chip(format!("ghost-{command}"), "＋", cx)
+            let ghost = ghost_add(format!("ghost-{command}"), None, cx)
                 .tooltip(|window, cx| Tooltip::new("新增按鍵").build(window, cx))
                 .when(editable, |this| this.on_click(move |_, window, cx| start(command, count, window, cx)));
             chips.push(if editable {
@@ -338,14 +335,14 @@ impl RenderOnce for ShortcutField {
             });
         }
         if bindings.is_empty() && recording.is_none() {
-            let ghost = ghost_chip(format!("empty-{command}"), "＋ 新增按鍵", cx)
+            let ghost = ghost_add(format!("empty-{command}"), Some("新增按鍵"), cx)
                 .absolute()
                 .right_0()
                 .top_0()
                 .when(editable, |this| this.on_click(move |_, window, cx| start(command, 0, window, cx)));
             let dash = div()
                 .id(SharedString::from(format!("dash-{command}")))
-                .h(px(CHIP_H))
+                .h(CHIP_H)
                 .flex()
                 .items_center()
                 .text_color(p.text_tertiary)
@@ -358,8 +355,8 @@ impl RenderOnce for ShortcutField {
             chips.push(
                 div()
                     .relative()
-                    .min_w(px(96.))
-                    .h(px(CHIP_H))
+                    .min_w(EMPTY_W)
+                    .h(CHIP_H)
                     .flex()
                     .justify_end()
                     .child(dash)
@@ -389,12 +386,10 @@ impl RenderOnce for ShortcutField {
         }
         if visible < bindings.len() {
             let more = bindings.len() - visible;
-            let (fill, _, ink) = chip_colors(cx);
             chips.push(
-                chip_box(cx)
+                cap_box(cx)
                     .id(SharedString::from(format!("more-{command}")))
-                    .bg(fill.opacity(0.6))
-                    .text_color(ink)
+                    .text_color(p.text_secondary)
                     .cursor_pointer()
                     .tooltip(move |window, cx| Tooltip::new(format!("還有 {more} 個按鍵")).build(window, cx))
                     .on_hover(move |hovered, _, cx| {
@@ -423,8 +418,8 @@ impl RenderOnce for ShortcutField {
                 .absolute()
                 .right(relative(1.))
                 .top_0()
-                .h(px(CHIP_H))
-                .pr(px(10.))
+                .h(CHIP_H)
+                .pr(space::S12)
                 .flex()
                 .items_center()
                 .whitespace_nowrap()
@@ -443,7 +438,7 @@ impl RenderOnce for ShortcutField {
             }
         });
 
-        let row = h().relative().flex_wrap().justify_end().gap(px(6.)).children(restore_link).children(chips);
+        let row = h().relative().flex_wrap().justify_end().gap(BINDING_GAP).children(restore_link).children(chips);
         let row = if refusals > 0 {
             row.with_animation(
                 SharedString::from(format!("shake-{command}-{refusals}")),
@@ -472,7 +467,7 @@ impl RenderOnce for ShortcutField {
         v().id(SharedString::from(format!("field-{command}")))
             .when(self.group.is_none(), |this| this.group(group.clone()))
             .items_end()
-            .gap(px(4.))
+            .gap(space::S4)
             .when(self.disabled, |this| this.opacity(0.45))
             .on_hover(move |hovered, _, cx| {
                 if !hovered {
@@ -488,7 +483,7 @@ impl RenderOnce for ShortcutField {
             .when_some(problem, |this, message| {
                 this.child(
                     div()
-                        .max_w(px(280.))
+                        .max_w(PROBLEM_MAX_W)
                         .text_size(text::SUBTITLE)
                         .text_color(p.danger)
                         .text_right()
@@ -511,18 +506,23 @@ impl RenderOnce for ShortcutField {
     }
 }
 
-fn ghost_chip(id: String, label: &'static str, cx: &App) -> gpui_kit::Stateful<gpui_kit::Div> {
+/// A ghost ＋ (and `label`) that adds a key: no border, a hover fill.
+fn ghost_add(id: String, label: Option<&'static str>, cx: &App) -> gpui_kit::Stateful<gpui_kit::Div> {
     let p = theme::palette(cx);
-    chip_box(cx)
-        .id(SharedString::from(id))
-        .px(px(6.))
-        .border_1()
-        .border_dashed()
-        .border_color(p.text_tertiary)
+    h().id(SharedString::from(id))
+        .flex_shrink_0()
+        .h(CHIP_H)
+        .min_w(CHIP_H)
+        .px(if label.is_some() { space::S6 } else { space::S4 })
+        .gap(space::S4)
+        .justify_center()
+        .rounded(size::R_XS)
+        .text_size(text::SUBTITLE)
         .text_color(p.text_secondary)
         .cursor_pointer()
-        .hover(|style| style.bg(p.hover))
-        .child(label)
+        .hover(|style| style.bg(p.hover).text_color(p.text))
+        .child(Icon::new(IconName::Plus).size(size::ICON_XS))
+        .children(label)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -539,7 +539,6 @@ fn binding_chip(
     cx: &App,
 ) -> AnyElement {
     let p = theme::palette(cx);
-    let (fill, _, _) = chip_colors(cx);
     let group = SharedString::from(format!("chip-{command}-{index}"));
     let tint = if conflict {
         Some(p.danger)
@@ -554,20 +553,22 @@ fn binding_chip(
         format!("{spoken}：點一下改按鍵")
     };
     let remove_spoken = spoken.clone();
+    // A small badge on the binding's corner, so showing it moves nothing.
     let cross = div()
         .id(SharedString::from(format!("remove-{command}-{index}")))
         .absolute()
-        .top_0()
-        .right_0()
-        .h_full()
-        .w(px(18.))
-        .pl(px(4.))
+        .top(-space::S6)
+        .right(-space::S6)
+        .size(REMOVE_BADGE)
         .flex()
         .items_center()
         .justify_center()
-        .rounded_r(px(5.))
-        .bg(linear_gradient(90., linear_color_stop(fill.opacity(0.), 0.), linear_color_stop(fill, 0.45)))
+        .rounded_full()
+        .bg(p.card)
+        .border_1()
+        .border_color(p.control_border)
         .text_color(p.text_secondary)
+        .hover(|style| style.text_color(p.text))
         .cursor_pointer()
         .tooltip(move |window, cx| Tooltip::new(format!("刪除 {remove_spoken}")).build(window, cx))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -575,7 +576,7 @@ fn binding_chip(
             cx.stop_propagation();
             remove(command, index, cx);
         })
-        .child(Icon::new(IconName::X).size(px(10.)));
+        .child(Icon::new(IconName::X).size(space::S8 + space::S2));
     let cross = if pinned_remove {
         cross.opacity(1.)
     } else {
@@ -585,7 +586,7 @@ fn binding_chip(
         .id(SharedString::from(format!("chip-{command}-{index}")))
         .group(group)
         .relative()
-        .rounded(px(5.))
+        .rounded(size::R_XS)
         .when(editable, |this| this.cursor_pointer().on_click(move |_, window, cx| start(command, index, window, cx)))
         .tooltip(move |window, cx| Tooltip::new(help.clone()).build(window, cx))
         .child(key_chip(label).tint(tint))
@@ -604,19 +605,19 @@ fn binding_chip(
 
 fn recorder_chip(command: &'static str, held: u32, focus: Option<FocusHandle>, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
-    let caret = div().w(px(1.5)).h(px(12.)).rounded(px(1.)).bg(p.accent).with_animation(
+    let caret = div().w(px(1.5)).h(size::ICON_XS).bg(p.accent).with_animation(
         "recorder-caret",
         Animation::new(Duration::from_millis(1100)).repeat(),
         |this, t| this.opacity(1. - 0.75 * (t * std::f32::consts::PI).sin()),
     );
-    chip_box(cx)
+    cap_box(cx)
         .id(SharedString::from(format!("recorder-{command}")))
-        .min_w(px(30.))
-        .gap(px(1.))
-        .bg(p.accent_faint)
-        .border(px(1.5))
+        .min_w(space::S32)
+        .gap(space::S2)
+        .bg(p.control)
+        .border_1()
         .border_color(p.accent)
-        .text_color(p.accent)
+        .text_color(p.text)
         .tooltip(|window, cx| Tooltip::new("按下新的組合；Esc 取消").build(window, cx))
         .when_some(focus, |this, focus| {
             this.track_focus(&focus)
@@ -628,7 +629,7 @@ fn recorder_chip(command: &'static str, held: u32, focus: Option<FocusHandle>, c
                 })
                 .on_mouse_down_out(|_, _, cx| stop(cx))
         })
-        .child(store::modifier_label(held))
+        .child(key_glyphs(&store::modifier_label(held), f32::from(text::CAPTION), p.text))
         .child(caret)
         .into_any_element()
 }
@@ -645,17 +646,17 @@ fn conflict_line(command: &'static str, index: usize, other: &'static str, cx: &
     };
     let other_label = store::command_label(other);
     h().id(SharedString::from(format!("conflict-{command}-{index}")))
-        .gap(px(6.))
+        .gap(space::S6)
         .text_size(text::SUBTITLE)
         .text_color(p.danger)
         .tooltip(move |window, cx| {
             Tooltip::new(format!("「{other_label}」也用這個按鍵；兩個功能都按下時只有一個會作用")).build(window, cx)
         })
-        .child(Icon::new(IconName::TriangleAlert).size(px(12.)))
+        .child(Icon::new(IconName::TriangleAlert).size(size::ICON_XS))
         .child(div().whitespace_nowrap().child(format!("也用於「{other_label}」")))
         .child(
-            h().pl(px(4.))
-                .gap(px(10.))
+            h().pl(space::S4)
+                .gap(space::S12)
                 .child(link(format!("replace-{command}-{index}"), "改按鍵").on_click(move |_, window, cx| {
                     start(command, index, window, cx);
                 }))
@@ -667,5 +668,5 @@ fn conflict_line(command: &'static str, index: usize, other: &'static str, cx: &
 
 /// The chips' height, for rows that line other content up with them.
 pub fn chip_height() -> gpui_kit::Pixels {
-    px(CHIP_H)
+    CHIP_H
 }

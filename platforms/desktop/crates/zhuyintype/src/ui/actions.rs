@@ -6,26 +6,26 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, ClickEvent, Div, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    StatefulInteractiveElement, Styled, Window, div,
 };
 use serde_json::Value;
 
 use crate::app;
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text};
 
 /// How a push button looks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonKind {
     /// The quiet control fill (most row buttons).
     Normal,
-    /// The accent: a dialog's default button.
+    /// The inverted neutral (dark on light, light on dark): a dialog's default button.
     Default,
     /// Red text: 「清除」「回復」 in a confirmation.
     Destructive,
 }
 
-/// A push button: 「匯出…」, 「清除…」, 「完成」 (drawn here rather than by the library so the default one is a solid
-/// accent).
+/// A push button `H_MD` tall: 「匯出…」, 「清除…」, 「完成」 (drawn here rather than by the library so the default one is
+/// the inverted neutral).  Dialogs make theirs `H_LG` with `.h(size::H_LG)`.
 pub fn push_button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -35,21 +35,27 @@ pub fn push_button(
     cx: &App,
 ) -> Stateful<Div> {
     let p = theme::palette(cx);
-    let (fill, border, foreground) = match kind {
-        ButtonKind::Normal => (p.control, p.control_border, p.text),
-        ButtonKind::Default => (p.accent, p.accent, p.on_accent),
-        ButtonKind::Destructive => (p.control, p.control_border, p.danger),
+    let (fill, border, foreground) = match (kind, enabled) {
+        (ButtonKind::Default, true) => (p.primary, p.primary, p.on_primary),
+        (ButtonKind::Default, false) => (p.subtle, p.subtle, p.text_tertiary),
+        (_, false) => (p.control, p.control_border, p.text_tertiary),
+        (ButtonKind::Normal, true) => (p.control, p.control_border, p.text),
+        (ButtonKind::Destructive, true) => (p.control, p.control_border, p.danger),
     };
-    let pressed = if kind == ButtonKind::Default { p.accent.opacity(0.8) } else { p.pressed };
+    let (hover, pressed) = if kind == ButtonKind::Default {
+        (p.primary.opacity(0.88), p.primary.opacity(0.8))
+    } else {
+        (p.hover, p.pressed)
+    };
     div()
         .id(id)
         .flex()
         .flex_shrink_0()
         .items_center()
         .justify_center()
-        .h(px(26.))
-        .px(px(12.))
-        .rounded(size::RADIUS_CONTROL)
+        .h(size::H_MD)
+        .px(space::S12)
+        .rounded(size::R_SM)
         .bg(fill)
         .border_1()
         .border_color(border)
@@ -59,11 +65,16 @@ pub fn push_button(
         .child(label.into())
         .when(enabled, |this| {
             this.cursor_pointer()
-                .hover(move |style| style.opacity(0.92))
-                .active(move |style| style.bg(pressed))
+                .when(kind == ButtonKind::Default, |this| this.hover(move |style| style.bg(hover)))
+                .when(kind != ButtonKind::Default, |this| {
+                    // The control fill is opaque: hovering layers the hover tint over it.
+                    this.hover(move |style| style.bg(gpui_kit::Hsla::blend(p.control, hover)))
+                })
+                .active(move |style| {
+                    style.bg(if kind == ButtonKind::Default { pressed } else { p.control.blend(pressed) })
+                })
                 .on_click(on_click)
         })
-        .when(!enabled, |this| this.opacity(0.45))
 }
 
 /// Text in the accent that acts as a link (「AGPL 3.0」, 「查看此版本」, a licence file).
@@ -91,6 +102,7 @@ pub fn link_button(
 pub fn setting_switch_when(key: &'static str, enabled: bool, cx: &App) -> impl IntoElement {
     let on = app::settings(cx).bool(key);
     Switch::new(SharedString::from(format!("switch-{key}")))
+        .color(theme::palette(cx).accent_fill)
         .checked(on)
         .disabled(!enabled)
         .accessibility_label(zt_core::settings::descriptor(key).map(|d| d.title.clone()).unwrap_or_default())

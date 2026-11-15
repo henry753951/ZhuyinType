@@ -394,7 +394,7 @@ pub fn compute(
         compact,
         vertical,
         row_height,
-        row_radius: f32::from(if compact { theme::size::RADIUS_SMALL } else { theme::size::RADIUS_CONTROL }),
+        row_radius: f32::from(if compact { theme::size::R_SM } else { theme::size::R_MD }),
         notice: notice.map(|notice| notice.layout),
         preview: preview.map(|text| {
             (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)

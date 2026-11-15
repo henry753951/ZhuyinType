@@ -1,6 +1,7 @@
-//! Statistics components (the 分析 page; any page that shows numbers): tiles, the recap card with its chips, bar
-//! charts with a value axis, a weekday × hour heat map, a two-part bar and a single meter.  All drawn with plain
-//! elements in the accent colour (one series, one colour, no legend), as the macOS charts.
+//! Statistics components (the 分析 page; any page that shows numbers): open number grids, the recap with its notes,
+//! bar charts with a value axis, a weekday × hour heat map, a two-part bar and a single meter.  Numbers stand open on
+//! the page between hairlines (no tiles); charts are drawn with plain elements in `accent_fill` (one series, one
+//! colour, no legend), as the macOS charts.
 
 use std::rc::Rc;
 
@@ -8,17 +9,12 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, FontWeight, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, linear_color_stop, linear_gradient, px, relative,
+    AnyElement, App, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 
 use super::{h, v};
-use crate::theme::{self, size, text};
-
-/// Padding inside tiles and cards (macOS `RowMetrics.tilePadding`).
-const TILE_PADDING: f32 = 14.;
-/// Space between tiles (macOS `RowMetrics.tileSpacing`).
-const TILE_SPACING: f32 = 12.;
+use crate::theme::{self, size, space, text, weight};
 
 /// 38126 → 「38,126」.
 pub fn grouped(value: i64) -> String {
@@ -33,69 +29,92 @@ pub fn grouped(value: i64) -> String {
     if value < 0 { format!("-{out}") } else { out }
 }
 
-/// A tile: a small icon and title over a large number.
-pub fn stat_tile(
-    icon: IconName,
-    title: impl Into<SharedString>,
-    value: impl Into<SharedString>,
-    cx: &App,
-) -> AnyElement {
+/// One number of a statistics grid: a small icon and title over the number.
+pub struct Stat {
+    pub icon: IconName,
+    pub title: SharedString,
+    pub value: SharedString,
+}
+
+/// A number with its title for `stat_grid`.
+pub fn stat(icon: IconName, title: impl Into<SharedString>, value: impl Into<SharedString>) -> Stat {
+    Stat { icon, title: title.into(), value: value.into() }
+}
+
+/// Numbers in rows of `columns`, open on the page: hairlines between the columns and between the rows, no fills.  The
+/// text lines up with the rows' text.
+pub fn stat_grid(columns: usize, stats: Vec<Stat>, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
-    v().gap(px(4.))
-        .p(px(TILE_PADDING))
-        .rounded(size::RADIUS_CARD)
-        .bg(p.card)
-        .border_1()
-        .border_color(p.separator)
-        .child(
-            h().gap(px(5.))
-                .text_size(text::CAPTION)
-                .text_color(p.text_secondary)
-                .child(Icon::new(icon).size(px(12.)))
-                .child(div().truncate().child(title.into())),
-        )
-        .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child(value.into()))
-        .into_any_element()
+    let columns = columns.max(1);
+    let mut rows: Vec<AnyElement> = Vec::new();
+    let mut stats = stats.into_iter().peekable();
+    let mut index = 0;
+    while stats.peek().is_some() {
+        let row: Vec<Stat> = stats.by_ref().take(columns).collect();
+        let fillers = columns - row.len();
+        rows.push(
+            h().w_full()
+                .items_stretch()
+                .when(index > 0, |this| this.border_t_1().border_color(p.separator))
+                .children(
+                    row.into_iter().map(Some).chain(std::iter::repeat_with(|| None).take(fillers)).enumerate().map(
+                        |(column, stat)| {
+                            v().flex_1()
+                                .min_w(px(0.))
+                                .justify_between()
+                                .gap(space::S4)
+                                .px(size::ROW_PADDING_X)
+                                .py(size::ROW_PADDING_Y)
+                                .when(column > 0, |this| this.border_l_1().border_color(p.separator))
+                                .when_some(stat, |this, stat| {
+                                    // The title wraps in a narrow window rather than losing its unit.
+                                    this.child(
+                                        h().items_start()
+                                            .gap(space::S4)
+                                            .min_w(px(0.))
+                                            .text_size(text::CAPTION)
+                                            .text_color(p.text_secondary)
+                                            .child(
+                                                div()
+                                                    .flex_shrink_0()
+                                                    .h(text::CAPTION * 1.5)
+                                                    .flex()
+                                                    .items_center()
+                                                    .child(Icon::new(stat.icon).size(size::ICON_XS)),
+                                            )
+                                            .child(div().min_w(px(0.)).child(stat.title)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(text::TITLE)
+                                            .font_weight(weight::SEMIBOLD)
+                                            .text_color(p.text)
+                                            .child(stat.value),
+                                    )
+                                })
+                        },
+                    ),
+                )
+                .into_any_element(),
+        );
+        index += 1;
+    }
+    fill_column().children(rows)
 }
 
-/// Tiles in `columns` equal columns, wrapping to fewer when a tile would be narrower than `min_width`.
-pub fn tile_grid(columns: usize, min_width: f32, tiles: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
-    let tiles: Vec<AnyElement> = tiles.into_iter().collect();
-    let fillers = (columns - tiles.len() % columns) % columns;
-    // Each tile starts at `min_width` and grows; it is never narrower than a share that would let one more column
-    // in, so a row holds at most `columns`.
-    let share = 1. / (columns as f32 + 1.) + 0.01;
-    // The layout engine sizes a wrapping row's intrinsic width as if it did not wrap; a zero width with a full
-    // minimum keeps the grid out of the page's intrinsic width while it still fills the page.
-    div().w(px(0.)).min_w(relative(1.)).child(h().w_full().flex_wrap().items_stretch().gap(px(TILE_SPACING)).children(
-        tiles.into_iter().map(Some).chain(std::iter::repeat_with(|| None).take(fillers)).map(move |tile| {
-            let cell = div().flex_grow(1.).flex_shrink(1.).flex_basis(px(min_width)).min_w(relative(share));
-            match tile {
-                Some(tile) => cell.flex().flex_col().child(tile),
-                // Keeps the last row's tiles in their columns; takes no room when it wraps alone.
-                None => cell.h(px(0.)).mt(px(-TILE_SPACING)),
-            }
-        }),
-    ))
-}
-
-/// A small capsule with an icon: 「連續 3 天」.
+/// A note beside the recap's number: 「連續 3 天」 with its icon, in secondary text.
 pub fn info_chip(icon: IconName, label: impl Into<SharedString>, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
-    h().gap(px(4.))
-        .px(px(8.))
-        .py(px(3.))
-        .rounded_full()
-        .bg(p.card.opacity(0.7))
-        .text_size(text::CAPTION)
+    h().gap(space::S4)
+        .text_size(text::SUBTITLE)
         .text_color(p.text_secondary)
         .whitespace_nowrap()
-        .child(Icon::new(icon).size(px(11.)))
+        .child(Icon::new(icon).size(size::ICON_XS))
         .child(label.into())
         .into_any_element()
 }
 
-/// The recap at the top of a statistics page: a caption, a large number with its unit, and chips, on an accent wash.
+/// The recap at the top of a statistics page: a caption, a large number with its unit, and notes; open on the page.
 pub fn recap_card(
     caption: impl Into<SharedString>,
     number: impl Into<SharedString>,
@@ -105,32 +124,37 @@ pub fn recap_card(
 ) -> impl IntoElement {
     let p = theme::palette(cx);
     v().w_full()
-        .gap(px(10.))
-        .p(px(TILE_PADDING + 2.))
-        .rounded(size::RADIUS_CARD)
-        .bg(linear_gradient(
-            135.,
-            linear_color_stop(p.accent.opacity(if p.dark { 0.24 } else { 0.16 }), 0.),
-            linear_color_stop(p.accent.opacity(0.04), 1.),
-        ))
+        .gap(space::S4)
+        .px(size::ROW_PADDING_X)
         .child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(caption.into()))
         .child(
             h().items_baseline()
-                .gap(px(6.))
+                .gap(space::S6)
                 .child(
                     div()
-                        .text_size(px(40.))
-                        .line_height(px(44.))
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_size(text::DISPLAY)
+                        .font_weight(weight::SEMIBOLD)
                         .text_color(p.text)
                         .child(number.into()),
                 )
                 .child(div().text_size(text::HEADLINE).text_color(p.text_secondary).child(unit.into())),
         )
         .when(!chips.is_empty(), |this| {
-            this.child(div().w(px(0.)).min_w(relative(1.)).child(h().w_full().flex_wrap().gap(px(8.)).children(chips)))
+            this.child(
+                div()
+                    .pt(space::S4)
+                    .w(px(0.))
+                    .min_w(relative(1.))
+                    .child(h().w_full().flex_wrap().gap_x(space::S16).gap_y(space::S4).children(chips)),
+            )
         })
 }
+
+/// The bar chart's own metrics: the labels under the bars, the room for a number over the best bar, the value axis.
+const LABEL_H: f32 = 18.;
+const ANNOTATION_H: f32 = 16.;
+const PLOT_MIN_H: f32 = 40.;
+const AXIS_W: f32 = 40.;
 
 /// Round `value` up to 1, 2, 2.5 or 5 × 10ⁿ.
 fn nice_ceil(value: f64) -> f64 {
@@ -221,15 +245,15 @@ impl RenderOnce for BarChart {
         let max = self.values.iter().copied().fold(0., f64::max);
         let step = nice_ceil(max / 2.);
         let top = step * 2.;
-        let label_h = 18.;
-        let annotation_h = 16.;
-        let plot_h = (self.height - label_h - annotation_h).max(40.);
-        let axis_w = 40.;
+        let label_h = LABEL_H;
+        let annotation_h = ANNOTATION_H;
+        let plot_h = (self.height - label_h - annotation_h).max(PLOT_MIN_H);
+        let axis_w = AXIS_W;
         let ticks = [0., step, top];
         let grid = div().absolute().left_0().right_0().top(px(annotation_h)).h(px(plot_h)).children(ticks.iter().map(
             |tick| {
                 let y = plot_h * (1. - (*tick / top) as f32);
-                div().absolute().left_0().right_0().top(px(y)).h(px(1.)).bg(p.separator)
+                div().absolute().left_0().right_0().top(px(y)).h(size::HAIRLINE).bg(p.separator)
             },
         ));
         let axis = div().w(px(axis_w)).flex_shrink_0().relative().h(px(annotation_h + plot_h)).children(
@@ -238,8 +262,8 @@ impl RenderOnce for BarChart {
                 div()
                     .absolute()
                     .left_0()
-                    .w(px(axis_w - 6.))
-                    .top(px(y - 7.))
+                    .w(px(axis_w) - space::S6)
+                    .top(px(y) - text::CAPTION * 0.6)
                     .text_right()
                     .text_size(text::CAPTION)
                     .text_color(p.text_tertiary)
@@ -270,19 +294,19 @@ impl RenderOnce for BarChart {
                         this.on_hover(move |inside, window, cx| on_hover(inside.then_some(index), window, cx))
                     })
                     .child(
-                        div().w(relative(self.bar_ratio)).h(px(bar_h)).rounded_t(px(3.)).bg(p.accent.opacity(if dim {
-                            0.35
-                        } else {
-                            0.85
-                        })),
+                        div()
+                            .w(relative(self.bar_ratio))
+                            .h(px(bar_h))
+                            .rounded_t(space::S2)
+                            .bg(p.accent_fill.opacity(if dim { 0.35 } else { 0.85 })),
                     )
                     .when_some(note, |this, note| {
                         this.child(
                             div()
                                 .absolute()
-                                .bottom(px(bar_h + 2.))
-                                .left(px(-30.))
-                                .right(px(-30.))
+                                .bottom(px(bar_h) + space::S2)
+                                .left(-space::S32)
+                                .right(-space::S32)
                                 .text_center()
                                 .text_size(text::CAPTION)
                                 .text_color(p.text_secondary)
@@ -293,20 +317,20 @@ impl RenderOnce for BarChart {
                         this.child(
                             div()
                                 .absolute()
-                                .bottom(px(bar_h + 4.))
-                                .left(px(-80.))
-                                .right(px(-80.))
+                                .bottom(px(bar_h) + space::S4)
+                                .left(-space::S40 * 2.)
+                                .right(-space::S40 * 2.)
                                 .flex()
                                 .justify_center()
                                 .child(
                                     div()
-                                        .px(px(6.))
-                                        .py(px(2.))
-                                        .rounded(px(5.))
-                                        .bg(p.card)
+                                        .px(space::S6)
+                                        .py(space::S2)
+                                        .rounded(size::R_SM)
+                                        .bg(p.panel)
                                         .border_1()
-                                        .border_color(p.separator)
-                                        .shadow_sm()
+                                        .border_color(p.panel_border)
+                                        .shadow(theme::elevation::floating(&p))
                                         .text_size(text::CAPTION)
                                         .text_color(p.text)
                                         .whitespace_nowrap()
@@ -322,9 +346,9 @@ impl RenderOnce for BarChart {
                 this.child(
                     div()
                         .absolute()
-                        .top(px(3.))
-                        .left(px(-24.))
-                        .right(px(-24.))
+                        .top(space::S4)
+                        .left(-space::S24)
+                        .right(-space::S24)
                         .text_center()
                         .text_size(text::CAPTION)
                         .text_color(p.text_tertiary)
@@ -353,52 +377,61 @@ impl RenderOnce for BarChart {
     }
 }
 
+/// The heat map's weekday column and cell height.
+const HEAT_LABEL_W: gpui_kit::Pixels = px(16.);
+const HEAT_CELL_H: gpui_kit::Pixels = px(14.);
+
 /// Characters by weekday (Sunday first) and hour: one colour, darker for more.
 pub fn heat_map(hours: &[i64], cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     const WEEKDAYS: [&str; 7] = ["日", "一", "二", "三", "四", "五", "六"];
     let top = hours.iter().copied().max().unwrap_or(0).max(1) as f32;
     v().w_full()
-        .gap(px(2.))
+        .gap(space::S2)
         .children((0..7).map(|day| {
-            h().gap(px(2.))
+            h().gap(space::S2)
                 .child(
                     div()
-                        .w(px(14.))
+                        .w(HEAT_LABEL_W)
                         .flex_shrink_0()
-                        .text_size(px(10.))
+                        .text_size(text::CAPTION)
+                        .line_height(HEAT_CELL_H)
                         .text_color(p.text_secondary)
                         .child(WEEKDAYS[day]),
                 )
                 .children((0..24).map(|hour| {
                     let value = hours.get(day * 24 + hour).copied().unwrap_or(0);
-                    let fill = if value == 0 { p.pressed } else { p.accent.opacity(0.15 + 0.85 * value as f32 / top) };
-                    div().flex_1().h(px(11.)).rounded(px(2.)).bg(fill)
+                    let fill =
+                        if value == 0 { p.pressed } else { p.accent_fill.opacity(0.15 + 0.85 * value as f32 / top) };
+                    div().flex_1().h(HEAT_CELL_H).rounded(space::S2).bg(fill)
                 }))
         }))
-        .child(
-            h().child(div().w(px(16.)).flex_shrink_0()).children(
-                [0, 6, 12, 18]
-                    .map(|hour| div().flex_1().text_size(px(10.)).text_color(p.text_tertiary).child(hour.to_string())),
-            ),
-        )
+        .child(h().pt(space::S2).child(div().w(HEAT_LABEL_W + space::S2).flex_shrink_0()).children(
+            [0, 6, 12, 18].map(|hour| {
+                div().flex_1().text_size(text::CAPTION).text_color(p.text_tertiary).child(hour.to_string())
+            }),
+        ))
 }
+
+/// The width and thickness of the small bars in rows.
+const BAR_W: gpui_kit::Pixels = px(140.);
+const BAR_H: gpui_kit::Pixels = px(6.);
 
 /// Two parts of a whole as one bar: the first in the accent, the second grey.
 pub fn split_bar(first: i64, second: i64, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let total = (first + second).max(1) as f32;
     let share = first as f32 / total;
-    h().w(px(160.))
-        .h(px(6.))
-        .gap(px(2.))
+    h().w(BAR_W)
+        .h(BAR_H)
+        .gap(space::S2)
         .child(
             div()
                 .h_full()
                 .rounded_full()
                 .w(relative(share * 0.98))
-                .min_w(px(if first > 0 { 3. } else { 0. }))
-                .bg(p.accent.opacity(0.8)),
+                .min_w(if first > 0 { BAR_H } else { px(0.) })
+                .bg(p.accent_fill.opacity(0.8)),
         )
         .child(div().h_full().flex_1().rounded_full().bg(p.pressed))
 }
@@ -407,33 +440,22 @@ pub fn split_bar(first: i64, second: i64, cx: &App) -> impl IntoElement {
 pub fn meter(value: i64, largest: i64, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let share = value as f32 / largest.max(1) as f32;
-    h().w(px(140.)).h(px(14.)).child(
+    h().w(BAR_W).h(size::ICON_SM).child(
         div()
-            .h(px(6.))
+            .h(BAR_H)
             .rounded_full()
             .w(relative(share))
-            .min_w(px(if value > 0 { 3. } else { 0. }))
-            .bg(p.accent.opacity(0.75)),
+            .min_w(if value > 0 { BAR_H } else { px(0.) })
+            .bg(p.accent_fill.opacity(0.75)),
     )
 }
 
 /// A list of facts, each with an icon (the ⓘ cards).
 pub fn fact_list(facts: &[(IconName, &str)], cx: &App) -> AnyElement {
-    let p = theme::palette(cx);
-    v().gap(px(9.))
-        .children(facts.iter().map(|(icon, fact)| {
-            h().items_start()
-                .gap(px(9.))
-                .child(div().pt(px(2.)).child(Icon::new(*icon).size(px(14.)).text_color(p.accent)))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(text::SUBTITLE)
-                        .text_color(p.text)
-                        .child(SharedString::from(fact.to_string())),
-                )
-        }))
-        .into_any_element()
+    super::content::facts(facts.iter().map(|(icon, fact)| {
+        super::content::fact_row(*icon, SharedString::from(fact.to_string()), cx).into_any_element()
+    }))
+    .into_any_element()
 }
 
 /// A column that fills its parent's width but adds nothing to its parent's intrinsic width.  The layout engine sizes

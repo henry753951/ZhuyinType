@@ -800,7 +800,7 @@ impl UnifiedPreview {
                 anchored().position(point(x, y)).child(
                     v().p(px(10.))
                         .gap(px(6.))
-                        .rounded(size::RADIUS_CARD)
+                        .rounded(size::R_LG)
                         .bg(p.card)
                         .border_1()
                         .border_color(p.separator)

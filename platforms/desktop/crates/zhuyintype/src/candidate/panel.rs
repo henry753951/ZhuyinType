@@ -14,7 +14,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, BoxShadow, Div, FontWeight, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    AnyElement, App, BoxShadow, Div, FontWeight, InteractiveElement, IntoElement, MouseButton, ParentElement,
     SharedString, Styled, Window, div, point, px,
 };
 use zt_core::presentation::Presentation;
@@ -281,7 +281,7 @@ impl CandidatePanel {
             .relative()
             .w(px(layout.width))
             .h(px(layout.height))
-            .when(self.rounded, |this| this.rounded(size::RADIUS_SURFACE))
+            .when(self.rounded, |this| this.rounded(size::R_XL))
             .bg(p.panel)
             .border_1()
             .border_color(p.panel_border)
@@ -374,7 +374,7 @@ impl CandidatePanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(size::RADIUS_SMALL)
+                        .rounded(size::R_SM)
                         .when(actions.is_some(), |this| this.cursor_pointer().hover(|style| style.bg(p.hover)))
                         .when_some(actions, |this, actions| {
                             this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -498,43 +498,14 @@ fn keycap(width: f32, height: f32, key: &str, on: bool, p: &Palette) -> Div {
         .flex()
         .items_center()
         .justify_center()
-        .rounded(size::RADIUS_SMALL)
+        .rounded(size::R_SM)
         .when(on, |this| this.bg(p.selection).border_1().border_color(p.control_border).text_color(p.text))
         .when(!on, |this| this.border_1().border_color(p.control_border).text_color(p.text_secondary))
         .child(key_glyphs(key, SMALL_FONT, if on { p.text } else { p.text_secondary }))
 }
 
-/// A key's label with the symbols every system draws differently (⇧ ↑ ↓ ← → ↩) as icons, so key caps look the same
-/// whatever fonts are installed; the rest as text.
-pub fn key_glyphs(label: &str, size: f32, color: Hsla) -> Div {
-    let icon = |c: char| match c {
-        '⇧' => Some(IconName::ArrowBigUp),
-        '↑' => Some(IconName::ArrowUp),
-        '↓' => Some(IconName::ArrowDown),
-        '←' => Some(IconName::ArrowLeft),
-        '→' => Some(IconName::ArrowRight),
-        '↩' => Some(IconName::CornerDownLeft),
-        _ => None,
-    };
-    let mut row =
-        div().flex().flex_row().items_center().text_size(px(size)).line_height(px(size * 1.3)).text_color(color);
-    let mut text = String::new();
-    for c in label.chars() {
-        match icon(c) {
-            Some(name) => {
-                if !text.is_empty() {
-                    row = row.child(SharedString::from(std::mem::take(&mut text)));
-                }
-                row = row.child(Icon::new(name).size(px((size * 0.95).round())).text_color(color));
-            }
-            None => text.push(c),
-        }
-    }
-    if !text.is_empty() {
-        row = row.child(SharedString::from(text));
-    }
-    row
-}
+/// The key glyphs live with the shared key cap (`ui::keycap`).
+pub use crate::ui::keycap::key_glyphs;
 
 fn hint_element(hint: &HintLayout, p: &Palette, actions: Option<ActionHandler>) -> impl IntoElement {
     let actions = actions.filter(|_| hint.clickable);
@@ -606,7 +577,7 @@ fn notice_element(notice: &NoticeLayout, p: &Palette) -> impl IntoElement {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(size::RADIUS_SMALL)
+                    .rounded(size::R_SM)
                     .border_1()
                     .border_color(p.control_border)
                     .child(key_glyphs(&key, fs, p.text_secondary)),
@@ -660,7 +631,7 @@ pub fn mode_badge(text: &str, p: &Palette, shadow: bool) -> AnyElement {
         .flex()
         .items_center()
         .justify_center()
-        .when(shadow, |this| this.rounded(size::RADIUS_CARD))
+        .when(shadow, |this| this.rounded(size::R_LG))
         .bg(p.panel)
         .border_1()
         .border_color(p.panel_border)

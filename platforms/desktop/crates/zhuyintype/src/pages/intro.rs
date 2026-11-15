@@ -15,17 +15,17 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, FocusHandle, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, img, px, rgb,
+    AnyElement, App, Context, FocusHandle, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, img, px,
 };
 use zt_core::practice::{PracticeEvent, PracticeSession};
 
 use self::script::{RESTING_STEP, Script, Segment};
 use super::Page;
 use crate::app::{self, Place};
-use crate::theme::{self, Palette, size, text};
-use crate::ui::charts::{fill_column, tile_grid};
-use crate::ui::feature_card::feature_card;
+use crate::theme::{self, Palette, size, space, text, weight};
+use crate::ui::charts::fill_column;
+use crate::ui::feature_card::{feature_card, feature_grid};
 use crate::ui::shortcuts::{keystroke, store};
 use crate::ui::{self, h, v};
 use crate::wizard::{self, WizardKind};
@@ -235,36 +235,41 @@ impl IntroPage {
         let can_try = app::service(cx).is_some();
         let trying = self.trial.is_some();
         let stage = self.stage(script, cx);
+        // A standard push button `H_SM` tall, in the stage's corner.
         let try_button = can_try.then(|| {
             h().id("intro-try")
                 .absolute()
-                .top(px(8.))
-                .right(px(8.))
-                .gap(px(5.))
-                .px(px(9.))
-                .h(px(26.))
-                .rounded_full()
+                .top(space::S8)
+                .right(space::S8)
+                .gap(space::S4)
+                .px(space::S8)
+                .h(size::H_SM)
+                .rounded(size::R_SM)
                 .bg(p.control)
                 .border_1()
                 .border_color(p.control_border)
                 .text_size(text::SUBTITLE)
-                .text_color(if trying { p.accent } else { p.text_secondary })
+                .text_color(p.text)
                 .cursor_pointer()
                 .hover(|style| style.bg(p.hover))
                 .on_click(cx.listener(|page, _, window, cx| page.toggle_trial(window, cx)))
-                .child(Icon::new(if trying { IconName::Play } else { IconName::Keyboard }).size(px(13.)))
+                .child(
+                    Icon::new(if trying { IconName::Play } else { IconName::Keyboard })
+                        .size(size::ICON_XS)
+                        .text_color(p.text_secondary),
+                )
                 .child(if trying { "示範" } else { "試打" })
         });
         v().w_full()
-            .p(px(14.))
-            .gap(px(14.))
+            .py(space::S12)
+            .gap(space::S16)
             .child(
-                h().gap(px(14.)).child(img("app-icon.png").size(px(52.)).rounded(px(12.))).child(
-                    v().gap(px(3.))
+                h().gap(space::S16).child(img("app-icon.png").size(APP_ICON).rounded(APP_ICON_RADIUS)).child(
+                    v().gap(space::S2)
                         .child(
                             div()
                                 .text_size(text::TITLE)
-                                .font_weight(FontWeight::SEMIBOLD)
+                                .font_weight(weight::SEMIBOLD)
                                 .text_color(p.text)
                                 .child("ZhuyinType"),
                         )
@@ -277,7 +282,7 @@ impl IntroPage {
                 ),
             )
             .child(
-                v().gap(px(8.))
+                v().gap(space::S8)
                     .child(div().relative().w_full().child(stage).children(try_button))
                     .child(stage::caption(caption, cx))
                     .when_some(self.trial_error.clone(), |this, error| {
@@ -287,6 +292,13 @@ impl IntroPage {
             .into_any_element()
     }
 }
+
+/// A feature column is never narrower than this (one column in a narrow window).
+const FEATURE_MIN_W: f32 = 240.;
+
+/// The app's icon in the header, and its corner.
+const APP_ICON: Pixels = px(52.);
+const APP_ICON_RADIUS: Pixels = px(12.);
 
 /// A setting of another page and its value, leading there.
 fn summary_row(id: &'static str, title: &'static str, value: String, place: Place) -> AnyElement {
@@ -298,7 +310,6 @@ struct Feature {
     title: &'static str,
     text: String,
     icon: IconName,
-    tint: u32,
     place: Place,
     link: &'static str,
 }
@@ -325,7 +336,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "整句輸入",
             text: "一句話連續打完，依讀音與前後文選出最通順的寫法。".into(),
             icon: IconName::WholeWord,
-            tint: 0x0a84ff,
             place: Place::page(Page::Candidates),
             link: "視窗與提示",
         },
@@ -333,7 +343,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "按錯鍵也能打對",
             text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先。".into(),
             icon: IconName::WandSparkles,
-            tint: 0x5e5ce6,
             place: Place::row(Page::Choosing, "typo"),
             link: "選字",
         },
@@ -341,7 +350,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "依前文選字",
             text: "參考游標前最多 128 個字，並接續同一個 App 最近 1 分鐘的前文。".into(),
             icon: IconName::TextAlignStart,
-            tint: 0x30b0c7,
             place: Place::subpage(Page::Choosing, "context"),
             link: "前文",
         },
@@ -349,7 +357,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "記住你的用法",
             text: "選過的字詞下次直接採用；資料只存在這台電腦。".into(),
             icon: IconName::ClockArrowUp,
-            tint: 0xbf5af2,
             place: Place::page(Page::Words),
             link: "字詞",
         },
@@ -357,7 +364,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "標點與全半形",
             text: format!("{punctuation}{width}"),
             icon: IconName::Quote,
-            tint: 0xff9f0a,
             place: store::command_place("togglePunctuationWidth"),
             link: "打字",
         },
@@ -365,7 +371,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "改字記錄",
             text: "可以記錄改字的過程，用來改進選字；只存在這台電腦。".into(),
             icon: IconName::ClipboardPen,
-            tint: 0x8e8e93,
             place: Place::page(Page::Advanced),
             link: "進階",
         },
@@ -373,7 +378,6 @@ fn features(cx: &App) -> Vec<Feature> {
             title: "使用分析",
             text: "打了多少字、改了幾次、輸入法反應多快。".into(),
             icon: IconName::ChartColumn,
-            tint: 0x30d158,
             place: Place::page(Page::Analytics),
             link: "分析",
         },
@@ -405,7 +409,6 @@ impl Render for IntroPage {
                 feature_card(
                     SharedString::from(format!("feature-{}", feature.title)),
                     feature.icon,
-                    rgb(feature.tint).into(),
                     feature.title,
                     feature.text,
                     feature.link,
@@ -416,7 +419,7 @@ impl Render for IntroPage {
             .collect();
         fill_column()
             .gap(size::SECTION_GAP)
-            .child(ui::section("").row(header))
+            .child(ui::section("").bare().first().row(header))
             .child(ui::section("目前的設定").rows([
                 summary_row("summary-space", "空白鍵", space.to_owned(), Place::row(Page::Typing, "space")),
                 summary_row(
@@ -448,7 +451,7 @@ impl Render for IntroPage {
                             .on_click(|_, _, cx| wizard::open(WizardKind::KeysOnly, cx)),
                     ),
             )
-            .child(ui::section("功能").bare().row(tile_grid(2, 240., cards)))
+            .child(ui::section("功能").bare().row(feature_grid(FEATURE_MIN_W, cards)))
     }
 }
 

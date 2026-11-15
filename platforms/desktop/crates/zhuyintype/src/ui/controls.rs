@@ -1,5 +1,5 @@
-//! The controls a row ends with: switch, picker (pop-up menu or segments), slider, key caps, the ⓘ info button, the
-//! › chevron, and small text links.  Each control bound to a setting reads and writes it through `app::set_setting`.
+//! The controls a row ends with: switch, picker (pop-up menu or segments), icon buttons, the ⓘ info button, the ›
+//! chevron, and small text links.  Every in-row control is `size::H_MD` tall.  Each control bound to a setting reads and writes it through `app::set_setting`.
 
 use std::rc::Rc;
 
@@ -11,20 +11,21 @@ use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Anchor, AnyElement, App, ClickEvent, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    Anchor, AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div,
 };
 use serde_json::Value;
 use zt_core::settings::{self, Kind};
 
 use super::{h, v};
 use crate::app;
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text, weight};
 
 /// A switch bound to a toggle setting.
 pub fn setting_switch(key: &'static str, cx: &App) -> impl IntoElement {
     let on = app::settings(cx).bool(key);
     Switch::new(SharedString::from(format!("switch-{key}")))
+        .color(theme::palette(cx).accent_fill)
         .checked(on)
         .accessibility_label(settings::descriptor(key).map(|d| d.title.clone()).unwrap_or_default())
         .on_click(move |checked, _, cx| app::set_setting(key, Value::Bool(*checked), cx))
@@ -36,7 +37,17 @@ pub fn switch(
     on: bool,
     on_change: impl Fn(bool, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    Switch::new(id).checked(on).on_click(move |checked, window, cx| on_change(*checked, window, cx))
+    AccentSwitch(Switch::new(id).checked(on).on_click(move |checked, window, cx| on_change(*checked, window, cx)))
+}
+
+/// A switch whose on track is `accent_fill` (the library's default is `primary`, an inverted neutral here).
+#[derive(IntoElement)]
+struct AccentSwitch(Switch);
+
+impl gpui_kit::RenderOnce for AccentSwitch {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        self.0.color(theme::palette(cx).accent_fill)
+    }
 }
 
 /// The picker of a choice setting: segments for two or three short labels, otherwise a pop-up menu.
@@ -75,15 +86,16 @@ pub fn popup_button<T: Clone + PartialEq + 'static>(
                 .active(p.pressed)
                 .shadow(false),
         )
-        .h(size::CONTROL_H)
-        .px(px(10.))
-        .rounded(size::RADIUS_CONTROL)
+        .h(size::H_MD)
+        .pl(space::S12)
+        .pr(space::S8)
+        .rounded(size::R_SM)
         .border_1()
         .border_color(p.control_border)
         .child(
-            h().gap(px(8.))
+            h().gap(space::S6)
                 .child(div().text_size(text::BODY).child(label))
-                .child(Icon::new(IconName::ChevronDown).size(px(14.)).text_color(p.text_tertiary)),
+                .child(Icon::new(IconName::ChevronDown).size(size::ICON_SM).text_color(p.text_tertiary)),
         )
         .dropdown_menu_with_anchor(Anchor::TopRight, move |mut menu, _, _| {
             for (label, value) in options.iter().cloned() {
@@ -99,7 +111,7 @@ pub fn popup_button<T: Clone + PartialEq + 'static>(
         })
 }
 
-/// Segments for two or three short choices.
+/// Segments for two or three short choices: a track `H_MD` tall, segments `H_SM` inside it (radii concentric).
 pub fn segmented<T: Clone + PartialEq + 'static>(
     id: impl Into<SharedString>,
     options: Vec<(SharedString, T)>,
@@ -110,73 +122,68 @@ pub fn segmented<T: Clone + PartialEq + 'static>(
     let p = theme::palette(cx);
     let id = id.into();
     let on_pick = Rc::new(on_pick);
-    h().p(px(3.)).gap(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.subtle).children(options.into_iter().enumerate().map(
-        |(index, (label, value))| {
+    h().flex_shrink_0().h(size::H_MD).p(space::S2).gap(space::S2).rounded(size::R_SM).bg(p.subtle).children(
+        options.into_iter().enumerate().map(|(index, (label, value))| {
             let selected = value == current;
             let on_pick = on_pick.clone();
-            div()
-                .id(SharedString::from(format!("{id}-{index}")))
-                .px(px(12.))
-                .py(px(4.))
-                .rounded(size::RADIUS_SMALL)
+            h().id(SharedString::from(format!("{id}-{index}")))
+                .h(size::H_SM)
+                .px(space::S12)
+                .justify_center()
+                .rounded(size::R_XS)
                 .text_size(text::SUBTITLE)
+                .whitespace_nowrap()
                 .cursor_pointer()
-                .when(selected, |this| {
-                    this.bg(p.card)
-                        .border_1()
-                        .border_color(p.control_border)
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(p.text)
+                .when(selected, |this| this.bg(p.card).text_color(p.text).shadow_xs())
+                .when(!selected, |this| {
+                    this.text_color(p.text_secondary).hover(|style| style.bg(p.hover).text_color(p.text))
                 })
-                .when(!selected, |this| this.text_color(p.text_secondary).hover(|style| style.text_color(p.text)))
                 .on_click(move |_, window, cx| on_pick(value.clone(), window, cx))
                 .child(label)
-        },
-    ))
+        }),
+    )
 }
 
 /// The › at the end of a row that goes somewhere.
 pub fn chevron(cx: &App) -> impl IntoElement {
-    Icon::new(IconName::ChevronRight).size(px(15.)).text_color(theme::palette(cx).text_tertiary)
+    Icon::new(IconName::ChevronRight).size(size::ICON_SM).text_color(theme::palette(cx).text_tertiary)
 }
 
-/// A key drawn as a key cap ("⇧", "空白", "Return").
-#[derive(IntoElement)]
-pub struct Keycap {
-    label: SharedString,
+/// How an icon button looks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IconButtonKind {
+    /// A control's border and fill (＋ beside a list).
+    Bordered,
+    /// No border or fill until hovered (⋯).
+    Ghost,
 }
 
-pub fn keycap(label: impl Into<SharedString>) -> Keycap {
-    Keycap { label: label.into() }
-}
-
-impl RenderOnce for Keycap {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        div()
-            .h(px(22.))
-            .min_w(px(22.))
-            .px(px(7.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(size::RADIUS_SMALL)
-            .bg(p.subtle)
-            .border_1()
-            .border_color(p.separator)
-            .text_size(text::CAPTION)
-            .font_weight(FontWeight::MEDIUM)
-            .text_color(p.text)
-            .child(self.label)
+/// A square icon button `H_MD` tall (the list toolbar's ＋ and ⋯).
+pub fn icon_button(id: impl Into<ElementId>, icon: IconName, kind: IconButtonKind, cx: &App) -> Button {
+    let p = theme::palette(cx);
+    let button = Button::new(id)
+        .custom(
+            gpui_kit::component::button::ButtonCustomVariant::new(cx)
+                .color(if kind == IconButtonKind::Bordered { p.control } else { gpui_kit::transparent_black() })
+                .foreground(p.text)
+                .hover(p.hover)
+                .active(p.pressed)
+                .shadow(false),
+        )
+        .with_size(size::H_MD)
+        .rounded(size::R_SM)
+        .icon(
+            Icon::new(icon)
+                .size(if kind == IconButtonKind::Bordered { size::ICON_SM } else { size::ICON_MD })
+                .text_color(p.text),
+        );
+    match kind {
+        IconButtonKind::Bordered => button.border_1().border_color(p.control_border),
+        IconButtonKind::Ghost => button,
     }
 }
 
-/// Several key caps in a row: one combination ("⇧", "空白") or alternatives joined by 「或」.
-pub fn key_combo(keys: impl IntoIterator<Item = impl Into<SharedString>>) -> impl IntoElement {
-    h().gap(px(3.)).children(keys.into_iter().map(|key| keycap(key)))
-}
-
-/// The ⓘ button: a popover card titled `title` with `content`, explaining how an option behaves.
+/// The ⓘ after a row's title: a popover card titled `title` with `content`, explaining how an option behaves.
 pub fn info_button(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
@@ -186,24 +193,35 @@ pub fn info_button(
     let p = theme::palette(cx);
     let title: SharedString = title.into();
     Popover::new(id)
-        .anchor(Anchor::TopRight)
+        .anchor(Anchor::TopLeft)
         .trigger(
             Button::new("info-trigger")
-                .ghost()
-                .small()
-                .icon(Icon::new(IconName::Info).size(px(16.)).text_color(p.text_tertiary))
+                .custom(
+                    gpui_kit::component::button::ButtonCustomVariant::new(cx)
+                        .color(gpui_kit::transparent_black())
+                        .foreground(p.text_tertiary)
+                        .hover(p.hover)
+                        .active(p.pressed)
+                        .shadow(false),
+                )
+                .with_size(size::H_XS)
+                .rounded(size::R_XS)
+                .icon(Icon::new(IconName::Info).size(size::ICON_SM).text_color(p.text_tertiary))
                 .tooltip(title.clone()),
         )
         .content(move |_, window, cx| info_card(title.clone(), content(window, cx), cx))
 }
 
+/// The width of an ⓘ card.
+pub const INFO_CARD_W: gpui_kit::Pixels = gpui_kit::px(380.);
+
 /// What an info popover shows; also drawn on its own (screenshots).
 pub fn info_card(title: SharedString, content: AnyElement, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
-    v().w(px(380.))
-        .p(px(16.))
-        .gap(px(10.))
-        .child(div().text_size(text::HEADLINE).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child(title))
+    v().w(INFO_CARD_W)
+        .p(space::S16)
+        .gap(space::S12)
+        .child(div().text_size(text::HEADLINE).font_weight(weight::SEMIBOLD).text_color(p.text).child(title))
         .child(content)
         .into_any_element()
 }
@@ -217,14 +235,14 @@ pub fn text_link(
 ) -> impl IntoElement {
     let p = theme::palette(cx);
     h().id(id)
-        .gap(px(2.))
+        .gap(space::S2)
         .cursor_pointer()
         .text_size(text::SUBTITLE)
         .text_color(p.accent)
         .hover(|style| style.opacity(0.8))
         .on_click(on_click)
         .child(label.into())
-        .child(Icon::new(IconName::ChevronRight).size(px(12.)))
+        .child(Icon::new(IconName::ChevronRight).size(size::ICON_XS))
 }
 
 /// The value of a setting as the row's trailing text (drill rows show where they lead).

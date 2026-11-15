@@ -1,28 +1,31 @@
-//! The 介紹 stage (macOS `IntroStage`): a plain document with a few grey lines, the line being typed with its
-//! composition underlined and the caret, the key just pressed beside the caret, and the candidate window lined up with
+//! The 介紹 stage (macOS `IntroStage`): a plain document, the line being typed with its composition underlined and
+//! the caret, the key just pressed beside the caret, and the candidate window lined up with
 //! the composition below (or above) the line, as the real window sits on screen.
 
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, FontWeight, IntoElement, ParentElement, SharedString, Styled, div,
-    ease_out_quint, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, IntoElement, ParentElement, SharedString, Styled, div,
+    ease_out_quint, px,
 };
 use zt_core::presentation::Presentation;
 
 use super::panel::{self, TEXT_INSET};
 use super::script::{PanelKeys, Segment};
-use crate::theme::{self, Palette, text};
-use crate::ui::{self, h, v};
+use crate::candidate::panel::mode_badge;
+use crate::theme::{self, Palette, size, space, text};
+use crate::ui::{self, h};
 
 const MARGIN: f32 = 20.;
-const LINE_TOP: f32 = 18.;
+const LINE_TOP: f32 = 16.;
 const LINE_FONT: f32 = 16.;
-const LINE_H: f32 = 22.;
+const LINE_H: f32 = 24.;
 /// Between the line and the window (macOS `InputPanelPlacement.gap`).
 const GAP: f32 = 4.;
-const BOTTOM: f32 = 22.;
+const BOTTOM: f32 = 16.;
+/// The 中/英 badge's side.
+const BADGE: f32 = 44.;
 
 /// What the stage shows at one moment.
 pub struct Scene<'a> {
@@ -86,13 +89,7 @@ pub fn stage(
     let p = theme::palette(cx);
     let document = p.card;
     let line_top = if above { height - LINE_TOP - LINE_H } else { LINE_TOP };
-    let fractions = [0.92, 0.74, 0.86, 0.55, 0.8, 0.66, 0.9, 0.5, 0.78, 0.6, 0.84, 0.7, 0.88, 0.62, 0.8, 0.7];
-    let backdrop =
-        v().absolute().top(px(14.)).left(px(MARGIN)).right(px(MARGIN)).gap(px(11.)).children(
-            fractions.iter().map(|f| div().h(px(7.)).w(relative(*f)).rounded_full().bg(p.pressed.opacity(0.55))),
-        );
-    let band = div().absolute().left_0().right_0().top(px(line_top - 5.)).h(px(LINE_H + 10.)).bg(document);
-    let caret = div().w(px(1.5)).h(px(LINE_H - 2.)).bg(p.text);
+    let caret = div().w(px(1.5)).h(px(LINE_H - 4.)).bg(p.text);
     let caret: AnyElement = if caret_blinks {
         caret
             .with_animation("intro-caret", Animation::new(Duration::from_millis(1060)).repeat(), |this, t| {
@@ -103,11 +100,15 @@ pub fn stage(
         caret.into_any_element()
     };
     let pressed = (!scene.keys.is_empty()).then(|| {
-        h().ml(px(9.)).gap(px(3.)).children(scene.keys.iter().map(|key| ui::keycap(key.clone()))).with_animation(
-            SharedString::from(format!("intro-key-{}", scene.trigger)),
-            Animation::new(Duration::from_millis(220)).with_easing(ease_out_quint()),
-            |this, t| this.opacity((t * 3.).min(1.)).mt(px(2. * (1. - t))),
-        )
+        // A key written as a shortcut (「⇧↑」) shows one cap per key.
+        h().ml(space::S8)
+            .gap(space::S8)
+            .children(scene.keys.iter().map(|key| ui::keycap::binding(key, None)))
+            .with_animation(
+                SharedString::from(format!("intro-key-{}", scene.trigger)),
+                Animation::new(Duration::from_millis(220)).with_easing(ease_out_quint()),
+                |this, t| this.opacity((t * 3.).min(1.)).mt(px(2. * (1. - t))),
+            )
     });
     let line = h()
         .absolute()
@@ -118,7 +119,7 @@ pub fn stage(
         .child(h().gap(px(1.5)).children(scene.marked.iter().map(|segment| {
             line_text(segment.text.clone())
                 .when(!segment.focus, |this| this.border_b_1().border_color(p.text_secondary))
-                .when(segment.focus, |this| this.bg(p.accent_faint).border_b_2().border_color(p.accent))
+                .when(segment.focus, |this| this.bg(p.selection).border_b_2().border_color(p.accent))
         })))
         .child(caret)
         .child(line_text(scene.after.to_owned()))
@@ -150,27 +151,12 @@ pub fn stage(
     });
     let toast = scene.toast.map(|label| {
         let marked: String = scene.marked.iter().map(|s| s.text.as_str()).collect();
-        let top = if above { line_top - GAP - 48. } else { line_top + LINE_H + GAP };
+        let top = if above { line_top - GAP - BADGE } else { line_top + LINE_H + GAP };
         h().absolute()
             .top(px(top))
             .left(px(MARGIN))
             .child(line_text(format!("{}{marked}", scene.committed)).invisible())
-            .child(
-                div()
-                    .size(px(48.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(12.))
-                    .bg(window.panel)
-                    .border_1()
-                    .border_color(window.panel_border)
-                    .shadow_lg()
-                    .text_size(px(22.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(window.text)
-                    .child(label.to_owned()),
-            )
+            .child(mode_badge(label, window, true))
             .with_animation(
                 SharedString::from(format!("intro-toast-{}", scene.trigger)),
                 Animation::new(Duration::from_millis(160)),
@@ -181,13 +167,11 @@ pub fn stage(
         .relative()
         .w_full()
         .h(px(height))
-        .rounded(px(10.))
+        .rounded(size::R_LG)
         .overflow_hidden()
         .bg(document)
         .border_1()
         .border_color(p.separator)
-        .child(backdrop)
-        .child(band)
         .child(line)
         .children(panel)
         .children(toast)
@@ -199,7 +183,7 @@ pub fn caption(caption: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     div()
         .w_full()
-        .min_h(px(18.))
+        .min_h(text::SUBTITLE * 1.5)
         .text_center()
         .text_size(text::SUBTITLE)
         .text_color(p.text_secondary)

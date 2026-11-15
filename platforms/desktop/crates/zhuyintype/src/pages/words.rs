@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, IntoElement, ParentElement, PathPromptOptions,
@@ -23,7 +23,7 @@ use super::Page;
 use crate::app::{self, Place};
 use crate::theme::size;
 use crate::ui::alert::{AlertButton, alert, notice};
-use crate::ui::content::{FACT_GAP as FIELD_GAP, chip, chips, fact_row, facts, labelled, under_fields};
+use crate::ui::content::{FACT_GAP as FIELD_GAP, chip, chips, fact_row, facts, labelled, text_input, under_fields};
 use crate::ui::list::{ListConfig, ListItem, ListSort, ListView, MenuEntry, grouped};
 use crate::ui::{self, v};
 
@@ -168,6 +168,7 @@ impl WordsPage {
         v().gap(size::SECTION_GAP)
             .child(
                 ui::section("")
+                    .first()
                     .row(ui::setting_row("learningEnabled", cx).info("記住的字詞", |_, cx| learned_info(cx)))
                     .row(
                         ui::row("drill-learned", "記住的字詞")
@@ -543,8 +544,8 @@ fn sheet_fields(
         })))
     });
     v().gap(FIELD_GAP)
-        .child(labelled("詞：", Input::new(word), cx))
-        .child(labelled("讀音：", Input::new(reading), cx))
+        .child(labelled("詞：", text_input(word), cx))
+        .child(labelled("讀音：", text_input(reading), cx))
         .children(chips_row)
         .into_any_element()
 }

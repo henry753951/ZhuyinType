@@ -5,11 +5,11 @@
 use std::rc::Rc;
 
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::{AnyElement, App, FontWeight, ParentElement, SharedString, Styled, Window, div, px};
+use gpui_kit::{AnyElement, App, ParentElement, SharedString, Styled, Window, div, px};
 
 use super::actions::{ButtonKind, push_button};
 use super::{h, v};
-use crate::theme::{self, text};
+use crate::theme::{self, size, space, text, weight};
 
 type Action = Rc<dyn Fn(&mut Window, &mut App)>;
 type Content = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
@@ -38,7 +38,7 @@ impl AlertButton {
         Self { label: "好".into(), kind: ButtonKind::Default, action: None }
     }
 
-    /// The default button (accent; Return presses it).
+    /// The default button (the inverted neutral; Return presses it).
     pub fn default(mut self) -> Self {
         self.kind = ButtonKind::Default;
         self
@@ -96,10 +96,10 @@ impl Alert {
         window.open_dialog(cx, move |dialog, window, cx| {
             let p = theme::palette(cx);
             let alert = alert.clone();
-            let mut body = v().gap(px(6.)).child(
+            let mut body = v().gap(space::S6).child(
                 div()
                     .text_size(text::HEADLINE)
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(weight::SEMIBOLD)
                     .text_color(p.text)
                     .child(alert.title.clone()),
             );
@@ -107,9 +107,9 @@ impl Alert {
                 body = body.child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(message.clone()));
             }
             if let Some(content) = &alert.content {
-                body = body.child(div().pt(px(8.)).child(content(window, cx)));
+                body = body.child(div().pt(space::S8).child(content(window, cx)));
             }
-            let buttons = h().w_full().justify_end().gap(px(8.)).children(alert.buttons.iter().enumerate().map(
+            let buttons = h().w_full().justify_end().gap(space::S8).children(alert.buttons.iter().enumerate().map(
                 |(index, button)| {
                     let button = button.clone();
                     let label = button.label.clone();
@@ -121,6 +121,7 @@ impl Alert {
                         move |_, window, cx| press(&button, window, cx),
                         cx,
                     )
+                    .h(size::H_LG)
                 },
             ));
             let on_ok = default.map(|index| alert.buttons[index].clone());
@@ -134,7 +135,7 @@ impl Alert {
                     }
                     false
                 })
-                .child(body.pb(px(4.)))
+                .child(body.pb(space::S4))
                 .footer(buttons)
         });
     }

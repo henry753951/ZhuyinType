@@ -39,10 +39,16 @@ pub struct Palette {
     pub text_secondary: Hsla,
     /// Section headers, hints, disabled text.
     pub text_tertiary: Hsla,
-    /// The accent: selection, links, switches that are on.
+    /// The accent as text: links, the arrival cue, the 已自訂 dot, a key being recorded.
     pub accent: Hsla,
-    /// Text on the accent.
+    /// The accent as a fill: a switch that is on, progress, chart bars.
+    pub accent_fill: Hsla,
+    /// Text and knobs on `accent_fill`.
     pub on_accent: Hsla,
+    /// The primary (default) button: an inverted neutral, never the accent.
+    pub primary: Hsla,
+    /// Text on `primary`.
+    pub on_primary: Hsla,
     /// The accent, faint (highlights, arrival pulse).
     pub accent_faint: Hsla,
     /// Controls' fill (pop-up buttons, key caps, segmented controls).
@@ -51,6 +57,8 @@ pub struct Palette {
     pub control_border: Hsla,
     /// The knob of a switch.
     pub knob: Hsla,
+    /// The track of a switch that is off.
+    pub switch_off: Hsla,
     /// Destructive actions and conflicts.
     pub danger: Hsla,
     /// Positive state (saved, done).
@@ -86,13 +94,17 @@ impl Palette {
             separator: ca(0x1e1c1817),
             text: c(0x1f1e1b),
             text_secondary: c(0x6b6962),
-            text_tertiary: c(0x9d9a92),
+            text_tertiary: c(0x8b887f),
             accent: c(0x4257d8),
+            accent_fill: c(0x4257d8),
             on_accent: c(0xffffff),
+            primary: c(0x1f1e1b),
+            on_primary: c(0xfbfaf7),
             accent_faint: ca(0x4257d81c),
             control: c(0xffffff),
             control_border: ca(0x1e1c1824),
             knob: c(0xffffff),
+            switch_off: c(0xdcd9d2),
             danger: c(0xd5483f),
             success: c(0x2f8f5b),
             panel: c(0xfefdfb),
@@ -115,13 +127,17 @@ impl Palette {
             separator: ca(0xfffcf014),
             text: c(0xedebe5),
             text_secondary: c(0xa6a39b),
-            text_tertiary: c(0x716f68),
-            accent: c(0x8a9cf5),
-            on_accent: c(0x14151f),
-            accent_faint: ca(0x8a9cf526),
+            text_tertiary: c(0x85827a),
+            accent: c(0x7a8cf0),
+            accent_fill: c(0x5f72e6),
+            on_accent: c(0xffffff),
+            primary: c(0xedebe5),
+            on_primary: c(0x1b1a18),
+            accent_faint: ca(0x7a8cf526),
             control: c(0x2c2b28),
             control_border: ca(0xfffcf01f),
-            knob: c(0xf5f3ee),
+            knob: c(0xffffff),
+            switch_off: c(0x4a4843),
             danger: c(0xf0766d),
             success: c(0x5cc28a),
             panel: c(0x2a2927),
@@ -131,48 +147,160 @@ impl Palette {
     }
 }
 
-/// Sizes, radii, durations: the same in both appearances.
+/// The spacing scale: every gap, padding and margin is one of these.
+pub mod space {
+    use super::*;
+
+    pub const S2: Pixels = px(2.);
+    pub const S4: Pixels = px(4.);
+    pub const S6: Pixels = px(6.);
+    pub const S8: Pixels = px(8.);
+    pub const S12: Pixels = px(12.);
+    pub const S16: Pixels = px(16.);
+    pub const S20: Pixels = px(20.);
+    pub const S24: Pixels = px(24.);
+    pub const S32: Pixels = px(32.);
+    pub const S40: Pixels = px(40.);
+}
+
+/// Layout metrics, control heights, radii and icon sizes: the same in both appearances.
 pub mod size {
     use super::*;
 
+    // The window and the page.
     pub const TITLE_BAR: Pixels = px(44.);
     pub const SIDEBAR: Pixels = px(228.);
     pub const SIDEBAR_ROW: Pixels = px(32.);
-    pub const SIDEBAR_ICON: Pixels = px(16.);
     /// The page surface's inset from the window edge (right and bottom; the sidebar is on the left).
-    pub const SURFACE_INSET: Pixels = px(8.);
+    pub const SURFACE_INSET: Pixels = space::S8;
     /// The page's content column never grows past this, centred in wide windows.
     pub const CONTENT_MAX: Pixels = px(760.);
-    pub const PAGE_PADDING_X: Pixels = px(36.);
-    pub const PAGE_PADDING_TOP: Pixels = px(28.);
-    pub const SECTION_GAP: Pixels = px(32.);
-    pub const ROW_MIN: Pixels = px(52.);
-    pub const ROW_PADDING_X: Pixels = px(10.);
-    pub const ROW_PADDING_Y: Pixels = px(12.);
-    pub const RADIUS_SURFACE: Pixels = px(12.);
-    pub const RADIUS_CARD: Pixels = px(10.);
-    pub const RADIUS_CONTROL: Pixels = px(8.);
-    pub const RADIUS_SMALL: Pixels = px(6.);
-    pub const CONTROL_H: Pixels = px(30.);
+    pub const PAGE_PADDING_X: Pixels = space::S32;
+    pub const PAGE_PADDING_TOP: Pixels = space::S24;
+    pub const PAGE_PADDING_BOTTOM: Pixels = space::S40;
+    /// Between the page title and the first section.
+    pub const TITLE_GAP: Pixels = space::S20;
+    pub const SECTION_GAP: Pixels = space::S32;
+    /// Between a section and an untitled one that continues it (with a hairline above its first row).
+    pub const SECTION_GAP_UNTITLED: Pixels = space::S16;
+    /// Under a section's heading, above its hairline.
+    pub const SECTION_HEADING_PB: Pixels = space::S8;
+    /// Above the content of a section that is not a list (tiles, a grid, a stage).
+    pub const SECTION_BARE_PT: Pixels = space::S12;
+    /// Above a section's footer.
+    pub const FOOTER_PT: Pixels = space::S8;
+    pub const ROW_MIN: Pixels = px(48.);
+    /// Rows of a list page (one line each).
+    pub const ROW_MIN_SINGLE: Pixels = px(44.);
+    pub const ROW_PADDING_X: Pixels = space::S12;
+    pub const ROW_PADDING_Y: Pixels = space::S12;
+    /// Between a row's text and its control.
+    pub const ROW_GAP: Pixels = space::S12;
+    /// Dependent rows are indented by this.
+    pub const ROW_INDENT: Pixels = space::S20;
+    pub const HAIRLINE: Pixels = px(1.);
+
+    // Control heights.
+    /// Key caps, chips.
+    pub const H_XS: Pixels = px(20.);
+    /// Icon buttons in text, tabs, the back link, 試打.
+    pub const H_SM: Pixels = px(24.);
+    /// Every control in a row: pop-up, push button, segmented, search, ＋, stepper.
+    pub const H_MD: Pixels = px(28.);
+    /// Dialog and wizard footer buttons.
+    pub const H_LG: Pixels = px(32.);
+    /// Text inputs.
+    pub const H_FIELD: Pixels = px(36.);
+    /// The small key cap (the candidate window's footer).
+    pub const KEYCAP_SM: Pixels = px(18.);
+
+    // Radii: an inner radius is the outer one minus the padding between them.
+    /// Key caps, checkboxes, segments.
+    pub const R_XS: Pixels = px(4.);
+    /// Buttons, inputs, pop-ups, the segmented control, a row's hover, menu items.
+    pub const R_SM: Pixels = px(6.);
+    /// Sidebar rows.
+    pub const R_MD: Pixels = px(8.);
+    /// Cards, popovers, menus, the candidate window.
+    pub const R_LG: Pixels = px(10.);
+    /// The page surface and the window.
+    pub const R_XL: Pixels = px(12.);
+
+    // Icons.
+    pub const ICON_XS: Pixels = px(12.);
+    pub const ICON_SM: Pixels = px(14.);
+    pub const ICON_MD: Pixels = px(16.);
+    #[allow(dead_code, reason = "part of the scale; the candidate window and wizard use their own today")]
+    pub const ICON_LG: Pixels = px(20.);
+    pub const ICON_XL: Pixels = px(24.);
+    pub const SIDEBAR_ICON: Pixels = ICON_MD;
+
     pub const WINDOW_MIN_W: Pixels = px(640.);
+    /// Below this window width pages drop decorations that only repeat a row's value.
+    pub const NARROW_W: Pixels = px(760.);
     pub const WINDOW_MIN_H: Pixels = px(440.);
     pub const WINDOW_W: Pixels = px(900.);
     pub const WINDOW_H: Pixels = px(640.);
 }
 
-/// Text sizes.
+/// The type scale.  Only two weights: `weight::REGULAR` and `weight::SEMIBOLD` (CJK fonts have no medium).
 pub mod text {
     use super::*;
 
-    /// The page's own title.
-    pub const PAGE_TITLE: Pixels = px(22.);
-    pub const TITLE: Pixels = px(20.);
+    /// The wizard's welcome only.
+    pub const DISPLAY: Pixels = px(28.);
+    /// A page's own title.
+    pub const TITLE: Pixels = px(22.);
+    /// A wizard step's title.
+    #[allow(dead_code, reason = "the wizard's step titles")]
+    pub const STEP_TITLE: Pixels = px(24.);
+    /// Section, card and dialog titles.
     pub const HEADLINE: Pixels = px(15.);
     pub const BODY: Pixels = px(14.);
     pub const SUBTITLE: Pixels = px(13.);
-    /// Section headings: primary colour, semibold, a little larger than body.
-    pub const SECTION: Pixels = px(14.5);
+    /// Sidebar groups, key caps, chart labels.
     pub const CAPTION: Pixels = px(12.);
+    /// The candidate window only.
+    #[allow(dead_code, reason = "the candidate window's own sizes")]
+    pub const MICRO: Pixels = px(11.);
+}
+
+/// Font weights: CJK fonts have only regular and bold, so nothing in between.
+pub mod weight {
+    use gpui_kit::FontWeight;
+
+    pub const REGULAR: FontWeight = FontWeight::NORMAL;
+    pub const SEMIBOLD: FontWeight = FontWeight::SEMIBOLD;
+}
+
+/// Elevation: 0 the page surface; 1 a card (card colour and a hairline, no shadow); 2 a floating surface (menus,
+/// popovers, the candidate window): panel colour, a hairline and two shadows.
+pub mod elevation {
+    use gpui_kit::{BoxShadow, point, px};
+
+    use super::Palette;
+
+    /// The shadows of a floating surface.
+    pub fn floating(p: &Palette) -> Vec<BoxShadow> {
+        let (near, far) = if p.dark { (0.3, 0.5) } else { (0.06, 0.16) };
+        let ink = if p.dark { gpui_kit::black() } else { p.text };
+        vec![
+            BoxShadow {
+                color: ink.opacity(near),
+                offset: point(px(0.), px(1.)),
+                blur_radius: px(2.),
+                spread_radius: px(0.),
+                inset: false,
+            },
+            BoxShadow {
+                color: ink.opacity(far),
+                offset: point(px(0.), px(6.)),
+                blur_radius: px(20.),
+                spread_radius: px(-4.),
+                inset: false,
+            },
+        ]
+    }
 }
 
 /// Motion: the macOS app's durations.  Every animation checks `Motion::reduced` first.
@@ -284,10 +412,10 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     let theme = Theme::global_mut(cx);
     theme.font_family = ui_font().into();
     theme.font_size = text::BODY;
-    theme.radius = size::RADIUS_CONTROL;
-    theme.radius_lg = size::RADIUS_CARD;
+    theme.radius = size::R_SM;
+    theme.radius_lg = size::R_LG;
     // Linux with client-side decorations: rounded corners, a hairline and the shadow window_border draws.
-    theme.window_radius = size::RADIUS_SURFACE;
+    theme.window_radius = size::R_XL;
     theme.shadow = true;
     let colors = &mut theme.colors;
     colors.background = p.surface;
@@ -297,8 +425,30 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.border = p.separator;
     colors.input = p.control_border;
     colors.ring = p.accent;
-    colors.primary = p.accent;
-    colors.primary_foreground = p.on_accent;
+    // Primary buttons are an inverted neutral; switches pass `accent_fill` themselves (`ui::controls`).
+    colors.primary = p.primary;
+    colors.primary_foreground = p.on_primary;
+    colors.primary_hover = p.primary.opacity(0.88);
+    colors.primary_active = p.primary.opacity(0.8);
+    colors.button_primary = p.primary;
+    colors.button_primary_foreground = p.on_primary;
+    colors.button_primary_hover = p.primary.opacity(0.88);
+    colors.button_primary_active = p.primary.opacity(0.8);
+    colors.button = p.control;
+    colors.button_foreground = p.text;
+    colors.button_hover = p.hover;
+    colors.button_active = p.pressed;
+    colors.link = p.accent;
+    colors.link_hover = p.accent;
+    colors.link_active = p.accent.opacity(0.8);
+    colors.progress_bar = p.accent_fill;
+    colors.slider_bar = p.accent_fill;
+    colors.slider_thumb = p.knob;
+    colors.list_active = p.selection;
+    colors.list_active_border = Hsla::transparent_black();
+    colors.list_hover = p.hover;
+    colors.tab_bar_segmented = p.subtle;
+    colors.caret = p.text;
     colors.accent = p.hover;
     colors.accent_foreground = p.text;
     colors.popover = p.card;
@@ -308,15 +458,15 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.secondary_active = p.pressed;
     colors.popover_foreground = p.text;
     colors.selection = p.accent_faint;
-    colors.switch = if p.dark { c(0x48484e) } else { c(0xd5d5da) };
+    colors.switch = p.switch_off;
     colors.title_bar = p.sidebar;
     colors.title_bar_border = p.separator;
     colors.window_border = if p.dark { ca(0xfffcf021) } else { ca(0x1e1c182e) };
     colors.sidebar = p.sidebar;
     colors.sidebar_foreground = p.text;
     colors.sidebar_border = p.separator;
-    colors.sidebar_accent = p.accent;
-    colors.sidebar_accent_foreground = p.on_accent;
+    colors.sidebar_accent = p.pressed;
+    colors.sidebar_accent_foreground = p.text;
     colors.danger = p.danger;
     colors.success = p.success;
     colors.scrollbar = Hsla::transparent_black();

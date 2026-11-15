@@ -19,7 +19,7 @@ use crate::app::{self, Place};
 use crate::candidate::preview::UnifiedPreview;
 use crate::candidate::style::CurrentKeys;
 use crate::theme::{self, size};
-use crate::ui::{self, h, row, section, v};
+use crate::ui::{self, row, section, v};
 
 pub struct CandidatesPage {
     preview: Entity<UnifiedPreview>,
@@ -53,7 +53,7 @@ fn command_key_rows(commands: &[&'static str], keys: &CurrentKeys, settings: &Se
         .map(|&command| {
             let title = if commands.len() > 1 { command_label(command) } else { "快捷鍵" };
             let labels = keys.all(command);
-            let caps = h().gap(size::RADIUS_SMALL).children(labels.into_iter().map(ui::keycap));
+            let caps = ui::keycap::bindings(labels);
             let customised = app::service(cx).is_some_and(|service| service.shortcuts().is_customised(command));
             let _ = settings;
             row(SharedString::from(format!("keysrow-{command}")), title)
@@ -304,7 +304,7 @@ impl Render for CandidatesPage {
                     .min_w_0()
                     .overflow_hidden()
                     .p(size::ROW_PADDING_X)
-                    .rounded(size::RADIUS_CARD)
+                    .rounded(size::R_LG)
                     .bg(p.card)
                     .border_1()
                     .border_color(p.separator)

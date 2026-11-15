@@ -3,11 +3,11 @@
 
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window,
-    WindowBounds, WindowOptions, div, px, size,
+    WindowBounds, WindowOptions, div, px, relative, size,
 };
 
 use crate::pages::{choosing, typing};
-use crate::theme::{self, size as sz};
+use crate::theme::{self, size as sz, space};
 use crate::ui;
 use crate::ui::demo::InfoContent;
 
@@ -33,11 +33,25 @@ impl Render for CardWindow {
         let p = theme::palette(cx);
         let content = match self.card {
             Some((title, content)) => ui::info_card(title.into(), content(window, cx), cx),
-            None => div().p(px(20.)).child(format!("沒有 {} 這張說明卡", self.id)).into_any_element(),
+            None => div().p(space::S20).child(format!("沒有 {} 這張說明卡", self.id)).into_any_element(),
         };
-        div().size_full().bg(p.window).text_color(p.text).font(theme::font()).p(px(16.)).child(
-            div().rounded(sz::RADIUS_CARD).bg(p.card).border_1().border_color(p.separator).shadow_lg().child(content),
-        )
+        // A popover floats: panel colour, a hairline and the floating shadows.
+        div()
+            .size_full()
+            .bg(p.window)
+            .text_color(p.text)
+            .font(theme::font())
+            .line_height(relative(1.5))
+            .p(space::S16)
+            .child(
+                div()
+                    .rounded(sz::R_LG)
+                    .bg(p.panel)
+                    .border_1()
+                    .border_color(p.panel_border)
+                    .shadow(theme::elevation::floating(&p))
+                    .child(content),
+            )
     }
 }
 

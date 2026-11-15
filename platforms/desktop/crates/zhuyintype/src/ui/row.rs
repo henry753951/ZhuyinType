@@ -1,5 +1,6 @@
-//! A settings row (macOS `SettingRow`): title, subtitle and an optional link on the left; value, control and
-//! accessory (› or ⓘ) on the right, centred on the left block.  A dot in the margin marks a customised setting; a link
+//! A settings row (macOS `SettingRow`): title (with its ⓘ right after it), subtitle and an optional link on the left;
+//! value, control and › on the right, centred on the left block.  The trailing column holds only the control, so every
+//! row's control ends at the same edge.  A dot in the margin marks a customised setting; a link
 //! that leads to the row tints it once (the arrival cue).
 
 use std::time::Duration;
@@ -7,12 +8,12 @@ use std::time::Duration;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div, px,
+    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div,
 };
 
 use super::{controls, h, v};
 use crate::app;
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 type CardContent = Box<dyn Fn(&mut Window, &mut App) -> AnyElement>;
@@ -22,6 +23,8 @@ pub enum Accessory {
     None,
     /// The row goes somewhere (the whole row is the button).
     Chevron,
+    /// The row opens and closes what is under it: a chevron that turns down while open.
+    Disclosure(bool),
     /// A ⓘ with an explanation card.
     Info {
         title: SharedString,
@@ -144,6 +147,12 @@ impl Row {
         self
     }
 
+    /// The row opens and closes the rows under it (set before `on_click`).
+    pub fn disclosure(mut self, open: bool) -> Self {
+        self.accessory = Accessory::Disclosure(open);
+        self
+    }
+
     /// The whole row is a button with a ›.
     pub fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
@@ -174,7 +183,7 @@ pub(crate) fn anchor_probe(anchor: SharedString) -> impl IntoElement {
 pub(crate) fn arrival_tint(key: impl Into<SharedString>, generation: usize, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let key: SharedString = key.into();
-    div().absolute().inset(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.accent).with_animation(
+    div().absolute().inset(space::S2).rounded(size::R_SM).bg(p.accent).with_animation(
         SharedString::from(format!("arrival-{key}-{generation}")),
         Animation::new(Duration::from_millis(1600)),
         |this, t| {
@@ -190,62 +199,90 @@ pub(crate) fn arrival_tint(key: impl Into<SharedString>, generation: usize, cx: 
     )
 }
 
+/// The 已自訂 dot's size.
+const DOT: gpui_kit::Pixels = space::S6;
+
 impl RenderOnce for Row {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let clickable = self.on_click.is_some();
         let arrival = self.anchor.as_ref().and_then(|anchor| arrived(anchor, cx).map(|g| (anchor.clone(), g)));
-        let accessory: Option<AnyElement> = match self.accessory {
-            Accessory::None => None,
+        let chevron = match self.accessory {
             Accessory::Chevron => Some(controls::chevron(cx).into_any_element()),
+            Accessory::Disclosure(open) => Some(
+                gpui_kit::component::Icon::new(gpui_kit::assets::IconName::ChevronRight)
+                    .size(size::ICON_SM)
+                    .text_color(p.text_tertiary)
+                    .rotate(gpui_kit::radians(if open { std::f32::consts::FRAC_PI_2 } else { 0. }))
+                    .into_any_element(),
+            ),
+            _ => None,
+        };
+        let info: Option<AnyElement> = match self.accessory {
             Accessory::Info { title, content } => {
                 let id = SharedString::from(format!("info-{}", self.title));
                 Some(controls::info_button(id, title, content, cx).into_any_element())
             }
+            _ => None,
         };
         let _ = window;
+        let group: SharedString = self.hover_group.clone().unwrap_or_else(|| "row-hover".into());
+        let line = text::BODY * 1.5;
         h().id(self.id)
-            .when_some(self.hover_group, |this, group| this.group(group))
+            .group(group.clone())
             .relative()
             .w_full()
             .min_h(size::ROW_MIN)
             .px(size::ROW_PADDING_X)
-            .py(size::ROW_PADDING_Y)
-            .gap(px(12.))
+            // The text column adds `S4` above and below: `ROW_PADDING_Y` around the text, while a control as tall
+            // as `H_MD` still fits a single-line row of `ROW_MIN`.
+            .py(size::ROW_PADDING_Y - space::S4)
+            .gap(size::ROW_GAP)
+            // The hover fill stays clear of the hairlines above and below.
+            .when(clickable, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .top(space::S2)
+                        .bottom(space::S2)
+                        .rounded(size::R_SM)
+                        .group_hover(group.clone(), |style| style.bg(p.hover)),
+                )
+            })
             .when_some(arrival, |this, (anchor, generation)| {
                 this.child(arrival_tint(anchor.clone(), generation, cx)).child(anchor_probe(anchor))
             })
             .when(self.dimmed, |this| this.opacity(0.5))
-            .when(clickable, |this| {
-                this.cursor_pointer()
-                    .rounded(size::RADIUS_CONTROL)
-                    .hover(|style| style.bg(p.hover))
-                    .active(|style| style.bg(p.pressed))
-            })
+            .when(clickable, |this| this.cursor_pointer())
             .when_some(self.on_click, |this, handler| this.on_click(handler))
             .child(
                 v().flex_1()
-                    .min_w(px(0.))
+                    .min_w(gpui_kit::px(0.))
+                    .py(space::S4)
                     .when(self.wrap_value, |this| this.flex_none())
-                    .gap(px(3.))
-                    .when(self.indent, |this| this.pl(px(18.)))
+                    .gap(space::S2)
+                    .when(self.indent, |this| this.pl(size::ROW_INDENT))
                     .child(
-                        div()
-                            .relative()
+                        h().relative()
+                            .gap(space::S4)
                             .text_size(text::BODY)
+                            .line_height(line)
                             .text_color(if self.indent || self.dimmed { p.text_secondary } else { p.text })
                             .when(self.marked, |this| {
                                 this.child(
                                     div()
                                         .absolute()
-                                        .left(px(-11.))
-                                        .top(px(7.))
-                                        .size(px(6.))
+                                        .left(-(size::ROW_PADDING_X + DOT) / 2.)
+                                        .top((line - DOT) / 2.)
+                                        .size(DOT)
                                         .rounded_full()
                                         .bg(p.accent),
                                 )
                             })
-                            .child(self.title),
+                            .child(div().min_w(gpui_kit::px(0.)).child(self.title))
+                            .children(info),
                     )
                     .when_some(self.subtitle, |this, subtitle| {
                         this.child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(subtitle))
@@ -254,14 +291,14 @@ impl RenderOnce for Row {
             )
             .child(
                 h().flex_shrink_0()
-                    .gap(px(8.))
-                    .when(self.wrap_value, |this| this.flex_1().min_w(px(0.)).justify_end())
+                    .gap(space::S8)
+                    .when(self.wrap_value, |this| this.flex_1().min_w(gpui_kit::px(0.)).justify_end())
                     .when_some(self.value, |this, value| {
                         if self.wrap_value {
                             this.child(
                                 div()
                                     .flex_1()
-                                    .min_w(px(0.))
+                                    .min_w(gpui_kit::px(0.))
                                     .text_right()
                                     .text_size(text::BODY)
                                     .text_color(p.text_secondary)
@@ -272,7 +309,7 @@ impl RenderOnce for Row {
                         }
                     })
                     .when_some(self.trailing, |this, trailing| this.child(trailing))
-                    .when_some(accessory, |this, accessory| this.child(accessory)),
+                    .when_some(chevron, |this, chevron| this.child(chevron)),
             )
     }
 }

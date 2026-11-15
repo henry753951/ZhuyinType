@@ -10,8 +10,7 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled,
-    div, px,
+    App, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div,
 };
 use serde_json::Value;
 use zt_core::settings;
@@ -19,7 +18,7 @@ use zt_core::settings;
 use super::h;
 use crate::app::{self, Place};
 use crate::pages::Page;
-use crate::theme::{self, size, text};
+use crate::theme::{self, space, text};
 
 /// A command with a rebindable key (macOS `ShortcutCommand`, most used first).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -125,19 +124,7 @@ fn bindings(command: Command, cx: &App) -> Vec<Vec<String>> {
 
 /// A shortcut's label split into keycaps: "Alt+⌫" → ["Alt", "⌫"], "⇧↓" → ["⇧", "↓"], "Ctrl+⇧U" → ["Ctrl", "⇧", "U"].
 fn caps(label: &str) -> Vec<String> {
-    let mut caps = Vec::new();
-    let parts: Vec<&str> = label.split('+').collect();
-    let (last, modifiers) = parts.split_last().map_or(("", &[][..]), |(last, rest)| (*last, rest));
-    caps.extend(modifiers.iter().map(|part| (*part).to_owned()));
-    let mut rest = last;
-    while let Some(tail) = rest.strip_prefix('⇧').filter(|tail| !tail.is_empty()) {
-        caps.push("⇧".to_owned());
-        rest = tail;
-    }
-    if !rest.is_empty() {
-        caps.push(rest.to_owned());
-    }
-    caps
+    super::keycap::split(label)
 }
 
 /// Keycaps in one piece, the way Linux and Windows write a shortcut: "Alt+⌫", "⇧Tab", "Ctrl+⇧U".
@@ -211,32 +198,17 @@ impl<'a> CurrentKeys<'a> {
     }
 }
 
-/// The keys of a command at the end of its row, as one chip per key ("⇧Return").  Until keys can be recorded here, a
+/// The keys of a command at the end of its row, as key caps (「⇧」「Return」).  Until keys can be recorded here, a
 /// click goes to the command's row on the 快捷鍵 page, where they are changed.
 pub fn shortcut_chip(command: Command, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let keys = CurrentKeys::new(cx).all(command);
     h().id(SharedString::from(format!("chip-{}", command.id())))
-        .gap(px(4.))
+        .gap(space::S12)
         .cursor_pointer()
         .on_click(move |_, _, cx| app::go(Place::row(Page::Keys, command.keys_row()), cx))
         .when(keys.is_empty(), |this| {
             this.child(div().text_size(text::SUBTITLE).text_color(p.text_tertiary).child("沒有按鍵"))
         })
-        .children(keys.into_iter().map(move |caps| {
-            div()
-                .h(px(22.))
-                .px(px(8.))
-                .flex()
-                .items_center()
-                .rounded(size::RADIUS_CONTROL)
-                .bg(p.pressed)
-                .border_1()
-                .border_color(p.separator)
-                .text_size(text::SUBTITLE)
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(p.text_secondary)
-                .hover(|style| style.text_color(p.text))
-                .child(compact(&caps))
-        }))
+        .children(keys.into_iter().map(super::keycap::key_combo))
 }
