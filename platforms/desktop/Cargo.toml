@@ -3,7 +3,8 @@
 # (scripts/build.sh; `tools/zt --remote build desktop`).
 [workspace]
 resolver = "3"
-members = ["crates/zt-core", "crates/zhuyintype"]
+members = ["crates/zt-core", "crates/zhuyintype", "crates/zt-tsf", "tools/gpui-shaders"]
+exclude = ["vendor"]
 
 [workspace.package]
 edition = "2024"
@@ -36,6 +37,11 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_System_ProcessStatus",
 ] }
+
+# GPUI's Windows backend compiles its shaders only on a Windows build host; the vendored copy also takes them
+# precompiled, so Windows release builds cross-compile on Linux (vendor/gpui-pre-windows/build.rs).
+[patch.crates-io]
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

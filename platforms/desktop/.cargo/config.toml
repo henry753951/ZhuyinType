@@ -1,0 +1,8 @@
+# Windows builds link the C runtime statically: the app and the TSF DLLs need no Visual C++ Redistributable, and
+# the DLLs import only system DLLs (they are loaded into every application that takes text).
+# /ignore:4099: the CRT's static libraries name PDBs that are not shipped with them.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/ignore:4099"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/ignore:4099"]

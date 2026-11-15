@@ -11,6 +11,7 @@ mod assets;
 mod candidate;
 mod card_window;
 mod pages;
+mod platform;
 mod shell;
 mod theme;
 mod ui;

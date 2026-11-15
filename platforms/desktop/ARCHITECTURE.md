@@ -17,6 +17,8 @@ platforms/desktop/
   packaging/windows/        NSIS 安裝程式（正體中文介面、一次 UAC、登記 TSF、登入啟動、解除安裝）
   packaging/linux/          nfpm 產生 .deb／.rpm、桌面項目、自動啟動、Fcitx5 外掛設定
   scripts/                  remote.sh（Mac → GPU 主機）、build.sh（主機：Linux、Windows 與安裝檔）、screenshot.sh
+  tools/gpui-shaders/       在 Windows 上把 GPUI 的 HLSL 編成 bytecode（交叉編譯用）
+  vendor/gpui-pre-windows/  GPUI 的 Windows 後端，改了 build.rs 以使用事先編譯的著色器（packaging/windows/README.md）
 platforms/linux/            Fcitx5 外掛（C++，透過通訊服務連線；協定不變）
 ```
 
@@ -31,7 +33,7 @@ platforms/desktop/scripts/remote.sh scripts/screenshot.sh ~/zhuyintype/shots/NAM
 platforms/desktop/scripts/remote.sh --fetch zhuyintype/shots/NAME /tmp/shots       # 把截圖取回來看
 ```
 
-Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-msvc` 交叉編譯（MSVC ABI、clang-cl／lld，Windows SDK 由 xwin 下載）；安裝程式在 Linux 上用 `makensis` 產生。Windows 上的行為在 Proxmox 的測試 VM（ssh 別名 `zt-windows`，Windows 11 正體中文）上驗證。
+Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-msvc` 交叉編譯（MSVC ABI、clang-cl／lld，Windows SDK 由 xwin 下載；32 位元程式用的 TSF DLL 以 `i686-pc-windows-msvc`），C runtime 靜態連結；安裝程式在 Linux 上用 `makensis` 產生（`packaging/windows/build.sh`）。Windows 上的行為在 Proxmox 的測試 VM（ssh 別名 `zt-windows`，Windows 11 正體中文）上驗證。
 
 ## 執行緒與核心／介面的分界
 

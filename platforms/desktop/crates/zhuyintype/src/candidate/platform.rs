@@ -7,9 +7,9 @@
 //!   ConfigureNotify, MapNotify and UnmapNotify like any other and keeps its bounds and visibility in step.  The input
 //!   shape is cut to the surface, so the transparent margin around it (the shadow) never catches a click.
 //! - Windows: GPUI gives PopUp `WS_EX_TOOLWINDOW | WS_EX_TOPMOST` but answers `WM_MOUSEACTIVATE` with `MA_ACTIVATE`,
-//!   so a click would activate it.  `platform/windows.rs` (another branch) adds `WS_EX_NOACTIVATE`, answers
-//!   `MA_NOACTIVATE` and moves with `SetWindowPos(SWP_NOACTIVATE)`; until it lands here the calls below say so and the
-//!   popup falls back to reopening its window where it must go.
+//!   so a click would activate it.  `platform/windows.rs` adds `WS_EX_NOACTIVATE`, answers `MA_NOACTIVATE`, moves
+//!   with `SetWindowPos(SWP_NOACTIVATE)`, hides and shows with `SW_HIDE`/`SW_SHOWNOACTIVATE`, and makes the shadow
+//!   (or the whole badge) transparent to clicks.
 //! - Wayland: a client cannot place its own windows; these return false and the popup reopens its window (the
 //!   compositor places it).  Fcitx5 draws its own candidate window there when ours cannot follow the caret.
 
@@ -121,10 +121,7 @@ pub fn place(window: &Window, rect: DeviceRect) -> bool {
     }
     #[cfg(windows)]
     {
-        // TODO(gpui-windows): `crate::platform::windows::move_window(window, rect)` (SetWindowPos with
-        // SWP_NOACTIVATE | SWP_NOZORDER) once platform/windows.rs is merged.
-        let _ = (window, rect);
-        false
+        crate::platform::windows::place(window, rect)
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
@@ -141,10 +138,7 @@ pub fn set_visible(window: &Window, visible: bool) -> bool {
     }
     #[cfg(windows)]
     {
-        // TODO(gpui-windows): `ShowWindow(hwnd, if visible { SW_SHOWNOACTIVATE } else { SW_HIDE })` from
-        // platform/windows.rs.
-        let _ = (window, visible);
-        false
+        crate::platform::windows::set_visible(window, visible)
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
@@ -163,8 +157,7 @@ pub fn set_input_region(window: &Window, region: Option<DeviceRect>) {
     }
     #[cfg(windows)]
     {
-        // TODO(gpui-windows): WS_EX_TRANSPARENT for the badge; the panel's margin answers HTTRANSPARENT.
-        let _ = (window, region);
+        crate::platform::windows::set_input_region(window, region);
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
@@ -176,9 +169,7 @@ pub fn set_input_region(window: &Window, region: Option<DeviceRect>) {
 pub fn make_non_activating(window: &Window) {
     #[cfg(windows)]
     {
-        // TODO(gpui-windows): `crate::platform::windows::make_non_activating(window)` (WS_EX_NOACTIVATE and a
-        // subclass answering WM_MOUSEACTIVATE with MA_NOACTIVATE) once platform/windows.rs is merged.
-        let _ = window;
+        crate::platform::windows::make_non_activating(window);
     }
     // X11: override-redirect windows are never focused by the window manager, and nothing here asks for focus.
     #[cfg(not(windows))]
