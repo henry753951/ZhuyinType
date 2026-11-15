@@ -19,6 +19,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::HKL;
 use windows::Win32::UI::TextServices::{
     CLSID_TF_CategoryMgr, CLSID_TF_InputProcessorProfiles, GUID_TFCAT_TIP_KEYBOARD, GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
     GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, GUID_TFCAT_TIPCAP_UIELEMENTENABLED, ITfCategoryMgr, ITfInputProcessorProfileMgr,
+    ITfInputProcessorProfiles,
 };
 use windows::core::{BOOL, GUID, HSTRING, PCWSTR, Result, s, w};
 
@@ -135,8 +136,8 @@ pub(crate) fn register() -> Result<()> {
     })
 }
 
-/// Removes the profile, the categories and the COM class.  Only a failure to remove the class is an error: the
-/// 64-bit and 32-bit DLLs share the profile, so the second removal finds it gone.
+/// Removes the profile, the categories, the text service's TSF key and the COM class.  Only a failure to remove the
+/// class is an error: the other steps may find their part gone already.
 pub(crate) fn unregister() -> Result<()> {
     // SAFETY: COM is initialised by regsvr32 (or the caller); valid GUIDs.
     unsafe {
@@ -153,7 +154,16 @@ pub(crate) fn unregister() -> Result<()> {
         ) {
             let _ = profiles.UnregisterProfile(&SERVICE_ID, LANGUAGE, &PROFILE_ID, 0);
         }
+        // The calls above leave the empty TIP key behind; this removes it (in this DLL's registry view).
+        if let Ok(profiles) = CoCreateInstance::<_, ITfInputProcessorProfiles>(
+            &CLSID_TF_InputProcessorProfiles,
+            None,
+            CLSCTX_INPROC_SERVER,
+        ) {
+            let _ = profiles.Unregister(&SERVICE_ID);
+        }
     }
+    let _ = delete_tree(HKEY_LOCAL_MACHINE, &format!("Software\\Microsoft\\CTF\\TIP\\{}", guid_string(&SERVICE_ID)));
     let key = class_key();
     let _ = delete_tree(HKEY_CURRENT_USER, &key);
     delete_tree(HKEY_LOCAL_MACHINE, &key)
