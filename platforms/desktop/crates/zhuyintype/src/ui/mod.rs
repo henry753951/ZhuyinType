@@ -12,8 +12,8 @@ pub mod slider;
 pub mod stepper;
 
 pub use controls::*;
-pub use row::{Accessory, Row, row, setting_row};
-pub use section::{Section, section};
+pub use row::{Row, row, setting_row};
+pub use section::section;
 
 use gpui_kit::{Div, Styled, div};
 

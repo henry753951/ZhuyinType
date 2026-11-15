@@ -158,6 +158,20 @@ impl Render for SettingsWindow {
             .px(sz::PAGE_PADDING_X)
             .pt(sz::PAGE_PADDING_TOP)
             .pb(px(40.))
+            .when_some(cx.global::<app::AppState>().service_error.clone(), |this, error| {
+                this.child(
+                    div()
+                        .mb(px(20.))
+                        .px(px(14.))
+                        .py(px(10.))
+                        .rounded(sz::RADIUS_CONTROL)
+                        .border_1()
+                        .border_color(p.danger)
+                        .text_size(text::SUBTITLE)
+                        .text_color(p.danger)
+                        .child(SharedString::from(format!("輸入法服務沒有啟動，打字時不會使用 ZhuyinType：{error}"))),
+                )
+            })
             .child(self.page_header(cx))
             .child(view)
             .with_animation(
@@ -244,7 +258,10 @@ pub fn show(cx: &mut App) {
     let page = cx.try_global::<Navigation>().map_or(Page::Intro, |nav| nav.page);
     if let Err(error) = open(page, None, None, cx) {
         log::error!("opening the settings window: {error:#}");
+        return;
     }
+    // Started in the background at login, the first time the settings appear is the first use.
+    crate::wizard::show_on_first_use(cx);
 }
 
 /// Brings the settings window to the front if it is open (the setup wizard closing); never opens it.

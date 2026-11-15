@@ -140,37 +140,22 @@ pub fn chevron(cx: &App) -> impl IntoElement {
     Icon::new(IconName::ChevronRight).size(px(15.)).text_color(theme::palette(cx).text_tertiary)
 }
 
-/// A key drawn as a key cap ("⇧", "空白", "Return").  `tint`: a conflict (red) or a highlight.
+/// A key drawn as a key cap ("⇧", "空白", "Return").
 #[derive(IntoElement)]
 pub struct Keycap {
     label: SharedString,
-    tint: Option<gpui_kit::Hsla>,
-    large: bool,
 }
 
 pub fn keycap(label: impl Into<SharedString>) -> Keycap {
-    Keycap { label: label.into(), tint: None, large: false }
-}
-
-impl Keycap {
-    pub fn tint(mut self, tint: gpui_kit::Hsla) -> Self {
-        self.tint = Some(tint);
-        self
-    }
-
-    pub fn large(mut self) -> Self {
-        self.large = true;
-        self
-    }
+    Keycap { label: label.into() }
 }
 
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
-        let tint = self.tint.unwrap_or(p.text_secondary);
         div()
-            .h(if self.large { px(26.) } else { px(22.) })
-            .min_w(if self.large { px(26.) } else { px(22.) })
+            .h(px(22.))
+            .min_w(px(22.))
             .px(px(7.))
             .flex()
             .items_center()
@@ -178,10 +163,10 @@ impl RenderOnce for Keycap {
             .rounded(size::RADIUS_SMALL)
             .bg(p.subtle)
             .border_1()
-            .border_color(if self.tint.is_some() { tint } else { p.separator })
-            .text_size(if self.large { text::BODY } else { text::CAPTION })
+            .border_color(p.separator)
+            .text_size(text::CAPTION)
             .font_weight(FontWeight::MEDIUM)
-            .text_color(if self.tint.is_some() { tint } else { p.text })
+            .text_color(p.text)
             .child(self.label)
     }
 }

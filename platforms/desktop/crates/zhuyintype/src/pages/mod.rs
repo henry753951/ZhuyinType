@@ -11,14 +11,13 @@ pub mod advanced;
 pub mod analytics;
 pub mod candidates;
 pub mod choosing;
-pub mod generic;
 pub mod intro;
 pub mod keys;
 pub mod typing;
 pub mod words;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{AnyView, AppContext as _, Hsla, Window, rgb};
+use gpui_kit::{AnyView, AppContext as _, Window};
 
 /// One page of the settings window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -101,20 +100,6 @@ impl Page {
             Page::Advanced => IconName::SlidersHorizontal,
             Page::About => IconName::Info,
         }
-    }
-
-    /// The tile colour behind the icon (macOS's system colours).
-    pub fn tint(self) -> Hsla {
-        let hex = match self {
-            Page::Intro => 0xff375f,
-            Page::Typing => 0x5e5ce6,
-            Page::Choosing => 0x30b0c7,
-            Page::Candidates => 0x0a84ff,
-            Page::Words => 0xff9f0a,
-            Page::Analytics => 0x30d158,
-            Page::Keys | Page::Advanced | Page::About => 0x8e8e93,
-        };
-        rgb(hex).into()
     }
 }
 
