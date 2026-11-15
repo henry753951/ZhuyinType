@@ -222,8 +222,11 @@ unsafe impl Send for Descriptor {}
 
 impl Descriptor {
     fn current_user(sid: &str) -> Result<Self> {
-        // D:P — a protected DACL with one entry: generic all for the user's SID.
-        let sddl = wide(&format!("D:P(A;;GA;;;{sid})"));
+        // D:P — a protected DACL: generic all for the user's SID, and read/write for app containers (AC) and
+        // restricted app containers (S-1-15-2-2), so packaged apps that load the TSF DLL — the Start menu search,
+        // Store apps — can reach the pipe.  S:(ML;;NW;;;LW): low integrity may write, which app containers run at.
+        // Those processes still belong to the signed-in user; other users have no entry.
+        let sddl = wide(&format!("D:P(A;;GA;;;{sid})(A;;GRGW;;;AC)(A;;GRGW;;;S-1-15-2-2)S:(ML;;NW;;;LW)"));
         let mut descriptor: *mut c_void = std::ptr::null_mut();
         // SAFETY: `sddl` is NUL-terminated; `descriptor` is a live out pointer.
         let ok = unsafe {

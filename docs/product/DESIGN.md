@@ -409,7 +409,7 @@ macOS 的中文模式啟動時使用全形標點。⇧ 空白只切換之後輸�
 
 ## 4. 介面
 
-Linux／Windows 共用 Qt Quick 的候選字與設定介面，依本節的 macOS 版面與控制項逐頁移植；候選字使用圓角白底／黑底，不使用 Liquid Glass。App 圖示共用原資產，側欄使用自行繪製的對應圖案。Fcitx5／TSF 透過本機通訊接入共用服務，處理系統焦點、按鍵、組字與游標位置；Qt 服務負責引擎、設定及候選視窗。逐頁完成範圍、介面後續修正與原生驗證狀態見 [Qt 介面移植](QT_DESKTOP.md)。
+Linux／Windows 版（`platforms/desktop/`，GPUI）的功能與版面依本文件的 macOS 版逐頁移植，視覺則是 ZhuyinType 自己的現代設計語言，不模仿 macOS 或 Windows 原生外觀。Fcitx5／TSF 透過本機通訊接入同一個程式的輸入法服務，處理系統焦點、按鍵、組字與游標位置；程式本身負責引擎、設定與候選字視窗。見 [Linux 與 Windows 版](DESKTOP.md)。
 
 整體採用 macOS 26 之後的系統設計語言。App 以 macOS 27 SDK 建置，並在執行檔標記實際使用的 SDK 版本，系統因此以目前的樣式繪製所有標準控制項。最低系統需求為 macOS 14。
 

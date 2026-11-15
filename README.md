@@ -237,16 +237,18 @@ tools/zt check engine    # 引擎的測試（cargo test --release）
   tools/zt build pkg       # dist/ZhuyinType-<版本>.pkg
   ```
 
-- **Windows**：見 [Windows 建置說明](platforms/windows/README.md)，需要 Visual Studio 2022 C++ Build Tools 與 CMake，並先建置共用的 Qt 桌面服務。
-- **Linux**：見 [Linux 建置說明](platforms/linux/README.md)，需要 Fcitx 5 開發套件，並先建置共用的 Qt 桌面服務。
+- **Windows 與 Linux**：共用 `platforms/desktop/` 的 GPUI 程式，在 GPU 主機上建置（Windows 版交叉編譯），產生 Windows 安裝程式與 `.deb`／`.rpm`，見 [Linux 與 Windows 版](docs/product/DESKTOP.md)。
+
+  ```sh
+  tools/zt --remote --pull dist/desktop build desktop --package
+  ```
 
 | 目錄 | 內容 |
 |---|---|
 | `engine/` | 所有平台共用的輸入法引擎（Rust）：組字、按鍵解碼、容錯、語言模型、神經模型、C 介面、`zhuyin-cli` |
-| `platforms/qt/` | Windows 與 Linux 共用的桌面服務（Qt 6 Quick）：設定視窗、候選字視窗與共用的介面元件 |
+| `platforms/desktop/` | Windows 與 Linux 共用的 GPUI 程式（Rust）：設定視窗、候選字視窗、設定嚮導、輸入法服務、Windows 的 TSF 文字服務，以及安裝檔的打包 |
 | `platforms/macos/` | macOS 輸入法（InputMethodKit）與建置、發布腳本 |
-| `platforms/windows/` | Windows 輸入法（TSF 文字服務）、安裝與測試腳本 |
-| `platforms/linux/` | Linux 輸入法（Fcitx 5 附加元件）、安裝與測試腳本 |
+| `platforms/linux/` | Linux 輸入法（Fcitx 5 附加元件）與測試 |
 | `ml/` | 研發：資料、訓練、評測與 `zt` 指令（Python，見 [ml/README.md](ml/README.md)） |
 | `resources/` | 資料與模型的固定版本、來源與授權、二進位格式 |
 | `tools/` | `zt` 啟動器，說明見 [tools/README.md](tools/README.md) |

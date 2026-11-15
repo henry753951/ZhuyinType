@@ -1,4 +1,4 @@
-//! 授權與資料來源: `resources/sources.json` filtered to this platform (macOS `SourcesPane`, Qt `LegalDocuments`), and
+//! 授權與資料來源: `resources/sources.json` filtered to this platform (macOS `SourcesPane`), and
 //! the licence texts it names.  The texts the repository holds are built into the binary; files made at packaging
 //! time (`Rust-crates.txt`) are read from a `Licenses` folder installed next to the program, and model notices from
 //! the engine's data folder, when they are there.
@@ -23,6 +23,8 @@ const EMBEDDED: &[(&str, &str)] = &[
     ("libtabe-COPYING.txt", include_str!("../../../../../../macos/Resources/Licenses/libtabe-COPYING.txt")),
     ("wordfreq-NOTICE.txt", include_str!("../../../../../../macos/Resources/Licenses/wordfreq-NOTICE.txt")),
     ("nlohmann-json.txt", include_str!("../../../../../../linux/LICENSES/nlohmann-json.txt")),
+    ("Inter-LICENSE.txt", include_str!("../../../assets/fonts/Inter-LICENSE.txt")),
+    ("Lucide-LICENSE.txt", include_str!("../../../assets/Lucide-LICENSE.txt")),
 ];
 
 const SOURCES: &str = include_str!("../../../../../../../resources/sources.json");

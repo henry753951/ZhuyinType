@@ -2,8 +2,8 @@
 //! keys, whether their feature is on, the Shift that switches 中/英.  No page spells a configurable key itself, and a
 //! key whose feature is off is not shown.
 //!
-//! The commands' keys come from `default_bindings` until `zt_core::shortcuts` (being ported from the Qt client) can
-//! say what the user bound; which feature turns a command off comes from the `commands` lists in `settings.json`.
+//! The commands' keys are what the user bound (`zt_core::shortcuts` through `ui::shortcuts::store`); which feature
+//! turns a command off comes from the `commands` lists in `settings.json`.
 
 // Shared with the 快捷鍵 and 視窗與提示 pages, which use the parts these pages do not.
 #![allow(dead_code)]
@@ -118,25 +118,26 @@ impl Command {
     }
 }
 
-/// The keys bound to `command`, each as its keycaps (["Alt", "⌫"]).  Defaults of the Linux and Windows client (the Qt
-/// registry, `platforms/qt/src/Shortcuts.cpp`, plus the macOS commands it lacked).
-// Switch to `zt_core::shortcuts` once it is ported: this is the one place the pages learn a command's keys.
-fn bindings(command: Command, _cx: &App) -> Vec<Vec<&'static str>> {
-    match command {
-        Command::SingleCharacterList => vec![vec!["⇧", "↓"]],
-        Command::CorrectionsList => vec![vec!["⇧", "↑"]],
-        Command::TypeZhuyin => vec![vec!["`"]],
-        Command::NextPage => vec![vec!["Tab"], vec!["PgDn"], vec!["Alt", "↓"]],
-        Command::PreviousPage => vec![vec!["⇧", "Tab"], vec!["PgUp"], vec!["Alt", "↑"]],
-        Command::SelectLeft => vec![vec!["⇧", "←"]],
-        Command::SelectRight => vec![vec!["⇧", "→"]],
-        Command::DeleteWord => vec![vec!["Alt", "⌫"]],
-        Command::CommitWithNewline => vec![vec!["⇧", "Return"]],
-        Command::PreviousCharacter => vec![vec!["Alt", "←"]],
-        Command::NextCharacter => vec![vec!["Alt", "→"]],
-        Command::TogglePunctuationWidth => vec![vec!["⇧", "空白"]],
-        Command::InsertSpace => vec![vec!["Alt", "空白"]],
+/// The keys bound to `command`, each as its keycaps (["Alt", "⌫"]): the one place the pages learn a command's keys.
+fn bindings(command: Command, cx: &App) -> Vec<Vec<String>> {
+    super::shortcuts::store::store(cx).bindings(command.id()).into_iter().map(|binding| caps(&binding.label)).collect()
+}
+
+/// A shortcut's label split into keycaps: "Alt+⌫" → ["Alt", "⌫"], "⇧↓" → ["⇧", "↓"], "Ctrl+⇧U" → ["Ctrl", "⇧", "U"].
+fn caps(label: &str) -> Vec<String> {
+    let mut caps = Vec::new();
+    let parts: Vec<&str> = label.split('+').collect();
+    let (last, modifiers) = parts.split_last().map_or(("", &[][..]), |(last, rest)| (*last, rest));
+    caps.extend(modifiers.iter().map(|part| (*part).to_owned()));
+    let mut rest = last;
+    while let Some(tail) = rest.strip_prefix('⇧').filter(|tail| !tail.is_empty()) {
+        caps.push("⇧".to_owned());
+        rest = tail;
     }
+    if !rest.is_empty() {
+        caps.push(rest.to_owned());
+    }
+    caps
 }
 
 /// Keycaps in one piece, the way Linux and Windows write a shortcut: "Alt+⌫", "⇧Tab", "Ctrl+⇧U".

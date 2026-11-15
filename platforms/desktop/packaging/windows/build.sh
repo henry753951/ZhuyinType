@@ -73,6 +73,8 @@ for licence in Apache-2.0.txt CC-BY-4.0.txt CC-BY-SA-4.0.txt CC0-1.0.txt LEXICON
   Unicode-3.0.txt libtabe-COPYING.txt wordfreq-NOTICE.txt; do
   cp "$root/platforms/macos/Resources/Licenses/$licence" "$stage/licenses/"
 done
+cp "$root/platforms/desktop/crates/zhuyintype/assets/fonts/Inter-LICENSE.txt" \
+  "$root/platforms/desktop/crates/zhuyintype/assets/Lucide-LICENSE.txt" "$stage/licenses/"
 # Every Rust crate in the Windows build, with its licence.
 cargo metadata --format-version 1 --locked --filter-platform x86_64-pc-windows-msvc \
   | python3 -I -c '

@@ -242,6 +242,8 @@ PY
     install -m644 "$root/NOTICE" "$licenses/NOTICE.txt"
     install -m644 "$root/resources/SOURCES.md" "$root/resources/sources.json" "$licenses/"
     install -m644 "$root/platforms/linux/LICENSES/nlohmann-json.txt" "$inputs/Rust-crates.txt" "$licenses/"
+    install -m644 "$root/platforms/desktop/crates/zhuyintype/assets/fonts/Inter-LICENSE.txt" \
+        "$root/platforms/desktop/crates/zhuyintype/assets/Lucide-LICENSE.txt" "$licenses/"
     local file
     for file in "$root"/platforms/macos/Resources/Licenses/*; do
         # Sparkle and the reranker ship with the macOS app only.

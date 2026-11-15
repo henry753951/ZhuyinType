@@ -22,8 +22,8 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 |---|---|---|
 | `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型的判斷邏輯與 ONNX Runtime）、`zhuyin-ffi`（C 介面）、`zhuyin-cli`；`parity/` 是兩個建置之間的行為比對 | `engine/README.md`、`engine/DESIGN.md`、`docs/engine/ARCHITECTURE.md`、`docs/engine/MODEL.md` |
 | `platforms/macos/` | InputMethodKit 輸入法、設定介面、Sparkle 更新、建置與發布腳本；`ZhuyinEngine` 是引擎的 Swift 包裝（Core ML 在這裡執行），`EngineBench` 是不含 App 的引擎路徑 | `docs/product/DESIGN.md` |
-| `platforms/desktop/` | Linux／Windows 共用的 GPUI 程式 `zhuyintype`：設定、候選字視窗、設定嚮導與輸入法服務；建置腳本與 `.deb`／`.rpm`／Windows 安裝程式的打包 | `platforms/desktop/ARCHITECTURE.md`、`platforms/desktop/IPC.md`、`platforms/desktop/packaging/linux/README.md` |
-| `platforms/linux/`、`platforms/windows/` | Fcitx5／TSF 原生按鍵、焦點與文字送出介面 | 各目錄的 `README.md` 與驗證紀錄 |
+| `platforms/desktop/` | Linux／Windows 共用的 GPUI 程式 `zhuyintype`：設定、候選字視窗、設定嚮導與輸入法服務；Windows 的 TSF 文字服務（`crates/zt-tsf`）；建置腳本與 `.deb`／`.rpm`／Windows 安裝程式的打包。只在 GPU 主機上建置（`platforms/desktop/scripts/remote.sh`） | `platforms/desktop/ARCHITECTURE.md`、`platforms/desktop/IPC.md`、`platforms/desktop/packaging/linux/README.md` |
+| `platforms/linux/` | Fcitx5 原生按鍵、焦點與文字送出介面 | `platforms/linux/README.md` 與驗證紀錄 |
 | `ml/` | Python 專案（uv）：`src/zhuyintype_ml/` 底下是 `core`（共用核心）、`cli`（`zt` 指令）、`eval`（評測、ZhuyinBench）、`training`（每個模型一個流程）、`data`（資料版本、詞庫建置）、`remote`（GPU 主機） | `ml/README.md`、`ml/CONVENTIONS.md`、`docs/ml/EVALUATION.md` |
 | `ml/eval-sets/` | 納入版本庫的評測集（善解 CC0、日常短句、延遲用句） | `ml/eval-sets/external/shanjie/README.md` |
 | `resources/` | `assets.json`（資料與模型的固定版本）、`SOURCES.md`（來源與授權）、`formats/`（詞庫與語言模型的二進位格式） | `resources/SOURCES.md` |

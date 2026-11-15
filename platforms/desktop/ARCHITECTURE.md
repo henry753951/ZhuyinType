@@ -8,7 +8,7 @@ Linux 與 Windows 的前端是一個 Rust 行程：用 [GPUI](https://www.gpui.r
 
 ```text
 platforms/desktop/
-  settings.json             所有頁面與嚮導共用的設定描述（從 platforms/qt 移來）
+  settings.json             所有頁面與嚮導共用的設定描述
   IPC.md                    服務與原生輸入法介面之間的通訊協定
   crates/zt-core/           不含介面：設定、路徑、引擎工作階段、輸入控制、快捷鍵、使用統計、改字記錄、
                             試打工作階段、通訊服務（Unix socket／named pipe）
