@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, Bounds, Context, FontWeight, InteractiveElement, IntoElement,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, FontWeight, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Point, Render, SharedString, StatefulInteractiveElement, Styled, Task, Window,
     anchored, canvas, deferred, div, point, px,
 };
@@ -348,6 +348,8 @@ pub struct UnifiedPreview {
     still: bool,
     /// The floating preview pinned at a point (screenshots: `ZT_PREVIEW_FLASH=X,Y`).
     pinned_flash: Option<Point<Pixels>>,
+    /// Settings to show instead of the user's (the setup wizard's draft); the preview is then always in view.
+    source: Option<Settings>,
     _carousel: Task<()>,
 }
 
@@ -398,6 +400,7 @@ impl UnifiedPreview {
             tabs: true,
             still: false,
             pinned_flash: None,
+            source: None,
             _carousel: carousel,
         }
         .with_environment()
@@ -419,6 +422,24 @@ impl UnifiedPreview {
         self
     }
 
+    /// Shows `settings` (the setup wizard's draft) instead of the user's, with that draft's keys.
+    pub fn with_settings(mut self, settings: Settings) -> Self {
+        self.source = Some(settings);
+        self
+    }
+
+    /// The settings shown and their keys.
+    fn shown_settings(&self, cx: &App) -> (Settings, CurrentKeys) {
+        match &self.source {
+            Some(settings) => (settings.clone(), CurrentKeys::sandboxed(settings)),
+            None => {
+                let settings = app::settings(cx).clone();
+                let keys = CurrentKeys::new(&settings, app::service(cx));
+                (settings, keys)
+            }
+        }
+    }
+
     /// Shows `state` from its first moment (or its last, which shows the setting); the carousel goes on after a hold.
     pub fn show(&mut self, state: PreviewState, last: bool) {
         self.held_until = Instant::now() + HOLD;
@@ -431,7 +452,6 @@ impl UnifiedPreview {
     }
 
     /// Keeps the preview on `state`, playing its flow over and over.
-    #[allow(dead_code, reason = "for the wizard's lessons (another branch)")]
     pub fn pin(&mut self, state: PreviewState) {
         self.pinned = Some(state);
         self.state = state;
@@ -446,8 +466,7 @@ impl UnifiedPreview {
         {
             return;
         }
-        let settings = app::settings(cx).clone();
-        let keys = CurrentKeys::new(&settings, app::service(cx));
+        let (settings, keys) = self.shown_settings(cx);
         let flows = Flows::new(&settings, &keys, self.page_limit(&settings));
         let states = flows.states.clone();
         if states.is_empty() {
@@ -467,7 +486,7 @@ impl UnifiedPreview {
             self.generation += 1;
         }
         self.frame_generation += 1;
-        if app::nav(cx).page == Page::Candidates || self.pinned.is_some() {
+        if app::nav(cx).page == Page::Candidates || self.pinned.is_some() || self.source.is_some() {
             cx.notify();
         }
     }
@@ -571,8 +590,7 @@ impl Render for UnifiedPreview {
         self.last_render.set(Some(Instant::now()));
         let p = theme::palette(cx);
         self.theme_dark = p.dark;
-        let settings = app::settings(cx).clone();
-        let keys = CurrentKeys::new(&settings, app::service(cx));
+        let (settings, keys) = self.shown_settings(cx);
         self.notice_changes(&settings, &keys, window, cx);
         let style = PanelStyle::from_settings(&settings, &keys);
         let above = settings.string("candidatePlacement") == "above";
@@ -674,12 +692,17 @@ impl Render for UnifiedPreview {
         let width_probe = {
             let width = self.width.clone();
             let in_view = self.in_view.clone();
+            let embedded = self.source.is_some();
             canvas(
                 move |bounds: Bounds<Pixels>, window, cx| {
                     let w = f32::from(bounds.size.width);
                     if (w - width.get()).abs() > 0.5 {
                         width.set(w);
                         window.refresh();
+                    }
+                    if embedded {
+                        in_view.set(true);
+                        return;
                     }
                     let viewport = app::nav(cx).scroll.bounds();
                     in_view.set(bounds.bottom() > viewport.origin.y + px(60.));

@@ -48,6 +48,8 @@ struct Args {
     panel: Option<String>,
     /// `--popup demo`: the real floating windows at a caret, with an example list.
     popup: Option<String>,
+    /// `--wizard SPEC` (or `ZT_WIZARD=SPEC`): only the setup wizard, still (screenshots; `wizard::open_preview`).
+    wizard: Option<String>,
 }
 
 fn parse_args() -> Args {
@@ -65,6 +67,7 @@ fn parse_args() -> Args {
         endpoint: None,
         panel: None,
         popup: None,
+        wizard: std::env::var("ZT_WIZARD").ok().filter(|spec| !spec.is_empty()),
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -94,6 +97,7 @@ fn parse_args() -> Args {
             "--ime-socket" => args.endpoint = iter.next(),
             "--panel" => args.panel = iter.next(),
             "--popup" => args.popup = iter.next(),
+            "--wizard" => args.wizard = iter.next(),
             _ => {}
         }
     }
@@ -107,7 +111,7 @@ fn main() {
         data_dir: args.data_dir.clone(),
         endpoint: args.endpoint.clone(),
         settings_file: args.settings_file.clone(),
-        broker: !args.no_broker && args.popover.is_none(),
+        broker: !args.no_broker && args.popover.is_none() && args.wizard.is_none(),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         ..ServiceConfig::default()
     };
@@ -148,10 +152,19 @@ fn main() {
             candidate::showcase::popup_demo(cx);
             return;
         }
+        if let Some(spec) = &args.wizard {
+            wizard::open_preview(spec, args.dark, args.size, cx);
+            cx.activate(true);
+            return;
+        }
         if args.background {
             return;
         }
         shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
+        // Screenshots and second copies for development (a settings file, no broker, a forced theme) never do.
+        if args.settings_file.is_none() && !args.no_broker && args.dark.is_none() {
+            wizard::show_on_first_use(cx);
+        }
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
                 app::Place {
