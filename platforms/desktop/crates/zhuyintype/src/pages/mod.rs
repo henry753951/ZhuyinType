@@ -1,8 +1,24 @@
 //! The settings pages: the same nine pages, order, groups and titles as the macOS app
 //! (`SettingsWindowController.swift`, `SettingsPane`).
+//!
+//! Each page is a module with a view (`XPage`, a GPUI entity created once and kept while the window lives) and
+//! `subpage_title`.  A page reads `app::nav(cx).subpage` to know which of its sub-pages to draw; it goes elsewhere
+//! with `app::go(Place, cx)`.  Pages are composed only from `ui` components and `theme` tokens; the shell scrolls them
+//! and draws the sub-page bar and the push/pop motion.
+
+pub mod about;
+pub mod advanced;
+pub mod analytics;
+pub mod candidates;
+pub mod choosing;
+pub mod generic;
+pub mod intro;
+pub mod keys;
+pub mod typing;
+pub mod words;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{Hsla, rgb};
+use gpui_kit::{AnyView, AppContext as _, Hsla, Window, rgb};
 
 /// One page of the settings window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -99,5 +115,35 @@ impl Page {
             Page::Keys | Page::Advanced | Page::About => 0x8e8e93,
         };
         rgb(hex).into()
+    }
+}
+
+/// The view of `page`, created when the page is first shown.
+pub fn make_view(page: Page, window: &mut Window, cx: &mut gpui_kit::App) -> AnyView {
+    match page {
+        Page::Intro => cx.new(|cx| intro::IntroPage::new(window, cx)).into(),
+        Page::Analytics => cx.new(|cx| analytics::AnalyticsPage::new(window, cx)).into(),
+        Page::Typing => cx.new(|cx| typing::TypingPage::new(window, cx)).into(),
+        Page::Choosing => cx.new(|cx| choosing::ChoosingPage::new(window, cx)).into(),
+        Page::Words => cx.new(|cx| words::WordsPage::new(window, cx)).into(),
+        Page::Candidates => cx.new(|cx| candidates::CandidatesPage::new(window, cx)).into(),
+        Page::Keys => cx.new(|cx| keys::KeysPage::new(window, cx)).into(),
+        Page::Advanced => cx.new(|cx| advanced::AdvancedPage::new(window, cx)).into(),
+        Page::About => cx.new(|cx| about::AboutPage::new(window, cx)).into(),
+    }
+}
+
+/// The title of `page`'s sub-page `id`.
+pub fn subpage_title(page: Page, id: &str) -> Option<&'static str> {
+    match page {
+        Page::Intro => intro::subpage_title(id),
+        Page::Analytics => analytics::subpage_title(id),
+        Page::Typing => typing::subpage_title(id),
+        Page::Choosing => choosing::subpage_title(id),
+        Page::Words => words::subpage_title(id),
+        Page::Candidates => candidates::subpage_title(id),
+        Page::Keys => keys::subpage_title(id),
+        Page::Advanced => advanced::subpage_title(id),
+        Page::About => about::subpage_title(id),
     }
 }

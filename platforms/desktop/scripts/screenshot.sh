@@ -2,6 +2,7 @@
 # Screenshots of the settings window on a virtual X display (Linux host, software Vulkan).
 #   scripts/screenshot.sh OUT_DIR [BINARY] [page ...]
 # Every page in light and dark at 860×600; the app runs with a temporary settings file.
+# A page may be written page/subpage (`typing/punctuation`) or page#row (`choosing#typo`).
 set -euo pipefail
 out=${1:?output directory}; shift
 bin=${1:-${CARGO_TARGET_DIR:-target}/debug/zhuyintype}; shift || true
@@ -19,17 +20,21 @@ unset WAYLAND_DISPLAY
 settings=$(mktemp -d)/settings.json
 for page in "${pages[@]}"; do
   for theme in light dark; do
-    "$bin" --page "$page" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$page-$theme.log" &
+    spec=$page; name=${spec//\//-}; name=${name//#/-}
+    extra=()
+    case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac
+    case $spec in *'#'*) extra+=(--row "${spec#*#}"); spec=${spec%%#*};; esac
+    "$bin" --page "$spec" "${extra[@]}" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$name-$theme.log" &
     app=$!
     for _ in $(seq 50); do
       win=$(xdotool search --pid $app 2>/dev/null | tail -1 || true)
       [ -n "$win" ] && break; sleep 0.2
     done
     sleep 1.5
-    if [ -n "${win:-}" ]; then import -window "$win" "$out/$page-$theme.png" 2>/dev/null || import -window root "$out/$page-$theme.png"
-    else import -window root "$out/$page-$theme.png"; fi
+    if [ -n "${win:-}" ]; then import -window "$win" "$out/$name-$theme.png" 2>/dev/null || import -window root "$out/$name-$theme.png"
+    else import -window root "$out/$name-$theme.png"; fi
     kill $app 2>/dev/null || true; wait $app 2>/dev/null || true
-    [ -s "$out/$page-$theme.log" ] || rm -f "$out/$page-$theme.log"
+    [ -s "$out/$name-$theme.log" ] || rm -f "$out/$name-$theme.log"
   done
 done
 echo "screenshots in $out"

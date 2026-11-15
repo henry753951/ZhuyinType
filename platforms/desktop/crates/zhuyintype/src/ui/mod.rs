@@ -1,10 +1,12 @@
 //! The design system's components.  Pages are composed only from these and the tokens in `theme`; a page that needs
 //! something new adds a component here rather than styling raw elements.
 
+pub mod controls;
 pub mod row;
 pub mod section;
 
-pub use row::{Row, row};
+pub use controls::*;
+pub use row::{Accessory, Row, row, setting_row};
 pub use section::{Section, section};
 
 use gpui_kit::{Div, Styled, div};

@@ -1,10 +1,12 @@
-//! A section: a small grey header over a card of rows separated by hairlines (macOS `SettingsSection`).
+//! A section: a small grey header over a card of rows separated by hairlines (macOS `SettingsSection`).  When a link
+//! leads to the section (its title as the place's row), the header turns accent and the card tints once.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px,
 };
 
+use super::row::{anchor_probe, arrival_tint, arrived};
 use super::v;
 use crate::theme::{self, size, text};
 
@@ -45,6 +47,7 @@ impl RenderOnce for Section {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let count = self.rows.len();
+        let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
         v().w_full()
             .gap(px(7.))
             .when_some(self.title, |this, title| {
@@ -53,18 +56,22 @@ impl RenderOnce for Section {
                         .px(size::ROW_PADDING_X)
                         .text_size(text::SECTION)
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                        .text_color(p.text_secondary)
+                        .text_color(if arrival.is_some() { p.accent } else { p.text_secondary })
                         .child(title),
                 )
             })
             .when(count > 0, |this| {
                 this.child(
                     v().w_full()
+                        .relative()
                         .rounded(size::RADIUS_CARD)
                         .bg(p.card)
                         .border_1()
                         .border_color(p.separator)
                         .overflow_hidden()
+                        .when_some(arrival.clone(), |this, (title, generation)| {
+                            this.child(arrival_tint(format!("section-{title}"), generation, cx)).child(anchor_probe(title))
+                        })
                         .children(self.rows.into_iter().enumerate().map(|(index, row)| {
                             div()
                                 .w_full()
