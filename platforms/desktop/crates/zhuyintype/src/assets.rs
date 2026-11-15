@@ -36,6 +36,23 @@ icon_assets!(
         ArrowUp,
         ArrowLeft,
         ArrowRight,
+        CircleX,
+        CircleEllipsis,
+        Inbox,
+        CircleCheck,
+        Link,
+        Clock,
+        Lock,
+        Ban,
+        Delete,
+        TextCursorInput,
+        TextAlignStart,
+        HardDrive,
+        ListChecks,
+        FileText,
+        Copy,
+        FolderOpen,
+        Package,
     ]
 );
 

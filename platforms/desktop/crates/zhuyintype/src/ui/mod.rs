@@ -4,6 +4,10 @@
 pub mod controls;
 pub mod row;
 pub mod section;
+pub mod actions;
+pub mod alert;
+pub mod list;
+pub mod content;
 
 pub use controls::*;
 pub use row::{Accessory, Row, row, setting_row};
