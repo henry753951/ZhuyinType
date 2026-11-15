@@ -20,6 +20,10 @@ use std::ffi::c_void;
 use gpui_kit::Window;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Graphics::Dwm::{
+    DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    DwmSetWindowAttribute,
+};
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE, SW_HIDE,
@@ -96,12 +100,21 @@ unsafe extern "system" fn subclass(
 
 /// Never lets the window take focus: `WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW` (no taskbar button,
 /// never the foreground window) and `WM_MOUSEACTIVATE` answered with `MA_NOACTIVATE`, so clicking a candidate keeps
-/// the focus in the application.  Called once after the window opens; calling it again changes nothing.
+/// the focus in the application.  The window also loses the frame Windows 11 draws around every top-level window
+/// (border, rounded corners, shadow): the popup draws its own.  Called once after the window opens; calling it again
+/// changes nothing.
 pub fn make_non_activating(window: &Window) -> bool {
     let Some(window) = hwnd(window) else { return false };
     update_ex_style(window, (WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW).0, WS_EX_APPWINDOW.0);
-    // SAFETY: the window's own HWND; the same subclass id replaces rather than stacks.
+    // SAFETY: the window's own HWND; the same subclass id replaces rather than stacks; the attribute values are
+    // 4-byte values as DWM expects (the border and corner attributes fail harmlessly before Windows 11).
     unsafe {
+        let set = |attribute, value: u32| {
+            let _ = DwmSetWindowAttribute(window, attribute, (&raw const value).cast(), size_of::<u32>() as u32);
+        };
+        set(DWMWA_NCRENDERING_POLICY, DWMNCRP_DISABLED.0 as u32);
+        set(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND.0 as u32);
+        set(DWMWA_BORDER_COLOR, 0xFFFF_FFFE); // DWMWA_COLOR_NONE
         let _ = SetWindowSubclass(window, Some(subclass), SUBCLASS_ID, 0);
         let _ = SetWindowPos(
             window,

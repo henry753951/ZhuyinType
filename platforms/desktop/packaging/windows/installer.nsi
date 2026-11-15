@@ -169,6 +169,11 @@ Function LaunchAsUser
   Exec '"$WINDIR\explorer.exe" "$INSTDIR\${APP}"'
 FunctionEnd
 
+; The same, in the background (no settings window), through a shortcut: Explorer passes no arguments itself.
+Function LaunchInBackgroundAsUser
+  Exec '"$WINDIR\explorer.exe" "$INSTDIR\background.lnk"'
+FunctionEnd
+
 ; ---------------------------------------------------------------------------------------------------------------
 ; Install
 
@@ -226,6 +231,7 @@ Section "ZhuyinType" SecMain
 
   ; Every user who signs in gets the input method host (the profile is registered for the whole machine).
   WriteRegStr HKLM "${RUN_KEY}" "ZhuyinType" '"$INSTDIR\${APP}" --background'
+  CreateShortcut "$INSTDIR\background.lnk" "$INSTDIR\${APP}" "--background" "$INSTDIR\zhuyintype.ico" 0
   CreateShortcut "$SMPROGRAMS\${SHORTCUT}" "$INSTDIR\${APP}" "" "$INSTDIR\zhuyintype.ico" 0 SW_SHOWNORMAL "" "開啟 ZhuyinType 設定"
 
   WriteRegStr HKLM "Software\${PRODUCT}" "InstallDir" "$INSTDIR"
@@ -248,7 +254,7 @@ Section "ZhuyinType" SecMain
   ; session (an upgrade); otherwise it starts at the next sign-in.
   ${If} ${Silent}
   ${AndIf} $AppWasRunning == 1
-    Call LaunchAsUser
+    Call LaunchInBackgroundAsUser
   ${EndIf}
 SectionEnd
 
@@ -281,6 +287,7 @@ Section "un.ZhuyinType" UnSecMain
   Delete "$INSTDIR\${APP}"
   Delete "$INSTDIR\logo.ico"
   Delete "$INSTDIR\zhuyintype.ico"
+  Delete "$INSTDIR\background.lnk"
   RMDir /r "$INSTDIR\data"
   RMDir /r "$INSTDIR\licenses"
   Delete "$INSTDIR\uninstall.exe"
