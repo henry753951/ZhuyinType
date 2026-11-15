@@ -7,24 +7,25 @@ mod demo;
 mod items;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::ButtonVariant;
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
 };
 use serde_json::json;
 use zt_core::settings;
 
 use self::items::{KeyItem, KeySection, Keys};
 use crate::app::{self, Navigation};
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text};
+use crate::ui::alert::{AlertButton, alert};
 use crate::ui::charts::fill_column;
+use crate::ui::search::search_field;
 use crate::ui::shortcuts::{self, key_chip, store};
-use crate::ui::{self, h};
+use crate::ui::{self, h, v};
 
 pub struct KeysPage {
     search: Entity<InputState>,
@@ -51,13 +52,7 @@ impl KeysPage {
     }
 
     fn search_field(&self, cx: &App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        h().w_full().child(
-            Input::new(&self.search)
-                .prefix(Icon::new(IconName::Search).size(px(14.)).text_color(p.text_tertiary))
-                .cleanable(true)
-                .aria_label("搜尋按鍵"),
-        )
+        search_field(&self.search, "搜尋按鍵", cx).w_full()
     }
 
     /// One row (macOS `KeyItemRow`).
@@ -88,7 +83,6 @@ impl KeysPage {
                     .h(shortcuts::chip_height())
                     .flex()
                     .items_center()
-                    .pl(px(2.))
                     .cursor_pointer()
                     .tooltip(move |window, cx| Tooltip::new(format!("前往「{name}」")).build(window, cx))
                     .on_click(move |_, _, cx| app::go(place.clone(), cx))
@@ -97,7 +91,7 @@ impl KeysPage {
             return row
                 .hover_group(group)
                 .marked(keys.is_customised(command))
-                .trailing(h().items_start().gap(px(8.)).child(field).children(go))
+                .trailing(h().items_start().gap(space::S8).child(field).children(go))
                 .into_any_element();
         }
         let trailing: AnyElement = if !on {
@@ -122,7 +116,10 @@ impl KeysPage {
                 }
                 Keys::ShiftTap => vec![key_chip(items::shift_tap(settings).unwrap_or("Shift")).into_any_element()],
             };
-            h().gap(px(6.)).when(availability.is_some(), |this| this.opacity(0.45)).children(chips).into_any_element()
+            h().gap(space::S12)
+                .when(availability.is_some(), |this| this.opacity(0.45))
+                .children(chips)
+                .into_any_element()
         };
         let row = row.dimmed(!on).trailing(trailing);
         match home {
@@ -132,15 +129,11 @@ impl KeysPage {
     }
 
     fn reset_all(window: &mut Window, cx: &mut App) {
-        window.open_alert_dialog(cx, |alert, _, _| {
-            alert
-                .title("要還原所有按鍵與功能嗎？")
-                .description("所有按鍵回到預設值，所有功能開啟，單按左右 Shift 切換中英。")
-                .show_cancel(true)
-                .ok_text("全部還原")
-                .ok_variant(ButtonVariant::Danger)
-                .cancel_text("取消")
-                .on_ok(|_, window, cx| {
+        alert("要還原所有按鍵與功能嗎？")
+            .message("所有按鍵回到預設值，所有功能開啟，單按左右 Shift 切換中英。")
+            .buttons([
+                AlertButton::cancel(),
+                AlertButton::new("全部還原", |window, cx| {
                     // Every key and key feature back to its default, then both Shifts.
                     if let Err(error) = store::store(cx).reset(None) {
                         window.push_notification(error.to_string(), cx);
@@ -149,9 +142,10 @@ impl KeysPage {
                         app::reset_setting(&descriptor.key, cx);
                     }
                     app::set_setting("shiftToggle", json!("both"), cx);
-                    true
                 })
-        });
+                .destructive(),
+            ])
+            .show(window, cx);
     }
 }
 
@@ -200,11 +194,11 @@ impl Render for KeysPage {
             .child(self.search_field(cx))
             .when_some(keys.error(), |this, error| {
                 this.child(
-                    h().gap(px(8.))
+                    h().gap(space::S8)
                         .px(size::ROW_PADDING_X)
                         .text_size(text::SUBTITLE)
                         .text_color(p.danger)
-                        .child(Icon::new(IconName::TriangleAlert).size(px(13.)))
+                        .child(Icon::new(IconName::TriangleAlert).size(size::ICON_SM))
                         .child(error),
                 )
             })
@@ -225,17 +219,19 @@ impl Render for KeysPage {
                 })))
             })
             .when(sections.is_empty() && fixed.is_empty(), |this| {
+                // The lists' empty state: no box, centred where the rows would be.
                 this.child(
-                    ui::section("").row(
-                        div()
-                            .w_full()
-                            .min_h(px(60.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_color(p.text_secondary)
-                            .child(format!("沒有符合「{query}」的項目")),
-                    ),
+                    v().w_full()
+                        .items_center()
+                        .gap(space::S6)
+                        .py(space::S40)
+                        .child(Icon::new(IconName::Search).size(size::ICON_XL).text_color(p.text_tertiary))
+                        .child(
+                            div()
+                                .text_size(text::BODY)
+                                .text_color(p.text_secondary)
+                                .child(format!("沒有符合「{query}」的項目")),
+                        ),
                 )
             })
             .children(sections.iter().map(|(section, rows)| {
@@ -244,28 +240,15 @@ impl Render for KeysPage {
             .when(!fixed.is_empty(), |this| {
                 let toggle = entity.clone();
                 // The whole row toggles; its chevron turns down while open.
-                let disclosure = div()
-                    .id("fixed-keys-toggle")
-                    .w_full()
-                    .cursor_pointer()
-                    .hover(|style| style.bg(p.hover))
-                    .active(|style| style.bg(p.pressed))
+                let disclosure = ui::row("fixed-keys", "固定的按鍵")
+                    .subtitle("打注音、聲調、送出與移動游標的按鍵，無法更改")
+                    .disclosure(open)
                     .on_click(move |_, _, cx| {
                         toggle.update(cx, |page, cx| {
                             page.shows_fixed = !page.shows_fixed;
                             cx.notify();
                         });
-                    })
-                    .child(
-                        ui::row("fixed-keys", "固定的按鍵")
-                            .subtitle("打注音、聲調、送出與移動游標的按鍵，無法更改")
-                            .trailing(
-                                Icon::new(IconName::ChevronRight)
-                                    .size(px(13.))
-                                    .text_color(p.text_tertiary)
-                                    .rotate(gpui_kit::radians(if open { std::f32::consts::FRAC_PI_2 } else { 0. })),
-                            ),
-                    );
+                    });
                 let mut section = ui::section("").row(disclosure);
                 if open {
                     section = section.rows(fixed.iter().map(|item| Self::item_row(item, &keys, cx)));
@@ -274,7 +257,7 @@ impl Render for KeysPage {
                     section.footer(
                         h().w_full()
                             .justify_between()
-                            .gap(px(12.))
+                            .gap(space::S12)
                             .child("點一下任何一列，到功能的頁面設定按鍵。")
                             .child(
                                 div()

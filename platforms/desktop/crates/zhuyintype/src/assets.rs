@@ -80,6 +80,7 @@ icon_assets!(
         CornerDownLeft,
         Zap,
         Map,
+        Ellipsis,
     ]
 );
 

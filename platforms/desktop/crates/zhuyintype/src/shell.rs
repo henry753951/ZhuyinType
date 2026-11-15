@@ -8,15 +8,21 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, TitleBar, window_border};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyView, App, AppContext as _, Bounds, Context, Entity, FontWeight,
-    InteractiveElement, IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window,
-    WindowBounds, WindowDecorations, WindowOptions, div, ease_out_quint, img, px, size,
+    Animation, AnimationExt as _, AnyView, App, AppContext as _, Bounds, Context, Entity, InteractiveElement,
+    IntoElement, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, WindowBounds,
+    WindowDecorations, WindowOptions, div, ease_out_quint, img, px, relative, size,
 };
 
 use crate::app::{self, Direction, Navigation, Place};
 use crate::pages::{self, Page};
-use crate::theme::{self, motion, size as sz, text};
+use crate::theme::{self, motion, size as sz, space, text, weight};
 use crate::ui::{h, v};
+
+/// The app's mark in the title bar.
+const MARK: Pixels = px(18.);
+const MARK_RADIUS: Pixels = px(5.);
+/// How far a page slides when a sub-page is pushed or popped.
+const PUSH_SHIFT: f32 = 28.;
 
 /// The settings window's state: the page views, created on first visit and kept.
 pub struct SettingsWindow {
@@ -42,19 +48,18 @@ impl SettingsWindow {
             .h_full()
             .flex_shrink_0()
             .bg(p.sidebar)
-            .px(px(12.))
-            .pt(px(4.))
-            .pb(px(12.))
+            .px(space::S12)
+            .pt(space::S4)
+            .pb(space::S12)
             .overflow_y_scroll()
             .children(Page::GROUPS.iter().enumerate().map(|(index, (title, pages))| {
-                v().when(index > 0, |this| this.pt(px(16.)))
-                    .gap(px(2.))
+                v().when(index > 0, |this| this.pt(space::S16))
+                    .gap(space::S2)
                     .child(
                         div()
-                            .px(px(10.))
-                            .pb(px(4.))
+                            .px(space::S12)
+                            .pb(space::S4)
                             .text_size(text::CAPTION)
-                            .font_weight(FontWeight::MEDIUM)
                             .text_color(p.text_tertiary)
                             .child(*title),
                     )
@@ -62,9 +67,9 @@ impl SettingsWindow {
                         let active = page == selected;
                         h().id(SharedString::from(format!("sidebar-{}", page.id())))
                             .h(sz::SIDEBAR_ROW)
-                            .px(px(10.))
-                            .gap(px(10.))
-                            .rounded(sz::RADIUS_CONTROL)
+                            .px(space::S12)
+                            .gap(space::S12)
+                            .rounded(sz::R_MD)
                             .cursor_pointer()
                             .when(active, |this| this.bg(p.pressed))
                             .when(!active, |this| {
@@ -79,7 +84,6 @@ impl SettingsWindow {
                             .child(
                                 div()
                                     .text_size(text::BODY)
-                                    .when(active, |this| this.font_weight(FontWeight::MEDIUM))
                                     .text_color(if active { p.text } else { p.text_secondary })
                                     .child(page.title()),
                             )
@@ -92,9 +96,13 @@ impl SettingsWindow {
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         TitleBar::new().h(sz::TITLE_BAR).pl(px(0.)).bg(p.window).border_b_0().child(
-            h().h_full().px(px(22.)).gap(px(9.)).child(img("app-icon.png").size(px(18.)).rounded(px(5.))).child(
-                div().text_size(text::BODY).font_weight(FontWeight::SEMIBOLD).text_color(p.text).child("ZhuyinType"),
-            ),
+            h().h_full()
+                .px(space::S24)
+                .gap(space::S8)
+                .child(img("app-icon.png").size(MARK).rounded(MARK_RADIUS))
+                .child(
+                    div().text_size(text::BODY).font_weight(weight::SEMIBOLD).text_color(p.text).child("ZhuyinType"),
+                ),
         )
     }
 
@@ -106,24 +114,26 @@ impl SettingsWindow {
         let subpage = nav.subpage.as_ref().map(|id| pages::subpage_title(page, id).unwrap_or(id.as_ref()).to_owned());
         let title: SharedString = subpage.clone().unwrap_or_else(|| page.title().to_owned()).into();
         let shows_title = pages::shows_title(page, nav.subpage.as_deref());
-        v().when(shows_title, |this| this.pb(px(20.)))
+        // The back link's chevron hangs into the margin so its text lines up with the title's.
+        let hang = sz::ROW_PADDING_X - sz::ICON_SM - space::S2 - space::S4;
+        v().when(shows_title, |this| this.pb(sz::TITLE_GAP))
             .when(subpage.is_some(), |this| {
                 this.child(
                     h().id("back")
-                        .mb(px(6.))
-                        .ml(px(-6.))
-                        .h(px(24.))
-                        .pl(px(2.))
-                        .pr(px(8.))
-                        .gap(px(2.))
-                        .rounded(sz::RADIUS_SMALL)
+                        .mb(space::S4)
+                        .ml(hang)
+                        .h(sz::H_SM)
+                        .pl(space::S4)
+                        .pr(space::S8)
+                        .gap(space::S2)
+                        .rounded(sz::R_SM)
                         .cursor_pointer()
                         .text_size(text::SUBTITLE)
                         .text_color(p.text_secondary)
                         .hover(|style| style.bg(p.hover).text_color(p.text))
                         .active(|style| style.bg(p.pressed))
                         .on_click(|_, _, cx| app::back(cx))
-                        .child(Icon::new(IconName::ChevronLeft).size(px(15.)))
+                        .child(Icon::new(IconName::ChevronLeft).size(sz::ICON_SM))
                         .child(page.title()),
                 )
             })
@@ -131,8 +141,8 @@ impl SettingsWindow {
                 this.child(
                     div()
                         .px(sz::ROW_PADDING_X)
-                        .text_size(text::PAGE_TITLE)
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_size(text::TITLE)
+                        .font_weight(weight::SEMIBOLD)
                         .text_color(p.text)
                         .child(title),
                 )
@@ -157,14 +167,14 @@ impl Render for SettingsWindow {
             .mx_auto()
             .px(sz::PAGE_PADDING_X)
             .pt(sz::PAGE_PADDING_TOP)
-            .pb(px(40.))
+            .pb(sz::PAGE_PADDING_BOTTOM)
             .when_some(cx.global::<app::AppState>().service_error.clone(), |this, error| {
                 this.child(
                     div()
-                        .mb(px(20.))
-                        .px(px(14.))
-                        .py(px(10.))
-                        .rounded(sz::RADIUS_CONTROL)
+                        .mb(space::S20)
+                        .px(sz::ROW_PADDING_X)
+                        .py(space::S8)
+                        .rounded(sz::R_SM)
                         .border_1()
                         .border_color(p.danger)
                         .text_size(text::SUBTITLE)
@@ -181,32 +191,39 @@ impl Render for SettingsWindow {
                 move |this, t| {
                     let shift = match direction {
                         Direction::Switch => 0.,
-                        Direction::Push => 28. * (1. - t),
-                        Direction::Pop => -28. * (1. - t),
+                        Direction::Push => PUSH_SHIFT * (1. - t),
+                        Direction::Pop => -PUSH_SHIFT * (1. - t),
                     };
                     this.left(px(shift)).opacity(t)
                 },
             );
         window_border().child(
-            v().size_full().bg(p.window).text_color(p.text).font(theme::font()).child(self.title_bar(cx)).child(
-                h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
-                    div().flex_1().min_w(px(0.)).h_full().pr(sz::SURFACE_INSET).pb(sz::SURFACE_INSET).child(
-                        div()
-                            .id("page")
-                            .size_full()
-                            // Without this the page grows to its rows' unwrapped width in a narrow window.
-                            .min_w(px(0.))
-                            .bg(p.surface)
-                            .rounded(sz::RADIUS_SURFACE)
-                            .border_1()
-                            .border_color(p.separator)
-                            .shadow_xs()
-                            .overflow_y_scroll()
-                            .track_scroll(&scroll)
-                            .child(content),
+            v().size_full()
+                .bg(p.window)
+                .text_color(p.text)
+                .font(theme::font())
+                // CJK text needs room between lines.
+                .line_height(relative(1.5))
+                .child(self.title_bar(cx))
+                .child(
+                    h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
+                        div().flex_1().min_w(px(0.)).h_full().pr(sz::SURFACE_INSET).pb(sz::SURFACE_INSET).child(
+                            div()
+                                .id("page")
+                                .size_full()
+                                // Without this the page grows to its rows' unwrapped width in a narrow window.
+                                .min_w(px(0.))
+                                .bg(p.surface)
+                                .rounded(sz::R_XL)
+                                .border_1()
+                                .border_color(p.separator)
+                                .shadow_xs()
+                                .overflow_y_scroll()
+                                .track_scroll(&scroll)
+                                .child(content),
+                        ),
                     ),
                 ),
-            ),
         )
     }
 }

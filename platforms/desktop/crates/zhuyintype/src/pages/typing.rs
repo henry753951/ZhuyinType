@@ -3,17 +3,15 @@
 //! `SettingsPages.swift`; `SpaceInfo`, `EscapeInfo`, `PunctuationTable`, `PunctuationWidthInfo`, `OptionDemos`).
 
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{
-    AnyElement, App, Context, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px,
-};
+use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px};
 
 use super::Page;
 use crate::app::{self, Place};
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text, weight};
 use crate::ui::current_keys::{Command, CurrentKeys};
-use crate::ui::demo::{DemoFrame, InfoContent, Segment, block, choice_demo, mini_demo};
+use crate::ui::demo::{DemoFrame, InfoContent, Segment, choice_demo, mini_demo, text_block};
 use crate::ui::feature::{command_feature_row, command_row, drill_row, feature_row, keys_overview_link, place_link};
-use crate::ui::{h, key_combo, keycap, row, section, setting_row, v};
+use crate::ui::{h, key_combo, row, section, setting_row, v};
 
 pub struct TypingPage;
 
@@ -124,7 +122,7 @@ fn punctuation_page(cx: &App) -> AnyElement {
         )
         .child(
             section(format!("標點按法：{}", if windows { "Windows" } else { "macOS" }))
-                .row(block(punctuation_table(cx)))
+                .row(text_block(punctuation_table(cx)))
                 .footer(place_link(
                     "punctuation-keys-link",
                     "標點按法在「打字」設定",
@@ -159,6 +157,7 @@ fn typing_keys_page(_cx: &App) -> AnyElement {
     v().gap(size::SECTION_GAP)
         .child(
             section("")
+                .first()
                 .rows(KEYS.iter().enumerate().map(|(index, (title, keys, detail))| {
                     row(SharedString::from(format!("fixed-{index}")), *title)
                         .subtitle(*detail)
@@ -219,7 +218,7 @@ fn space_frames(action: &str) -> Vec<DemoFrame> {
 fn space_info(cx: &App) -> AnyElement {
     let current = app::settings(cx).get("spaceAction");
     let options = zt_core::settings::descriptor("spaceAction").map(|d| d.options.clone()).unwrap_or_default();
-    v().gap(px(14.))
+    v().gap(space::S16)
         .child(note(
             "打注音時，空白是一聲；打完以後，空白依這個設定。清單開著時，空白翻到下一頁；選字用選字鍵或 Return。",
             cx,
@@ -250,7 +249,7 @@ fn escape_frames(clears_composition: bool) -> Vec<DemoFrame> {
 
 fn escape_info(cx: &App) -> AnyElement {
     let clears = app::settings(cx).string("escape") != "reading";
-    v().gap(px(14.))
+    v().gap(space::S16)
         .child(choice_demo("清除整段組字", clears, mini_demo("escape-composition", escape_frames(true))))
         .child(choice_demo("只清除注音", !clears, mini_demo("escape-reading", escape_frames(false))))
         .into_any_element()
@@ -266,39 +265,36 @@ fn punctuation_table(cx: &App) -> AnyElement {
         (&["Ctrl", ","], "，", "，"),
         (&["Alt", ","], ",", ","),
     ];
-    const KEYS_W: f32 = 92.;
-    const COLUMN_W: f32 = 72.;
     let p = theme::palette(cx);
     let windows = app::settings(cx).string("punctuationKeys") != "mac";
+    // Three equal columns across the card; the current setting's column in the main text colour.
+    let cell = || div().flex_1().min_w(px(0.));
     let column = |title: &'static str, current: bool| {
-        div()
-            .w(px(COLUMN_W))
-            .when(current, |this| this.font_weight(FontWeight::SEMIBOLD).text_color(p.accent))
+        cell()
+            .when(current, |this| this.font_weight(weight::SEMIBOLD).text_color(p.text))
             .when(!current, |this| this.text_color(p.text_secondary))
             .child(title)
     };
     let output = |text_: &'static str, current: bool| {
-        div()
-            .w(px(COLUMN_W))
-            .text_size(px(15.))
-            .when(current, |this| this.font_weight(FontWeight::MEDIUM).text_color(p.text))
-            .when(!current, |this| this.text_color(p.text_tertiary))
-            .child(text_)
+        cell().text_size(text::HEADLINE).text_color(if current { p.text } else { p.text_tertiary }).child(text_)
     };
-    v().gap(px(10.))
+    v().w_full()
+        .gap(space::S12)
         .child(
-            v().gap(px(6.))
+            v().w_full()
+                .gap(space::S8)
                 .child(
-                    h().gap(px(18.))
+                    h().w_full()
+                        .gap(space::S16)
                         .text_size(text::SUBTITLE)
-                        .child(div().w(px(KEYS_W)).text_color(p.text_secondary).child("按鍵"))
+                        .child(cell().text_color(p.text_secondary).child("按鍵"))
                         .child(column("Windows", windows))
                         .child(column("macOS", !windows)),
                 )
-                .child(div().w(px(KEYS_W + 2. * COLUMN_W + 36.)).h(px(1.)).bg(p.separator))
                 .children(ROWS.iter().map(|(keys, on_windows, on_mac)| {
-                    h().gap(px(18.))
-                        .child(h().w(px(KEYS_W)).gap(px(3.)).children(keys.iter().map(|key| keycap(*key))))
+                    h().w_full()
+                        .gap(space::S16)
+                        .child(cell().child(key_combo(keys.iter().copied())))
                         .child(output(on_windows, windows))
                         .child(output(on_mac, !windows))
                 })),
@@ -322,7 +318,7 @@ fn punctuation_width_frames(toggle: Option<Vec<SharedString>>) -> Vec<DemoFrame>
 
 fn punctuation_width_info(cx: &App) -> AnyElement {
     let toggle = CurrentKeys::new(cx).caps(Command::TogglePunctuationWidth);
-    v().gap(px(12.))
+    v().gap(space::S12)
         .child(mini_demo("punctuation-width", punctuation_width_frames(toggle)))
         .child(note("只切換標點；英文字母、數字與空白維持半形。英文模式使用半形。", cx))
         .into_any_element()

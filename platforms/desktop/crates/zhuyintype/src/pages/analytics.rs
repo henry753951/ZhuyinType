@@ -8,17 +8,18 @@ mod data;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariant};
-use gpui_kit::component::{Disableable as _, Sizable as _, WindowExt as _};
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window, div, px};
+use gpui_kit::{AnyElement, App, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window, div};
 use serde_json::Value;
 use zt_core::stats::{Period, ProcessMetrics, Usage};
 
 use super::Page;
 use crate::app::{self, Place};
-use crate::theme::{self, size};
-use crate::ui::charts::{self, grouped};
+use crate::theme::{self, size, space};
+use crate::ui::actions::{ButtonKind, push_button};
+use crate::ui::alert::{AlertButton, alert};
+use crate::ui::charts::{self, grouped, stat};
 use crate::ui::{self, v};
 
 pub struct AnalyticsPage {
@@ -143,30 +144,24 @@ impl AnalyticsPage {
         if let Some((index, day)) = best {
             chart = chart.annotate(index, grouped(day.characters));
         }
-        div().w_full().p(px(12.)).child(chart).into_any_element()
+        div().w_full().py(size::ROW_PADDING_Y).child(chart).into_any_element()
     }
 
-    fn rhythm(&self, usage: &Usage, cx: &App) -> Vec<AnyElement> {
+    fn rhythm(&self, usage: &Usage, narrow: bool, cx: &App) -> Vec<AnyElement> {
         let c = &usage.counters;
         let r = &usage.rhythm;
-        let tiles = charts::tile_grid(
+        let tiles = charts::stat_grid(
             3,
-            110.,
-            [
-                charts::stat_tile(
-                    IconName::Gauge,
-                    "打字速度（字/分鐘）",
-                    format!("{}", usage.active_speed.unwrap_or(0.).round()),
-                    cx,
-                ),
-                charts::stat_tile(
+            vec![
+                stat(IconName::Gauge, "打字速度（字/分鐘）", format!("{}", usage.active_speed.unwrap_or(0.).round())),
+                stat(
                     IconName::BadgeCheck,
                     "一次就對（%）",
                     format!("{}", (usage.first_time_right.unwrap_or(0.) * 100.).round()),
-                    cx,
                 ),
-                charts::stat_tile(IconName::ArrowRightToLine, "最長連續（字）", grouped(r.longest_run), cx),
+                stat(IconName::ArrowRightToLine, "最長連續（字）", grouped(r.longest_run)),
             ],
+            cx,
         );
         let p = theme::palette(cx);
         let rows = ui::section("")
@@ -174,7 +169,10 @@ impl AnalyticsPage {
                 ui::row("rhythm-time", "打字時間・思考停頓")
                     .subtitle(format!("停頓超過 {:.0} 秒算思考，超過 1 分鐘不計", r.pause_threshold))
                     .value(format!("{}・{}", duration(c.typing_milliseconds), duration(c.thinking_milliseconds)))
-                    .trailing(charts::split_bar(c.typing_milliseconds, c.thinking_milliseconds, cx)),
+                    // The bar repeats the two numbers; a narrow window keeps the room for the text.
+                    .when(!narrow, |row| {
+                        row.trailing(charts::split_bar(c.typing_milliseconds, c.thinking_milliseconds, cx))
+                    }),
             )
             .row(ui::row("rhythm-clean", "一次不改字最長").value(format!("{} 字", grouped(r.longest_clean_run))))
             .row(ui::row("rhythm-keys", "每個字按幾個鍵").value(if c.characters > 0 {
@@ -190,7 +188,7 @@ impl AnalyticsPage {
                 v().w_full()
                     .px(size::ROW_PADDING_X)
                     .py(size::ROW_PADDING_Y)
-                    .gap(px(8.))
+                    .gap(space::S8)
                     .child(div().text_color(p.text).child("什麼時候打字"))
                     .child(charts::heat_map(&r.hours, cx)),
             )
@@ -202,7 +200,7 @@ impl AnalyticsPage {
         let latency = &usage.latency;
         let metrics: Option<ProcessMetrics> =
             if app::service(cx).is_some() { Some(zt_core::stats::process_metrics()) } else { data::local_metrics() };
-        let mut section = ui::section("");
+        let mut section = ui::section("").first();
         if latency.total > 0 {
             section = section.row(
                 ui::row("perf-latency", "按鍵反應")
@@ -226,7 +224,7 @@ impl AnalyticsPage {
                 .bar_ratio(0.7)
                 .labels(shown.iter().enumerate().map(|(index, (label, _))| (index, label.clone().into())).collect())
                 .caption("毫秒以內");
-            section = section.row(div().w_full().p(px(12.)).child(chart));
+            section = section.row(div().w_full().py(size::ROW_PADDING_Y).child(chart));
         } else {
             section = section.row(ui::row("perf-latency", "按鍵反應").value("還沒有資料"));
         }
@@ -257,7 +255,7 @@ impl AnalyticsPage {
         section.row(ui::row("perf-load", "載入時間").subtitle("詞庫與語言模型").value(ms(load)))
     }
 
-    fn main_page(&mut self, usage: &Usage, cx: &mut Context<Self>) -> AnyElement {
+    fn main_page(&mut self, usage: &Usage, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
         let counting = app::settings(cx).bool("recordsUsageStats");
         let counting_marked = app::settings(cx).is_customised("recordsUsageStats");
@@ -296,20 +294,20 @@ impl AnalyticsPage {
         let recap = self.recap(usage, counting, cx);
         charts::fill_column()
             .gap(size::SECTION_GAP)
-            .child(v().gap(px(12.)).child(div().flex().child(period)).child(recap))
+            .child(v().gap(space::S16).child(div().flex().child(period)).child(recap))
             .when_some(daily, |this, daily| this.child(ui::section("每天送出的字").row(daily)))
-            .children(self.rhythm(usage, cx))
-            .child(ui::section("打字").bare().row(charts::tile_grid(
+            .children(self.rhythm(usage, narrow, cx))
+            .child(ui::section("打字").bare().row(charts::stat_grid(
                 3,
-                110.,
-                [
-                    charts::stat_tile(IconName::Type, "送出的字", grouped(c.characters), cx),
-                    charts::stat_tile(IconName::TextCursor, "組字", grouped(c.compositions), cx),
-                    charts::stat_tile(IconName::Keyboard, "按鍵", grouped(c.keys), cx),
-                    charts::stat_tile(IconName::List, "從清單選字", grouped(c.picks()), cx),
-                    charts::stat_tile(IconName::Pencil, "改字", grouped(c.corrections()), cx),
-                    charts::stat_tile(IconName::CopyPlus, "加入自訂詞", grouped(c.phrases_added), cx),
+                vec![
+                    stat(IconName::Type, "送出的字", grouped(c.characters)),
+                    stat(IconName::TextCursor, "組字", grouped(c.compositions)),
+                    stat(IconName::Keyboard, "按鍵", grouped(c.keys)),
+                    stat(IconName::List, "從清單選字", grouped(c.picks())),
+                    stat(IconName::Pencil, "改字", grouped(c.corrections())),
+                    stat(IconName::CopyPlus, "加入自訂詞", grouped(c.phrases_added)),
                 ],
+                cx,
             )))
             .child(ui::section("從清單選字").rows(breakdown(&[
                 ("一般清單", c.picks_normal),
@@ -352,23 +350,27 @@ impl AnalyticsPage {
                             .subtitle(counting_subtitle)
                             .anchor("recordsUsageStats")
                             .marked(counting_marked)
-                            .trailing(ui::switch("switch-recordsUsageStats", counting, |on, _, cx| {
-                                app::set_setting("recordsUsageStats", Value::Bool(on), cx);
-                                if let Some(service) = app::service(cx) {
-                                    service.stats().set_enabled(on);
-                                }
-                            }))
+                            .trailing(ui::switch(
+                                "switch-recordsUsageStats",
+                                counting,
+                                |on, _, cx| {
+                                    app::set_setting("recordsUsageStats", Value::Bool(on), cx);
+                                    if let Some(service) = app::service(cx) {
+                                        service.stats().set_enabled(on);
+                                    }
+                                },
+                            ))
                             .info("使用統計", |_, cx| usage_info(cx)),
                     )
                     .row(
-                        ui::row("clear-stats", "清除統計").subtitle("刪除所有計數與每天的紀錄").trailing(
-                            Button::new("clear-stats-button")
-                                .small()
-                                .outline()
-                                .label("清除…")
-                                .disabled(!service)
-                                .on_click(|_, window, cx| confirm_clear(window, cx)),
-                        ),
+                        ui::row("clear-stats", "清除統計").subtitle("刪除所有計數與每天的紀錄").trailing(push_button(
+                            "clear-stats-button",
+                            "清除…",
+                            ButtonKind::Normal,
+                            service,
+                            |_, window, cx| confirm_clear(window, cx),
+                            cx,
+                        )),
                     )
                     .footer("只記錄次數與時間，不記錄打的字、讀音與 App；只存在這台電腦。統計只在記憶體中累加，每 10 分鐘最多寫入一次，不影響打字。"),
             )
@@ -380,24 +382,21 @@ impl AnalyticsPage {
 }
 
 fn confirm_clear(window: &mut Window, cx: &mut App) {
-    window.open_alert_dialog(cx, |alert, _, _| {
-        alert
-            .title("要清除使用統計嗎？")
-            .description("所有計數與每天的紀錄都會刪除，無法復原。")
-            .show_cancel(true)
-            .ok_text("清除")
-            .ok_variant(ButtonVariant::Danger)
-            .cancel_text("取消")
-            .on_ok(|_, window, cx| {
+    alert("要清除使用統計嗎？")
+        .message("所有計數與每天的紀錄都會刪除，無法復原。")
+        .buttons([
+            AlertButton::cancel(),
+            AlertButton::new("清除", |window, cx| {
                 if let Some(service) = app::service(cx)
                     && let Err(error) = service.stats().clear()
                 {
                     window.push_notification(error.to_string(), cx);
                 }
                 cx.refresh_windows();
-                true
             })
-    });
+            .destructive(),
+        ])
+        .show(window, cx);
 }
 
 /// What 使用統計 counts (docs/product/DESIGN.md §2.8).
@@ -453,12 +452,12 @@ fn clock(time: chrono::DateTime<chrono::Local>) -> String {
 }
 
 impl Render for AnalyticsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let usage = self.usage(cx);
         if app::nav(cx).subpage.as_deref() == Some("performance") {
             return v().gap(size::SECTION_GAP).child(self.performance(&usage, cx)).into_any_element();
         }
-        self.main_page(&usage, cx)
+        self.main_page(&usage, ui::narrow(window), cx)
     }
 }
 

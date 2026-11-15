@@ -22,8 +22,9 @@ use gpui_kit::{
     Styled, Task, Window, div, ease_out_quint, px,
 };
 
+use super::keycap::keycap;
 use super::{h, v};
-use crate::theme::{self, Palette, motion, size, text};
+use crate::theme::{self, Palette, motion, size, space, text, weight};
 
 /// What an ⓘ card shows, built when the card opens: pages list their cards as (title, content) for `--popover`.
 pub type InfoContent = fn(&mut Window, &mut App) -> AnyElement;
@@ -85,7 +86,7 @@ impl Segment {
 /// One step of a demo.
 #[derive(Clone, Debug)]
 pub struct DemoFrame {
-    /// The keys just pressed, drawn as accent keycaps.
+    /// The keys just pressed, drawn as key caps.
     pub keys: Vec<SharedString>,
     pub line: Vec<Segment>,
     /// The caret after the segment at this index (None: after everything).
@@ -233,42 +234,47 @@ pub fn play_pause(id: impl Into<SharedString>, clock: Entity<StoryClock>, cx: &A
     let id: SharedString = id.into();
     div()
         .id(SharedString::from(format!("{id}-play")))
-        .size(px(22.))
+        .size(size::H_XS)
         .flex_shrink_0()
         .flex()
         .items_center()
         .justify_center()
-        .rounded_full()
-        .bg(p.pressed)
+        .rounded(size::R_XS)
+        .bg(p.subtle)
         .cursor_pointer()
-        .hover(|style| style.bg(p.hover))
+        .hover(|style| style.bg(p.pressed))
         .on_click(move |_, _, cx| clock.update(cx, |clock, cx| clock.set_playing(!clock.playing(), cx)))
         .child(
             Icon::new(if playing { IconName::Pause } else { IconName::Play })
-                .size(px(10.))
+                .size(size::ICON_XS)
                 .text_color(p.text_secondary),
         )
 }
 
 // MARK: - Surfaces and keys
 
-/// The fill of a demo's text field: white in light, darker than the card in dark (macOS `textBackgroundColor`).
+/// The fill of a demo's text field: the card colour in both appearances (a stage is raised above the page).
 pub fn field_fill(p: &Palette) -> Hsla {
-    if p.dark { p.window } else { p.control }
+    p.card
 }
 
-/// A text field drawn for a demo: rounded, filled, with a hairline.
+/// A text field drawn for a demo: a stage, so a card (card colour and a hairline).
 pub fn field(cx: &App) -> Div {
     let p = theme::palette(cx);
-    div().w_full().rounded(px(7.)).bg(field_fill(&p)).border_1().border_color(p.separator).overflow_hidden()
+    div().w_full().rounded(size::R_SM).bg(field_fill(&p)).border_1().border_color(p.separator).overflow_hidden()
 }
 
-/// Content set into a section's card with a row's insets (a demo at the top of a page).
+/// A demo set into a section as a row: boxed, it spans the rows' full width.
 pub fn block(content: impl IntoElement) -> Div {
-    div().w_full().px(size::ROW_PADDING_X).py(px(12.)).child(content)
+    div().w_full().py(size::ROW_PADDING_Y).child(content)
 }
 
-/// The keys just pressed in a demo: accent keycaps that press in each time `step` changes.
+/// Open content (a table, text) set into a section as a row, inset like a row's text.
+pub fn text_block(content: impl IntoElement) -> Div {
+    div().w_full().px(size::ROW_PADDING_X).py(size::ROW_PADDING_Y).child(content)
+}
+
+/// The keys just pressed in a demo: key caps that press in each time `step` changes.
 #[derive(IntoElement)]
 pub struct DemoKeys {
     id: SharedString,
@@ -282,31 +288,12 @@ pub fn demo_keys(id: impl Into<SharedString>, keys: Vec<SharedString>, step: usi
 
 impl RenderOnce for DemoKeys {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        h().flex_shrink_0()
-            .gap(px(3.))
-            .relative()
-            .children(self.keys.into_iter().map(|key| {
-                div()
-                    .h(px(20.))
-                    .min_w(px(20.))
-                    .px(px(5.5))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.5))
-                    .bg(p.accent)
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(p.on_accent)
-                    .whitespace_nowrap()
-                    .child(key)
-            }))
-            .with_animation(
-                SharedString::from(format!("{}-press-{}", self.id, self.step)),
-                Animation::new(motion::FAST).with_easing(ease_out_quint()),
-                |this, t| this.top(px(1.5 * (1. - t))).opacity(0.55 + 0.45 * t),
-            )
+        let _ = cx;
+        h().flex_shrink_0().gap(space::S4).relative().children(self.keys.into_iter().map(keycap)).with_animation(
+            SharedString::from(format!("{}-press-{}", self.id, self.step)),
+            Animation::new(motion::FAST).with_easing(ease_out_quint()),
+            |this, t| this.top(px(1.5 * (1. - t))).opacity(0.55 + 0.45 * t),
+        )
     }
 }
 
@@ -326,7 +313,7 @@ pub fn demo_line(segments: impl IntoIterator<Item = Segment>) -> DemoLine {
     DemoLine {
         segments: segments.into_iter().collect(),
         caret: None,
-        font_size: px(15.),
+        font_size: text::HEADLINE,
         shows_caret: true,
         blinks: true,
     }
@@ -377,7 +364,7 @@ fn segment(segment: &Segment, font_size: Pixels, p: &Palette) -> AnyElement {
         SegmentStyle::Document => div().text_color(p.text).child(label).into_any_element(),
         SegmentStyle::Faded => div().text_color(p.text_tertiary).child(label).into_any_element(),
         SegmentStyle::Highlight => {
-            div().px(px(1.)).rounded(px(3.)).bg(p.accent_faint).text_color(p.text).child(label).into_any_element()
+            div().rounded(space::S2).bg(p.selection).text_color(p.text).child(label).into_any_element()
         }
         style => {
             let thick = style != SegmentStyle::Marked;
@@ -480,6 +467,9 @@ impl RenderOnce for MiniList {
 
 // MARK: - The mini demo
 
+/// A demo field tall enough for the line and a small candidate list.
+const FIELD_WITH_LIST_H: Pixels = px(112.);
+
 /// A text field that plays its frames in a loop, with the key pressed and a caption for each step (macOS `MiniDemo`).
 #[derive(IntoElement)]
 pub struct MiniDemo {
@@ -515,18 +505,22 @@ impl RenderOnce for MiniDemo {
         let looping = self.frames.len() > 1;
         let Some(frame) = frame else { return div().into_any_element() };
         v().w_full()
-            .gap(px(8.))
+            .gap(space::S8)
             .child(
-                field(cx).h(px(if has_list { 112. } else { 38. })).px(px(10.)).py(px(8.)).child(
-                    v().gap(px(4.))
-                        .child(demo_line(frame.line.clone()).caret(frame.caret))
-                        // In a row, so the list keeps its own width as the candidate window does.
-                        .when_some(frame.list.clone(), |this, list| this.child(h().child(mini_list(list)))),
-                ),
+                field(cx)
+                    .h(if has_list { FIELD_WITH_LIST_H } else { size::H_FIELD })
+                    .px(space::S12)
+                    .py(space::S6)
+                    .child(
+                        v().gap(space::S4)
+                            .child(demo_line(frame.line.clone()).caret(frame.caret))
+                            // In a row, so the list keeps its own width as the candidate window does.
+                            .when_some(frame.list.clone(), |this, list| this.child(h().child(mini_list(list)))),
+                    ),
             )
             .child(
                 h().w_full()
-                    .gap(px(8.))
+                    .gap(space::S8)
                     .when(looping, |this| this.child(play_pause(self.id.clone(), clock.clone(), cx)))
                     .when(!frame.keys.is_empty(), |this| {
                         this.child(demo_keys(self.id.clone(), frame.keys.clone(), step))
@@ -563,25 +557,24 @@ impl RenderOnce for ChoiceDemo {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         v().w_full()
-            .gap(px(6.))
+            .gap(space::S6)
             .child(
-                h().gap(px(6.))
+                h().gap(space::S6)
                     .child(
                         div()
                             .text_size(text::SUBTITLE)
-                            .font_weight(FontWeight::SEMIBOLD)
+                            .font_weight(weight::SEMIBOLD)
                             .text_color(p.text)
                             .child(self.title),
                     )
                     .when(self.selected, |this| {
                         this.child(
-                            div()
-                                .px(px(6.))
-                                .py(px(1.))
-                                .rounded_full()
-                                .bg(p.accent_faint)
+                            h().h(size::H_XS)
+                                .px(space::S6)
+                                .rounded(size::R_XS)
+                                .bg(p.subtle)
                                 .text_size(text::CAPTION)
-                                .text_color(p.accent)
+                                .text_color(p.text_secondary)
                                 .child("目前的設定"),
                         )
                     }),
@@ -603,19 +596,7 @@ pub fn fact_row(icon: IconName, text: impl Into<SharedString>) -> FactRow {
 
 impl RenderOnce for FactRow {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        h().items_start()
-            .gap(px(8.))
-            .child(
-                div()
-                    .w(px(18.))
-                    .pt(px(2.))
-                    .flex_shrink_0()
-                    .flex()
-                    .justify_center()
-                    .child(Icon::new(self.icon).size(px(14.)).text_color(p.accent)),
-            )
-            .child(div().flex_1().min_w(px(0.)).text_size(text::SUBTITLE).text_color(p.text).child(self.text))
+        super::content::fact_row(self.icon, self.text, cx)
     }
 }
 
@@ -656,30 +637,10 @@ impl RenderOnce for PressedKeycap {
         let key = self.keys.join(" ");
         h().relative()
             .flex_shrink_0()
-            .gap(px(3.))
-            .children(self.keys.into_iter().map(|key| {
-                div()
-                    .min_w(px(21.))
-                    .h(px(21.))
-                    .px(px(5.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(5.))
-                    .bg(p.control)
-                    .border_1()
-                    .border_color(p.control_border)
-                    .shadow_sm()
-                    .text_size(px(11.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(p.text.opacity(0.85))
-                    .whitespace_nowrap()
-                    .child(key)
-            }))
+            .gap(space::S4)
+            .children(self.keys.into_iter().map(keycap))
             .when_some(self.note, |this, note| {
-                this.child(
-                    div().text_size(px(10.)).font_weight(FontWeight::MEDIUM).text_color(p.text_secondary).child(note),
-                )
+                this.child(div().text_size(text::CAPTION).text_color(p.text_secondary).child(note))
             })
             .with_animation(
                 SharedString::from(format!("{}-{key}-{}", self.id, self.trigger)),

@@ -10,28 +10,36 @@ use std::time::Instant;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _, window_paddings};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, AppContext as _, ClickEvent, Context, Entity, FocusHandle,
-    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, ListSizingBehavior, ParentElement, Pixels, Render,
-    ScrollStrategy, SharedString, StatefulInteractiveElement, Styled, Subscription, UniformListScrollHandle, Window,
-    div, px, uniform_list,
+    InteractiveElement, IntoElement, KeyDownEvent, ListSizingBehavior, ParentElement, Pixels, Render, ScrollStrategy,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, UniformListScrollHandle, Window, div, px,
+    uniform_list,
 };
 
-use super::controls::popup_button;
+use super::controls::{IconButtonKind, icon_button, popup_button};
+use super::search::search_field;
 use super::{h, v};
-use crate::theme::{self, motion, size, text};
+use crate::theme::{self, motion, size, space, text, weight};
 
-/// The shell's padding under a page (`shell.rs`: the content's bottom padding); a list page fills down to it.
-const PAGE_BOTTOM: Pixels = px(40.);
-const TOOLBAR_H: Pixels = px(30.);
-const TOOLBAR_GAP: Pixels = px(10.);
-const ROW_H: Pixels = px(44.);
-const FOOTER_H: Pixels = px(30.);
+const TOOLBAR_H: Pixels = size::H_MD;
+const TOOLBAR_GAP: Pixels = space::S12;
+const ROW_H: Pixels = size::ROW_MIN_SINGLE;
+/// The footer's line under the card.
+const FOOTER_H: Pixels = px(28.);
 const SEARCH_MAX_W: Pixels = px(260.);
+const SEARCH_MIN_W: Pixels = px(96.);
+
+/// The room on the right of a row for 編輯 and 刪除 (or 刪除 alone).
+const ACTIONS_W: Pixels = px(96.);
+const ACTIONS_W_REMOVE: Pixels = px(52.);
+
+/// An empty state's explanation wraps at this width.
+const EMPTY_TEXT_MAX_W: Pixels = px(420.);
 
 /// How a list can be ordered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -413,34 +421,10 @@ impl ListView {
         } else {
             format!("{} / {} 個", grouped(self.visible.len()), grouped(total))
         };
-        let has_query = !self.needle.is_empty();
-        let search = h()
-            .h(TOOLBAR_H)
+        let search = search_field(&self.search, format!("搜尋{}", self.config.noun), cx)
             .flex_1()
             .max_w(SEARCH_MAX_W)
-            .min_w(px(96.))
-            .pl(px(9.))
-            .pr(px(4.))
-            .gap(px(4.))
-            .rounded(px(7.))
-            .bg(p.hover)
-            .child(Icon::new(IconName::Search).size(px(14.)).text_color(p.text_secondary))
-            .child(div().flex_1().min_w(px(0.)).child(Input::new(&self.search).appearance(false).small()))
-            .when(has_query, |this| {
-                this.child(
-                    Button::new("clear-search")
-                        .ghost()
-                        .xsmall()
-                        .icon(Icon::new(IconName::CircleX).size(px(14.)).text_color(p.text_tertiary))
-                        .tooltip("清除搜尋")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.search.update(cx, |search, cx| search.set_value("", window, cx));
-                            this.needle.clear();
-                            this.refilter();
-                            cx.notify();
-                        })),
-                )
-            });
+            .min_w(SEARCH_MIN_W);
         let sorts: Vec<(SharedString, ListSort)> =
             self.config.sorts.iter().map(|&sort| (SharedString::from(format!("依{}", sort.title())), sort)).collect();
         let entity = cx.entity().downgrade();
@@ -456,40 +440,25 @@ impl ListView {
             )
         });
         let add = self.on_add.clone().map(|on_add| {
-            Button::new("add")
-                .small()
-                .custom(
-                    gpui_kit::component::button::ButtonCustomVariant::new(cx)
-                        .color(p.control)
-                        .foreground(p.text)
-                        .hover(p.control)
-                        .active(p.pressed)
-                        .shadow(true),
-                )
-                .border_1()
-                .border_color(p.control_border)
-                .px(px(14.))
+            icon_button("add", IconName::Plus, IconButtonKind::Bordered, cx)
                 .disabled(!self.add_enabled)
-                .child(Icon::new(IconName::Plus).size(px(15.)).text_color(p.text))
                 .tooltip(format!("加入{}", self.config.noun))
                 .on_click(move |_, window, cx| on_add(window, cx))
         });
         let more = self.more.clone().map(|more| {
             let selected = self.selected();
-            Button::new("more")
-                .ghost()
-                .small()
-                .child(Icon::new(IconName::CircleEllipsis).size(px(20.)).text_color(p.text))
+            icon_button("more", IconName::Ellipsis, IconButtonKind::Ghost, cx)
                 .tooltip("更多")
                 .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, cx| {
                     menu_entries(menu, more(selected.clone(), cx))
                 })
         });
-        h().h(TOOLBAR_H).w_full().px(size::ROW_PADDING_X).gap(px(10.)).child(search).child(
+        // Boxed controls start and end at the card's edges, under which the rows' text is inset.
+        h().h(TOOLBAR_H).w_full().gap(space::S8).child(search).child(
             h().ml_auto()
                 .flex_shrink_0()
-                .gap(px(10.))
-                .child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(count))
+                .gap(space::S8)
+                .child(div().pr(space::S4).text_size(text::SUBTITLE).text_color(p.text_secondary).child(count))
                 .children(sort_picker)
                 .children(add)
                 .children(more),
@@ -512,24 +481,22 @@ impl ListView {
         } else {
             (IconName::Inbox, self.config.empty_title.clone(), self.config.empty_text.clone())
         };
+        // No box: the message stands centred where the rows would be.
         v().w_full()
             .items_center()
-            .gap(px(6.))
-            .py(px(36.))
+            .gap(space::S6)
+            .py(space::S40)
             .px(size::ROW_PADDING_X)
-            .rounded(size::RADIUS_CARD)
-            .bg(p.card)
-            .border_1()
-            .border_color(p.separator)
-            .child(Icon::new(icon).size(px(24.)).text_color(p.text_tertiary))
+            .child(div().pb(space::S4).child(Icon::new(icon).size(size::ICON_XL).text_color(p.text_tertiary)))
+            .child(div().text_size(text::HEADLINE).font_weight(weight::SEMIBOLD).text_color(p.text).child(title))
             .child(
                 div()
-                    .text_size(text::HEADLINE)
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .max_w(EMPTY_TEXT_MAX_W)
+                    .text_size(text::SUBTITLE)
                     .text_color(p.text_secondary)
-                    .child(title),
+                    .text_center()
+                    .child(body),
             )
-            .child(div().text_size(text::SUBTITLE).text_color(p.text_tertiary).text_center().child(body))
             .with_animation(
                 SharedString::from(format!("{}-empty-{searching}", self.config.id)),
                 Animation::new(motion::NORMAL),
@@ -562,7 +529,7 @@ impl ListView {
                 let actions = h()
                     .absolute()
                     .right_0()
-                    .gap(px(2.))
+                    .gap(space::S2)
                     .when(can_edit, |this| {
                         this.child(row_action("edit", "編輯", cx).on_click(cx.listener(move |this, _, window, cx| {
                             if let Some(on_edit) = this.on_edit.clone() {
@@ -582,7 +549,7 @@ impl ListView {
                     .w_full()
                     .h(ROW_H)
                     .px(size::ROW_PADDING_X)
-                    .gap(px(10.))
+                    .gap(space::S12)
                     .when(index > 0, |this| {
                         this.child(
                             div()
@@ -590,22 +557,22 @@ impl ListView {
                                 .top_0()
                                 .left(size::ROW_PADDING_X)
                                 .right(size::ROW_PADDING_X)
-                                .h(px(1.))
+                                .h(size::HAIRLINE)
                                 .bg(p.separator),
                         )
                     })
-                    .when(selected, |this| {
-                        this.child(
-                            div()
-                                .absolute()
-                                .left(px(4.))
-                                .right(px(4.))
-                                .top(px(3.))
-                                .bottom(px(3.))
-                                .rounded(size::RADIUS_CARD - px(4.))
-                                .bg(p.accent_faint),
-                        )
-                    })
+                    // Selection and hover: a neutral fill inset in the card (radius concentric with the card's).
+                    .child(
+                        div()
+                            .absolute()
+                            .left(space::S4)
+                            .right(space::S4)
+                            .top(space::S2)
+                            .bottom(space::S2)
+                            .rounded(size::R_SM)
+                            .when(selected, |this| this.bg(p.selection))
+                            .when(!selected && hovered, |this| this.bg(p.hover)),
+                    )
                     .child(
                         div()
                             .flex_shrink_0()
@@ -624,13 +591,13 @@ impl ListView {
                                 .child(detail),
                         )
                     })
-                    .child(div().flex_1().min_w(px(8.)))
+                    .child(div().flex_1().min_w(space::S8))
                     .child(
                         h().relative()
                             .flex_shrink_0()
                             .h_full()
                             .justify_end()
-                            .min_w(px(if can_edit { 96. } else { 52. }))
+                            .min_w(if can_edit { ACTIONS_W } else { ACTIONS_W_REMOVE })
                             .child(div().when(hovered, |this| this.opacity(0.)).child(details))
                             .when(hovered, |this| this.child(actions)),
                     )
@@ -735,8 +702,8 @@ pub fn usage_meter(level: u8, cx: &App) -> impl IntoElement {
     let name = names[usize::from(level.clamp(1, 5) - 1)];
     h().id(SharedString::from(format!("meter-{level}")))
         .items_end()
-        .h(px(12.))
-        .gap(px(2.))
+        .h(size::ICON_XS)
+        .gap(space::S2)
         .children((1..=5u8).map(|index| {
             div().w(px(3.)).h(px(4. + f32::from(index) * 1.6)).rounded(px(1.)).bg(if index <= level {
                 p.text_secondary
@@ -752,14 +719,21 @@ pub fn usage_meter(level: u8, cx: &App) -> impl IntoElement {
 /// The height a list page may take: from the top of the page to the bottom of the window.
 fn page_height(window: &Window) -> Pixels {
     let insets = window_paddings(window);
-    window.viewport_size().height - insets.top - insets.bottom - size::TITLE_BAR - size::PAGE_PADDING_TOP - PAGE_BOTTOM
+    window.viewport_size().height
+        - insets.top
+        - insets.bottom
+        - size::TITLE_BAR
+        - size::SURFACE_INSET
+        - size::PAGE_PADDING_TOP
+        - size::PAGE_PADDING_BOTTOM
 }
 
 impl Render for ListView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let footer_h = if self.footer.is_some() { FOOTER_H } else { px(0.) };
-        let card_max = (page_height(window) - TOOLBAR_H - TOOLBAR_GAP - footer_h - px(2.)).max(ROW_H * 3.);
+        let card_max = (page_height(window) - TOOLBAR_H - TOOLBAR_GAP - footer_h - size::HAIRLINE * 2. - space::S8)
+            .max(ROW_H * 3.);
         let card: AnyElement = if self.visible.is_empty() {
             self.empty_card(cx)
         } else {
@@ -767,7 +741,8 @@ impl Render for ListView {
             div()
                 .id(SharedString::from(format!("{}-card", self.config.id)))
                 .w_full()
-                .rounded(size::RADIUS_CARD)
+                .py(space::S4)
+                .rounded(size::R_LG)
                 .bg(p.card)
                 .border_1()
                 .border_color(p.separator)
@@ -795,7 +770,12 @@ impl Render for ListView {
             .child(div().relative().w_full().child(card).children(scrollbar))
             .when_some(self.footer.clone(), |this, footer| {
                 this.child(
-                    div().px(size::ROW_PADDING_X).text_size(text::SUBTITLE).text_color(p.text_secondary).child(footer),
+                    div()
+                        .px(size::ROW_PADDING_X)
+                        .min_h(FOOTER_H - TOOLBAR_GAP)
+                        .text_size(text::SUBTITLE)
+                        .text_color(p.text_secondary)
+                        .child(footer),
                 )
             })
     }

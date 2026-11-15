@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, IntoElement, ParentElement, PathPromptOptions,
     Render, SharedString, Styled, WeakEntity, Window, div,
@@ -18,7 +18,7 @@ use crate::app::{self, Place};
 use crate::theme::size;
 use crate::ui::actions::{ButtonKind, push_button, setting_switch_when};
 use crate::ui::alert::{AlertButton, alert, notice};
-use crate::ui::content::{FACT_GAP, action_row, fact_row, facts};
+use crate::ui::content::{FACT_GAP, action_row, fact_row, facts, text_input};
 use crate::ui::list::{ListConfig, ListItem, ListSort, ListView};
 use crate::ui::{self, h, v};
 
@@ -342,15 +342,18 @@ fn open_add_app(page: &WeakEntity<AdvancedPage>, window: &mut Window, cx: &mut A
             }
             let pick = field.clone();
             h().gap(FACT_GAP)
-                .child(div().flex_1().child(Input::new(&field)))
-                .child(push_button(
-                    "choose-app",
-                    "選擇程式…",
-                    ButtonKind::Normal,
-                    true,
-                    move |_, window, cx| choose_program(&pick, window, cx),
-                    cx,
-                ))
+                .child(div().flex_1().child(text_input(&field)))
+                .child(
+                    push_button(
+                        "choose-app",
+                        "選擇程式…",
+                        ButtonKind::Normal,
+                        true,
+                        move |_, window, cx| choose_program(&pick, window, cx),
+                        cx,
+                    )
+                    .h(size::H_FIELD),
+                )
                 .into_any_element()
         })
         .buttons([

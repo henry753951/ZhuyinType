@@ -47,7 +47,7 @@ impl AboutPage {
 
     fn main(&self, cx: &mut Context<Self>) -> AnyElement {
         v().gap(size::SECTION_GAP)
-            .child(ui::section("").row(app_header("ZhuyinType", format!("版本 {VERSION}"), cx)))
+            .child(ui::section("").bare().first().row(app_header("ZhuyinType", format!("版本 {VERSION}"), cx)))
             .child(
                 ui::section("更新").row(
                     ui::row("row-check-updates", "檢查更新")
@@ -90,7 +90,7 @@ impl AboutPage {
     fn sources(&self, cx: &mut Context<Self>) -> AnyElement {
         let data_dir = data_directory(cx);
         let Some(groups) = legal::groups(data_dir.as_deref()) else {
-            return ui::section("").row(ui::row("sources-error", "無法讀取授權與資料來源")).into_any_element();
+            return ui::section("").first().row(ui::row("sources-error", "無法讀取授權與資料來源")).into_any_element();
         };
         let page = cx.entity().downgrade();
         v().gap(size::SECTION_GAP)

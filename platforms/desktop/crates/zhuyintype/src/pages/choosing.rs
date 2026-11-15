@@ -8,14 +8,14 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Animation, AnimationExt as _, AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement, Pixels,
     Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use serde_json::Value;
 
 use super::Page;
 use crate::app;
-use crate::theme::{self, size, text};
+use crate::theme::{self, size, space, text, weight};
 use crate::ui::current_keys::{Command, CurrentKeys};
 use crate::ui::demo::{
     DemoFrame, InfoContent, Segment, SegmentStyle, block, choice_demo, demo_line, field, mini_demo, play_pause,
@@ -121,6 +121,8 @@ fn fuzzy_page(cx: &App) -> AnyElement {
     v().gap(size::SECTION_GAP)
         .child(
             section("")
+                .bare()
+                .first()
                 .row(block(mini_demo("fuzzy-page", fuzzy_frames())))
                 .footer("開啟的兩個音互相通用；兩個詞同樣常用時，讀音完全符合的排在前面。"),
         )
@@ -132,7 +134,7 @@ fn context_page(cx: &App) -> AnyElement {
     let on = app::settings(cx).bool("usesPrecedingText");
     let fact = |id: &'static str, title: &'static str, value: String| row(id, title).value(value).wrap_value(true);
     v().gap(size::SECTION_GAP)
-        .child(section("").row(block(ContextIllustration)))
+        .child(section("").bare().first().row(block(ContextIllustration)))
         .child(section("").row(setting_row("usesPrecedingText", cx)))
         .child(
             section("讀取與保留")
@@ -171,6 +173,8 @@ fn context_page(cx: &App) -> AnyElement {
 struct ContextIllustration;
 
 const SCENE_HOLDS: [f32; 4] = [2.4, 2.6, 3.2, 2.8];
+/// The illustration's height: the tallest scene.
+const SCENE_H: Pixels = px(116.);
 
 fn scene_caption(scene: usize) -> String {
     match scene {
@@ -185,12 +189,11 @@ fn scene_caption(scene: usize) -> String {
 fn scene_card(title: &'static str, content: impl IntoElement, cx: &App) -> gpui_kit::Div {
     let p = theme::palette(cx);
     field(cx)
-        .rounded(px(8.))
-        .px(px(12.))
-        .py(px(10.))
+        .px(space::S12)
+        .py(space::S8)
         .flex()
         .flex_col()
-        .gap(px(8.))
+        .gap(space::S6)
         .child(div().text_size(text::CAPTION).text_color(p.text_secondary).child(title))
         .child(content)
 }
@@ -200,18 +203,13 @@ fn scene(index: usize, cx: &App) -> AnyElement {
     match index {
         0 | 1 => v()
             .w_full()
-            .gap(px(6.))
+            .gap(space::S6)
             .child(
-                h().pl(px(12.))
-                    .gap(px(6.))
-                    .text_color(p.accent)
-                    .child(Icon::new(IconName::ArrowDownLeft).size(px(12.)))
-                    .child(
-                        div()
-                            .text_size(text::CAPTION)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(format!("最多 {CONTEXT_READ} 個字")),
-                    ),
+                h().pl(space::S12)
+                    .gap(space::S6)
+                    .text_color(p.text_secondary)
+                    .child(Icon::new(IconName::ArrowDownLeft).size(size::ICON_XS))
+                    .child(div().text_size(text::CAPTION).child(format!("最多 {CONTEXT_READ} 個字"))),
             )
             .child(scene_card(
                 "備忘錄",
@@ -219,47 +217,46 @@ fn scene(index: usize, cx: &App) -> AnyElement {
                     std::iter::once(Segment::highlight("讀書會改到星期四晚上，地點一樣在"))
                         .chain((index == 1).then(|| Segment::marked("圖書館"))),
                 )
-                .font_size(px(14.)),
+                .font_size(text::BODY),
                 cx,
             ))
             .into_any_element(),
         2 => h()
             .w_full()
-            .gap(px(10.))
+            .gap(space::S12)
             .child(div().flex_1().min_w(px(0.)).child(scene_card(
                 "輸入框 A",
-                demo_line([Segment::highlight("地點一樣在圖書館")]).font_size(px(13.)).without_caret(),
+                demo_line([Segment::highlight("地點一樣在圖書館")]).font_size(text::SUBTITLE).without_caret(),
                 cx,
             )))
             .child(
                 v().flex_shrink_0()
                     .items_center()
-                    .gap(px(2.))
-                    .text_color(p.accent)
-                    .child(Icon::new(IconName::ArrowRight).size(px(15.)))
-                    .child(div().text_size(px(10.)).child(format!("{CONTEXT_MINUTES} 分鐘內"))),
+                    .gap(space::S2)
+                    .text_color(p.text_secondary)
+                    .child(Icon::new(IconName::ArrowRight).size(size::ICON_SM))
+                    .child(div().text_size(text::CAPTION).child(format!("{CONTEXT_MINUTES} 分鐘內"))),
             )
             .child(div().flex_1().min_w(px(0.)).child(scene_card(
                 "輸入框 B",
-                demo_line([Segment::marked("七點見")]).font_size(px(13.)),
+                demo_line([Segment::marked("七點見")]).font_size(text::SUBTITLE),
                 cx,
             )))
             .into_any_element(),
         _ => div()
             .w_full()
-            .pt(px(18.))
+            .pt(space::S20)
             .child(scene_card(
                 "密碼",
-                h().gap(px(8.))
-                    .child(Icon::new(IconName::Lock).size(px(14.)).text_color(p.text_secondary))
-                    .child(div().text_size(px(14.)).text_color(p.text).child("••••••••"))
+                h().gap(space::S8)
+                    .child(Icon::new(IconName::Lock).size(size::ICON_SM).text_color(p.text_secondary))
+                    .child(div().text_size(text::BODY).text_color(p.text).child("••••••••"))
                     .child(div().flex_1())
                     .children(["不讀取", "不學習"].map(|tag| {
-                        div()
-                            .px(px(7.))
-                            .py(px(2.))
-                            .rounded_full()
-                            .bg(p.pressed)
+                        h().h(size::H_XS)
+                            .px(space::S6)
+                            .rounded(size::R_XS)
+                            .bg(p.subtle)
                             .text_size(text::CAPTION)
                             .text_color(p.text_secondary)
                             .child(tag)
@@ -280,8 +277,8 @@ impl gpui_kit::RenderOnce for ContextIllustration {
             (clock.index(), clock.step())
         };
         v().w_full()
-            .gap(px(10.))
-            .child(div().w_full().h(px(116.)).flex().flex_col().justify_center().child(
+            .gap(space::S12)
+            .child(div().w_full().h(SCENE_H).flex().flex_col().justify_center().child(
                 div().w_full().child(scene(current, cx)).with_animation(
                     SharedString::from(format!("context-scene-{step}")),
                     Animation::new(Duration::from_millis(350)),
@@ -290,7 +287,7 @@ impl gpui_kit::RenderOnce for ContextIllustration {
             ))
             .child(
                 h().w_full()
-                    .gap(px(8.))
+                    .gap(space::S8)
                     .child(play_pause("context-illustration", clock.clone(), cx))
                     .child(
                         div()
@@ -301,14 +298,14 @@ impl gpui_kit::RenderOnce for ContextIllustration {
                             .text_color(p.text_secondary)
                             .child(scene_caption(current)),
                     )
-                    .child(h().flex_shrink_0().gap(px(5.)).children((0..SCENE_HOLDS.len()).map(|dot| {
+                    .child(h().flex_shrink_0().gap(space::S6).children((0..SCENE_HOLDS.len()).map(|dot| {
                         let clock = clock.clone();
                         div()
                             .id(SharedString::from(format!("context-dot-{dot}")))
-                            .size(px(6.))
+                            .size(space::S6)
                             .rounded_full()
                             .cursor_pointer()
-                            .bg(if dot == current { p.accent } else { p.control_border })
+                            .bg(if dot == current { p.text_secondary } else { p.control_border })
                             .on_click(move |_, _, cx| clock.update(cx, |clock, cx| clock.show(dot, cx)))
                     }))),
             )
@@ -362,7 +359,7 @@ fn anchor_frames(right: bool) -> Vec<DemoFrame> {
 
 fn anchor_info(cx: &App) -> AnyElement {
     let after = app::settings(cx).string("candidateAnchor") != "before";
-    v().gap(px(14.))
+    v().gap(space::S16)
         .child(choice_demo("游標右邊的字", after, mini_demo("anchor-after", anchor_frames(true))))
         .child(choice_demo("游標左邊的字", !after, mini_demo("anchor-before", anchor_frames(false))))
         .into_any_element()
@@ -393,20 +390,20 @@ fn typo_info(cx: &App) -> AnyElement {
     let key = CurrentKeys::new(cx).text(Command::CorrectionsList);
     let descriptor = zt_core::settings::descriptor("typoTolerance");
     let options = descriptor.map(|d| d.options.clone()).unwrap_or_default();
-    v().gap(px(12.))
+    v().gap(space::S12)
         .child(mini_demo("typo", typo_frames(key.clone())).resting(2))
-        .child(v().gap(px(6.)).children(options.into_iter().map(|choice| {
+        .child(v().gap(space::S6).children(options.into_iter().map(|choice| {
             let selected = choice.value == current;
             let detail = descriptor.and_then(|d| d.subtitle(&choice.value)).unwrap_or_default().to_owned();
             h().items_start()
-                .gap(px(8.))
+                .gap(space::S8)
                 .text_size(text::SUBTITLE)
                 .child(
                     div()
-                        .w(px(34.))
+                        .w(space::S40)
                         .flex_shrink_0()
                         .text_color(p.text)
-                        .when(selected, |this| this.font_weight(FontWeight::SEMIBOLD))
+                        .when(selected, |this| this.font_weight(weight::SEMIBOLD))
                         .child(choice.label),
                 )
                 .child(div().flex_1().min_w(px(0.)).text_color(p.text_secondary).child(detail))
@@ -432,7 +429,7 @@ fn fuzzy_frames() -> Vec<DemoFrame> {
 }
 
 fn fuzzy_info(cx: &App) -> AnyElement {
-    v().gap(px(12.))
+    v().gap(space::S12)
         .child(mini_demo("fuzzy-info", fuzzy_frames()))
         .child(note("兩個詞同樣常用時，讀音完全符合的排在前面。", cx))
         .into_any_element()
