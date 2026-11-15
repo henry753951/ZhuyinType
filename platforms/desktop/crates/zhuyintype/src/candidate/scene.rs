@@ -13,7 +13,7 @@ use zt_core::presentation::Presentation;
 use super::layout::{self, BADGE_H, BADGE_W, Extras, Measure, PanelLayout};
 use super::panel::{CandidatePanel, key_glyphs, mode_badge};
 use super::style::PanelStyle;
-use crate::theme::{self, Palette, text};
+use crate::theme::{self, Palette, size, text};
 use crate::ui::h;
 
 /// A segment of the composition.
@@ -58,6 +58,7 @@ impl Scene {
     }
 }
 
+/// The document line's text: `theme::text::HEADLINE`, as a number for measuring.
 pub const FONT: f32 = 15.;
 pub const LINE_HEIGHT: f32 = 20.;
 pub const INSET: f32 = 12.;
@@ -171,7 +172,7 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
         .left(px(INSET))
         .top(px(line_top))
         .h(px(LINE_HEIGHT))
-        .text_size(px(FONT))
+        .text_size(text::HEADLINE)
         .line_height(px(LINE_HEIGHT))
         .text_color(p.text)
         .whitespace_nowrap()
@@ -184,7 +185,7 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
             .w(px(*w))
             .h(px(LINE_HEIGHT + 2.))
             .when(segment.focus, |this| this.bg(p.accent_faint))
-            .text_size(px(FONT))
+            .text_size(text::HEADLINE)
             .line_height(px(LINE_HEIGHT))
             .text_color(p.text)
             .whitespace_nowrap()
@@ -249,7 +250,7 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
         .relative()
         .w(px(layout.width))
         .h(px(layout.height))
-        .rounded(px(9.))
+        .rounded(size::RADIUS_CARD)
         .bg(p.window)
         .border_1()
         .border_color(p.separator)
@@ -273,7 +274,7 @@ fn pressed_keycap(key: &str, p: &Palette) -> impl IntoElement {
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(6.))
+        .rounded(size::RADIUS_CONTROL)
         .bg(p.control)
         .border_1()
         .border_color(p.control_border)

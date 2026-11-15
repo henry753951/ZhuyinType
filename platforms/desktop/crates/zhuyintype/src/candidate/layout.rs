@@ -65,14 +65,13 @@ pub fn key_width(measure: &mut dyn Measure, key: &str, size: f32) -> f32 {
     width + measure.width(&text, size, false)
 }
 
-/// The reading row's font, the footer's and the page label's (macOS: 12 pt, 12 pt, 11 pt).
+/// The geometry below is the macOS window's functional layout (what goes where, how big at each font size);
+/// colours, radii, shadows and the small text sizes come from `theme`.
+///
+/// The reading row's and the footer's font (macOS: 12 pt).
 pub const SMALL_FONT: f32 = 12.;
-pub const PAGE_FONT: f32 = 11.;
-/// The window's corner radius (macOS `InputSurface.cornerRadius`).
-pub const CORNER_RADIUS: f32 = 14.;
 /// The key caps of the reading row and the footer.
 pub const KEYCAP_HEIGHT: f32 = 19.;
-pub const KEYCAP_RADIUS: f32 = 4.;
 /// The 中/英 badge (macOS `ModeBadgeView.size`).
 pub const BADGE_W: f32 = 52.;
 pub const BADGE_H: f32 = 48.;
@@ -396,7 +395,7 @@ pub fn compute(
         compact,
         vertical,
         row_height,
-        row_radius: if compact { 6. } else { 8. },
+        row_radius: f32::from(if compact { theme::size::RADIUS_SMALL } else { theme::size::RADIUS_CONTROL }),
         notice: notice.map(|notice| notice.layout),
         preview: preview.map(|text| (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)),
         hint,

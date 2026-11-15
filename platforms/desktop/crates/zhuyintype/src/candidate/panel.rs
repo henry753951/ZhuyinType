@@ -21,11 +21,11 @@ use zt_core::presentation::Presentation;
 use zt_core::service::PopupAction;
 
 use super::layout::{
-    self, BADGE_FONT, BADGE_H, BADGE_W, CORNER_RADIUS, Extras, Frame, HintLayout, KEYCAP_HEIGHT, KEYCAP_RADIUS,
-    Measure, NoticeLayout, PAGE_FONT, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout,
+    self, BADGE_FONT, BADGE_H, BADGE_W, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, NoticeLayout, PanelLayout,
+    RowLayout, SMALL_FONT, ToggleLayout,
 };
 use super::style::PanelStyle;
-use crate::theme::{self, Palette};
+use crate::theme::{self, Palette, size, text};
 
 /// A click in the window.
 pub type ActionHandler = Rc<dyn Fn(PopupAction, &mut Window, &mut App)>;
@@ -278,7 +278,7 @@ impl CandidatePanel {
             .relative()
             .w(px(layout.width))
             .h(px(layout.height))
-            .when(self.rounded, |this| this.rounded(px(CORNER_RADIUS)))
+            .when(self.rounded, |this| this.rounded(size::RADIUS_CARD))
             .bg(p.panel)
             .border_1()
             .border_color(p.panel_border)
@@ -328,7 +328,7 @@ impl CandidatePanel {
                         .w(px(selected.w))
                         .h(px(selected.h - 2.))
                         .rounded(px(layout.row_radius))
-                        .bg(p.accent),
+                        .bg(p.accent_faint),
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
@@ -347,7 +347,7 @@ impl CandidatePanel {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(PAGE_FONT))
+                    .text_size(text::CAPTION)
                     .line_height(px(16.))
                     .text_color(p.text_secondary)
                     .opacity(alpha)
@@ -370,7 +370,7 @@ impl CandidatePanel {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(5.))
+                        .rounded(size::RADIUS_SMALL)
                         .when(actions.is_some(), |this| this.cursor_pointer().hover(|style| style.bg(p.hover)))
                         .when_some(actions, |this, actions| {
                             this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -394,25 +394,15 @@ fn at(frame: Frame) -> Div {
     div().absolute().left(px(frame.x)).top(px(frame.y)).w(px(frame.w)).h(px(frame.h))
 }
 
-/// The floating window's shadow (macOS: the window server's, wide and soft plus a tight contact edge).
+/// The floating surface's shadow: one soft shadow under a hairline border.
 pub fn surface_shadow(p: &Palette) -> Vec<BoxShadow> {
-    let black = |alpha: f32| Hsla { h: 0., s: 0., l: 0., a: alpha };
-    vec![
-        BoxShadow {
-            color: p.shadow,
-            offset: point(px(0.), px(5.)),
-            blur_radius: px(16.),
-            spread_radius: px(0.),
-            inset: false,
-        },
-        BoxShadow {
-            color: black(if p.dark { 0.45 } else { 0.1 }),
-            offset: point(px(0.), px(0.5)),
-            blur_radius: px(1.5),
-            spread_radius: px(0.),
-            inset: false,
-        },
-    ]
+    vec![BoxShadow {
+        color: p.shadow,
+        offset: point(px(0.), px(4.)),
+        blur_radius: px(16.),
+        spread_radius: px(0.),
+        inset: false,
+    }]
 }
 
 /// The room a floating window keeps around its surface for the shadow.
@@ -440,9 +430,10 @@ fn page_element(
             let frame = row.frame;
             let index = row.index;
             let small = fs * 0.68;
-            let text_color = if selected { p.on_accent } else { p.text };
-            let key_color = if selected { p.on_accent.opacity(0.85) } else { p.text_secondary };
-            let annotation_color = if selected { p.on_accent.opacity(0.8) } else { p.text_tertiary };
+            // The selection is an accent-tinted fill (drawn under the pages); its text takes the accent.
+            let text_color = if selected { p.accent } else { p.text };
+            let key_color = if selected { p.accent } else { p.text_secondary };
+            let annotation_color = if selected { p.accent.opacity(0.75) } else { p.text_tertiary };
             let actions = actions.clone();
             let cell = |left: f32, width: f32| {
                 div().absolute().left(px(left)).top_0().bottom_0().w(px(width.max(0.))).flex().items_center()
@@ -455,7 +446,7 @@ fn page_element(
                 .w(px(frame.w))
                 .h(px(frame.h - 2.))
                 .rounded(px(radius))
-                .when(hover && !selected, |this| this.hover(|style| style.bg(p.pressed)))
+                .when(hover && !selected, |this| this.hover(|style| style.bg(p.hover)))
                 .when_some(actions, |this, actions| {
                     this.cursor_pointer()
                         .on_mouse_down(MouseButton::Left, move |_, window, cx| actions(PopupAction::Pick(index), window, cx))
@@ -498,10 +489,10 @@ fn keycap(width: f32, height: f32, key: &str, on: bool, p: &Palette) -> Div {
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(KEYCAP_RADIUS))
-        .when(on, |this| this.bg(p.accent).text_color(p.on_accent))
+        .rounded(size::RADIUS_SMALL)
+        .when(on, |this| this.bg(p.accent_faint).text_color(p.accent))
         .when(!on, |this| this.border_1().border_color(p.control_border).text_color(p.text_secondary))
-        .child(key_glyphs(key, SMALL_FONT, if on { p.on_accent } else { p.text_secondary }))
+        .child(key_glyphs(key, SMALL_FONT, if on { p.accent } else { p.text_secondary }))
 }
 
 /// A key's label with the symbols every system draws differently (⇧ ↑ ↓ ← → ↩) as icons, so key caps look the same
@@ -600,9 +591,9 @@ fn notice_element(notice: &NoticeLayout, p: &Palette) -> impl IntoElement {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(KEYCAP_RADIUS))
+                    .rounded(size::RADIUS_SMALL)
                     .border_1()
-                    .border_color(p.text_tertiary)
+                    .border_color(p.control_border)
                     .child(key_glyphs(&key, fs, p.text_secondary)),
             )
         })
@@ -613,12 +604,10 @@ fn notice_element(notice: &NoticeLayout, p: &Palette) -> impl IntoElement {
                     .left_0()
                     .top(px((notice.frame.h - fs) / 2.))
                     .size(px(fs))
-                    .rounded_full()
-                    .bg(p.success)
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(Icon::new(IconName::Check).size(px(fs * 0.68)).text_color(gpui_kit::white())),
+                    .child(Icon::new(IconName::Check).size(px(fs)).text_color(p.success)),
             )
         })
         .child(
@@ -654,7 +643,7 @@ pub fn mode_badge(text: &str, p: &Palette, shadow: bool) -> AnyElement {
         .flex()
         .items_center()
         .justify_center()
-        .when(shadow, |this| this.rounded(px(CORNER_RADIUS)))
+        .when(shadow, |this| this.rounded(size::RADIUS_CARD))
         .bg(p.panel)
         .border_1()
         .border_color(p.panel_border)

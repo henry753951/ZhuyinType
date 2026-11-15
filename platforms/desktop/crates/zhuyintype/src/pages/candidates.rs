@@ -6,8 +6,9 @@
 //! changed (macOS edits them in place with its shortcut field).
 
 use gpui_kit::component::slider::{SliderEvent, SliderState};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
+    AnyElement, InteractiveElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement, Render, SharedString, Styled,
     Subscription, Window, div,
 };
 use serde_json::Value;
@@ -268,7 +269,13 @@ impl Render for CandidatesPage {
             .anchor("showsListSwitches")
             .marked(settings.is_customised("showsListSwitches"))
             .dimmed(switches.is_empty())
-            .trailing(ui::setting_switch("showsListSwitches", cx));
+            .trailing(
+                // Off while both lists are off (macOS disables it): a cover takes the clicks.
+                div()
+                    .relative()
+                    .child(ui::setting_switch("showsListSwitches", cx))
+                    .when(switches.is_empty(), |this| this.child(div().absolute().inset_0().occlude())),
+            );
         content_rows.push(switches_row.into_any_element());
 
         let mode = keys.mode_key();

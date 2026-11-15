@@ -25,7 +25,7 @@ use super::scene::{Card, Scene, SceneLayout, focus, scene_card, seg};
 use super::style::{CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
 use crate::app;
 use crate::pages::Page;
-use crate::theme::{self, text};
+use crate::theme::{self, size, text};
 use crate::ui::{h, v};
 
 /// What the preview can show.
@@ -750,7 +750,7 @@ impl UnifiedPreview {
                 anchored().position(point(x, y)).child(
                     v().p(px(10.))
                         .gap(px(6.))
-                        .rounded(px(12.))
+                        .rounded(size::RADIUS_CARD)
                         .bg(p.card)
                         .border_1()
                         .border_color(p.separator)

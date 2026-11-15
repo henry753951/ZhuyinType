@@ -152,7 +152,7 @@ impl Render for Showcase {
             window.resize(size(px(total.0), px(total.1)));
         }
         // Grey bars standing for the document's lines behind the window.
-        let bar = if palette.dark { palette.text_tertiary.opacity(0.6) } else { palette.text_tertiary.opacity(0.55) };
+        let bar = palette.separator;
         let lines = (0..((total.1 / 18.) as usize + 1)).map(move |index| {
             let y = 4. + index as f32 * 18.;
             div()
@@ -171,7 +171,7 @@ impl Render for Showcase {
         div()
             .relative()
             .size_full()
-            .bg(if palette.dark { gpui_kit::rgb(0x1e1e1e) } else { gpui_kit::rgb(0xffffff) })
+            .bg(palette.card)
             .children(lines)
             .child(div().absolute().left(px(inset_x)).top(px(inset_y)).child(content))
     }

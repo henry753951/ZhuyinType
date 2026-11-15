@@ -86,7 +86,10 @@ pub fn handle(event: UiEvent, cx: &mut App) {
 
 /// Another start of the app asked for the settings: bring the open settings window forward, or open one.
 fn show_settings(cx: &mut App) {
-    let settings_window = cx.windows().into_iter().find(|window| window.downcast::<crate::shell::SettingsWindow>().is_some());
+    // Every window that is not one of the popups is the settings window (it is wrapped in the kit's root view).
+    let popups = popups(cx);
+    let own = [popups.candidate.map(|h| h.window_id()), popups.toast.map(|h| h.window_id())];
+    let settings_window = cx.windows().into_iter().find(|window| !own.contains(&Some(window.window_id())));
     match settings_window {
         Some(window) => {
             let _ = window.update(cx, |_, window, _| window.activate_window());
