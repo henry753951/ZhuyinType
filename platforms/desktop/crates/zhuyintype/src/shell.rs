@@ -220,9 +220,10 @@ impl Render for SettingsWindow {
 }
 
 /// Opens the settings window on `page`.
-pub fn open(page: Page, dark: Option<bool>, cx: &mut App) -> anyhow::Result<Entity<SettingsWindow>> {
+pub fn open(page: Page, dark: Option<bool>, window_size: Option<(f32, f32)>, cx: &mut App) -> anyhow::Result<Entity<SettingsWindow>> {
     cx.set_global(Navigation::new(page));
-    let bounds = Bounds::centered(None, size(sz::WINDOW_W, sz::WINDOW_H), cx);
+    let (width, height) = window_size.map_or((sz::WINDOW_W, sz::WINDOW_H), |(w, h)| (px(w), px(h)));
+    let bounds = Bounds::centered(None, size(width, height), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         window_min_size: Some(size(sz::WINDOW_MIN_W, sz::WINDOW_MIN_H)),

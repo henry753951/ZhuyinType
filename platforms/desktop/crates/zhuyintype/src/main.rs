@@ -22,6 +22,8 @@ struct Args {
     subpage: Option<String>,
     /// `--row ANCHOR`: scroll to a row and show the arrival cue, as a link would.
     row: Option<String>,
+    /// `--size WxH`: the window's size in logical pixels (screenshots of narrow and wide layouts).
+    size: Option<(f32, f32)>,
     /// `--theme light|dark`: force an appearance (screenshots).
     dark: Option<bool>,
     /// `--settings-file PATH`: keep settings there (screenshots and tests use a temporary file).
@@ -29,7 +31,7 @@ struct Args {
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { page: Page::Intro, subpage: None, row: None, dark: None, settings_file: None };
+    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -40,6 +42,12 @@ fn parse_args() -> Args {
             }
             "--subpage" => args.subpage = iter.next(),
             "--row" => args.row = iter.next(),
+            "--size" => {
+                args.size = iter.next().and_then(|text| {
+                    let (w, h) = text.split_once('x')?;
+                    Some((w.parse().ok()?, h.parse().ok()?))
+                })
+            }
             "--theme" => args.dark = iter.next().map(|theme| theme == "dark"),
             "--settings-file" => args.settings_file = iter.next().map(Into::into),
             _ => {}
@@ -54,7 +62,7 @@ fn main() {
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         cx.set_global(app::AppState { settings });
-        shell::open(args.page, args.dark, cx).expect("the settings window opens");
+        shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
                 app::Place { page: args.page, subpage: args.subpage.clone().map(Into::into), row: args.row.clone().map(Into::into) },
