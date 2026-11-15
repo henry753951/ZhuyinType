@@ -56,6 +56,6 @@ rpmlint（Fedora）沒有錯誤；警告為 `no-manual-page-for-binary` 與 `non
 
 ## 尚未驗證
 
-- 真實桌面登入後的 autostart 與 Fcitx 5 的啟動順序：GPUI 只在啟動時尋找 XIM 伺服器，服務若比 Fcitx 早啟動，自己的文字欄位在這次登入中不會使用輸入法（其他應用程式不受影響）。
+- 真實桌面登入後的 autostart 與 Fcitx 5 的啟動順序：GPUI 只在啟動時尋找 XIM 伺服器，所以 `--background` 在 Fcitx 5 是輸入法時先等 `fcitx5` 行程出現（最多 15 秒）再啟動介面；尚未在真實桌面登入時驗證。
 - Wayland、GNOME／KDE 的輸入法設定流程（`fcitx5-setup framework`）。
 - 套件升級（同名新版本覆蓋安裝）。
