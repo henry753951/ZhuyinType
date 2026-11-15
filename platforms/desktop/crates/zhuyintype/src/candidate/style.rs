@@ -139,6 +139,11 @@ impl CurrentKeys {
         Self { service: service.map(|service| service.shortcuts().clone()), settings: settings.clone() }
     }
 
+    /// The keys stored in `settings` itself (the setup wizard's draft, which has its own copy of the keys).
+    pub fn sandboxed(settings: &Settings) -> Self {
+        Self { service: Some(zt_core::shortcuts::Shortcuts::new(settings.clone())), settings: settings.clone() }
+    }
+
     /// All keys of `command` now (empty when its feature is off).
     pub fn all(&self, command: &str) -> Vec<String> {
         if let Some(shortcuts) = &self.service {

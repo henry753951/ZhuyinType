@@ -246,3 +246,10 @@ pub fn show(cx: &mut App) {
         log::error!("opening the settings window: {error:#}");
     }
 }
+
+/// Brings the settings window to the front if it is open (the setup wizard closing); never opens it.
+pub fn bring_forward(cx: &mut App) {
+    if let Some(handle) = cx.try_global::<OpenSettings>().and_then(|open| open.0) {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+    }
+}

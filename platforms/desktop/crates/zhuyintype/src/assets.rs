@@ -78,6 +78,8 @@ icon_assets!(
         ClipboardPen,
         ArrowBigUp,
         CornerDownLeft,
+        Zap,
+        Map,
     ]
 );
 
