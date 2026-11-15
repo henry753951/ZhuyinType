@@ -85,7 +85,7 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout>/d
 `scripts/build.sh linux --package` 依序：
 
 1. 以 `Dockerfile`（Debian 13：glibc 2.41、Fcitx 5.1.12）建立建置映像，標籤含 Dockerfile 與 `rust-toolchain.toml` 的雜湊，內容不變時沿用。映像中編譯 `zhuyintype`（release）與 addon，並以 `dpkg-shlibdeps`、`readelf` 算出相依、以 `scripts/rust-licenses.py` 收集 Rust 套件授權。docker 與 podman 都可以；`--native` 改在這台機器上編譯（套件會需要這台機器的 glibc 版本，只供測試）。
-2. 缺少引擎資料時執行 `tools/zt data fetch lexicon lm lm_chat`，再以 `tools/zt data compile data/build/compiled` 編譯（來源沒變時略過）。
+2. 缺少引擎資料時執行 `tools/zt data fetch lexicon lm lm_chat`，再以 `tools/zt data compile` 編譯到 TSV 旁邊（來源沒變時略過；開發建置與 `zt-core` 的測試也從那裡讀）。
 3. 整理套件內容到 `<target>/builder-debian13/package-stage`，以 ImageMagick 產生圖示。
 4. 把 `nfpm.yaml` 的 `# @shlibs@` 換成算出的相依、`# @licenses@` 換成每個授權檔，寫出 `changelog.yml`（nfpm 依它產生 deb 的 `changelog.Debian.gz` 與 rpm 的 `%changelog`），以 nfpm 產生 `dist/desktop/zhuyintype_<版本>_amd64.deb`、`zhuyintype-<版本>.x86_64.rpm` 與 `SHA256SUMS-linux`，並確認兩個套件都含執行檔、addon 與詞庫。addon 以發行版的強化旗標編譯（`dpkg-buildflags`，hardening=+all）。
 
@@ -97,9 +97,10 @@ nfpm 的版本與 SHA-256 固定在 `build.sh`，第一次使用時下載到 `~/
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop             # 安裝與移除
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --lint
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --gui ../../dist/desktop-shots
+platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --typing   # 先 scripts/build.sh linux --test
 ```
 
-`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。結果記錄在 [VALIDATION.md](VALIDATION.md)。
+`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。`--typing [BUILD]` 用安裝好的套件與真實資料，經 Fcitx 5 在 Qt 測試程式與設定視窗中實際打字（測試程式來自 `build.sh linux --test` 的建置目錄）。主機離 `deb.debian.org` 較遠時，`ZT_DEBIAN_MIRROR` 也套用到 Debian 容器（例如 `remote.sh env ZT_DEBIAN_MIRROR=http://free.nchc.org.tw/debian packaging/linux/verify.sh …`）。結果記錄在 [VALIDATION.md](VALIDATION.md)。
 
 ## 發布
 

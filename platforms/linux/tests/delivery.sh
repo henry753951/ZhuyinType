@@ -64,18 +64,8 @@ cat > "$assets/lexicon.tsv" <<'LEXICON'
 ㄏㄠˇ	好	-3
 ㄋㄧˇ ㄏㄠˇ	你好	-2
 LEXICON
-host_args=(--background)
-if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then host_args=(); fi
-"$host" "${host_args[@]}" --ime-socket "$ZT_IME_SOCKET" --lexicon "$assets/lexicon.tsv" > "$work/host.log" 2>&1 &
-host_pid=$!
-export ZT_DELIVERY_HOST_PID="$host_pid"
-for ((attempt=0; attempt<100; ++attempt)); do
-    [[ -S $ZT_IME_SOCKET ]] && break
-    kill -0 "$host_pid" 2>/dev/null || break
-    sleep 0.05
-done
-[[ -S $ZT_IME_SOCKET ]] || skip "host does not serve the broker at --ime-socket yet (see platforms/desktop/IPC.md)"
-fcitx5 -D -k --disable all --enable dbus,dbusfrontend,xcb,classicui,keyboard,zhuyintype > "$work/fcitx.log" 2>&1 &
+# xim: the host's own window (GPUI) reaches Fcitx through XIM; the Qt probe uses the D-Bus frontend.
+fcitx5 -D --disable all --enable dbus,dbusfrontend,xcb,xim,classicui,keyboard,zhuyintype > "$work/fcitx.log" 2>&1 &
 daemon=$!
 ready=0
 for ((attempt=0; attempt<50; ++attempt)); do
@@ -85,6 +75,22 @@ for ((attempt=0; attempt<50; ++attempt)); do
     sleep 0.1
 done
 [[ $ready == 1 ]]
+# The host after Fcitx, as when the addon starts it: GPUI looks for an XIM server once, when it starts, so its own
+# text fields (the self-host case) use the input method only if Fcitx is already there.
+host_args=(--background)
+if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then host_args=(--page keys); fi
+# ZT_DELIVERY_REAL_DATA=1: the host's own engine data (an installed package) instead of the four-word fixture.
+lexicon=(--lexicon "$assets/lexicon.tsv")
+if [[ ${ZT_DELIVERY_REAL_DATA:-0} == 1 ]]; then lexicon=(); fi
+"$host" "${host_args[@]}" --ime-socket "$ZT_IME_SOCKET" "${lexicon[@]}" > "$work/host.log" 2>&1 &
+host_pid=$!
+export ZT_DELIVERY_HOST_PID="$host_pid"
+for ((attempt=0; attempt<100; ++attempt)); do
+    [[ -S $ZT_IME_SOCKET ]] && break
+    kill -0 "$host_pid" 2>/dev/null || break
+    sleep 0.05
+done
+[[ -S $ZT_IME_SOCKET ]] || skip "host does not serve the broker at --ime-socket yet (see platforms/desktop/IPC.md)"
 if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then
     QT_IM_MODULE=compose "$build/fcitx-self-host-probe" "$host_pid"
 else

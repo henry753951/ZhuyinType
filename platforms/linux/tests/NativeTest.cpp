@@ -55,7 +55,8 @@ int main() {
             fcitx::KeyEvent e(&ic,fcitx::Key(sym,mods),release); addon.keyEvent(entry,e); return e.accepted();
         };
         const auto type=[&](Client &ic,std::string_view s) {
-            for(char c:s) CHECK(key(ic,static_cast<fcitx::KeySym>(c)));
+            for(char c:s) if (!key(ic,static_cast<fcitx::KeySym>(c)))
+                throw std::runtime_error("key '" + std::string(1,c) + "' of \"" + std::string(s) + "\" was not accepted");
         };
         const std::string endpoint = std::getenv("ZT_IME_SOCKET");
         setenv("ZT_IME_SOCKET", "/tmp/zhuyintype-missing-test-endpoint", 1);
@@ -135,6 +136,6 @@ int main() {
         }
         activate(a);
         CHECK(a.preedit().empty()); CHECK(a.commits.size()==deliveredBeforeDestroy);
-        std::cout << "PASS real Qt broker: Fcitx preedit/commit, reset, focus isolation, secure transition, Shift release, shortcuts\n";
+        std::cout << "PASS real host broker: Fcitx preedit/commit, reset, focus isolation, secure transition, Shift release, shortcuts\n";
     } catch(const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }
