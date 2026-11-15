@@ -206,8 +206,7 @@ impl<'a> CurrentKeys<'a> {
 
     /// The key that shows the 中/英 badge: the Shift tap, or Caps Lock; None when neither is on.
     pub fn mode_key(&self) -> Option<&'static str> {
-        self.shift_tap()
-            .or_else(|| app::settings(self.cx).bool("feature.capsLockEnglish").then_some("Caps Lock"))
+        self.shift_tap().or_else(|| app::settings(self.cx).bool("feature.capsLockEnglish").then_some("Caps Lock"))
     }
 }
 

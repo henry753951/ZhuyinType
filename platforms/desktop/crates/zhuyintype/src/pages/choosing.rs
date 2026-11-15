@@ -8,8 +8,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    Animation, AnimationExt as _, AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use serde_json::Value;
 
@@ -18,7 +18,8 @@ use crate::app;
 use crate::theme::{self, size, text};
 use crate::ui::current_keys::{Command, CurrentKeys};
 use crate::ui::demo::{
-    DemoFrame, Segment, SegmentStyle, block, choice_demo, demo_line, field, mini_demo, play_pause, story_clock,
+    DemoFrame, InfoContent, Segment, SegmentStyle, block, choice_demo, demo_line, field, mini_demo, play_pause,
+    story_clock,
 };
 use crate::ui::feature::{drill_row, feature_row, keys_overview_link};
 use crate::ui::{h, row, section, segmented, setting_row, v};
@@ -103,11 +104,17 @@ fn choosing_page(cx: &App) -> AnyElement {
 /// A choice setting as segments (台／臺).
 fn segments(key: &'static str, cx: &App) -> impl IntoElement {
     let options = zt_core::settings::descriptor(key)
-        .map(|d| d.options.iter().map(|choice| (SharedString::from(choice.label.clone()), choice.value.clone())).collect())
+        .map(|d| {
+            d.options.iter().map(|choice| (SharedString::from(choice.label.clone()), choice.value.clone())).collect()
+        })
         .unwrap_or_default();
-    segmented(format!("seg-{key}"), options, app::settings(cx).get(key), move |value: Value, _, cx| {
-        app::set_setting(key, value, cx)
-    }, cx)
+    segmented(
+        format!("seg-{key}"),
+        options,
+        app::settings(cx).get(key),
+        move |value: Value, _, cx| app::set_setting(key, value, cx),
+        cx,
+    )
 }
 
 fn fuzzy_page(cx: &App) -> AnyElement {
@@ -137,7 +144,11 @@ fn context_page(cx: &App) -> AnyElement {
                 .row(fact(
                     "fact-kept",
                     "送出的字",
-                    if on { format!("接在前文後面，保留最近 {CONTEXT_KEPT} 個字") } else { "不保留前文".to_owned() },
+                    if on {
+                        format!("接在前文後面，保留最近 {CONTEXT_KEPT} 個字")
+                    } else {
+                        "不保留前文".to_owned()
+                    },
                 ))
                 .when(on, |this| {
                     this.row(fact(
@@ -215,13 +226,11 @@ fn scene(index: usize, cx: &App) -> AnyElement {
         2 => h()
             .w_full()
             .gap(px(10.))
-            .child(
-                div().flex_1().min_w(px(0.)).child(scene_card(
-                    "輸入框 A",
-                    demo_line([Segment::highlight("地點一樣在圖書館")]).font_size(px(13.)).without_caret(),
-                    cx,
-                )),
-            )
+            .child(div().flex_1().min_w(px(0.)).child(scene_card(
+                "輸入框 A",
+                demo_line([Segment::highlight("地點一樣在圖書館")]).font_size(px(13.)).without_caret(),
+                cx,
+            )))
             .child(
                 v().flex_shrink_0()
                     .items_center()
@@ -230,12 +239,11 @@ fn scene(index: usize, cx: &App) -> AnyElement {
                     .child(Icon::new(IconName::ArrowRight).size(px(15.)))
                     .child(div().text_size(px(10.)).child(format!("{CONTEXT_MINUTES} 分鐘內"))),
             )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .child(scene_card("輸入框 B", demo_line([Segment::marked("七點見")]).font_size(px(13.)), cx)),
-            )
+            .child(div().flex_1().min_w(px(0.)).child(scene_card(
+                "輸入框 B",
+                demo_line([Segment::marked("七點見")]).font_size(px(13.)),
+                cx,
+            )))
             .into_any_element(),
         _ => div()
             .w_full()
@@ -273,15 +281,13 @@ impl gpui_kit::RenderOnce for ContextIllustration {
         };
         v().w_full()
             .gap(px(10.))
-            .child(
-                div().w_full().h(px(116.)).flex().flex_col().justify_center().child(
-                    div().w_full().child(scene(current, cx)).with_animation(
-                        SharedString::from(format!("context-scene-{step}")),
-                        Animation::new(Duration::from_millis(350)),
-                        |this, t| this.opacity(t),
-                    ),
+            .child(div().w_full().h(px(116.)).flex().flex_col().justify_center().child(
+                div().w_full().child(scene(current, cx)).with_animation(
+                    SharedString::from(format!("context-scene-{step}")),
+                    Animation::new(Duration::from_millis(350)),
+                    |this, t| this.opacity(t),
                 ),
-            )
+            ))
             .child(
                 h().w_full()
                     .gap(px(8.))
@@ -312,7 +318,7 @@ impl gpui_kit::RenderOnce for ContextIllustration {
 // MARK: - Info cards
 
 /// The ⓘ cards of this page by id, for `--popover` (screenshots): the title and what the card shows.
-pub fn info(id: &str) -> Option<(&'static str, fn(&mut Window, &mut App) -> AnyElement)> {
+pub fn info(id: &str) -> Option<(&'static str, InfoContent)> {
     Some(match id {
         "anchor" => ("游標在句中時改", |_, cx| anchor_info(cx)),
         "typo" => ("按錯鍵修正", |_, cx| typo_info(cx)),
@@ -336,9 +342,13 @@ fn anchor_frames(right: bool) -> Vec<DemoFrame> {
     let right_focus = |text_: &'static str| Segment::new(text_, right_focus);
     vec![
         DemoFrame::new([Segment::marked("今天"), Segment::marked("天氣")], "游標在句尾：改最後的詞", 1.4),
-        DemoFrame::new([Segment::marked("今天"), left_style("天"), right_style("氣")], "游標在句中：底線標出要改的字", 1.6)
-            .keys(["←"])
-            .caret(1),
+        DemoFrame::new(
+            [Segment::marked("今天"), left_style("天"), right_style("氣")],
+            "游標在句中：底線標出要改的字",
+            1.6,
+        )
+        .keys(["←"])
+        .caret(1),
         DemoFrame::new(
             [Segment::marked("今天"), left_focus("天"), right_focus("氣")],
             if right { "改游標右邊的字" } else { "改游標左邊的字" },
@@ -368,11 +378,11 @@ fn typo_frames(corrections_key: Option<String>) -> Vec<DemoFrame> {
         DemoFrame::new([start(), Segment::marked("今")], "自動改成「今」", 1.4).keys(["空白"]),
     ];
     if let Some(key) = corrections_key {
-        frames.push(
-            DemoFrame::new([start(), Segment::focus("今")], "列出修正的字", 2.0)
-                .keys([key])
-                .list(["今 ㄐㄧㄣ", "金 ㄐㄧㄣ", "斤 ㄐㄧㄣ"]),
-        );
+        frames.push(DemoFrame::new([start(), Segment::focus("今")], "列出修正的字", 2.0).keys([key]).list([
+            "今 ㄐㄧㄣ",
+            "金 ㄐㄧㄣ",
+            "斤 ㄐㄧㄣ",
+        ]));
     }
     frames
 }

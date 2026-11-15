@@ -32,7 +32,9 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
         }),
         "feature.correctionsList"
             if settings.string("typoTolerance") == "off"
-                && !["zZh", "cCh", "sSh", "enEng", "anAng"].iter().any(|pair| settings.bool(&format!("fuzzy.{pair}"))) =>
+                && !["zZh", "cCh", "sSh", "enEng", "anAng"]
+                    .iter()
+                    .any(|pair| settings.bool(&format!("fuzzy.{pair}"))) =>
         {
             Some(Availability {
                 note: "「按錯鍵修正」關閉且沒有開啟模糊音：這個鍵開啟一般清單",
@@ -77,11 +79,6 @@ pub fn command_feature_row(title: impl Into<SharedString>, subtitle: impl Into<S
 }
 
 impl FeatureRow {
-    pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
-        self.subtitle = subtitle.into();
-        self
-    }
-
     pub fn commands(mut self, commands: impl IntoIterator<Item = Command>) -> Self {
         self.commands = commands.into_iter().collect();
         self
@@ -100,7 +97,9 @@ impl FeatureRow {
             (Some(availability), _) => availability.note.into(),
             (None, false) if self.feature == Some("feature.zhuyinRowClick") => "關閉時，點注音列不做事".into(),
             (None, false) => match self.commands.first() {
-                Some(&command) => format!("關閉時，{} 交給 App", compact(&CurrentKeys::new(cx).assigned(command))).into(),
+                Some(&command) => {
+                    format!("關閉時，{} 交給 App", compact(&CurrentKeys::new(cx).assigned(command))).into()
+                }
                 None => self.subtitle.clone(),
             },
             (None, true) => self.subtitle.clone(),
@@ -138,10 +137,13 @@ pub fn command_key_rows(commands: &[Command], cx: &App) -> Vec<Row> {
     commands
         .iter()
         .map(|&command| {
-            row(SharedString::from(format!("keysrow-{}", command.id())), if several { command.label() } else { "快捷鍵" })
-                .indent(true)
-                .anchor(command.keys_row())
-                .trailing(shortcut_chip(command, cx))
+            row(
+                SharedString::from(format!("keysrow-{}", command.id())),
+                if several { command.label() } else { "快捷鍵" },
+            )
+            .indent(true)
+            .anchor(command.keys_row())
+            .trailing(shortcut_chip(command, cx))
         })
         .collect()
 }
@@ -171,7 +173,12 @@ pub fn drill_row(
 }
 
 /// A link to a place in the settings window.
-pub fn place_link(id: impl Into<SharedString>, title: impl Into<SharedString>, place: Place, cx: &App) -> impl IntoElement {
+pub fn place_link(
+    id: impl Into<SharedString>,
+    title: impl Into<SharedString>,
+    place: Place,
+    cx: &App,
+) -> impl IntoElement {
     let id: SharedString = id.into();
     controls::text_link(id, title, move |_, _, cx| app::go(place.clone(), cx), cx)
 }

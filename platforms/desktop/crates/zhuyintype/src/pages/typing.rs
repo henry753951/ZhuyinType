@@ -11,7 +11,7 @@ use super::Page;
 use crate::app::{self, Place};
 use crate::theme::{self, size, text};
 use crate::ui::current_keys::{Command, CurrentKeys};
-use crate::ui::demo::{DemoFrame, Segment, block, choice_demo, mini_demo};
+use crate::ui::demo::{DemoFrame, InfoContent, Segment, block, choice_demo, mini_demo};
 use crate::ui::feature::{command_feature_row, command_row, drill_row, feature_row, keys_overview_link, place_link};
 use crate::ui::{h, key_combo, keycap, row, section, setting_row, v};
 
@@ -69,7 +69,11 @@ fn typing_page(cx: &App) -> AnyElement {
                     "punctuation",
                     "標點與符號的按鍵與說明",
                     "中文預設全形；英數與空白維持半形",
-                    if punctuation_off == 0 { "全部開啟".to_owned() } else { format!("已關閉 {punctuation_off} 項") },
+                    if punctuation_off == 0 {
+                        "全部開啟".to_owned()
+                    } else {
+                        format!("已關閉 {punctuation_off} 項")
+                    },
                 )),
         )
         .child(
@@ -94,7 +98,13 @@ fn typing_page(cx: &App) -> AnyElement {
                         .rows(cx),
                 )
                 .rows(feature_row("feature.deleteWord").rows(cx))
-                .row(drill_row(Page::Typing, "typingKeys", "所有打字的按鍵", "注音鍵、聲調、Backspace、方向鍵等固定的按鍵", ""))
+                .row(drill_row(
+                    Page::Typing,
+                    "typingKeys",
+                    "所有打字的按鍵",
+                    "注音鍵、聲調、Backspace、方向鍵等固定的按鍵",
+                    "",
+                ))
                 .footer(keys_overview_link(cx)),
         )
         .into_any_element()
@@ -162,7 +172,7 @@ fn typing_keys_page(_cx: &App) -> AnyElement {
 // MARK: - Info cards
 
 /// The ⓘ cards of this page by id, for `--popover` (screenshots): the title and what the card shows.
-pub fn info(id: &str) -> Option<(&'static str, fn(&mut Window, &mut App) -> AnyElement)> {
+pub fn info(id: &str) -> Option<(&'static str, InfoContent)> {
     Some(match id {
         "space" => ("空白鍵", |_, cx| space_info(cx)),
         "escape" => ("Esc", |_, cx| escape_info(cx)),
@@ -184,7 +194,8 @@ fn start() -> Segment {
 fn space_frames(action: &str) -> Vec<DemoFrame> {
     let mut frames = vec![
         DemoFrame::new([start(), Segment::marked("今"), Segment::marked("ㄊ")], "打 ㄐㄧㄣ ㄊㄧㄢ", 0.35).keys(["ㄊ"]),
-        DemoFrame::new([start(), Segment::marked("今"), Segment::marked("ㄊㄧㄢ")], "打 ㄐㄧㄣ ㄊㄧㄢ", 1.0).keys(["ㄢ"]),
+        DemoFrame::new([start(), Segment::marked("今"), Segment::marked("ㄊㄧㄢ")], "打 ㄐㄧㄣ ㄊㄧㄢ", 1.0)
+            .keys(["ㄢ"]),
         DemoFrame::new([start(), Segment::marked("今天")], "完成一聲", 1.2).keys(["空白"]),
     ];
     match action {
@@ -199,9 +210,8 @@ fn space_frames(action: &str) -> Vec<DemoFrame> {
             DemoFrame::new([start(), Segment::marked("今天 好")], "繼續打字", 1.0).keys(["ˇ"]),
             DemoFrame::new([Segment::document("早安，今天 好")], "按 Return：連同空白一起送出", 2.0).keys(["Return"]),
         ]),
-        _ => frames.push(
-            DemoFrame::new([Segment::document("早安，今天 ")], "再按一次：送出並輸入空白", 2.0).keys(["空白"]),
-        ),
+        _ => frames
+            .push(DemoFrame::new([Segment::document("早安，今天 ")], "再按一次：送出並輸入空白", 2.0).keys(["空白"])),
     }
     frames
 }
@@ -210,7 +220,10 @@ fn space_info(cx: &App) -> AnyElement {
     let current = app::settings(cx).get("spaceAction");
     let options = zt_core::settings::descriptor("spaceAction").map(|d| d.options.clone()).unwrap_or_default();
     v().gap(px(14.))
-        .child(note("打注音時，空白是一聲；打完以後，空白依這個設定。清單開著時，空白翻到下一頁；選字用選字鍵或 Return。", cx))
+        .child(note(
+            "打注音時，空白是一聲；打完以後，空白依這個設定。清單開著時，空白翻到下一頁；選字用選字鍵或 Return。",
+            cx,
+        ))
         .children(options.into_iter().map(|choice| {
             let action = choice.value.as_str().unwrap_or_default().to_owned();
             choice_demo(

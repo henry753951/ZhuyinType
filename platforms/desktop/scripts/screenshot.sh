@@ -20,14 +20,16 @@ export DISPLAY=$display
 export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -1)
 unset WAYLAND_DISPLAY
 settings=$(mktemp -d)/settings.json
+# ZT_SHOT_SETTINGS=FILE starts from those settings (features turned off, other choices).
+[ -n "${ZT_SHOT_SETTINGS:-}" ] && cp "$ZT_SHOT_SETTINGS" "$settings"
 for page in "${pages[@]}"; do
   for theme in light dark; do
     spec=$page; name=${spec//\//-}; name=${name//#/-}
     extra=()
     if [ -n "${ZT_SHOT_SIZE:-}" ]; then extra+=(--size "$ZT_SHOT_SIZE"); name=$name-$ZT_SHOT_SIZE; fi
     case $spec in popover:*) extra+=(--popover "${spec#popover:}"); name=popover-${spec#popover:}${ZT_SHOT_SIZE:+-$ZT_SHOT_SIZE}; spec=intro;; esac
-    case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac
     case $spec in *'#'*) extra+=(--row "${spec#*#}"); spec=${spec%%#*};; esac
+    case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac
     "$bin" --page "$spec" "${extra[@]}" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$name-$theme.log" &
     app=$!
     for _ in $(seq 50); do

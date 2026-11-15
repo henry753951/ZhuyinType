@@ -2,15 +2,16 @@
 //! macOS app renders `InfoCard` on its own for the same reason).
 
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window,
+    App, AppContext as _, Bounds, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window,
     WindowBounds, WindowOptions, div, px, size,
 };
 
 use crate::pages::{choosing, typing};
 use crate::theme::{self, size as sz};
 use crate::ui;
+use crate::ui::demo::InfoContent;
 
-type Card = (&'static str, fn(&mut Window, &mut App) -> AnyElement);
+type Card = (&'static str, InfoContent);
 
 /// The card `id` of any page that has cards.
 fn card(id: &str) -> Option<Card> {
@@ -34,21 +35,9 @@ impl Render for CardWindow {
             Some((title, content)) => ui::info_card(title.into(), content(window, cx), cx),
             None => div().p(px(20.)).child(format!("沒有 {} 這張說明卡", self.id)).into_any_element(),
         };
-        div()
-            .size_full()
-            .bg(p.window)
-            .text_color(p.text)
-            .font_family(theme::ui_font())
-            .p(px(16.))
-            .child(
-                div()
-                    .rounded(sz::RADIUS_CARD)
-                    .bg(p.card)
-                    .border_1()
-                    .border_color(p.separator)
-                    .shadow_lg()
-                    .child(content),
-            )
+        div().size_full().bg(p.window).text_color(p.text).font_family(theme::ui_font()).p(px(16.)).child(
+            div().rounded(sz::RADIUS_CARD).bg(p.card).border_1().border_color(p.separator).shadow_lg().child(content),
+        )
     }
 }
 

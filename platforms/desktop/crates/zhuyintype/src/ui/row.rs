@@ -15,6 +15,7 @@ use crate::app;
 use crate::theme::{self, size, text};
 
 type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type CardContent = Box<dyn Fn(&mut Window, &mut App) -> AnyElement>;
 
 /// What ends a row on the right.
 pub enum Accessory {
@@ -22,7 +23,7 @@ pub enum Accessory {
     /// The row goes somewhere (the whole row is the button).
     Chevron,
     /// A ⓘ with an explanation card.
-    Info { title: SharedString, content: Box<dyn Fn(&mut Window, &mut App) -> AnyElement> },
+    Info { title: SharedString, content: CardContent },
 }
 
 #[derive(IntoElement)]
@@ -234,7 +235,15 @@ impl RenderOnce for Row {
                     .when(self.wrap_value, |this| this.flex_1().min_w(px(0.)).justify_end())
                     .when_some(self.value, |this, value| {
                         if self.wrap_value {
-                            this.child(div().text_right().text_size(text::BODY).text_color(p.text_secondary).child(value))
+                            this.child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .text_right()
+                                    .text_size(text::BODY)
+                                    .text_color(p.text_secondary)
+                                    .child(value),
+                            )
                         } else {
                             this.child(controls::value_text(value, cx))
                         }

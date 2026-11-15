@@ -25,6 +25,9 @@ use gpui_kit::{
 use super::{h, v};
 use crate::theme::{self, Palette, motion, size, text};
 
+/// What an ⓘ card shows, built when the card opens: pages list their cards as (title, content) for `--popover`.
+pub type InfoContent = fn(&mut Window, &mut App) -> AnyElement;
+
 // MARK: - Frames
 
 /// How a run of demo text is drawn.
@@ -296,7 +299,7 @@ impl RenderOnce for DemoKeys {
             }))
             .with_animation(
                 SharedString::from(format!("{}-press-{}", self.id, self.step)),
-                Animation::new(motion::NORMAL).with_easing(ease_out_quint()),
+                Animation::new(motion::FAST).with_easing(ease_out_quint()),
                 |this, t| this.top(px(1.5 * (1. - t))).opacity(0.55 + 0.45 * t),
             )
     }
@@ -315,7 +318,13 @@ pub struct DemoLine {
 }
 
 pub fn demo_line(segments: impl IntoIterator<Item = Segment>) -> DemoLine {
-    DemoLine { segments: segments.into_iter().collect(), caret: None, font_size: px(15.), shows_caret: true, blinks: true }
+    DemoLine {
+        segments: segments.into_iter().collect(),
+        caret: None,
+        font_size: px(15.),
+        shows_caret: true,
+        blinks: true,
+    }
 }
 
 impl DemoLine {
@@ -347,11 +356,9 @@ fn caret(height: Pixels, blinks: bool, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
     let bar = div().flex_shrink_0().w(px(1.5)).h(height).mx(px(0.5)).bg(p.text);
     if blinks && !cx.reduce_motion() {
-        bar.with_animation(
-            "caret",
-            Animation::new(Duration::from_millis(1060)).repeat(),
-            |this, t| this.opacity(if t < 0.5 || t >= 1. { 1. } else { 0. }),
-        )
+        bar.with_animation("caret", Animation::new(Duration::from_millis(1060)).repeat(), |this, t| {
+            this.opacity(if t < 0.5 || t >= 1. { 1. } else { 0. })
+        })
         .into_any_element()
     } else {
         bar.into_any_element()
@@ -397,7 +404,9 @@ impl RenderOnce for DemoLine {
         for (index, item) in self.segments.iter().enumerate() {
             // Words of a composition are underlined separately, with a small gap between them.
             let gap = index + 1 < count && item.composed() && self.segments[index + 1].composed();
-            children.push(div().when(gap, |this| this.mr(px(1.5))).child(segment(item, self.font_size, &p)).into_any_element());
+            children.push(
+                div().when(gap, |this| this.mr(px(1.5))).child(segment(item, self.font_size, &p)).into_any_element(),
+            );
             if self.shows_caret && self.caret == Some(index) {
                 children.push(caret(caret_height, self.blinks, cx));
             }
@@ -434,7 +443,9 @@ impl RenderOnce for MiniList {
             .children(self.items.into_iter().enumerate().map(|(index, item)| {
                 let selected = index == 0;
                 let (word, reading) = match item.split_once(' ') {
-                    Some((word, reading)) => (SharedString::from(word.to_owned()), Some(SharedString::from(reading.to_owned()))),
+                    Some((word, reading)) => {
+                        (SharedString::from(word.to_owned()), Some(SharedString::from(reading.to_owned())))
+                    }
                     None => (item.clone(), None),
                 };
                 h().h(px(20.))
@@ -511,7 +522,9 @@ impl RenderOnce for MiniDemo {
                 h().w_full()
                     .gap(px(8.))
                     .when(looping, |this| this.child(play_pause(self.id.clone(), clock.clone(), cx)))
-                    .when(!frame.keys.is_empty(), |this| this.child(demo_keys(self.id.clone(), frame.keys.clone(), step)))
+                    .when(!frame.keys.is_empty(), |this| {
+                        this.child(demo_keys(self.id.clone(), frame.keys.clone(), step))
+                    })
                     .child(
                         div()
                             .flex_1()
@@ -610,7 +623,10 @@ pub struct PressedKeycap {
     trigger: usize,
 }
 
-pub fn pressed_keycap(id: impl Into<SharedString>, keys: impl IntoIterator<Item = impl Into<SharedString>>) -> PressedKeycap {
+pub fn pressed_keycap(
+    id: impl Into<SharedString>,
+    keys: impl IntoIterator<Item = impl Into<SharedString>>,
+) -> PressedKeycap {
     PressedKeycap { id: id.into(), keys: keys.into_iter().map(Into::into).collect(), note: None, trigger: 0 }
 }
 
@@ -655,7 +671,9 @@ impl RenderOnce for PressedKeycap {
                     .child(key)
             }))
             .when_some(self.note, |this, note| {
-                this.child(div().text_size(px(10.)).font_weight(FontWeight::MEDIUM).text_color(p.text_secondary).child(note))
+                this.child(
+                    div().text_size(px(10.)).font_weight(FontWeight::MEDIUM).text_color(p.text_secondary).child(note),
+                )
             })
             .with_animation(
                 SharedString::from(format!("{}-{key}-{}", self.id, self.trigger)),
@@ -663,7 +681,13 @@ impl RenderOnce for PressedKeycap {
                 |this, t| {
                     // Fade in over the first 40 %, go down around 45 %, spring back up.
                     let shown = (t / 0.4).min(1.);
-                    let press = if t < 0.3 { 0. } else if t < 0.45 { (t - 0.3) / 0.15 } else { (1. - (t - 0.45) / 0.55).max(0.) };
+                    let press = if t < 0.3 {
+                        0.
+                    } else if t < 0.45 {
+                        (t - 0.3) / 0.15
+                    } else {
+                        (1. - (t - 0.45) / 0.55).max(0.)
+                    };
                     this.opacity(shown).top(px(1.2 * press))
                 },
             )
