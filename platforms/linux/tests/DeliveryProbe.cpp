@@ -109,6 +109,15 @@ int main(int argc, char **argv) {
         if (report) std::cerr << "FAIL no host window large enough for the candidate list\n";
         return false;
     };
+    const auto commandFailed = [&] {
+        std::cerr << "FAIL xdotool or fcitx5-remote failed at phase " << phase << ": " << output.toStdString() << '\n';
+        app.exit(2);
+    };
+    const auto unexpected = [&] {
+        std::cerr << "FAIL unexpected field state at phase " << phase << " (commits=" << field.commits
+                  << ", delivered units=" << field.text().size() << ", preedit units=" << field.composition.size() << ")\n";
+        app.exit(3);
+    };
     QTimer tick;
     tick.setInterval(100);
     QObject::connect(&tick, &QTimer::timeout, &app, [&] {
@@ -116,13 +125,13 @@ int main(int argc, char **argv) {
         switch (phase) {
         case 0:
             if (!run("xdotool", {"windowfocus", "--sync", QString::number(field.winId())}) ||
-                !run("fcitx5-remote", {"-s", "zhuyintype"}) || !run("fcitx5-remote", {"-o"})) { app.exit(2); return; }
+                !run("fcitx5-remote", {"-s", "zhuyintype"}) || !run("fcitx5-remote", {"-o"})) { commandFailed(); return; }
             ++phase;
             break;
-        case 1: if (!type("su3cl3")) { app.exit(2); return; } ++phase; break;
+        case 1: if (!type("su3cl3")) { commandFailed(); return; } ++phase; break;
         case 2:
             if (field.composition != QStringLiteral("你好")) return;
-            if (!key("Return")) { app.exit(2); return; }
+            if (!key("Return")) { commandFailed(); return; }
             ++phase;
             break;
         case 3:
@@ -131,7 +140,7 @@ int main(int argc, char **argv) {
             phase = 30;
             break;
         case 30:
-            if (!type("su3") || !key("Down")) { app.exit(2); return; }
+            if (!type("su3") || !key("Down")) { commandFailed(); return; }
             phase = 4;
             break;
         case 4:
@@ -145,7 +154,7 @@ int main(int argc, char **argv) {
                 chosenText = field.composition;
             } else if (field.composition != chosenText) return;
             if (!field.hasFocus()) { std::cerr << "FAIL popup stole focus\n"; app.exit(4); return; }
-            if (!key("Return")) { app.exit(2); return; }
+            if (!key("Return")) { commandFailed(); return; }
             phase = 50;
             break;
         case 50:
@@ -155,7 +164,7 @@ int main(int argc, char **argv) {
             phase = 51;
             break;
         case 51:
-            if (!type("su3")) { app.exit(2); return; }
+            if (!type("su3")) { commandFailed(); return; }
             phase = 6;
             break;
         case 6:
@@ -168,13 +177,13 @@ int main(int argc, char **argv) {
             break;
         case 7:
             if (field.commits != commitsBeforePassword) { std::cerr << "FAIL secure transition committed stale text\n"; app.exit(3); return; }
-            if (!field.text().isEmpty()) { app.exit(3); return; }
-            if (!type("su3")) { app.exit(2); return; }
+            if (!field.text().isEmpty()) { unexpected(); return; }
+            if (!type("su3")) { commandFailed(); return; }
             ++phase;
             break;
         case 8:
             if (field.text() != "su3") return;
-            if (field.commits != commitsBeforePassword || !field.composition.isEmpty()) { app.exit(3); return; }
+            if (field.commits != commitsBeforePassword || !field.composition.isEmpty()) { unexpected(); return; }
             capture("secure-pass-through");
             if (qEnvironmentVariableIsSet("ZT_DELIVERY_PRESERVE_HOST")) {
                 std::cout << "PASS installed desktop service: real data, application commit, host candidate window, mouse pick and secure field\n";
@@ -187,25 +196,25 @@ int main(int argc, char **argv) {
             ++phase;
             break;
         case 9:
-            if (!type("su3cl3")) { app.exit(2); return; }
+            if (!type("su3cl3")) { commandFailed(); return; }
             phase = 90;
             break;
         case 90:
             if (field.composition.isEmpty()) return;
             knownBeforeOutage = field.composition;
             commitsBeforeOutage = field.commits;
-            if (!run("kill", {"-TERM", qEnvironmentVariable("ZT_DELIVERY_HOST_PID")})) { app.exit(2); return; }
+            if (!run("kill", {"-TERM", qEnvironmentVariable("ZT_DELIVERY_HOST_PID")})) { commandFailed(); return; }
             phase = 91;
             break;
         case 91:
             if (field.text() != knownBeforeOutage || !field.composition.isEmpty()) return;
-            if (field.commits != commitsBeforeOutage + 1) { app.exit(3); return; }
-            if (!type("abc123")) { app.exit(2); return; }
+            if (field.commits != commitsBeforeOutage + 1) { unexpected(); return; }
+            if (!type("abc123")) { commandFailed(); return; }
             phase = 10;
             break;
         case 10:
             if (field.text() != knownBeforeOutage + "abc123" || !field.composition.isEmpty()) return;
-            if (field.commits != commitsBeforeOutage + 1) { app.exit(3); return; }
+            if (field.commits != commitsBeforeOutage + 1) { unexpected(); return; }
             std::cout << "PASS real Qt application: composition, commit, visible caret-anchored host candidate window, mouse pick via poll, password, outage composition preservation once and unavailable-host pass-through\n";
             app.exit(0);
             break;

@@ -79,7 +79,10 @@ done
 # text fields (the self-host case) use the input method only if Fcitx is already there.
 host_args=(--background)
 if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then host_args=(--page keys); fi
-"$host" "${host_args[@]}" --ime-socket "$ZT_IME_SOCKET" --lexicon "$assets/lexicon.tsv" > "$work/host.log" 2>&1 &
+# ZT_DELIVERY_REAL_DATA=1: the host's own engine data (an installed package) instead of the four-word fixture.
+lexicon=(--lexicon "$assets/lexicon.tsv")
+if [[ ${ZT_DELIVERY_REAL_DATA:-0} == 1 ]]; then lexicon=(); fi
+"$host" "${host_args[@]}" --ime-socket "$ZT_IME_SOCKET" "${lexicon[@]}" > "$work/host.log" 2>&1 &
 host_pid=$!
 export ZT_DELIVERY_HOST_PID="$host_pid"
 for ((attempt=0; attempt<100; ++attempt)); do

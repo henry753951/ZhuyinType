@@ -97,9 +97,10 @@ nfpm 的版本與 SHA-256 固定在 `build.sh`，第一次使用時下載到 `~/
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop             # 安裝與移除
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --lint
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --gui ../../dist/desktop-shots
+platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --typing   # 先 scripts/build.sh linux --test
 ```
 
-`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。結果記錄在 [VALIDATION.md](VALIDATION.md)。
+`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。`--typing [BUILD]` 用安裝好的套件與真實資料，經 Fcitx 5 在 Qt 測試程式與設定視窗中實際打字（測試程式來自 `build.sh linux --test` 的建置目錄）。結果記錄在 [VALIDATION.md](VALIDATION.md)。
 
 ## 發布
 

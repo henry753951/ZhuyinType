@@ -3,6 +3,8 @@
 #
 #   packaging/linux/verify.sh DIST_DIR [image ...]      (default: every image below)
 #   packaging/linux/verify.sh DIST_DIR --lint           lintian (Debian 13) and rpmlint (Fedora) only
+#   packaging/linux/verify.sh DIST_DIR --typing [BUILD] typing through Fcitx 5 into a Qt application and the
+#                                                       settings window, with the installed package and its data
 #   packaging/linux/verify.sh DIST_DIR --gui OUT_DIR    the settings window on Xvfb + Mesa lavapipe, screenshot;
 #                                                       removal then stops it
 #
@@ -119,7 +121,7 @@ gui() {
     mkdir -p "$out"
     echo "== settings window (debian:13, Xvfb, lavapipe)"
     "$runtime" run --rm -v "$dist:/dist:ro" -v "$(realpath "$out"):/out" -e OWNER="$(id -u):$(id -g)" \
-        -e DEBIAN_FRONTEND=noninteractive debian:13 bash -c "set -e
+        -e DEBIAN_FRONTEND=noninteractive debian:13 bash -c "set -eo pipefail
         apt-get update -qq
         apt-get install -y -qq /dist/$(basename "$deb") xvfb xdotool imagemagick mesa-vulkan-drivers >/dev/null 2>&1
         Xvfb :9 -ac -screen 0 1400x1000x24 -nolisten tcp >/dev/null 2>&1 & sleep 1
@@ -137,9 +139,31 @@ gui() {
         echo PASS gui"
 }
 
+# Real typing: the installed package (its /usr/bin/zhuyintype, addon and engine data) under Xvfb with Fcitx 5 and
+# the Qt probe application of platforms/linux/tests, built by `scripts/build.sh linux --test` in the Debian 13
+# tester image (so only debian:13 runs it).
+typing() {
+    local build tests
+    build=$(realpath "$1")
+    tests=$(cd "$(dirname "$0")/../../../linux" && pwd)
+    [[ -x $build/fcitx-delivery-probe ]] || { echo "verify.sh：$build 沒有 fcitx-delivery-probe（先執行 build.sh linux --test）" >&2; exit 1; }
+    echo "== typing through Fcitx 5 (debian:13, installed package, real data)"
+    "$runtime" run --rm --init -v "$dist:/dist:ro" -v "$build:/build:ro" -v "$tests:/linux:ro" \
+        -e DEBIAN_FRONTEND=noninteractive debian:13 bash -c "set -eo pipefail
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends /dist/$(basename "$deb") fcitx5-frontend-qt6 libqt6widgets6 \
+            xvfb xauth xdotool x11-utils dbus-x11 dbus-daemon mesa-vulkan-drivers fonts-noto-cjk procps >/dev/null 2>&1
+        useradd -m tester
+        su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_REAL_DATA=1 ZT_REQUIRE_HOST=1 \
+            bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'
+        su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_REAL_DATA=1 ZT_DELIVERY_SELF_HOST=1 \
+            ZT_REQUIRE_HOST=1 bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'"
+}
+
 case "${1:-}" in
     --lint) lint; exit ;;
     --gui) gui "${2:?output directory}"; exit ;;
+    --typing) typing "${2:-${CARGO_TARGET_DIR:-$(dirname "$0")/../../target}/builder-debian13/fcitx5-debug}"; exit ;;
 esac
 images=("$@")
 [[ ${#images[@]} -gt 0 ]] || images=(debian:13 ubuntu:26.04 fedora:latest opensuse/tumbleweed)
