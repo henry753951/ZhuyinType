@@ -24,6 +24,8 @@
 | `fedora:latest`（Fedora 45） | dnf，不裝弱相依 | 通過 | — | `dnf remove` 後沒有留下任何檔案 |
 | `opensuse/tumbleweed` | zypper，`--allow-unsigned-rpm` | 通過 | — | `zypper remove` 後沒有留下任何檔案 |
 
+這四個映像的結果來自修正 lint 項目之前的建置（內容相同，差在 changelog、addon 的強化旗標與 rpm 中 addon 的權限、移除腳本改讀 `/proc`）。最後的建置在 Debian 13 重新安裝、啟動與 `apt purge`（下節）並通過 lint；Ubuntu、Fedora、openSUSE 的重跑因主機連線中斷尚未完成，下次執行 `verify.sh` 時補上。
+
 「檔案與函式庫」：執行檔、addon、兩個 Fcitx 設定、四個資料檔、manifest、選單項目、autostart、圖示與授權都在預期位置；`ldd` 檢查執行檔與 addon 沒有找不到的函式庫。
 
 `fcitx5-setup` 另外在 Debian 13 測試（Fcitx 沒有執行時）：沒有設定檔時建立含 `keyboard-us` 與 `zhuyintype` 的設定；已有設定檔時在第一個群組最後加入一項並留下 `profile.zhuyintype-backup`；之後啟動的 Fcitx 5 讀到 `keyboard-us`、`zhuyintype` 兩項；再執行一次不做變更；以 root 執行時拒絕（結束碼 3）。
