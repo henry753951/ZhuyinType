@@ -66,8 +66,15 @@ compile_linux() {
     local addon=$dir/fcitx5-$profile generator=()
     command -v ninja >/dev/null && generator=(-G Ninja)
     [[ -f $addon/CMakeCache.txt ]] && generator=()
+    # Packages get the distribution's hardening flags (stack protector, fortify, relro, bindnow).
+    local flags=()
+    if [[ $package == 1 ]] && command -v dpkg-buildflags >/dev/null; then
+        flags=(-DCMAKE_CXX_FLAGS="$(DEB_BUILD_MAINT_OPTIONS=hardening=+all dpkg-buildflags --get CPPFLAGS) \
+$(DEB_BUILD_MAINT_OPTIONS=hardening=+all dpkg-buildflags --get CXXFLAGS)"
+            -DCMAKE_MODULE_LINKER_FLAGS="$(DEB_BUILD_MAINT_OPTIONS=hardening=+all dpkg-buildflags --get LDFLAGS)")
+    fi
     step "Fcitx 5 addon（CMake，$addon）"
-    cmake -S "$root/platforms/linux" -B "$addon" "${generator[@]}" -Wno-dev \
+    cmake -S "$root/platforms/linux" -B "$addon" "${generator[@]}" "${flags[@]}" -Wno-dev \
         -DCMAKE_BUILD_TYPE="$([[ $release == 1 ]] && echo Release || echo Debug)" -DCMAKE_INSTALL_PREFIX=/usr \
         -DZT_IME_HOST="$dir/$profile/zhuyintype" >/dev/null \
         || fail "CMake 設定失敗；需要 libfcitx5core-dev、libfcitx5config-dev、libfcitx5utils-dev、nlohmann-json3-dev"
@@ -194,7 +201,8 @@ stage_linux() {
     rm -rf "$stage" && mkdir -p "$stage"
     install -Dm755 "$binary" "$stage/usr/bin/zhuyintype"
     install -Dm644 "$addon/libzhuyintype.so" "$stage/addon/libzhuyintype.so"
-    strip --strip-unneeded "$stage/addon/libzhuyintype.so"
+    strip --strip-unneeded --remove-section=.comment "$stage/addon/libzhuyintype.so"
+    strip --remove-section=.comment "$stage/usr/bin/zhuyintype"
     install -Dm644 "$addon/zhuyintype-addon.conf" "$stage/usr/share/fcitx5/addon/zhuyintype.conf"
     install -Dm644 "$root/platforms/linux/data/zhuyintype.conf" "$stage/usr/share/fcitx5/inputmethod/zhuyintype.conf"
     install -Dm755 "$packaging/fcitx5-setup" "$stage/usr/lib/zhuyintype/fcitx5-setup"
@@ -243,10 +251,17 @@ PY
     install -m644 "$root/README.md" "$stage/usr/share/doc/zhuyintype/README.md"
 
     install -m644 "$packaging/copyright" "$stage/deb/copyright"
-    local date
-    date=$(date -u -R -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}")
-    printf 'zhuyintype (%s) unstable; urgency=medium\n\n  * ZhuyinType %s；變更見 https://github.com/henry753951/ZhuyinType/releases\n\n -- %s  %s\n' \
-        "$version" "$version" "$ZT_MAINTAINER" "$date" | gzip -9n > "$stage/deb/changelog.gz"
+    # nfpm writes it as the .deb's changelog.Debian.gz and the .rpm's %changelog.
+    cat > "$stage/changelog.yml" <<YAML
+- semver: $version-1
+  date: $(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)
+  packager: $ZT_MAINTAINER
+  deb:
+    urgency: medium
+    distributions: [unstable]
+  changes:
+    - note: 版本 $version：https://github.com/henry753951/ZhuyinType/releases/tag/v$version
+YAML
 }
 
 # The nfpm configuration with the `# @shlibs@` lines replaced by the libraries the binaries need, `# @licenses@` by
@@ -257,7 +272,7 @@ render_config() {
     local inputs=$1 stage=$2 out=$3
     (cd "$stage/usr/share/licenses/zhuyintype" && ls) > "$inputs/licenses.txt"
     awk -v deb="$inputs/deb-shlibs.txt" -v rpm="$inputs/rpm-shlibs.txt" -v licenses="$inputs/licenses.txt" \
-        -v packaging="$packaging" '
+        -v packaging="$packaging" -v stage="$stage" '
         /^ *# @shlibs@$/ {
             indent = substr($0, 1, index($0, "#") - 1)
             file = (indent == "  ") ? deb : rpm
@@ -277,7 +292,7 @@ render_config() {
             }
             close(licenses); next
         }
-        { gsub(/\$\{ZT_PACKAGING\}/, packaging); print }' "$packaging/nfpm.yaml" > "$out"
+        { gsub(/\$\{ZT_PACKAGING\}/, packaging); gsub(/\$\{ZT_STAGE\}/, stage); print }' "$packaging/nfpm.yaml" > "$out"
 }
 
 package_linux() {

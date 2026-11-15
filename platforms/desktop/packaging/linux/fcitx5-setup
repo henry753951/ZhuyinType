@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Adds ZhuyinType to the current user's Fcitx 5 input methods.  Installed as /usr/lib/zhuyintype/fcitx5-setup and
 # run by the app as the signed-in user (never by the package scripts, never as root):
 #

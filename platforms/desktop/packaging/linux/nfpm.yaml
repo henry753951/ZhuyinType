@@ -1,5 +1,5 @@
 # ZhuyinType's .deb and .rpm, both from one staging tree.  scripts/build.sh fills the staging tree, exports the
-# ZT_* variables and replaces the `# @shlibs@` lines with the libraries the binaries link (dpkg-shlibdeps for the
+# ZT_* variables, writes changelog.yml (nfpm's changelog format) and replaces the `# @…@` lines with the libraries the binaries link (dpkg-shlibdeps for the
 # .deb, the ELF sonames and symbol versions for the .rpm).  Entries marked `packager:` go into one format only.
 name: zhuyintype
 arch: amd64
@@ -12,8 +12,9 @@ maintainer: ${ZT_MAINTAINER}
 vendor: ZhuyinType
 homepage: https://github.com/henry753951/ZhuyinType
 license: AGPL-3.0-only
+changelog: ${ZT_STAGE}/changelog.yml
 description: |-
-  ZhuyinType 注音輸入法（Fcitx 5）
+  注音輸入法（Fcitx 5），整句選字
   ZhuyinType 是開源的注音輸入法，以整句選字為主，詞庫與語言模型隨套件安裝。
   這個套件包含 Fcitx 5 的輸入法 addon、設定程式「ZhuyinType 設定」，以及登入後
   在背景執行的輸入法服務。安裝後在 Fcitx 5 的輸入方式中加入 ZhuyinType 即可使用。
@@ -54,13 +55,11 @@ contents:
     dst: /usr/lib64/fcitx5/libzhuyintype.so
     packager: rpm
     expand: true
-  # Debian's copyright file and changelog (an RPM carries its licences as %license and its changelog in the header).
+    file_info:
+      mode: 0755  # Fedora and openSUSE install shared objects executable; Debian does not
+  # Debian's copyright file (an RPM carries its licences as %license).
   - src: ${ZT_STAGE}/deb/copyright
     dst: /usr/share/doc/zhuyintype/copyright
-    packager: deb
-    expand: true
-  - src: ${ZT_STAGE}/deb/changelog.gz
-    dst: /usr/share/doc/zhuyintype/changelog.gz
     packager: deb
     expand: true
   - src: ${ZT_STAGE}/usr/bin/zhuyintype
@@ -136,4 +135,4 @@ deb:
   compression: xz
 rpm:
   compression: zstd
-  summary: ZhuyinType 注音輸入法（Fcitx 5）
+  summary: 注音輸入法（Fcitx 5），整句選字

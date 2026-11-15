@@ -3,7 +3,8 @@
 #
 #   packaging/linux/verify.sh DIST_DIR [image ...]      (default: every image below)
 #   packaging/linux/verify.sh DIST_DIR --lint           lintian (Debian 13) and rpmlint (Fedora) only
-#   packaging/linux/verify.sh DIST_DIR --gui OUT_DIR    the settings window on Xvfb + Mesa lavapipe, screenshot
+#   packaging/linux/verify.sh DIST_DIR --gui OUT_DIR    the settings window on Xvfb + Mesa lavapipe, screenshot;
+#                                                       removal then stops it
 #
 # For each image: the package and its dependencies install non-interactively; the files land where they should; the
 # binary and the addon resolve every library; on Debian/Ubuntu also fcitx5-setup adds ZhuyinType to a running Fcitx 5
@@ -123,8 +124,12 @@ gui() {
         sleep 2
         import -window root /out/settings.png && chown \$OWNER /out/settings.png
         echo \"window: \${win:-none}\"; tail -5 /tmp/app.log
-        kill \$app 2>/dev/null || true
-        [ -n \"\$win\" ] && echo PASS gui || { echo FAIL gui; exit 1; }"
+        [ -n \"\$win\" ] || { echo FAIL gui; exit 1; }
+        # Removal stops the running app (scripts/preremove.sh).
+        apt-get purge -y -qq zhuyintype >/dev/null
+        for i in \$(seq 25); do kill -0 \$app 2>/dev/null || break; sleep 0.2; done
+        if kill -0 \$app 2>/dev/null; then echo FAIL still running after removal; exit 1; fi
+        echo PASS gui"
 }
 
 case "${1:-}" in

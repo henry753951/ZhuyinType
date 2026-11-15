@@ -33,7 +33,7 @@ sudo dnf remove zhuyintype
 | `/usr/share/icons/hicolor/*/apps/zhuyintype.png` | 16 到 256 px 的圖示（由 `docs/assets/icon.png` 產生） |
 | `/usr/lib/zhuyintype/fcitx5-setup` | 把 ZhuyinType 加入使用者 Fcitx 5 輸入方式的小工具（見下節） |
 | `/usr/share/licenses/zhuyintype/` | AGPL-3.0 全文、NOTICE、資料來源（SOURCES.md、sources.json）、資料授權、nlohmann/json 告知、`Rust-crates.txt`（連結進執行檔的每個 Rust 套件與授權全文） |
-| `/usr/share/doc/zhuyintype/` | README；deb 另有 `copyright`、`changelog.gz` |
+| `/usr/share/doc/zhuyintype/` | README；deb 另有 `copyright`（DEP-5）與 `changelog.Debian.gz` |
 
 Core ML 神經模型只用於 macOS，Linux 套件不含。
 
@@ -43,9 +43,19 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 - 執行時載入的函式庫：`libvulkan1`、`libegl1`、`libwayland-client0`、`libwayland-egl1`、`fontconfig`，以及 `fcitx5 (>= 5.1.9)`。
 - 建議安裝：`fonts-noto-cjk`（rpm：`font(notosanscjktc)`）與 Vulkan 驅動程式 `mesa-vulkan-drivers`。
 
+## 套件對 `zhuyintype` 的要求
+
+套件與 addon 依賴程式的這些行為（UI 與 `zt-core` 實作時須符合）：
+
+- `zhuyintype --background`：只啟動輸入法服務，不開視窗；已有服務在執行時安靜結束（結束碼 0）。登入時的 autostart 與 addon 都這樣啟動它。
+- `zhuyintype`（沒有參數）：開啟設定視窗；已有服務在執行時請它顯示設定。
+- `--ime-socket PATH` 與 `--lexicon PATH`：測試用的隔離端點與詞庫（`platforms/linux/tests`）。
+- 引擎資料：先看 `ZT_DATA_DIR`，再看執行檔旁的 `../share/zhuyintype/data`（套件安裝為 `/usr/share/zhuyintype/data`），`lexicon.bin` 旁有 `lm/`、`lm_chat/`、`channel.bin`。
+- 第一次開啟時（或設定嚮導的啟用步驟）執行 `/usr/lib/zhuyintype/fcitx5-setup status`，需要時執行 `enable`，見下節。
+
 ## 維護腳本
 
-只有一個：移除（不是升級）前結束執行 `/usr/bin/zhuyintype` 的行程（`scripts/preremove.sh`）。安裝時不執行任何指令，也不修改使用者的設定；圖示與應用程式選單的快取由發行版的觸發程序更新。
+只有一個：移除（不是升級）前結束執行 `/usr/bin/zhuyintype` 的行程（`scripts/preremove.sh`，只看 `/proc/*/exe`，不需要其他工具）。安裝時不執行任何指令，也不修改使用者的設定；圖示與應用程式選單的快取由發行版的觸發程序更新。
 
 ## 加入 Fcitx 5 輸入方式（`fcitx5-setup`）
 
@@ -77,17 +87,19 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout>/d
 1. 以 `Dockerfile`（Debian 13：glibc 2.41、Fcitx 5.1.12）建立建置映像，標籤含 Dockerfile 與 `rust-toolchain.toml` 的雜湊，內容不變時沿用。映像中編譯 `zhuyintype`（release）與 addon，並以 `dpkg-shlibdeps`、`readelf` 算出相依、以 `scripts/rust-licenses.py` 收集 Rust 套件授權。docker 與 podman 都可以；`--native` 改在這台機器上編譯（套件會需要這台機器的 glibc 版本，只供測試）。
 2. 缺少引擎資料時執行 `tools/zt data fetch lexicon lm lm_chat`，再以 `tools/zt data compile data/build/compiled` 編譯（來源沒變時略過）。
 3. 整理套件內容到 `<target>/builder-debian13/package-stage`，以 ImageMagick 產生圖示。
-4. 把 `nfpm.yaml` 的 `# @shlibs@` 換成算出的相依，以 nfpm 產生 `dist/desktop/zhuyintype_<版本>_amd64.deb`、`zhuyintype-<版本>.x86_64.rpm` 與 `SHA256SUMS-linux`。
+4. 把 `nfpm.yaml` 的 `# @shlibs@` 換成算出的相依、`# @licenses@` 換成每個授權檔，寫出 `changelog.yml`（nfpm 依它產生 deb 的 `changelog.Debian.gz` 與 rpm 的 `%changelog`），以 nfpm 產生 `dist/desktop/zhuyintype_<版本>_amd64.deb`、`zhuyintype-<版本>.x86_64.rpm` 與 `SHA256SUMS-linux`，並確認兩個套件都含執行檔、addon 與詞庫。addon 以發行版的強化旗標編譯（`dpkg-buildflags`，hardening=+all）。
 
 nfpm 的版本與 SHA-256 固定在 `build.sh`，第一次使用時下載到 `~/zhuyintype/toolchains`（`ZT_TOOLCHAINS`）；建置映像的 cargo 快取也在那裡。版本號取自 `platforms/desktop/Cargo.toml`。建置映像第一次建立時下載 Debian 套件，主機離 `deb.debian.org` 較遠時可加 `ZT_DEBIAN_MIRROR=http://free.nchc.org.tw/debian`。
 
 ## 驗證
 
 ```sh
-platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop
+platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop             # 安裝與移除
+platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --lint
+platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --gui ../../dist/desktop-shots
 ```
 
-`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。也執行 lintian 與 rpmlint，並在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖。結果記錄在 [VALIDATION.md](VALIDATION.md)。
+`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。結果記錄在 [VALIDATION.md](VALIDATION.md)。
 
 ## 發布
 
