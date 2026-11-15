@@ -58,8 +58,19 @@ int main(int argc, char **argv) {
         QDir().mkpath(directory);
         QGuiApplication::primaryScreen()->grabWindow(0).save(QDir(directory).filePath(name + ".png"));
     };
-    const auto clickCandidate = [&] {
-        if (!run("xdotool", {"search", "--onlyvisible", "--pid", qEnvironmentVariable("ZT_DELIVERY_HOST_PID")})) return false;
+    // The host shows its window from its UI thread, a moment after the key's reply: callers retry until it appears,
+    // and only the last attempt reports why it failed.
+    int pickAttempts = 0;
+    const auto clickCandidate = [&](bool report) {
+        if (!run("xdotool", {"search", "--onlyvisible", "--pid", qEnvironmentVariable("ZT_DELIVERY_HOST_PID")})) {
+            if (!report) return false;
+            std::cerr << "FAIL no visible window of the host; its windows:\n";
+            if (run("xdotool", {"search", "--pid", qEnvironmentVariable("ZT_DELIVERY_HOST_PID")}))
+                for (const auto &window : QString::fromUtf8(output).trimmed().split('\n'))
+                    if (run("xwininfo", {"-id", window}))
+                        std::cerr << QString::fromUtf8(output).simplified().toStdString() << '\n';
+            return false;
+        }
         const auto windows = QString::fromUtf8(output).trimmed().split('\n');
         for (const auto &window : windows) {
             if (!run("xdotool", {"getwindowgeometry", "--shell", window})) continue;
@@ -75,13 +86,17 @@ int main(int argc, char **argv) {
             const auto absoluteY = QRegularExpression("Absolute upper-left Y:\\s+(-?[0-9]+)").match(info);
             if (!absoluteX.hasMatch() || !absoluteY.hasMatch()) return false;
             x = absoluteX.captured(1).toInt(); y = absoluteY.captured(1).toInt();
-            if (w < 100 || h < 50) continue;
+            if (w < 100 || h < 50) {
+                if (report) std::cerr << "skipped host window " << window.toStdString() << ": " << w << 'x' << h << '\n';
+                continue;
+            }
             const auto caret = field.mapToGlobal(field.inputMethodQuery(Qt::ImCursorRectangle).toRect().bottomLeft());
             if (std::abs(x - caret.x()) > 40 || std::abs(y - caret.y()) > h + 40) {
+                if (!report) return false;
                 std::cerr << "FAIL popup anchor: window=" << x << ',' << y << " caret=" << caret.x() << ',' << caret.y() << '\n';
                 return false;
             }
-            std::cout << "Qt popup visible at " << x << ',' << y << " size " << w << 'x' << h
+            std::cout << "Candidate window visible at " << x << ',' << y << " size " << w << 'x' << h
                 << "; native caret " << caret.x() << ',' << caret.y() << '\n';
             if (!run("xdotool", {"sleep", "0.3"})) return false;
             std::cout << "Before pick: focus=" << field.hasFocus() << " composition units=" << field.composition.size()
@@ -91,6 +106,7 @@ int main(int argc, char **argv) {
             if (!offset) offset = h * 65 / 100; // Second row of the two-candidate fixture, above the footer.
             return run("xdotool", {"mousemove", QString::number(x + 70), QString::number(y + offset), "click", "1"});
         }
+        if (report) std::cerr << "FAIL no host window large enough for the candidate list\n";
         return false;
     };
     QTimer tick;
@@ -120,7 +136,7 @@ int main(int argc, char **argv) {
             break;
         case 4:
             if (field.composition != QStringLiteral("你")) return;
-            if (!clickCandidate()) { app.exit(4); return; }
+            if (!clickCandidate(++pickAttempts == 30)) { if (pickAttempts == 30) app.exit(4); return; }
             ++phase;
             break;
         case 5:
@@ -161,7 +177,7 @@ int main(int argc, char **argv) {
             if (field.commits != commitsBeforePassword || !field.composition.isEmpty()) { app.exit(3); return; }
             capture("secure-pass-through");
             if (qEnvironmentVariableIsSet("ZT_DELIVERY_PRESERVE_HOST")) {
-                std::cout << "PASS installed desktop service: real data, application commit, shared Qt popup, mouse pick and secure field\n";
+                std::cout << "PASS installed desktop service: real data, application commit, host candidate window, mouse pick and secure field\n";
                 app.exit(0);
                 return;
             }
@@ -190,7 +206,7 @@ int main(int argc, char **argv) {
         case 10:
             if (field.text() != knownBeforeOutage + "abc123" || !field.composition.isEmpty()) return;
             if (field.commits != commitsBeforeOutage + 1) { app.exit(3); return; }
-            std::cout << "PASS real Qt application: composition, commit, visible caret-anchored shared Qt popup, mouse pick via poll, password, outage composition preservation once and unavailable-host pass-through\n";
+            std::cout << "PASS real Qt application: composition, commit, visible caret-anchored host candidate window, mouse pick via poll, password, outage composition preservation once and unavailable-host pass-through\n";
             app.exit(0);
             break;
         }

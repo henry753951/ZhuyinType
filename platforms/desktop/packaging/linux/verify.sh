@@ -92,7 +92,12 @@ redhat() {
     run "$image" bash -c "set -e
         $files_check
         addon=/usr/lib64/fcitx5/libzhuyintype.so
-        $install >/tmp/install.log 2>&1 || { tail -30 /tmp/install.log; echo FAIL install; exit 1; }
+        # zypper ends with 107 when another package's scriptlet fails in a container (systemd, dbus-broker); the
+        # transaction is complete, and the checks below decide.
+        status=0; $install >/tmp/install.log 2>&1 || status=\$?
+        if [ \$status = 107 ]; then echo \"note: \$(grep -iE 'scriptlet|%post' /tmp/install.log | head -3)\"
+        elif [ \$status != 0 ]; then tail -30 /tmp/install.log; echo FAIL install; exit 1; fi
+        rpm -q zhuyintype >/dev/null || { tail -30 /tmp/install.log; echo FAIL install; exit 1; }
         rpm -ql zhuyintype > /tmp/files
         echo \"installed: \$(rpm -q --qf '%{VERSION}-%{RELEASE} %{SIZE} bytes' zhuyintype)\"
         expect present; libraries

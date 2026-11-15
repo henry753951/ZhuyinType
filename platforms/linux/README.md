@@ -45,22 +45,24 @@ cmake --build build-addon
 ## 測試
 
 ```sh
-tools/zt --remote check desktop
-# 只重跑已建置的 addon 測試（主機上）：
-ctest --test-dir "$CARGO_TARGET_DIR/fcitx5-debug" --output-on-failure
+tools/zt --remote check desktop                       # cargo test 與四項 addon 測試，在測試映像中
+platforms/desktop/scripts/remote.sh scripts/build.sh linux --test
 ```
 
 | 測試 | 驗證範圍 | 服務 |
 |---|---|---|
 | `fcitx-broker-transport` | Unix socket 實際傳輸、分段讀取、UTF-8／UTF-16、錯誤 id/context/型別、超長框、格式錯誤、逾時與斷線 | 測試內的假服務 |
 | `fcitx-native` | 真正的服務與 Fcitx InputContext：組字、提交、重設、欄位隔離、安全切換、Caps Lock、Shift 放開、共用快捷鍵、組字 fallback 與銷毀隔離 | `zhuyintype --background` |
-| `fcitx-application-delivery` | 獨立 Xvfb、D-Bus、Fcitx 5 與 Qt 測試程式中的實際按鍵、候選字、滑鼠選字、安全欄位與服務中斷後保留已知組字一次 | `zhuyintype --background` |
-| `fcitx-self-host-settings` | 服務自己的設定視窗文字欄位，經 Fcitx addon 回到同一個行程 | `zhuyintype`（設定視窗） |
+| `fcitx-application-delivery` | 獨立 Xvfb、D-Bus、Fcitx 5 與 Qt 測試程式中的實際按鍵、候選字視窗的位置、滑鼠選字、安全欄位與服務中斷後保留已知組字一次 | `zhuyintype --background` |
+| `fcitx-self-host-settings` | 服務自己的設定視窗（快捷鍵頁的搜尋欄位）經 XIM、Fcitx addon 回到同一個行程，收到「你好」 | `zhuyintype --page keys` |
 
-需要服務的三項以 `ZT_IME_HOST`（CMake 參數，`build.sh` 會指定剛建置的 `zhuyintype`）啟動服務：`--background --ime-socket PATH --lexicon PATH`，設定與個人資料在暫存目錄。服務還沒有提供 broker 時（新的 Rust broker 在 `zt-core` 中撰寫），這三項回報「略過」（CTest 的 SKIP，結束碼 77）；`ZT_REQUIRE_HOST=1` 改為失敗。這三項原本以 Qt 服務 `zhuyintype-desktop --ime-host` 通過（[VALIDATION.md](VALIDATION.md)），broker 完成後須在新服務上重新驗證。
+需要服務的三項以 `ZT_IME_HOST`（CMake 參數，`build.sh` 指定剛建置的 `zhuyintype`）啟動服務：`--background --ime-socket PATH --lexicon PATH`（自身設定欄位那一項改用 `--page keys` 開啟設定視窗），設定與個人資料在暫存目錄。服務是 GPUI 程式，沒有顯示器時會結束，所以 `with-host.sh` 在沒有 `DISPLAY` 時自己開一個 Xvfb。`build.sh --test` 設定 `ZT_REQUIRE_HOST=1`：服務沒有提供 broker 時這三項失敗，不再略過。
 
-應用程式測試的測試程式用 Qt6 Widgets 6.8 以上（addon 本身不依賴 Qt），另需 `xvfb`、`xauth`、`xdotool`、`x11-utils`（`xwininfo`）、`dbus-x11`、`fcitx5-frontend-qt6`；缺少時不登記這兩項。`ZT_DELIVERY_CAPTURE_DIR` 可指定合成測試畫面的保存目錄。測試只結束自己建立的行程。
+`build.sh linux --test`（`tools/zt check desktop`）在 Debian 13 的測試映像（`packaging/linux/Dockerfile` 的 `tester` 階段）中執行，裡面有 Fcitx 5（含 Qt 與 GTK frontend）、Qt 6 Widgets、Xvfb、xdotool、`xwininfo`、D-Bus 與 Mesa lavapipe，四項都會登記並執行；`--native` 改在本機執行，缺少這些工具時不登記應用程式測試。`ZT_DELIVERY_CAPTURE_DIR` 可指定合成測試畫面的保存目錄。測試只結束自己建立的行程。
 
+應用程式測試先啟動 Fcitx 5，再啟動服務，和登入後 addon 啟動服務的順序相同：GPUI 只在啟動時尋找 XIM 伺服器，服務自己的文字欄位要在 Fcitx 已經執行時才會使用輸入法。GPUI 不送 XIM 的焦點通知，Fcitx 因此沒有「目前的輸入欄位」，`fcitx5-remote` 對 GPUI 視窗無效；自身設定欄位的測試改以觸發鍵（Ctrl＋Space）開啟輸入法，和使用者的操作相同。候選字視窗由服務的 UI 執行緒在回應之後顯示，測試等它出現再點選。
+
+## 平台範圍
 ## 平台範圍
 
 本階段以 X11 驗證。Wayland 的原生候選視窗需要 compositor 提供的輸入法 popup 介面與座標轉換，應先確認 Fcitx frontend 和 compositor 的協定接合方式；一般頂層視窗的可見性不能證明定位、層級與焦點正確。GTK、瀏覽器與沙箱應用程式須另外驗證。

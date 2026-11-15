@@ -85,7 +85,7 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout>/d
 `scripts/build.sh linux --package` 依序：
 
 1. 以 `Dockerfile`（Debian 13：glibc 2.41、Fcitx 5.1.12）建立建置映像，標籤含 Dockerfile 與 `rust-toolchain.toml` 的雜湊，內容不變時沿用。映像中編譯 `zhuyintype`（release）與 addon，並以 `dpkg-shlibdeps`、`readelf` 算出相依、以 `scripts/rust-licenses.py` 收集 Rust 套件授權。docker 與 podman 都可以；`--native` 改在這台機器上編譯（套件會需要這台機器的 glibc 版本，只供測試）。
-2. 缺少引擎資料時執行 `tools/zt data fetch lexicon lm lm_chat`，再以 `tools/zt data compile data/build/compiled` 編譯（來源沒變時略過）。
+2. 缺少引擎資料時執行 `tools/zt data fetch lexicon lm lm_chat`，再以 `tools/zt data compile` 編譯到 TSV 旁邊（來源沒變時略過；開發建置與 `zt-core` 的測試也從那裡讀）。
 3. 整理套件內容到 `<target>/builder-debian13/package-stage`，以 ImageMagick 產生圖示。
 4. 把 `nfpm.yaml` 的 `# @shlibs@` 換成算出的相依、`# @licenses@` 換成每個授權檔，寫出 `changelog.yml`（nfpm 依它產生 deb 的 `changelog.Debian.gz` 與 rpm 的 `%changelog`），以 nfpm 產生 `dist/desktop/zhuyintype_<版本>_amd64.deb`、`zhuyintype-<版本>.x86_64.rpm` 與 `SHA256SUMS-linux`，並確認兩個套件都含執行檔、addon 與詞庫。addon 以發行版的強化旗標編譯（`dpkg-buildflags`，hardening=+all）。
 

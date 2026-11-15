@@ -10,8 +10,9 @@
 #               Compiled in the Debian 13 builder image (packaging/linux/Dockerfile, docker or podman), so the
 #               packages install on Debian 13, Ubuntu 25.04, Fedora 42 and newer.  Engine data is fetched and
 #               compiled first when it is missing.
-#   --native    compile on this machine even for --package (the packages then need this machine's glibc and Fcitx)
-#   --test      also run `cargo test` and the addon's tests (`tools/zt check desktop`)
+#   --test      also run `cargo test` and the addon's tests against the real host (`tools/zt check desktop`), in the
+#               tester image: Fcitx 5, Qt 6 and Xvfb for the application tests (ZT_REQUIRE_HOST=1: none is skipped)
+#   --native    compile (and test) on this machine instead of an image; the packages then need this machine's glibc
 #   windows     packaging/windows/build.sh (the installer), when it exists
 #
 # Environment: CARGO_TARGET_DIR (default platforms/desktop/target), CARGO_BUILD_JOBS (default: cores, at most 16),
@@ -83,8 +84,8 @@ $(DEB_BUILD_MAINT_OPTIONS=hardening=+all dpkg-buildflags --get CXXFLAGS)"
     if [[ $test == 1 ]]; then
         step "cargo test"
         (cd "$desktop" && CARGO_TARGET_DIR=$dir cargo test --locked --workspace) || fail "cargo test 失敗"
-        step "addon 測試（CTest；需要 host 的測試在 host 尚未提供 broker 時略過）"
-        ctest --test-dir "$addon" --output-on-failure || fail "addon 測試失敗"
+        step "addon 測試（CTest，對真正的 zhuyintype 服務）"
+        ZT_REQUIRE_HOST=${ZT_REQUIRE_HOST:-1} ctest --test-dir "$addon" --output-on-failure || fail "addon 測試失敗"
     fi
     [[ $package == 1 ]] || return 0
 
@@ -117,21 +118,22 @@ rpm_requires() {
     done | sort -u
 }
 
-# The builder image for $packaging/Dockerfile and the toolchain the workspace pins.
+# The image of a $packaging/Dockerfile stage (builder, or tester for --test) with the toolchain the workspace pins.
 builder_image() {
-    local runtime=$1 rust hash image
+    local runtime=$1 stage=$2 rust hash image
     rust=$(sed -n 's/^channel = "\(.*\)"$/\1/p' "$desktop/rust-toolchain.toml")
     hash=$(cat "$packaging/Dockerfile" "$desktop/rust-toolchain.toml" | sha256sum | cut -c1-12)
-    image=zhuyintype-builder:debian13-$hash
+    image=zhuyintype-$stage:debian13-$hash
     if ! "$runtime" image inspect "$image" >/dev/null 2>&1; then
-        step "建立建置映像 $image（第一次需要幾分鐘）" >&2
-        "$runtime" build --build-arg "RUST_VERSION=$rust" \
+        step "建立映像 $image（第一次需要幾分鐘）" >&2
+        "$runtime" build --target "$stage" --build-arg "RUST_VERSION=$rust" \
             --build-arg "DEBIAN_MIRROR=${ZT_DEBIAN_MIRROR:-}" -t "$image" "$packaging" >&2 \
             || fail "建置映像失敗（見上方）"
     fi
     echo "$image"
 }
 
+# Runs this script with the same target and options in the builder image (packages) or the tester image (--test).
 compile_in_builder() {
     local runtime=${ZT_CONTAINER:-}
     if [[ -z $runtime ]]; then
@@ -139,18 +141,29 @@ compile_in_builder() {
     fi
     [[ -n $runtime ]] || fail "找不到 docker 或 podman。套件在 Debian 13 映像中編譯，以便在較舊的發行版安裝；
   請安裝其中一個（Ubuntu：sudo apt install podman），或加上 --native 改在這台機器上編譯"
-    local image dir=$target_dir/builder-debian13 cargo_home=$toolchains/cargo-debian13 user=() mounts=()
-    image=$(builder_image "$runtime")
+    local image dir=$target_dir/builder-debian13 cargo_home=$toolchains/cargo-debian13 user=() mounts=() args=(linux)
+    image=$(builder_image "$runtime" "$([[ $test == 1 ]] && echo tester || echo builder)")
+    [[ $release == 1 ]] && args+=(--release)
+    [[ $package == 1 ]] && args+=(--package)
+    [[ $test == 1 ]] && args+=(--test)
     mkdir -p "$dir" "$cargo_home"
-    if [[ $runtime == *podman* ]]; then user=(--userns=keep-id); else user=(-u "$(id -u):$(id -g)"); fi
+    # The calling user, so files in the target directory stay theirs; with docker the user's passwd entry comes
+    # along (D-Bus in the tests looks it up).
+    if [[ $runtime == *podman* ]]; then
+        user=(--userns=keep-id)
+    else
+        user=(-u "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro)
+    fi
     # The crate download cache is this machine's (cargo locks it while it writes), so crates are fetched once.
     local registry=${CARGO_HOME:-$HOME/.cargo}/registry
     mkdir -p "$registry"
     mounts=(-v "$root:/src" -v "$dir:/target" -v "$cargo_home:/cargo" -v "$registry:/cargo/registry")
     step "在 $image 中編譯"
-    "$runtime" run --rm "${user[@]}" "${mounts[@]}" \
+    # --init: an init process reaps the tests' X servers and daemons (xvfb-run waits for a signal PID 1 ignores).
+    "$runtime" run --rm --init "${user[@]}" "${mounts[@]}" \
         -e HOME=/tmp -e CARGO_HOME=/cargo -e CARGO_TARGET_DIR=/target -e CARGO_BUILD_JOBS -e ZT_IN_BUILDER=1 \
-        -w /src "$image" bash platforms/desktop/scripts/build.sh linux --package \
+        -e ZT_REQUIRE_HOST -e ZT_DELIVERY_CAPTURE_DIR \
+        -w /src "$image" bash platforms/desktop/scripts/build.sh "${args[@]}" \
         || fail "建置映像中的編譯失敗（見上方）"
     compiled=$dir
 }
@@ -183,8 +196,9 @@ prepare_data() {
         step "下載引擎資料（tools/zt data fetch lexicon lm lm_chat）"
         "$root/tools/zt" data fetch lexicon lm lm_chat || fail "下載引擎資料失敗"
     fi
+    # Next to the TSV files, where the app's development builds, zt-core's tests and the evaluations find them.
     step "編譯詞庫與語言模型（tools/zt data compile）"
-    "$root/tools/zt" data compile "$data/compiled" --quiet || fail "tools/zt data compile 失敗"
+    "$root/tools/zt" data compile --quiet || fail "tools/zt data compile 失敗"
 }
 
 icon() {
@@ -213,7 +227,7 @@ stage_linux() {
         icon "$size" "$stage/usr/share/icons/hicolor/${size}x${size}/apps/zhuyintype.png"
     done
 
-    local share=$stage/usr/share/zhuyintype/data compiled=$data/compiled
+    local share=$stage/usr/share/zhuyintype/data compiled=$data
     mkdir -p "$share/lm" "$share/lm_chat" "$share/channel"
     cp "$compiled"/lexicon.{bin,json} "$compiled"/channel.{bin,json} "$share/"
     cp "$compiled"/lm/lm.{bin,json} "$data"/lm/{NOTICE.md,articles.tsv.gz} "$share/lm/"
@@ -337,7 +351,11 @@ build_linux() {
         compile_linux "$CARGO_TARGET_DIR"
         return
     fi
-    if [[ $package == 1 && $native == 0 ]]; then
+    if [[ $test == 1 && -f $root/data/build/lexicon.tsv ]]; then
+        # zt-core's real-data tests read the compiled files beside the downloaded TSV files (skipped without data).
+        "$root/tools/zt" data compile --quiet || fail "tools/zt data compile 失敗"
+    fi
+    if [[ ($package == 1 || $test == 1) && $native == 0 ]]; then
         compile_in_builder
     else
         compile_linux "$target_dir"
