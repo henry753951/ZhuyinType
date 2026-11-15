@@ -246,7 +246,11 @@ fn ceil(value: f32) -> f32 {
 }
 
 /// Lays the window out for `p` (macOS `CandidateContentView.update`), keeping at least `steady` (the largest size of
-/// the list shown, so turning pages never resizes the window).
+/// the list shown, so turning pages never resizes the window), never wider than `max_width`.
+///
+/// A horizontal list too wide for `max_width` first drops the 單字／修正 switches (a list switched on keeps its
+/// switch), then shows fewer candidates of the page (always the selected one) rather than squeezing their text; the
+/// keys still pick the hidden ones.  Callers with a narrow room (the setup wizard's practice stage) pass its width.
 pub fn compute(
     p: &Presentation,
     extras: Extras<'_>,
@@ -255,6 +259,23 @@ pub fn compute(
     steady: (f32, f32),
     measure: &mut dyn Measure,
 ) -> PanelLayout {
+    let (layout, natural) = compute_fitted(p, extras, style, max_width, steady, measure);
+    if style.layout == Layout::Horizontal && style.shows_list_switches && natural > max_width {
+        let style = PanelStyle { shows_list_switches: false, ..style.clone() };
+        return compute_fitted(p, extras, &style, max_width, steady, measure).0;
+    }
+    layout
+}
+
+/// The layout and the width the window would want with no limit.
+fn compute_fitted(
+    p: &Presentation,
+    extras: Extras<'_>,
+    style: &PanelStyle,
+    max_width: f32,
+    steady: (f32, f32),
+    measure: &mut dyn Measure,
+) -> (PanelLayout, f32) {
     let vertical = style.layout == Layout::Vertical;
     let fs = style.font_size;
     let compact = style.compact;
@@ -355,15 +376,48 @@ pub fn compute(
             Measured { text_w, annotation_w, preferred }
         })
         .collect();
-    let count = p.rows.len();
+    // The rows shown: all of them, or (a horizontal list too wide for `max_width`) as many as fit at their natural
+    // widths, from the start of the page or ending at the selected one.
+    let (shown_start, shown_end) = if vertical {
+        (0, p.rows.len())
+    } else {
+        let room = max_width - padding * 2. - footer_width;
+        let fits = |range: std::ops::Range<usize>| {
+            let rows = &measured[range];
+            rows.iter().map(|m| m.preferred).sum::<f32>() + rows.len().saturating_sub(1) as f32 * spacing <= room
+        };
+        let mut end = p.rows.len();
+        while end > 1 && !fits(0..end) {
+            end -= 1;
+        }
+        let selected = p.selected.unwrap_or(0).min(p.rows.len().saturating_sub(1));
+        if end < p.rows.len() && selected >= end {
+            let mut start = selected + 1 - end.max(1);
+            while start < selected && !fits(start..selected + 1) {
+                start += 1;
+            }
+            (start, selected + 1)
+        } else {
+            (0, end)
+        }
+    };
+    let all_natural: f32 = measured.iter().map(|m| m.preferred).sum();
+    let measured = &measured[shown_start..shown_end];
+    let count = measured.len();
     let gaps = count.saturating_sub(1) as f32 * spacing;
     let natural: f32 = measured.iter().map(|m| m.preferred).sum();
+    let wanted = if vertical {
+        width.max(measured.iter().map(|m| m.preferred).fold(0., f32::max) + padding * 2.)
+    } else {
+        width.max(all_natural + p.rows.len().saturating_sub(1) as f32 * spacing + padding * 2. + footer_width)
+    };
     if vertical {
-        width = width.max(measured.iter().map(|m| m.preferred).fold(0., f32::max) + padding * 2.);
+        width = wanted;
     } else {
         width = width.max(natural + gaps + padding * 2. + footer_width);
     }
     width = width.max(footer_width + padding * 2.);
+    let wanted = ceil(wanted.max(footer_width + padding * 2.));
     width = ceil(width.max(steady.0)).min(max_width);
 
     let notice_frame = Frame::new(NOTICE_X, padding, (width - NOTICE_X * 2.).max(0.), notice_height);
@@ -393,9 +447,10 @@ pub fn compute(
     let rows = p
         .rows
         .iter()
-        .zip(&measured)
         .enumerate()
-        .map(|(index, (row, m))| {
+        .skip(shown_start)
+        .zip(measured)
+        .map(|((index, row), m)| {
             let row_width = if vertical { width - padding * 2. } else { (m.preferred * scale).floor() };
             let frame = Frame::new(x, row_y, row_width.max(0.), row_height);
             if vertical {
@@ -476,7 +531,7 @@ pub fn compute(
         y += footer_height;
     }
     let height = (y + padding).max(if list_open { steady.1 } else { 0. });
-    PanelLayout {
+    let layout = PanelLayout {
         width,
         height,
         font_size: fs,
@@ -502,7 +557,8 @@ pub fn compute(
         pager,
         text_inset: text_inset_total,
         list_open,
-    }
+    };
+    (layout, wanted)
 }
 
 struct ParsedNotice {
@@ -703,5 +759,25 @@ mod tests {
         style.keys.zhuyin.clear();
         let layout = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
         assert_eq!(layout.hint.expect("a reading row").keycap_w, 0.);
+    }
+
+    #[test]
+    fn narrow_horizontal_list_drops_switches_then_candidates() {
+        let style = PanelStyle { layout: Layout::Horizontal, ..PanelStyle::default() };
+        let full = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        assert!(full.single.is_some() && full.rows.len() == 9);
+        // A little narrower: the switches go, every candidate stays at its natural width.
+        let switches = full.single.as_ref().map_or(0., |single| single.frame.w)
+            + full.corrections.as_ref().map_or(0., |toggle| toggle.frame.w);
+        let narrower = compute(&list(9), Extras::default(), &style, full.width - 10., (0., 0.), &mut Fixed);
+        assert!(narrower.single.is_none() && narrower.corrections.is_none());
+        assert!(switches > 10. && narrower.rows.len() == 9 && narrower.width <= full.width - 10.);
+        // Much narrower: fewer candidates, never squeezed, the selected one (the second) among them.
+        let narrow = compute(&list(9), Extras::default(), &style, 300., (0., 0.), &mut Fixed);
+        assert!(narrow.width <= 300.);
+        assert!(narrow.rows.len() < 9 && narrow.rows.iter().any(|row| row.selected));
+        assert!(narrow.rows.iter().all(|row| row.main_width >= Fixed.width(&row.text, 18., false)));
+        // The rows keep their page indices (what a click picks).
+        assert_eq!(narrow.rows[0].index, 0);
     }
 }
