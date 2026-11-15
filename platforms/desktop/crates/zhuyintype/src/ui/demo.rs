@@ -17,9 +17,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, Context, Div, ElementId, Entity, FontWeight, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement,
-    Styled, Task, Window, div, ease_out_quint, px,
+    Animation, AnimationExt as _, AnyElement, App, Context, Div, ElementId, Entity, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Task, Window,
+    div, ease_out_quint, px,
 };
 
 use super::keycap::keycap;
@@ -412,7 +412,8 @@ impl RenderOnce for DemoLine {
 
 // MARK: - The mini list
 
-/// A few candidates under a demo line, in the candidate window's style; the first is selected.
+/// A few candidates under a demo line: the real candidate window (`candidate::panel`) at its smallest size, compact,
+/// the first candidate selected.  An item 「明 ㄇㄧㄥˊ」 shows its reading as the annotation.
 #[derive(IntoElement)]
 pub struct MiniList {
     items: Vec<SharedString>,
@@ -423,45 +424,52 @@ pub fn mini_list(items: impl IntoIterator<Item = impl Into<SharedString>>) -> Mi
 }
 
 impl RenderOnce for MiniList {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        v().p(px(4.))
-            .min_w(px(92.))
-            .rounded(px(9.))
-            .bg(p.panel)
-            .border_1()
-            .border_color(p.panel_border)
-            .shadow_md()
-            .children(self.items.into_iter().enumerate().map(|(index, item)| {
-                let selected = index == 0;
-                let (word, reading) = match item.split_once(' ') {
-                    Some((word, reading)) => {
-                        (SharedString::from(word.to_owned()), Some(SharedString::from(reading.to_owned())))
-                    }
-                    None => (item.clone(), None),
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        use crate::candidate::layout::{Extras, WindowMeasure};
+        use crate::candidate::panel::CandidatePanel;
+        use crate::candidate::style::{KeyLabels, PanelStyle};
+        use zt_core::presentation::{CandidateRow, Presentation};
+
+        let rows: Vec<CandidateRow> = self
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let (text, annotation) = match item.split_once(' ') {
+                    Some((word, reading)) => (word.to_owned(), Some(reading.to_owned())),
+                    None => (item.to_string(), None),
                 };
-                h().h(px(20.))
-                    .px(px(6.))
-                    .gap(px(6.))
-                    .rounded(px(5.))
-                    .when(selected, |this| this.bg(p.accent))
-                    .child(
-                        div()
-                            .text_size(px(10.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(if selected { p.on_accent.opacity(0.85) } else { p.text_secondary })
-                            .child(SharedString::from((index + 1).to_string())),
-                    )
-                    .child(div().text_size(px(13.)).text_color(if selected { p.on_accent } else { p.text }).child(word))
-                    .when_some(reading, |this, reading| {
-                        this.child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(if selected { p.on_accent.opacity(0.8) } else { p.text_tertiary })
-                                .child(reading),
-                        )
-                    })
-            }))
+                CandidateRow { index, text, annotation, key: char::from_digit(index as u32 + 1, 10) }
+            })
+            .collect();
+        let count = rows.len();
+        let presentation = Presentation {
+            rows,
+            count,
+            selection: Some(0),
+            selected: Some(0),
+            page_count: 1,
+            page_size: count,
+            ..Presentation::default()
+        };
+        let style = PanelStyle {
+            font_size: 13.,
+            compact: true,
+            shows_zhuyin_hint: false,
+            shows_list_switches: false,
+            keys: KeyLabels {
+                zhuyin: String::new(),
+                single: String::new(),
+                corrections: String::new(),
+                ..KeyLabels::default()
+            },
+            ..PanelStyle::default()
+        };
+        let mut panel = CandidatePanel::new();
+        panel.hover = false;
+        panel.animates = false;
+        panel.update(&presentation, Extras::default(), &style, 4000., false, &mut WindowMeasure(window));
+        panel.render(&theme::palette(cx), None, window)
     }
 }
 

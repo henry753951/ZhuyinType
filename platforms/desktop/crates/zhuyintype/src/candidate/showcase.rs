@@ -32,15 +32,26 @@ struct Showcase {
     sized: bool,
 }
 
+/// The settings every variant sets (so one variant's choices never leak into the next: screenshots share one
+/// settings file).
+const SHAPED: &[&str] = &[
+    "candidateLayout",
+    "candidateDensity",
+    "selectionKeys",
+    "candidatesPerPage",
+    "candidateFontSize",
+    "showsListSwitches",
+    "showsAnnotations",
+];
+
 /// The settings a variant draws with (on the screenshot's temporary settings file).
 fn configure(variant: &str, cx: &mut App) {
-    let mut values: Vec<(&str, Value)> = Vec::new();
-    if variant.starts_with("horizontal") {
-        values.push(("candidateLayout", "horizontal".into()));
+    for key in SHAPED {
+        app::reset_setting(key, cx);
     }
-    if variant.contains("compact") {
-        values.push(("candidateDensity", "compact".into()));
-    }
+    let mut values: Vec<(&str, Value)> =
+        vec![("candidateLayout", if variant.starts_with("horizontal") { "horizontal" } else { "vertical" }.into())];
+    values.push(("candidateDensity", if variant.contains("compact") { "compact" } else { "standard" }.into()));
     if variant == "minimal" {
         values.extend([
             ("selectionKeys", Value::from("asdfghjkl")),

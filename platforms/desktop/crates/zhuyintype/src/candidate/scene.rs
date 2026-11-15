@@ -242,7 +242,8 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
         .w(px(layout.width))
         .h(px(layout.height))
         .rounded(size::R_LG)
-        .bg(p.window)
+        // A stage is lighter than the page in both appearances (an input-like inset, as in Claude or Discord).
+        .bg(p.card)
         .border_1()
         .border_color(p.separator)
         .overflow_hidden()

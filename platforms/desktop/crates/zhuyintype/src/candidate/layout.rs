@@ -7,6 +7,7 @@ use zt_core::presentation::Presentation;
 
 use super::style::{Layout, PanelStyle};
 use crate::theme;
+use crate::theme::candidate as tokens;
 
 /// A rectangle in the window's own coordinates (top left origin, logical pixels).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -66,16 +67,57 @@ pub fn key_width(measure: &mut dyn Measure, key: &str, size: f32) -> f32 {
 }
 
 /// The geometry below is the macOS window's functional layout (what goes where, how big at each font size);
-/// colours, radii, shadows and the small text sizes come from `theme`.
+/// colours, radii, shadows and the small text sizes come from `theme::candidate`.
 ///
-/// The reading row's and the footer's font (macOS: 12 pt).
-pub const SMALL_FONT: f32 = 12.;
-/// The key caps of the reading row and the footer.
-pub const KEYCAP_HEIGHT: f32 = 19.;
-/// The 中/英 badge (macOS `ModeBadgeView.size`).
-pub const BADGE_W: f32 = 52.;
-pub const BADGE_H: f32 = 48.;
-pub const BADGE_FONT: f32 = 23.;
+/// The reading row's and the footer's labels.
+pub const SMALL_FONT: f32 = tokens::LABEL_FONT;
+/// The key caps of the reading row, the footer and the notices.
+pub const KEYCAP_HEIGHT: f32 = tokens::KEYCAP_H;
+/// The 中/英 badge.
+pub const BADGE_W: f32 = tokens::BADGE;
+pub const BADGE_H: f32 = tokens::BADGE;
+pub const BADGE_FONT: f32 = tokens::BADGE_FONT;
+/// The clickable box around a footer control or the reading row's key (the key cap sits centred in it).
+pub const CONTROL_H: f32 = 22.;
+/// A paging button.
+const PAGE_BUTTON: f32 = 22.;
+/// The page label between the paging buttons (「12/12」 fits).
+const PAGE_LABEL: f32 = 36.;
+/// Between a key cap and its label.
+const KEYCAP_GAP: f32 = 6.;
+/// Between the annotation and the candidate.
+const ANNOTATION_GAP: f32 = 8.;
+/// A notice row's text inset from the window's edge.
+const NOTICE_X: f32 = 12.;
+/// A notice row above candidates.
+const NOTICE_ROW: f32 = 24.;
+
+/// A key cap's width for `key` at the key caps' font: the label and 5 on each side, never narrower than tall.
+pub fn keycap_width(measure: &mut dyn Measure, key: &str) -> f32 {
+    (ceil(key_width(measure, key, tokens::KEYCAP_FONT)) + 10.).max(KEYCAP_HEIGHT)
+}
+
+/// The selection keys' column: its text size (`NUMBER_SCALE` of the candidates', at least the micro size) and its
+/// fixed width, that of the widest key the column can show (「9」 for digits, 「W」 for letters), so every page and every
+/// row puts its candidates at the same x.
+pub fn number_column(measure: &mut dyn Measure, font_size: f32, letters: bool) -> (f32, f32) {
+    let size = (font_size * tokens::NUMBER_SCALE).round().max(11.);
+    (size, ceil(measure.width(if letters { "W" } else { "9" }, size, true)))
+}
+
+/// How far the number's box moves down so its baseline sits on the candidate's (both are centred in the row; the
+/// smaller text's baseline would sit higher by the difference of the two half-heights below the centre).
+pub fn number_baseline_shift(font_size: f32, number_size: f32) -> f32 {
+    ((font_size - number_size) * BASELINE_BELOW_CENTRE).round()
+}
+
+/// The annotations' text size (the corrections' readings): smaller than the candidates, never under the micro size.
+pub fn annotation_font(font_size: f32) -> f32 {
+    (font_size * 0.68).round().max(11.)
+}
+
+/// The baseline's distance below the line box's centre, in ems, for the UI font (Inter: (ascent − descent) / 2).
+const BASELINE_BELOW_CENTRE: f32 = 0.3633;
 
 /// One candidate row, in the rows' area of the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -87,6 +129,7 @@ pub struct RowLayout {
     pub selected: bool,
     /// The row's index on the page (what a click picks).
     pub index: usize,
+    /// The number column's left edge (row coordinates); its width is `PanelLayout::number_width`.
     pub key_inset: f32,
     pub text_inset: f32,
     /// The width the candidate's own text gets, and the annotation's (both after squeezing).
@@ -121,14 +164,23 @@ pub struct ToggleLayout {
     pub keycap_w: f32,
 }
 
-/// The reading row above the list.
+/// The reading row above the list: the reading on the left; at the right end the key that types it, as a key cap
+/// named 「注音」 the way the footer names its switches.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HintLayout {
+    /// The whole row (it is clickable when `clickable`).
     pub frame: Frame,
+    /// The reading's x in the row.
+    pub text_x: f32,
     pub key: String,
     pub hint: String,
-    /// Negative without a key cap: the text starts at the left edge (macOS −8.5).
+    /// 0 without a key cap.
     pub keycap_w: f32,
+    /// The key's name after its cap (「注音」) and its width.
+    pub key_label: &'static str,
+    pub key_label_w: f32,
+    /// The key group's right edge's distance from the row's right edge.
+    pub keycap_right: f32,
     pub clickable: bool,
 }
 
@@ -151,13 +203,22 @@ pub struct PanelLayout {
     pub compact: bool,
     pub vertical: bool,
     pub row_height: f32,
+    /// The window's corner radius and its padding; the rows' radius is the difference (concentric corners).
+    pub radius: f32,
+    pub padding: f32,
     pub row_radius: f32,
+    /// The selection keys' column: text size, fixed width, and the shift that puts its baseline on the candidate's.
+    pub number_font: f32,
+    pub number_width: f32,
+    pub number_shift: f32,
     pub notice: Option<NoticeLayout>,
     /// The composition, underlined, when the app cannot show it inline.
     pub preview: Option<(Frame, String, f32)>,
     pub hint: Option<HintLayout>,
     pub rows_area: Frame,
     pub rows: Vec<RowLayout>,
+    /// The hairline above the footer (vertical, edge to edge) or before it (horizontal, 1 × 14).
+    pub footer_rule: Option<Frame>,
     pub single: Option<ToggleLayout>,
     pub corrections: Option<ToggleLayout>,
     pub pager: Option<PagerLayout>,
@@ -185,7 +246,11 @@ fn ceil(value: f32) -> f32 {
 }
 
 /// Lays the window out for `p` (macOS `CandidateContentView.update`), keeping at least `steady` (the largest size of
-/// the list shown, so turning pages never resizes the window).
+/// the list shown, so turning pages never resizes the window), never wider than `max_width`.
+///
+/// A horizontal list too wide for `max_width` first drops the 單字／修正 switches (a list switched on keeps its
+/// switch), then shows fewer candidates of the page (always the selected one) rather than squeezing their text; the
+/// keys still pick the hidden ones.  Callers with a narrow room (the setup wizard's practice stage) pass its width.
 pub fn compute(
     p: &Presentation,
     extras: Extras<'_>,
@@ -194,15 +259,35 @@ pub fn compute(
     steady: (f32, f32),
     measure: &mut dyn Measure,
 ) -> PanelLayout {
+    let (layout, natural) = compute_fitted(p, extras, style, max_width, steady, measure);
+    if style.layout == Layout::Horizontal && style.shows_list_switches && natural > max_width {
+        let style = PanelStyle { shows_list_switches: false, ..style.clone() };
+        return compute_fitted(p, extras, &style, max_width, steady, measure).0;
+    }
+    layout
+}
+
+/// The layout and the width the window would want with no limit.
+fn compute_fitted(
+    p: &Presentation,
+    extras: Extras<'_>,
+    style: &PanelStyle,
+    max_width: f32,
+    steady: (f32, f32),
+    measure: &mut dyn Measure,
+) -> (PanelLayout, f32) {
     let vertical = style.layout == Layout::Vertical;
     let fs = style.font_size;
     let compact = style.compact;
     let keys = &style.keys;
     let row_height = ceil(fs * if compact { 1.32 } else { 1.55 });
-    let padding = if compact { 4. } else { 6. };
-    let spacing = if compact { 4. } else { 10. };
+    let padding = tokens::PADDING;
+    let spacing = if compact { 8. } else { tokens::HORIZONTAL_GAP };
     let hint_height = if compact { 23. } else { 26. };
-    let footer_height = if compact { 23. } else { 25. };
+    // The vertical footer: a hairline, then the controls' row (the gaps keep 4 px between the hairline and what
+    // sits on either side of it, 3 when compact).
+    let rule_gap = if compact { 2. } else { 3. };
+    let footer_height = rule_gap + 1. + (rule_gap - 1.) + CONTROL_H;
     let list_open = !p.rows.is_empty();
     let preview = extras.preview.filter(|text| !text.is_empty());
     let has_pages = p.page_count > 1 && list_open;
@@ -214,27 +299,39 @@ pub fn compute(
         && (style.shows_list_switches || p.tolerant == Some(true));
     let has_single = readable && !keys.single.is_empty() && (style.shows_list_switches || p.single);
     let has_footer = has_pages || has_toggle || has_single;
-    let page_width = if has_footer { 90. } else { 0. };
+    // Between the footer's groups (switches, pager).
+    let group_gap = 10.;
+    let page_width = if has_footer { PAGE_BUTTON * 2. + PAGE_LABEL } else { 0. };
 
     let toggle = |key: &str, label: &'static str, on: bool, measure: &mut dyn Measure| {
-        let keycap_w = (ceil(key_width(measure, key, SMALL_FONT)) + 9.).max(19.);
-        let preferred = keycap_w + 8. + measure.width(label, SMALL_FONT, false);
+        let keycap_w = keycap_width(measure, key);
+        let preferred = keycap_w + KEYCAP_GAP + measure.width(label, SMALL_FONT, false);
         (ToggleLayout { frame: Frame::default(), key: key.to_owned(), label, on, keycap_w }, preferred)
     };
     let (mut single, single_pref) = toggle(&keys.single, "單字", p.single, measure);
     let (mut corrections, corrections_pref) = toggle(&keys.corrections, "修正", p.tolerant == Some(true), measure);
-    let single_width = if has_single { ceil(single_pref) + 8. } else { 0. };
-    let toggle_width = if has_toggle { ceil(corrections_pref) + 8. } else { 0. };
-    let footer_width = page_width + single_width + toggle_width;
+    let single_width = if has_single { ceil(single_pref) + group_gap } else { 0. };
+    let toggle_width = if has_toggle { ceil(corrections_pref) + group_gap } else { 0. };
+    // The vertical footer starts 4 in from the padding; the horizontal one after a hairline with a gap each side.
+    let footer_lead = if vertical { 4. } else { spacing / 2. + 1. + spacing / 2. };
+    let footer_width = if has_footer { footer_lead + single_width + toggle_width + page_width + 2. } else { 0. };
 
-    // A notice on its own is a compact pill; above candidates it is a row of the window.
+    // The number column, fixed for the list (letters when any key is one).
+    let letters = p.rows.iter().any(|row| row.key.is_some_and(|key| !key.is_ascii_digit()));
+    let (number_font, number_width) = number_column(measure, fs, letters);
+    let key_inset = if compact { 6. } else { 8. };
+    let text_inset = key_inset + number_width + if compact { 6. } else { tokens::NUMBER_GAP };
+    let trailing_pad = if compact { 8. } else { 10. };
+
+    // A notice on its own is a small window of its own height; above candidates it is a row of the window.
     let mut width: f32 = if preview.is_some() || list_open { if compact { 96. } else { 160. } } else { 0. };
     let mut y = padding;
-    let notice_height = ceil(fs * 1.25);
+    let alone = preview.is_none() && !list_open;
+    let notice_height = if alone { tokens::NOTICE_H - padding * 2. } else { NOTICE_ROW };
     let mut notice = p.notice.as_deref().map(|message| parse_notice(message, (fs * 0.72).round(), measure));
     if let Some(notice) = &notice {
-        width = width.max(notice.preferred + 28.);
-        y += notice_height + if preview.is_some() || list_open { 3. } else { 0. };
+        width = width.max(notice.preferred + NOTICE_X * 2.);
+        y += notice_height + if alone { 0. } else { 2. };
     }
     let preview_y = y;
     let mut preview_width = 0.;
@@ -244,14 +341,20 @@ pub fn compute(
         y += row_height + if list_open { 5. } else { 0. };
     }
     let hint_y = y;
+    let hint_key = if has_hint { keys.zhuyin.clone() } else { String::new() };
+    let hint_keycap_w = if hint_key.is_empty() { 0. } else { keycap_width(measure, &hint_key) };
+    let hint_keycap_right = key_inset;
+    let hint_label = "注音";
+    let hint_label_w = if hint_key.is_empty() { 0. } else { ceil(measure.width(hint_label, SMALL_FONT, false)) };
     if has_hint {
+        let reading_w = measure.width(p.reading.as_deref().unwrap_or_default(), SMALL_FONT, false);
+        let key_room =
+            if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
+        width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
         y += hint_height;
     }
 
     // The rows at their natural widths.
-    let key_inset = if compact { 6. } else { 8. };
-    let text_inset = key_inset + ceil(fs * 0.68) + if compact { 5. } else { 8. };
-    let trailing_pad = if compact { 7. } else { 10. };
     struct Measured {
         text_w: f32,
         annotation_w: f32,
@@ -263,24 +366,61 @@ pub fn compute(
         .map(|row| {
             let annotation = row.annotation.as_deref().filter(|_| style.shows_annotations);
             let text_w = measure.width(&row.text, fs, false);
-            let annotation_w = annotation.map_or(0., |text| measure.width(text, fs * 0.68, false));
-            let preferred =
-                ceil(text_inset + text_w + if annotation.is_some() { annotation_w + 10. } else { 0. } + trailing_pad);
+            let annotation_w = annotation.map_or(0., |text| measure.width(text, annotation_font(fs), false));
+            let preferred = ceil(
+                text_inset
+                    + text_w
+                    + if annotation.is_some() { annotation_w + ANNOTATION_GAP } else { 0. }
+                    + trailing_pad,
+            );
             Measured { text_w, annotation_w, preferred }
         })
         .collect();
-    let count = p.rows.len();
+    // The rows shown: all of them, or (a horizontal list too wide for `max_width`) as many as fit at their natural
+    // widths, from the start of the page or ending at the selected one.
+    let (shown_start, shown_end) = if vertical {
+        (0, p.rows.len())
+    } else {
+        let room = max_width - padding * 2. - footer_width;
+        let fits = |range: std::ops::Range<usize>| {
+            let rows = &measured[range];
+            rows.iter().map(|m| m.preferred).sum::<f32>() + rows.len().saturating_sub(1) as f32 * spacing <= room
+        };
+        let mut end = p.rows.len();
+        while end > 1 && !fits(0..end) {
+            end -= 1;
+        }
+        let selected = p.selected.unwrap_or(0).min(p.rows.len().saturating_sub(1));
+        if end < p.rows.len() && selected >= end {
+            let mut start = selected + 1 - end.max(1);
+            while start < selected && !fits(start..selected + 1) {
+                start += 1;
+            }
+            (start, selected + 1)
+        } else {
+            (0, end)
+        }
+    };
+    let all_natural: f32 = measured.iter().map(|m| m.preferred).sum();
+    let measured = &measured[shown_start..shown_end];
+    let count = measured.len();
     let gaps = count.saturating_sub(1) as f32 * spacing;
     let natural: f32 = measured.iter().map(|m| m.preferred).sum();
+    let wanted = if vertical {
+        width.max(measured.iter().map(|m| m.preferred).fold(0., f32::max) + padding * 2.)
+    } else {
+        width.max(all_natural + p.rows.len().saturating_sub(1) as f32 * spacing + padding * 2. + footer_width)
+    };
     if vertical {
-        width = width.max(measured.iter().map(|m| m.preferred).fold(0., f32::max) + padding * 2.);
+        width = wanted;
     } else {
         width = width.max(natural + gaps + padding * 2. + footer_width);
     }
     width = width.max(footer_width + padding * 2.);
+    let wanted = ceil(wanted.max(footer_width + padding * 2.));
     width = ceil(width.max(steady.0)).min(max_width);
 
-    let notice_frame = Frame::new(14., padding, (width - 28.).max(0.), notice_height);
+    let notice_frame = Frame::new(NOTICE_X, padding, (width - NOTICE_X * 2.).max(0.), notice_height);
     if let Some(notice) = &mut notice {
         notice.layout.frame = notice_frame;
     }
@@ -299,7 +439,7 @@ pub fn compute(
     let rows_area = Frame::new(
         padding,
         rows_top,
-        (width - padding * 2. - if vertical { 0. } else { footer_width }).max(0.),
+        rows_room,
         if list_open { if vertical { slots as f32 * row_height } else { row_height } } else { 0. },
     );
     let mut x = 0.;
@@ -307,9 +447,10 @@ pub fn compute(
     let rows = p
         .rows
         .iter()
-        .zip(&measured)
         .enumerate()
-        .map(|(index, (row, m))| {
+        .skip(shown_start)
+        .zip(measured)
+        .map(|((index, row), m)| {
             let row_width = if vertical { width - padding * 2. } else { (m.preferred * scale).floor() };
             let frame = Frame::new(x, row_y, row_width.max(0.), row_height);
             if vertical {
@@ -320,14 +461,14 @@ pub fn compute(
             let annotation = row.annotation.clone().filter(|_| style.shows_annotations);
             // A squeezed row gives up its trailing pad before its text.
             let room = (frame.w - text_inset).max(0.);
-            let extra = if annotation.is_some() { m.annotation_w + 10. } else { 0. };
+            let extra = if annotation.is_some() { m.annotation_w + ANNOTATION_GAP } else { 0. };
             let needed = m.text_w + extra;
             let avail = (room - trailing_pad.min((room - needed).max(0.))).max(0.);
             let main_width = m.text_w.min((avail - extra).max(0.));
-            let annotation_width = (avail - main_width - 10.).max(0.);
+            let annotation_width = (avail - main_width - ANNOTATION_GAP).max(0.);
             RowLayout {
                 frame,
-                key: row.key.map(String::from).unwrap_or_default(),
+                key: row.key.map(|key| key.to_ascii_uppercase().to_string()).unwrap_or_default(),
                 text: row.text.clone(),
                 annotation,
                 selected: p.selected == Some(index),
@@ -342,44 +483,47 @@ pub fn compute(
     if vertical {
         y += rows_area.h;
     }
-    let page_y = if vertical { y + if compact { 1. } else { 3. } } else { y + (row_height - 22.) / 2. };
+    let page_y = if vertical { y + footer_height - CONTROL_H } else { y + (row_height - CONTROL_H) / 2. };
+    let footer_rule = has_footer.then(|| {
+        if vertical {
+            Frame::new(0., y + rule_gap, width, 1.)
+        } else {
+            // Right before the footer, however wide a steady window left the rows' room.
+            let x = width - padding - footer_width + spacing / 2.;
+            Frame::new(x.round(), rows_top + ((row_height - tokens::DIVIDER_H) / 2.).round(), 1., tokens::DIVIDER_H)
+        }
+    });
     if !vertical && list_open {
         y += row_height;
     }
-    let text_inset_total = if list_open { padding + text_inset } else { 14. };
+    let text_inset_total = if list_open { padding + text_inset } else { NOTICE_X };
 
-    let hint = has_hint.then(|| {
-        let hint_text = p.reading.clone().unwrap_or_default();
-        let key = keys.zhuyin.clone();
-        let keycap_w = if key.is_empty() { -8.5 } else { (ceil(key_width(measure, &key, SMALL_FONT)) + 9.).max(19.) };
-        let preferred = keycap_w + 9. + measure.width(&hint_text, SMALL_FONT, false);
-        HintLayout {
-            frame: Frame::new(
-                padding + 4.,
-                hint_y + if compact { 1. } else { 2. },
-                ceil(preferred).min(width - padding * 2. - 8.),
-                22.,
-            ),
-            key,
-            hint: hint_text,
-            keycap_w,
-            clickable: keys.zhuyin_clickable,
-        }
+    let hint = has_hint.then(|| HintLayout {
+        frame: Frame::new(padding, hint_y, width - padding * 2., hint_height - 2.),
+        text_x: key_inset,
+        key: hint_key.clone(),
+        hint: p.reading.clone().unwrap_or_default(),
+        keycap_w: hint_keycap_w,
+        key_label: hint_label,
+        key_label_w: hint_label_w,
+        keycap_right: hint_keycap_right,
+        clickable: keys.zhuyin_clickable,
     });
-    let footer_x = if vertical { padding + 4. } else { width - footer_width };
+    let footer_x = if vertical { padding + footer_lead } else { width - padding - footer_width + footer_lead };
     let single = (has_footer && has_single).then(|| {
-        single.frame = Frame::new(footer_x, page_y, (single_width - 8.).max(0.), 22.);
+        single.frame = Frame::new(footer_x, page_y, (single_width - group_gap).max(0.), CONTROL_H);
         single
     });
     let corrections = (has_footer && has_toggle).then(|| {
-        corrections.frame = Frame::new(footer_x + single_width, page_y, (toggle_width - 8.).max(0.), 22.);
+        corrections.frame = Frame::new(footer_x + single_width, page_y, (toggle_width - group_gap).max(0.), CONTROL_H);
         corrections
     });
+    let next_x = width - padding - 2. - PAGE_BUTTON;
     let pager = has_footer.then(|| PagerLayout {
-        label: if p.page_count > 0 { format!("{} / {}", p.page + 1, p.page_count) } else { String::new() },
-        label_frame: Frame::new(width - 65., page_y + 3., 40., 16.),
-        previous: Frame::new(width - 89., page_y, 22., 22.),
-        next: Frame::new(width - 25., page_y, 22., 22.),
+        label: if p.page_count > 0 { format!("{}/{}", p.page + 1, p.page_count) } else { String::new() },
+        label_frame: Frame::new(next_x - PAGE_LABEL, page_y + 3., PAGE_LABEL, 16.),
+        previous: Frame::new(next_x - PAGE_LABEL - PAGE_BUTTON, page_y, PAGE_BUTTON, PAGE_BUTTON),
+        next: Frame::new(next_x, page_y, PAGE_BUTTON, PAGE_BUTTON),
         previous_enabled: p.page > 0,
         next_enabled: p.page + 1 < p.page_count,
     });
@@ -387,14 +531,19 @@ pub fn compute(
         y += footer_height;
     }
     let height = (y + padding).max(if list_open { steady.1 } else { 0. });
-    PanelLayout {
+    let layout = PanelLayout {
         width,
         height,
         font_size: fs,
         compact,
         vertical,
         row_height,
-        row_radius: f32::from(if compact { theme::size::R_SM } else { theme::size::R_MD }),
+        radius: tokens::RADIUS,
+        padding,
+        row_radius: tokens::ROW_RADIUS,
+        number_font,
+        number_width,
+        number_shift: number_baseline_shift(fs, number_font),
         notice: notice.map(|notice| notice.layout),
         preview: preview.map(|text| {
             (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)
@@ -402,12 +551,14 @@ pub fn compute(
         hint,
         rows_area,
         rows,
+        footer_rule,
         single,
         corrections,
         pager,
         text_inset: text_inset_total,
         list_open,
-    }
+    };
+    (layout, wanted)
 }
 
 struct ParsedNotice {
@@ -426,17 +577,17 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
         None => (rest.to_owned(), String::new()),
     };
     let value = if value.is_empty() { value } else { format!("：{value}") };
-    let keycap_h = ceil(font_size * 1.45);
-    let keycap_w = (ceil(key.as_deref().map_or(0., |key| key_width(measure, key, font_size))) + 9.).max(keycap_h);
+    let keycap_h = KEYCAP_HEIGHT;
+    let keycap_w = key.as_deref().map_or(0., |key| keycap_width(measure, key));
     let lead = if key.is_some() {
-        keycap_w + 7.
+        keycap_w + KEYCAP_GAP + 2.
     } else if done {
-        font_size + 6.
+        tokens::NOTICE_ICON + KEYCAP_GAP
     } else {
         0.
     };
     let label_w = measure.width(&label, font_size, false);
-    let preferred = ceil(lead + label_w + measure.width(&value, font_size, true));
+    let preferred = ceil(lead + label_w + measure.width(&value, font_size, false));
     ParsedNotice {
         layout: NoticeLayout {
             frame: Frame::default(),
@@ -451,6 +602,16 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
             label_w,
         },
         preferred,
+    }
+}
+
+/// Text widths estimated from the font size (CJK one em, Latin a little over half): enough for heights, which do
+/// not depend on widths, where no window is at hand to measure with.
+pub struct Estimate;
+
+impl Measure for Estimate {
+    fn width(&mut self, text: &str, size: f32, _: bool) -> f32 {
+        text.chars().map(|c| if c.is_ascii() { size * 0.58 } else { size }).sum()
     }
 }
 
@@ -480,14 +641,14 @@ mod tests {
     fn vertical_window_has_the_macos_geometry() {
         let style = PanelStyle::default();
         let layout = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
-        // Rows 28 tall (18 × 1.55), padding 6, the reading row 26, the footer 25.
+        // Rows 28 tall (18 × 1.55), padding 4, the reading row 26, the footer 28 (hairline and controls).
         assert_eq!(layout.row_height, 28.);
         assert_eq!(layout.rows.len(), 9);
-        assert_eq!(layout.rows_area.y, 6. + 26.);
-        assert_eq!(layout.height, 6. + 26. + 9. * 28. + 25. + 6.);
-        // The text starts at 6 + 8 + ceil(18 × 0.68) + 8.
-        assert_eq!(layout.text_inset, 6. + 8. + 13. + 8.);
-        assert!(layout.pager.as_ref().is_some_and(|pager| pager.label == "1 / 2" && !pager.previous_enabled));
+        assert_eq!(layout.rows_area.y, 4. + 26.);
+        assert_eq!(layout.height, 4. + 26. + 9. * 28. + 28. + 4.);
+        // The text starts at 4 + 8 + the number column (「9」 at 11 px: 6) + 8.
+        assert_eq!(layout.text_inset, 4. + 8. + 6. + 8.);
+        assert!(layout.pager.as_ref().is_some_and(|pager| pager.label == "1/2" && !pager.previous_enabled));
         assert_eq!(layout.selected_frame().map(|frame| frame.y), Some(28.));
     }
 
@@ -511,14 +672,112 @@ mod tests {
     }
 
     #[test]
-    fn notice_alone_is_a_pill() {
+    fn notice_alone_is_a_small_window() {
         let p = Presentation { notice: Some("Enter 加入自訂詞：王小明".into()), ..Presentation::default() };
         let layout = compute(&p, Extras::default(), &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
         let notice = layout.notice.expect("a notice");
         assert_eq!(notice.key.as_deref(), Some("↩"));
         assert_eq!(notice.label, "加入自訂詞");
         assert_eq!(notice.value, "：王小明");
-        assert_eq!(layout.height, 6. + 23. + 6.);
-        assert!(layout.rows.is_empty() && layout.pager.is_none());
+        assert_eq!(layout.height, tokens::NOTICE_H);
+        assert_eq!(notice.keycap_h, tokens::KEYCAP_H);
+        assert!(layout.rows.is_empty() && layout.pager.is_none() && layout.footer_rule.is_none());
+    }
+
+    #[test]
+    fn corners_are_concentric() {
+        for compact in [false, true] {
+            for layout_kind in [Layout::Vertical, Layout::Horizontal] {
+                let style = PanelStyle { compact, layout: layout_kind, ..PanelStyle::default() };
+                let layout = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+                // The selection sits `padding` in from the window's edge, so its radius is the window's minus that.
+                assert_eq!(layout.radius, 10.);
+                assert_eq!(layout.padding, 4.);
+                assert_eq!(layout.row_radius, layout.radius - layout.padding);
+                assert_eq!(layout.rows_area.x, layout.padding);
+                if layout_kind == Layout::Vertical {
+                    assert_eq!(layout.rows_area.x + layout.rows_area.w, layout.width - layout.padding);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn number_column_has_a_fixed_width() {
+        // Digits: the width of 「9」; letters: the width of 「W」, at round(fs × 0.62), never under 11.
+        assert_eq!(number_column(&mut Fixed, 18., false), (11., 6.));
+        assert_eq!(number_column(&mut Fixed, 13., false), (11., 6.));
+        assert_eq!(number_column(&mut Fixed, 28., true), (17., 9.));
+        let style = PanelStyle::default();
+        let digits = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        assert!(digits.rows.iter().all(|row| row.text_inset == digits.rows[0].text_inset));
+        assert_eq!(digits.rows[0].text_inset - digits.rows[0].key_inset, digits.number_width + tokens::NUMBER_GAP);
+        // Letter keys are shown as capitals and take the wider column.
+        let keys: Vec<char> = "asdfg".chars().collect();
+        let letters = sample::list(sample::PANEL_WORDS, &[], false, 5, 0).presentation("", &keys);
+        let letters = compute(&letters, Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        assert_eq!(letters.rows[0].key, "A");
+        assert!(letters.number_width >= digits.number_width);
+        // The smaller number moves down to the candidate's baseline.
+        assert!(digits.number_shift > 0.);
+    }
+
+    #[test]
+    fn footer_hairlines() {
+        let vertical = compute(&list(9), Extras::default(), &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        let rule = vertical.footer_rule.expect("a hairline above the footer");
+        // Edge to edge, between the rows and the footer's controls.
+        assert_eq!((rule.x, rule.w, rule.h), (0., vertical.width, 1.));
+        assert!(rule.y > vertical.rows_area.y + vertical.rows_area.h);
+        assert!(vertical.pager.as_ref().is_some_and(|pager| pager.next.y >= rule.y + 1.));
+
+        let style = PanelStyle { layout: Layout::Horizontal, ..PanelStyle::default() };
+        let horizontal = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        let rule = horizontal.footer_rule.expect("a hairline before the footer");
+        let last = horizontal.rows.last().expect("rows").frame;
+        // 1 × 14, centred on the row, between the last candidate and the first footer control.
+        assert_eq!((rule.w, rule.h), (1., 14.));
+        assert!(rule.x > horizontal.rows_area.x + last.x + last.w);
+        let first_control = horizontal.single.as_ref().map_or(f32::MAX, |single| single.frame.x);
+        assert!(rule.x + 1. < first_control);
+        // Candidates 14 apart.
+        assert_eq!(horizontal.rows[1].frame.x - (horizontal.rows[0].frame.x + horizontal.rows[0].frame.w), 14.);
+    }
+
+    #[test]
+    fn reading_row_puts_the_key_at_its_end() {
+        let layout = compute(&list(9), Extras::default(), &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        let hint = layout.hint.expect("a reading row");
+        assert_eq!(hint.key, "`");
+        assert_eq!(hint.frame.x, layout.padding);
+        assert_eq!(hint.frame.w, layout.width - layout.padding * 2.);
+        assert_eq!(hint.text_x, layout.rows[0].key_inset);
+        assert_eq!(hint.key_label, "注音");
+        // The key group ends as far from the right edge as the reading starts from the left.
+        assert_eq!(hint.keycap_right, hint.text_x);
+        let mut style = PanelStyle::default();
+        style.keys.zhuyin.clear();
+        let layout = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        assert_eq!(layout.hint.expect("a reading row").keycap_w, 0.);
+    }
+
+    #[test]
+    fn narrow_horizontal_list_drops_switches_then_candidates() {
+        let style = PanelStyle { layout: Layout::Horizontal, ..PanelStyle::default() };
+        let full = compute(&list(9), Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
+        assert!(full.single.is_some() && full.rows.len() == 9);
+        // A little narrower: the switches go, every candidate stays at its natural width.
+        let switches = full.single.as_ref().map_or(0., |single| single.frame.w)
+            + full.corrections.as_ref().map_or(0., |toggle| toggle.frame.w);
+        let narrower = compute(&list(9), Extras::default(), &style, full.width - 10., (0., 0.), &mut Fixed);
+        assert!(narrower.single.is_none() && narrower.corrections.is_none());
+        assert!(switches > 10. && narrower.rows.len() == 9 && narrower.width <= full.width - 10.);
+        // Much narrower: fewer candidates, never squeezed, the selected one (the second) among them.
+        let narrow = compute(&list(9), Extras::default(), &style, 300., (0., 0.), &mut Fixed);
+        assert!(narrow.width <= 300.);
+        assert!(narrow.rows.len() < 9 && narrow.rows.iter().any(|row| row.selected));
+        assert!(narrow.rows.iter().all(|row| row.main_width >= Fixed.width(&row.text, 18., false)));
+        // The rows keep their page indices (what a click picks).
+        assert_eq!(narrow.rows[0].index, 0);
     }
 }
