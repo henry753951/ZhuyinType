@@ -209,6 +209,8 @@ impl Render for SettingsWindow {
                             div()
                                 .id("page")
                                 .flex_1()
+                                // Without this the page grows to its rows' unwrapped width in a narrow window.
+                                .min_w(px(0.))
                                 .h_full()
                                 .overflow_y_scroll()
                                 .track_scroll(&scroll)

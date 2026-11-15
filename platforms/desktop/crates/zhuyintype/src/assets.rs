@@ -36,6 +36,10 @@ icon_assets!(
         ArrowUp,
         ArrowLeft,
         ArrowRight,
+        Play,
+        Pause,
+        Lock,
+        ArrowDownLeft,
     ]
 );
 

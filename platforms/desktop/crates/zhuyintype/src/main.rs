@@ -8,6 +8,7 @@
 
 mod app;
 mod assets;
+mod card_window;
 mod pages;
 mod shell;
 mod theme;
@@ -28,10 +29,12 @@ struct Args {
     dark: Option<bool>,
     /// `--settings-file PATH`: keep settings there (screenshots and tests use a temporary file).
     settings_file: Option<std::path::PathBuf>,
+    /// `--popover ID`: show one ⓘ card on its own instead of the settings window (screenshots).
+    popover: Option<String>,
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None };
+    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None, popover: None };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -50,6 +53,7 @@ fn parse_args() -> Args {
             }
             "--theme" => args.dark = iter.next().map(|theme| theme == "dark"),
             "--settings-file" => args.settings_file = iter.next().map(Into::into),
+            "--popover" => args.popover = iter.next(),
             _ => {}
         }
     }
@@ -63,6 +67,11 @@ fn main() {
         gpui_kit::init(cx);
         // The service starts here once zt-core's port lands (Service::start); until then pages show empty states.
         cx.set_global(app::AppState { settings, service: None, service_error: None });
+        if let Some(id) = &args.popover {
+            card_window::open(id, args.dark, args.size, cx).expect("the card window opens");
+            cx.activate(true);
+            return;
+        }
         shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
