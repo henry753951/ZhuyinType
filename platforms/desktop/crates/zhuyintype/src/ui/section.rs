@@ -15,12 +15,13 @@ pub struct Section {
     title: Option<SharedString>,
     footer: Option<AnyElement>,
     rows: Vec<AnyElement>,
+    card: bool,
 }
 
 /// A section titled `title` (empty: no header).
 pub fn section(title: impl Into<SharedString>) -> Section {
     let title = title.into();
-    Section { title: (!title.is_empty()).then_some(title), footer: None, rows: Vec::new() }
+    Section { title: (!title.is_empty()).then_some(title), footer: None, rows: Vec::new(), card: true }
 }
 
 impl Section {
@@ -36,6 +37,12 @@ impl Section {
         self
     }
 
+    /// No card: the rows stand on the window under the header (tiles, feature cards; macOS `card: false`).
+    pub fn bare(mut self) -> Self {
+        self.card = false;
+        self
+    }
+
     /// Small text under the card (a link to another page, a note).
     pub fn footer(mut self, footer: impl IntoElement) -> Self {
         self.footer = Some(footer.into_any_element());
@@ -44,7 +51,7 @@ impl Section {
 }
 
 impl RenderOnce for Section {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let count = self.rows.len();
         let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
@@ -60,7 +67,8 @@ impl RenderOnce for Section {
                         .child(title),
                 )
             })
-            .when(count > 0, |this| {
+            .when(count > 0 && !self.card, |this| this.children(self.rows.drain(..)))
+            .when(count > 0 && self.card, |this| {
                 this.child(
                     v().w_full()
                         .relative()

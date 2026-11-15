@@ -20,3 +20,6 @@ pub fn h() -> Div {
 pub fn v() -> Div {
     div().flex().flex_col()
 }
+pub mod shortcuts;
+pub mod charts;
+pub mod feature;

@@ -12,6 +12,7 @@ mod pages;
 mod shell;
 mod theme;
 mod ui;
+mod wizard;
 
 use pages::Page;
 use zt_core::settings::Settings;
