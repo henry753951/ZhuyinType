@@ -51,6 +51,18 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 - `PracticeSession` 是行程內的沙盒（自己的 `InputController`、只在記憶體中的個人資料、共用的唯讀引擎資料），用於「介紹」的試打欄與嚮導的練習，和 macOS 的 `PracticeField` 相同。
 - 按鍵以 `zt_core::keys::Key`（Qt 按鍵碼、Qt 修飾鍵旗標、文字、左右 Shift）跨過分界，和通訊協定使用的數值相同；介面把 GPUI 的按鍵轉成它。
 
+## 引擎資料與使用者檔案
+
+引擎（`zhuyin-core`，直接呼叫）從下列位置中第一個有詞庫的目錄載入：`ZT_DATA_DIR`、設定的資料目錄、`<執行檔目錄>/data`（Windows）或 `/usr/share/zhuyintype/data`（Linux），以及版本庫的 `data/build`（`zt_core::engine::DataFiles::search_path`）：
+
+- `lexicon.bin`（或 `lexicon.tsv`），必要；
+- `lm/lm.bin`（或 `lm/{unigram,bigram,backoff}.tsv`），語言模型；
+- `lm_chat/lm.bin`（或其 TSV），聊天語料的模型，有附帶時使用；
+- `channel.bin`，讀音通道（「接受常見的其他讀法」），有附帶時使用；
+- 旁邊的說明檔，供「關於」頁使用（`lm/NOTICE.md`、`lm/articles.tsv.gz`、`channel/NOTICE.md` 等）。
+
+`tools/zt data fetch engine && tools/zt data compile` 會在 `data/build` 產生這些檔案，和 macOS App 相同。神經模型（重排序與字模型）在 macOS 上用 Core ML，這裡不載入；接口留在 composer 的 hook（`EngineSession::composer_mut`）。個人資料、`stats.json` 與 `corrections.jsonl` 放在 `zt_core::paths::data_dir`；設定與按鍵放在 `zt_core::paths::settings_file`。試打工作階段在同一份 `EngineData` 上開自己的引擎，個人資料只在記憶體中；對應到記憶體的檔案是共用的。
+
 ## 介面規則
 
 - 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。

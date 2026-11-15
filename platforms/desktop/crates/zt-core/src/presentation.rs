@@ -159,8 +159,7 @@ impl Presentation {
     pub fn clause_text(&self, index: usize) -> Option<String> {
         let range = self.clauses.get(index)?;
         let units: Vec<u16> = self.composition.encode_utf16().collect();
-        (range.start <= range.end && range.end <= units.len())
-            .then(|| String::from_utf16_lossy(&units[range.clone()]))
+        (range.start <= range.end && range.end <= units.len()).then(|| String::from_utf16_lossy(&units[range.clone()]))
     }
 
     /// The focused clause's text.

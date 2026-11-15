@@ -15,6 +15,7 @@ mod theme;
 mod ui;
 
 use pages::Page;
+use zt_core::service::{AlreadyRunning, Service, ServiceConfig, UiEvent};
 use zt_core::settings::Settings;
 
 struct Args {
@@ -31,10 +32,27 @@ struct Args {
     settings_file: Option<std::path::PathBuf>,
     /// `--popover ID`: show one ⓘ card on its own instead of the settings window (screenshots).
     popover: Option<String>,
+    /// `--background`: start the input method host without opening the settings window (autostart at login).
+    background: bool,
+    /// `--no-broker`: don't serve the native input method adapters (screenshots, a second copy for development).
+    no_broker: bool,
+    /// `--data DIR`: the engine data (else ZT_DATA_DIR, beside the executable, the system data dir, data/build).
+    data_dir: Option<std::path::PathBuf>,
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { page: Page::Intro, subpage: None, row: None, size: None, dark: None, settings_file: None, popover: None };
+    let mut args = Args {
+        page: Page::Intro,
+        subpage: None,
+        row: None,
+        size: None,
+        dark: None,
+        settings_file: None,
+        popover: None,
+        background: false,
+        no_broker: false,
+        data_dir: None,
+    };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -54,6 +72,9 @@ fn parse_args() -> Args {
             "--theme" => args.dark = iter.next().map(|theme| theme == "dark"),
             "--settings-file" => args.settings_file = iter.next().map(Into::into),
             "--popover" => args.popover = iter.next(),
+            "--background" => args.background = true,
+            "--no-broker" => args.no_broker = true,
+            "--data" => args.data_dir = iter.next().map(Into::into),
             _ => {}
         }
     }
@@ -61,24 +82,92 @@ fn parse_args() -> Args {
 }
 
 fn main() {
+    env_logger_init();
     let args = parse_args();
-    let settings = Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file));
+    let config = ServiceConfig {
+        data_dir: args.data_dir.clone(),
+        settings_file: args.settings_file.clone(),
+        broker: !args.no_broker && args.popover.is_none(),
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        ..ServiceConfig::default()
+    };
+    let (service, events, service_error) = match Service::start(config) {
+        Ok((service, events)) => (Some(service), Some(events), None),
+        // Another copy runs the input method; it was asked to show its settings.
+        Err(error) if error.is::<AlreadyRunning>() => return,
+        Err(error) => {
+            log::error!("service: {error:#}");
+            (None, None, Some(format!("{error:#}")))
+        }
+    };
+    let settings = service.as_ref().map_or_else(
+        || Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file)),
+        |service| service.settings().clone(),
+    );
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
-        // The service starts here once zt-core's port lands (Service::start); until then pages show empty states.
-        cx.set_global(app::AppState { settings, service: None, service_error: None });
+        cx.set_global(app::AppState { settings, service, service_error });
+        if let Some(events) = events {
+            run_events(events, cx);
+        }
         if let Some(id) = &args.popover {
             card_window::open(id, args.dark, args.size, cx).expect("the card window opens");
             cx.activate(true);
             return;
         }
+        if args.background {
+            return;
+        }
         shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
-                app::Place { page: args.page, subpage: args.subpage.clone().map(Into::into), row: args.row.clone().map(Into::into) },
+                app::Place {
+                    page: args.page,
+                    subpage: args.subpage.clone().map(Into::into),
+                    row: args.row.clone().map(Into::into),
+                },
                 cx,
             );
         }
         cx.activate(true);
     });
+}
+
+/// Handles the service's events on the UI thread for as long as the app runs.
+fn run_events(events: async_channel::Receiver<UiEvent>, cx: &mut gpui_kit::App) {
+    cx.spawn(async move |cx| {
+        while let Ok(event) = events.recv().await {
+            cx.update(|cx| match event {
+                UiEvent::ShowSettings => shell::show(cx),
+                // The candidate window and the mode toast (crate::candidate) take these.
+                UiEvent::Popup(_) | UiEvent::ModeToast { .. } | UiEvent::Boundary(_) => {}
+            });
+        }
+    })
+    .detach();
+}
+
+/// Logs to stderr; `RUST_LOG` picks the level (default: warnings).
+fn env_logger_init() {
+    struct Stderr;
+    impl log::Log for Stderr {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() <= log::max_level()
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+        }
+        fn flush(&self) {}
+    }
+    static LOGGER: Stderr = Stderr;
+    let level = match std::env::var("RUST_LOG").as_deref() {
+        Ok("error") => log::LevelFilter::Error,
+        Ok("info") => log::LevelFilter::Info,
+        Ok("debug") => log::LevelFilter::Debug,
+        Ok("trace") => log::LevelFilter::Trace,
+        _ => log::LevelFilter::Warn,
+    };
+    if log::set_logger(&LOGGER).is_ok() {
+        log::set_max_level(level);
+    }
 }

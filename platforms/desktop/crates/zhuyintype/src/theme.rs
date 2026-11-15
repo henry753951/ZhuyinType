@@ -194,9 +194,8 @@ pub fn init(window_appearance: WindowAppearance, cx: &mut App) {
 /// Follows the system appearance unless the user forced one.
 pub fn sync(window: &mut Window, cx: &mut App) {
     let forced = cx.global::<Tokens>().forced;
-    let dark = forced.unwrap_or_else(|| {
-        matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark)
-    });
+    let dark =
+        forced.unwrap_or_else(|| matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark));
     if cx.global::<Tokens>().palette.dark != dark {
         cx.global_mut::<Tokens>().palette = if dark { Palette::dark() } else { Palette::light() };
         apply_component_theme(Some(window), cx);
@@ -207,9 +206,8 @@ pub fn sync(window: &mut Window, cx: &mut App) {
 /// Forces light or dark (`None`: follow the system); renders and the screenshot mode use this.
 pub fn force(dark: Option<bool>, window: &mut Window, cx: &mut App) {
     cx.global_mut::<Tokens>().forced = dark;
-    let target = dark.unwrap_or_else(|| {
-        matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark)
-    });
+    let target =
+        dark.unwrap_or_else(|| matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark));
     cx.global_mut::<Tokens>().palette = if target { Palette::dark() } else { Palette::light() };
     apply_component_theme(Some(window), cx);
     cx.refresh_windows();

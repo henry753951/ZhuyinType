@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context as _, Result, anyhow, bail, ensure};
+use anyhow::{Context as _, Result, anyhow, ensure};
 use serde_json::{Map, Value};
 use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyInput, PunctuationKeys, PunctuationWidth,
@@ -410,6 +410,18 @@ impl EngineSession {
         self.open.as_mut().map(|open| &mut open.composer)
     }
 
+    /// Candidate `index` of the open list as the engine knows it (for the correction log), before a pick.
+    #[must_use]
+    pub fn candidate_details(&self, index: usize) -> Option<crate::corrections::CandidateDetails> {
+        let candidate = self.open.as_ref()?.composer.candidate(index)?;
+        Some(crate::corrections::CandidateDetails {
+            text: candidate.text.to_string(),
+            reading: candidate.reading.to_string(),
+            start: candidate.range.start,
+            end: candidate.range.end,
+        })
+    }
+
     /// What the composer shows now.
     #[must_use]
     pub fn presentation(&self) -> &Presentation {
@@ -431,7 +443,9 @@ impl EngineSession {
     /// The selection keys of the current options.
     #[must_use]
     pub fn selection_keys(&self) -> Vec<char> {
-        self.open.as_ref().map_or_else(|| self.values.options().selection_keys, |o| o.composer.options().selection_keys.clone())
+        self.open
+            .as_ref()
+            .map_or_else(|| self.values.options().selection_keys, |o| o.composer.options().selection_keys.clone())
     }
 
     /// How long the last `open` took to load the lexicon and language models, in ms.  The reranker and character
@@ -787,7 +801,8 @@ impl EngineSession {
     pub fn import_personal(&mut self, path: &Path) -> Result<usize> {
         self.require()?;
         let data = std::fs::read(path).with_context(|| format!("無法讀取備份檔：{}", path.display()))?;
-        let count = self.require()?.engine.import_personal_data(&data).map_err(|error| anyhow!("備份格式無效：{error}"))?;
+        let count =
+            self.require()?.engine.import_personal_data(&data).map_err(|error| anyhow!("備份格式無效：{error}"))?;
         self.personal_changed()?;
         Ok(count)
     }
@@ -801,12 +816,4 @@ impl EngineSession {
         let text = self.require()?.engine.export_personal_data();
         settings::write_atomically(path, text.as_bytes()).context("無法匯出個人資料。")
     }
-}
-
-/// Fails with the session's "not open" message (for callers that need the same wording).
-///
-/// # Errors
-/// Always.
-pub fn not_open<T>() -> Result<T> {
-    bail!(NOT_OPEN)
 }

@@ -3,16 +3,16 @@
 
 use std::rc::Rc;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::popover::Popover;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::assets::IconName;
 use gpui_kit::{
-    Anchor, AnyElement, App, ClickEvent, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    Anchor, AnyElement, App, ClickEvent, ElementId, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use serde_json::Value;
 use zt_core::settings::{self, Kind};
@@ -31,7 +31,11 @@ pub fn setting_switch(key: &'static str, cx: &App) -> impl IntoElement {
 }
 
 /// A switch with its own state (not a stored setting).
-pub fn switch(id: impl Into<ElementId>, on: bool, on_change: impl Fn(bool, &mut Window, &mut App) + 'static) -> impl IntoElement {
+pub fn switch(
+    id: impl Into<ElementId>,
+    on: bool,
+    on_change: impl Fn(bool, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
     Switch::new(id).checked(on).on_click(move |checked, window, cx| on_change(*checked, window, cx))
 }
 
@@ -83,7 +87,9 @@ pub fn popup_button<T: Clone + PartialEq + 'static>(
                 let on_pick = on_pick.clone();
                 let checked = value == current;
                 menu = menu.item(
-                    PopupMenuItem::new(label).checked(checked).on_click(move |_, window, cx| on_pick(value.clone(), window, cx)),
+                    PopupMenuItem::new(label)
+                        .checked(checked)
+                        .on_click(move |_, window, cx| on_pick(value.clone(), window, cx)),
                 );
             }
             menu
@@ -101,11 +107,8 @@ pub fn segmented<T: Clone + PartialEq + 'static>(
     let p = theme::palette(cx);
     let id = id.into();
     let on_pick = Rc::new(on_pick);
-    h().p(px(2.))
-        .gap(px(2.))
-        .rounded(size::RADIUS_CONTROL)
-        .bg(p.pressed)
-        .children(options.into_iter().enumerate().map(|(index, (label, value))| {
+    h().p(px(2.)).gap(px(2.)).rounded(size::RADIUS_CONTROL).bg(p.pressed).children(options.into_iter().enumerate().map(
+        |(index, (label, value))| {
             let selected = value == current;
             let on_pick = on_pick.clone();
             div()
@@ -119,7 +122,8 @@ pub fn segmented<T: Clone + PartialEq + 'static>(
                 .when(!selected, |this| this.text_color(p.text_secondary).hover(|style| style.text_color(p.text)))
                 .on_click(move |_, window, cx| on_pick(value.clone(), window, cx))
                 .child(label)
-        }))
+        },
+    ))
 }
 
 /// The › at the end of a row that goes somewhere.

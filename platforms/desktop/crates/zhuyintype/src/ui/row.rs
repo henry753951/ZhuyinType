@@ -23,7 +23,10 @@ pub enum Accessory {
     /// The row goes somewhere (the whole row is the button).
     Chevron,
     /// A ⓘ with an explanation card.
-    Info { title: SharedString, content: CardContent },
+    Info {
+        title: SharedString,
+        content: CardContent,
+    },
 }
 
 #[derive(IntoElement)]
@@ -93,7 +96,11 @@ impl Row {
     }
 
     /// The ⓘ explanation.
-    pub fn info(mut self, title: impl Into<SharedString>, content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static) -> Self {
+    pub fn info(
+        mut self,
+        title: impl Into<SharedString>,
+        content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    ) -> Self {
         self.accessory = Accessory::Info { title: title.into(), content: Box::new(content) };
         self
     }
@@ -150,31 +157,29 @@ pub(crate) fn arrived(anchor: &str, cx: &App) -> Option<usize> {
 
 /// An invisible layer that reports where `anchor` is once laid out, so a waiting link can scroll to it.
 pub(crate) fn anchor_probe(anchor: SharedString) -> impl IntoElement {
-    canvas(
-        move |bounds, window, cx| app::scroll_into_view(&anchor, bounds, window, cx),
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .size_full()
+    canvas(move |bounds, window, cx| app::scroll_into_view(&anchor, bounds, window, cx), |_, _, _, _| {})
+        .absolute()
+        .size_full()
 }
 
 /// The arrival tint: rises, holds, fades (macOS: peak opacity 0.17).
 pub(crate) fn arrival_tint(key: impl Into<SharedString>, generation: usize, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
     let key: SharedString = key.into();
-    div()
-        .absolute()
-        .inset(px(4.))
-        .rounded(size::RADIUS_CARD - px(4.))
-        .bg(p.accent)
-        .with_animation(
-            SharedString::from(format!("arrival-{key}-{generation}")),
-            Animation::new(Duration::from_millis(1600)),
-            |this, t| {
-                let opacity = if t < 0.15 { t / 0.15 } else if t < 0.45 { 1.0 } else { 1.0 - (t - 0.45) / 0.55 };
-                this.opacity(0.17 * opacity)
-            },
-        )
+    div().absolute().inset(px(4.)).rounded(size::RADIUS_CARD - px(4.)).bg(p.accent).with_animation(
+        SharedString::from(format!("arrival-{key}-{generation}")),
+        Animation::new(Duration::from_millis(1600)),
+        |this, t| {
+            let opacity = if t < 0.15 {
+                t / 0.15
+            } else if t < 0.45 {
+                1.0
+            } else {
+                1.0 - (t - 0.45) / 0.55
+            };
+            this.opacity(0.17 * opacity)
+        },
+    )
 }
 
 impl RenderOnce for Row {
@@ -219,7 +224,13 @@ impl RenderOnce for Row {
                             .text_color(if self.indent || self.dimmed { p.text_secondary } else { p.text })
                             .when(self.marked, |this| {
                                 this.child(
-                                    div().absolute().left(px(-11.)).top(px(7.)).size(px(6.)).rounded_full().bg(p.accent),
+                                    div()
+                                        .absolute()
+                                        .left(px(-11.))
+                                        .top(px(7.))
+                                        .size(px(6.))
+                                        .rounded_full()
+                                        .bg(p.accent),
                                 )
                             })
                             .child(self.title),

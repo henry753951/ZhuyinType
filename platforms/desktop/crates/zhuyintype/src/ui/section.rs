@@ -2,9 +2,7 @@
 //! leads to the section (its title as the place's row), the header turns accent and the card tints once.
 
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{
-    AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px,
-};
+use gpui_kit::{AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div, px};
 
 use super::row::{anchor_probe, arrival_tint, arrived};
 use super::v;
@@ -70,7 +68,8 @@ impl RenderOnce for Section {
                         .border_color(p.separator)
                         .overflow_hidden()
                         .when_some(arrival.clone(), |this, (title, generation)| {
-                            this.child(arrival_tint(format!("section-{title}"), generation, cx)).child(anchor_probe(title))
+                            this.child(arrival_tint(format!("section-{title}"), generation, cx))
+                                .child(anchor_probe(title))
                         })
                         .children(self.rows.into_iter().enumerate().map(|(index, row)| {
                             div()
@@ -83,7 +82,9 @@ impl RenderOnce for Section {
                 )
             })
             .when_some(self.footer, |this, footer| {
-                this.child(div().px(size::ROW_PADDING_X).text_size(text::SUBTITLE).text_color(p.text_secondary).child(footer))
+                this.child(
+                    div().px(size::ROW_PADDING_X).text_size(text::SUBTITLE).text_color(p.text_secondary).child(footer),
+                )
             })
     }
 }

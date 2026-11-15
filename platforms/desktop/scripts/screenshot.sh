@@ -30,7 +30,7 @@ for page in "${pages[@]}"; do
     case $spec in popover:*) extra+=(--popover "${spec#popover:}"); name=popover-${spec#popover:}${ZT_SHOT_SIZE:+-$ZT_SHOT_SIZE}; spec=intro;; esac
     case $spec in *'#'*) extra+=(--row "${spec#*#}"); spec=${spec%%#*};; esac
     case $spec in */*) extra+=(--subpage "${spec#*/}"); spec=${spec%%/*};; esac
-    "$bin" --page "$spec" "${extra[@]}" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$name-$theme.log" &
+    "$bin" --no-broker --page "$spec" "${extra[@]}" --theme "$theme" --settings-file "$settings" >/dev/null 2>"$out/$name-$theme.log" &
     app=$!
     for _ in $(seq 50); do
       win=$(xdotool search --pid $app 2>/dev/null | tail -1 || true)

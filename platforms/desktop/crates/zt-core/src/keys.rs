@@ -52,7 +52,7 @@ pub mod modifier {
 }
 
 /// Which Shift key went down or up (`shiftSide` in the protocol).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ShiftSide {
     /// The platform did not say.
     #[default]

@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use gpui_kit::component::{Icon, TitleBar, window_border};
 use gpui_kit::assets::IconName;
+use gpui_kit::component::{Icon, TitleBar, window_border};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyView, App, AppContext as _, Bounds, Context, Entity, FontWeight,
@@ -97,68 +97,62 @@ impl SettingsWindow {
         let nav = app::nav(cx);
         let page = nav.page;
         let subpage = nav.subpage.as_ref().map(|id| pages::subpage_title(page, id).unwrap_or(id.as_ref()).to_owned());
-        TitleBar::new()
-            .h(sz::TITLE_BAR)
-            .pl(px(0.))
-            .bg(p.window)
-            .border_b_1()
-            .border_color(p.separator)
-            .child(
-                h().h_full()
-                    .child(
-                        h().w(sz::SIDEBAR)
-                            .h_full()
-                            .flex_shrink_0()
-                            .px(px(16.))
-                            .gap(px(9.))
-                            .bg(p.sidebar)
-                            .border_r_1()
-                            .border_color(p.separator)
-                            .child(img("app-icon.png").size(px(20.)).rounded(px(5.)))
-                            .child(
-                                div()
-                                    .text_size(text::BODY)
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(p.text)
-                                    .child("ZhuyinType"),
-                            ),
-                    )
-                    .child(match subpage {
-                        None => div()
-                            .pl(sz::PAGE_PADDING_X)
-                            .text_size(text::HEADLINE)
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(p.text)
-                            .child(page.title())
-                            .into_any_element(),
-                        Some(title) => h()
-                            .pl(px(14.))
-                            .gap(px(6.))
-                            .child(
-                                h().id("back")
-                                    .h(px(28.))
-                                    .pl(px(4.))
-                                    .pr(px(8.))
-                                    .gap(px(2.))
-                                    .rounded(sz::RADIUS_CONTROL)
-                                    .cursor_pointer()
-                                    .text_color(p.accent)
-                                    .hover(|style| style.bg(p.hover))
-                                    .active(|style| style.bg(p.pressed))
-                                    .on_click(|_, _, cx| app::back(cx))
-                                    .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
-                                    .child(div().text_size(text::BODY).child(page.title())),
-                            )
-                            .child(
-                                div()
-                                    .text_size(text::HEADLINE)
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(p.text)
-                                    .child(title),
-                            )
-                            .into_any_element(),
-                    }),
-            )
+        TitleBar::new().h(sz::TITLE_BAR).pl(px(0.)).bg(p.window).border_b_1().border_color(p.separator).child(
+            h().h_full()
+                .child(
+                    h().w(sz::SIDEBAR)
+                        .h_full()
+                        .flex_shrink_0()
+                        .px(px(16.))
+                        .gap(px(9.))
+                        .bg(p.sidebar)
+                        .border_r_1()
+                        .border_color(p.separator)
+                        .child(img("app-icon.png").size(px(20.)).rounded(px(5.)))
+                        .child(
+                            div()
+                                .text_size(text::BODY)
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(p.text)
+                                .child("ZhuyinType"),
+                        ),
+                )
+                .child(match subpage {
+                    None => div()
+                        .pl(sz::PAGE_PADDING_X)
+                        .text_size(text::HEADLINE)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(p.text)
+                        .child(page.title())
+                        .into_any_element(),
+                    Some(title) => h()
+                        .pl(px(14.))
+                        .gap(px(6.))
+                        .child(
+                            h().id("back")
+                                .h(px(28.))
+                                .pl(px(4.))
+                                .pr(px(8.))
+                                .gap(px(2.))
+                                .rounded(sz::RADIUS_CONTROL)
+                                .cursor_pointer()
+                                .text_color(p.accent)
+                                .hover(|style| style.bg(p.hover))
+                                .active(|style| style.bg(p.pressed))
+                                .on_click(|_, _, cx| app::back(cx))
+                                .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
+                                .child(div().text_size(text::BODY).child(page.title())),
+                        )
+                        .child(
+                            div()
+                                .text_size(text::HEADLINE)
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(p.text)
+                                .child(title),
+                        )
+                        .into_any_element(),
+                }),
+        )
     }
 }
 
@@ -201,29 +195,34 @@ impl Render for SettingsWindow {
                 .font_family(theme::ui_font())
                 .child(self.title_bar(cx))
                 .child(
-                    h().flex_1()
-                        .min_h(px(0.))
-                        .items_start()
-                        .child(self.sidebar(cx))
-                        .child(
-                            div()
-                                .id("page")
-                                .flex_1()
-                                // Without this the page grows to its rows' unwrapped width in a narrow window.
-                                .min_w(px(0.))
-                                .h_full()
-                                .overflow_y_scroll()
-                                .track_scroll(&scroll)
-                                .child(content),
-                        ),
+                    h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
+                        div()
+                            .id("page")
+                            .flex_1()
+                            // Without this the page grows to its rows' unwrapped width in a narrow window.
+                            .min_w(px(0.))
+                            .h_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&scroll)
+                            .child(content),
+                    ),
                 ),
         )
     }
 }
 
 /// Opens the settings window on `page`.
-pub fn open(page: Page, dark: Option<bool>, window_size: Option<(f32, f32)>, cx: &mut App) -> anyhow::Result<Entity<SettingsWindow>> {
-    cx.set_global(Navigation::new(page));
+pub fn open(
+    page: Page,
+    dark: Option<bool>,
+    window_size: Option<(f32, f32)>,
+    cx: &mut App,
+) -> anyhow::Result<Entity<SettingsWindow>> {
+    if !cx.has_global::<Navigation>() {
+        cx.set_global(Navigation::new(page));
+    } else {
+        cx.global_mut::<Navigation>().go(Place::page(page));
+    }
     let (width, height) = window_size.map_or((sz::WINDOW_W, sz::WINDOW_H), |(w, h)| (px(w), px(h)));
     let bounds = Bounds::centered(None, size(width, height), cx);
     let options = WindowOptions {
@@ -233,9 +232,31 @@ pub fn open(page: Page, dark: Option<bool>, window_size: Option<(f32, f32)>, cx:
         app_id: Some("zhuyintype".into()),
         ..TitleBar::window_options()
     };
-    let (_, view) = gpui_kit::open_window(options, cx, |window, cx| {
-        theme::init(window.appearance(), cx);
+    let (handle, view) = gpui_kit::open_window(options, cx, |window, cx| {
+        if !cx.has_global::<theme::Tokens>() {
+            theme::init(window.appearance(), cx);
+        }
         cx.new(|cx| SettingsWindow::new(dark, window, cx))
     })?;
+    cx.set_global(OpenSettings(Some(handle)));
     Ok(view)
+}
+
+/// The settings window while it is open.
+struct OpenSettings(Option<gpui_kit::AnyWindowHandle>);
+
+impl gpui_kit::Global for OpenSettings {}
+
+/// Brings the settings window to the front, opening it if it is closed (a second launch, the taskbar menu).
+pub fn show(cx: &mut App) {
+    let existing = cx.try_global::<OpenSettings>().and_then(|open| open.0);
+    if let Some(handle) = existing
+        && handle.update(cx, |_, window, _| window.activate_window()).is_ok()
+    {
+        return;
+    }
+    let page = cx.try_global::<Navigation>().map_or(Page::Intro, |nav| nav.page);
+    if let Err(error) = open(page, None, None, cx) {
+        log::error!("opening the settings window: {error:#}");
+    }
 }
