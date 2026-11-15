@@ -39,7 +39,10 @@ struct Args {
     /// `--no-broker`: don't serve the native input method adapters (screenshots, a second copy for development).
     no_broker: bool,
     /// `--data DIR`: the engine data (else ZT_DATA_DIR, beside the executable, the system data dir, data/build).
+    /// `--lexicon FILE` names the data by its lexicon (the Fcitx5 addon's tests).
     data_dir: Option<std::path::PathBuf>,
+    /// `--ime-socket PATH`: the broker endpoint (else ZT_IME_SOCKET, else the per-user one; IPC.md).
+    endpoint: Option<String>,
     /// `--panel VARIANT`: only a candidate window over a few document lines (screenshots; `candidate::showcase`).
     panel: Option<String>,
     /// `--popup demo`: the real floating windows at a caret, with an example list.
@@ -58,6 +61,7 @@ fn parse_args() -> Args {
         background: false,
         no_broker: false,
         data_dir: None,
+        endpoint: None,
         panel: None,
         popup: None,
     };
@@ -83,6 +87,10 @@ fn parse_args() -> Args {
             "--background" => args.background = true,
             "--no-broker" => args.no_broker = true,
             "--data" => args.data_dir = iter.next().map(Into::into),
+            "--lexicon" => {
+                args.data_dir = iter.next().and_then(|file| std::path::Path::new(&file).parent().map(Into::into));
+            }
+            "--ime-socket" => args.endpoint = iter.next(),
             "--panel" => args.panel = iter.next(),
             "--popup" => args.popup = iter.next(),
             _ => {}
@@ -96,6 +104,7 @@ fn main() {
     let args = parse_args();
     let config = ServiceConfig {
         data_dir: args.data_dir.clone(),
+        endpoint: args.endpoint.clone(),
         settings_file: args.settings_file.clone(),
         broker: !args.no_broker && args.popover.is_none(),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -110,6 +119,10 @@ fn main() {
             (None, None, Some(format!("{error:#}")))
         }
     };
+    #[cfg(target_os = "linux")]
+    if service.is_some() && !args.no_broker {
+        std::thread::spawn(linux_enable_fcitx);
+    }
     let settings = service.as_ref().map_or_else(
         || Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file)),
         |service| service.settings().clone(),
@@ -150,6 +163,28 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+/// Adds ZhuyinType to the user's Fcitx 5 input methods when it is not there yet, with the helper the package installs
+/// (`packaging/linux/fcitx5-setup`).  Runs as the signed-in user, off the UI thread; keeps every existing entry.
+#[cfg(target_os = "linux")]
+fn linux_enable_fcitx() {
+    let exe = std::env::current_exe().ok();
+    let candidates = [
+        exe.as_ref().and_then(|exe| exe.parent()).map(|bin| bin.join("../lib/zhuyintype/fcitx5-setup")),
+        Some(std::path::PathBuf::from("/usr/lib/zhuyintype/fcitx5-setup")),
+    ];
+    let Some(helper) = candidates.into_iter().flatten().find(|path| path.is_file()) else { return };
+    let Ok(status) = std::process::Command::new(&helper).arg("status").output() else { return };
+    let status = String::from_utf8_lossy(&status.stdout);
+    if status.lines().any(|line| line == "profile=added") || status.lines().any(|line| line == "fcitx5=missing") {
+        return;
+    }
+    match std::process::Command::new(&helper).arg("enable").status() {
+        Ok(code) if code.success() => log::info!("added ZhuyinType to the Fcitx 5 input methods"),
+        Ok(code) => log::warn!("fcitx5-setup enable: {code}"),
+        Err(error) => log::warn!("fcitx5-setup: {error}"),
+    }
 }
 
 /// Logs to stderr; `RUST_LOG` picks the level (default: warnings).
