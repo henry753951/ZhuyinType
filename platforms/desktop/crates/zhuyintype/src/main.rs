@@ -128,6 +128,12 @@ fn main() {
     if service.is_some() && !args.no_broker {
         std::thread::spawn(linux_enable_fcitx);
     }
+    // GPUI connects to the input method (XIM, the Wayland text-input) once, when it starts; at login autostart may
+    // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.
+    #[cfg(target_os = "linux")]
+    if args.background {
+        wait_for_fcitx(std::time::Duration::from_secs(15));
+    }
     let settings = service.as_ref().map_or_else(
         || Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file)),
         |service| service.settings().clone(),
@@ -198,6 +204,27 @@ fn linux_enable_fcitx() {
         Ok(code) if code.success() => log::info!("added ZhuyinType to the Fcitx 5 input methods"),
         Ok(code) => log::warn!("fcitx5-setup enable: {code}"),
         Err(error) => log::warn!("fcitx5-setup: {error}"),
+    }
+}
+
+/// Waits until an `fcitx5` process runs, at most `limit`; returns at once when Fcitx 5 is not the input method.
+#[cfg(target_os = "linux")]
+fn wait_for_fcitx(limit: std::time::Duration) {
+    let wanted = ["XMODIFIERS", "GTK_IM_MODULE", "QT_IM_MODULE"]
+        .iter()
+        .any(|name| std::env::var(name).is_ok_and(|value| value.contains("fcitx")));
+    if !wanted {
+        return;
+    }
+    let running =
+        || {
+            std::fs::read_dir("/proc").into_iter().flatten().flatten().any(|entry| {
+                std::fs::read_to_string(entry.path().join("comm")).is_ok_and(|name| name.trim() == "fcitx5")
+            })
+        };
+    let start = std::time::Instant::now();
+    while !running() && start.elapsed() < limit {
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 }
 
