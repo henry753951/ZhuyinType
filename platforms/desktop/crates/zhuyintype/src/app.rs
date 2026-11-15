@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use gpui_kit::{App, Bounds, Global, Pixels, ScrollHandle, SharedString, Window, point, px};
 use serde_json::Value;
+use zt_core::service::Service;
 use zt_core::settings::Settings;
 
 use crate::pages::Page;
@@ -12,6 +13,10 @@ use crate::pages::Page;
 /// Shared state, installed once at start-up.
 pub struct AppState {
     pub settings: Settings,
+    /// The engine, personal data, statistics, shortcuts and the broker; None until it has started (or when it
+    /// could not: then pages show their empty states and `service_error` says why).
+    pub service: Option<Service>,
+    pub service_error: Option<String>,
 }
 
 impl Global for AppState {}
@@ -19,6 +24,11 @@ impl Global for AppState {}
 /// The settings.
 pub fn settings(cx: &App) -> &Settings {
     &cx.global::<AppState>().settings
+}
+
+/// The running service, if any.  Pages read personal data, statistics, shortcuts and the correction log through it.
+pub fn service(cx: &App) -> Option<&Service> {
+    cx.global::<AppState>().service.as_ref()
 }
 
 /// Sets a setting and redraws every window (the wizard and the settings window show the same values).

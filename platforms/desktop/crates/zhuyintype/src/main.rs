@@ -61,7 +61,8 @@ fn main() {
     let settings = Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file));
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
-        cx.set_global(app::AppState { settings });
+        // The service starts here once zt-core's port lands (Service::start); until then pages show empty states.
+        cx.set_global(app::AppState { settings, service: None, service_error: None });
         shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
