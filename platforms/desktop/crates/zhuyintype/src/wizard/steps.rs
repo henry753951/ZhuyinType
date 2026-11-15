@@ -31,8 +31,7 @@ use crate::candidate::style::CurrentKeys;
 use crate::pages::Page;
 use crate::theme::{self, Palette, size, text};
 use crate::ui::actions::{ButtonKind, link_button, push_button};
-use crate::ui::content::{fact_row, facts};
-use crate::ui::demo::{DemoFrame, Segment, mini_demo};
+use crate::ui::demo::{DemoFrame, Segment, fact_row, mini_demo};
 use crate::ui::stepper::stepper;
 use crate::ui::{h, keycap, switch, v};
 
@@ -910,7 +909,7 @@ impl WizardWindow {
                     )
                     .into_any_element()
             }
-            Some(Demo::CorrectionLog) => correction_log_facts(&draft, cx),
+            Some(Demo::CorrectionLog) => correction_log_facts(&draft),
             None => div().into_any_element(),
         };
         glass(&p).w_full().p(px(14.)).child(inner).into_any_element()
@@ -1328,6 +1327,8 @@ impl WizardWindow {
                                 )
                                 .child(
                                     div()
+                                        .flex_1()
+                                        .min_w(px(0.))
                                         .text_size(text::BODY)
                                         .text_color(p.text)
                                         .child(SharedString::from(action.clone())),
@@ -1368,7 +1369,7 @@ impl WizardWindow {
 }
 
 /// What the correction log records, with the draft's keys (the 改字記錄 lesson; macOS `CorrectionLogInfo`).
-fn correction_log_facts(draft: &zt_core::settings::Settings, cx: &App) -> AnyElement {
+fn correction_log_facts(draft: &zt_core::settings::Settings) -> AnyElement {
     let keys = CurrentKeys::sandboxed(draft);
     let key = |command: &str| Some(keys.text(command)).filter(|text| !text.is_empty());
     let lists: Vec<String> = std::iter::once("從清單選字".to_owned())
@@ -1381,15 +1382,16 @@ fn correction_log_facts(draft: &zt_core::settings::Settings, cx: &App) -> AnyEle
         .chain(key("selectLeft").zip(key("selectRight")).map(|(left, right)| format!("{left} {right} 加入自訂詞")))
         .chain(std::iter::once("在句中修改".to_owned()))
         .collect();
-    facts([
-        fact_row(IconName::CircleCheck, "只記錄有改字的組字", cx).into_any_element(),
-        fact_row(IconName::Keyboard, "打的鍵與按鍵間隔，以及每一步畫面上的字", cx).into_any_element(),
-        fact_row(IconName::ListChecks, lists.join("、"), cx).into_any_element(),
-        fact_row(IconName::Delete, "Backspace 或 Esc 刪掉後重打；送出後 30 秒內刪掉重打", cx).into_any_element(),
-        fact_row(IconName::TextCursorInput, editing.join("、"), cx).into_any_element(),
-        fact_row(IconName::TextAlignStart, "游標前的文字只在開啟第二個選項時記錄", cx).into_any_element(),
-        fact_row(IconName::Lock, "密碼欄位中不記錄；記錄中沒有 App 的名稱", cx).into_any_element(),
-        fact_row(IconName::HardDrive, "存在這台電腦的 corrections.jsonl，可以匯出", cx).into_any_element(),
-    ])
-    .into_any_element()
+    v().gap(px(9.))
+        .children([
+            fact_row(IconName::CircleCheck, "只記錄有改字的組字").into_any_element(),
+            fact_row(IconName::Keyboard, "打的鍵與按鍵間隔，以及每一步畫面上的字").into_any_element(),
+            fact_row(IconName::ListChecks, lists.join("、")).into_any_element(),
+            fact_row(IconName::Delete, "Backspace 或 Esc 刪掉後重打；送出後 30 秒內刪掉重打").into_any_element(),
+            fact_row(IconName::TextCursorInput, editing.join("、")).into_any_element(),
+            fact_row(IconName::TextAlignStart, "游標前的文字只在開啟第二個選項時記錄").into_any_element(),
+            fact_row(IconName::Lock, "密碼欄位中不記錄；記錄中沒有 App 的名稱").into_any_element(),
+            fact_row(IconName::HardDrive, "存在這台電腦的 corrections.jsonl，可以匯出").into_any_element(),
+        ])
+        .into_any_element()
 }

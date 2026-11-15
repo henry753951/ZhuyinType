@@ -226,6 +226,12 @@ impl WizardWindow {
                 cx.notify();
             }
         });
+        // Like switching apps: when the window loses the keyboard, the composition is sent and the list closes.
+        let activation = cx.observe_window_activation(window, |this: &mut Self, window, cx| {
+            if !window.is_window_active() {
+                this.field.update(cx, |field, cx| field.end_session(cx));
+            }
+        });
         let mut wizard = Self {
             mode,
             index: 0,
@@ -246,7 +252,7 @@ impl WizardWindow {
             pending_appearance: dark.map(Some),
             still,
             pinned_transition: None,
-            _subscriptions: vec![subscription],
+            _subscriptions: vec![subscription, activation],
         };
         wizard.enter(window, cx);
         wizard
