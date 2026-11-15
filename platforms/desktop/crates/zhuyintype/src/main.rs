@@ -8,6 +8,9 @@
 
 mod assets;
 mod pages;
+// Not called yet: the candidate window and the mode toast use it on Windows (see its module documentation).
+#[allow(dead_code)]
+mod platform;
 mod shell;
 mod theme;
 mod ui;
