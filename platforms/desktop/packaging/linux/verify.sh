@@ -17,7 +17,11 @@ runtime=${ZT_CONTAINER:-$(command -v podman || command -v docker || true)}
 [[ -n $runtime ]] || { echo "verify.sh：需要 docker 或 podman" >&2; exit 1; }
 deb=$(ls "$dist"/zhuyintype_*_amd64.deb | tail -1)
 rpm=$(ls "$dist"/zhuyintype-*.x86_64.rpm | tail -1)
-run() { "$runtime" run --rm -v "$dist:/dist:ro" "$@"; }
+run() { "$runtime" run --rm -v "$dist:/dist:ro" -e ZT_DEBIAN_MIRROR "$@"; }
+# ZT_DEBIAN_MIRROR (as for build.sh): a nearer mirror for the debian:13 containers.
+mirror='if [ -n "${ZT_DEBIAN_MIRROR:-}" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then
+    sed -i "s|^URIs: http://deb.debian.org/debian$|URIs: $ZT_DEBIAN_MIRROR|" /etc/apt/sources.list.d/debian.sources; fi'
+
 
 # Every file of the package (the same list for both formats, addon path aside), checked after install and removal.
 read -r -d '' files_check <<'SH' || true
@@ -68,6 +72,7 @@ debian() {
         $files_check
         $fcitx_check
         addon=/usr/lib/x86_64-linux-gnu/fcitx5/libzhuyintype.so
+        $mirror
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends /dist/$(basename "$deb") >/tmp/apt.log 2>&1 \
             || { tail -30 /tmp/apt.log; echo FAIL install; exit 1; }
@@ -110,7 +115,8 @@ redhat() {
 
 lint() {
     echo "== lintian (debian:13)"
-    run debian:13 bash -c "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq lintian >/dev/null \
+    run debian:13 bash -c "$mirror
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq lintian >/dev/null \
         && lintian --info --display-info /dist/$(basename "$deb") || true"
     echo "== rpmlint (fedora:latest)"
     run fedora:latest bash -c "dnf install -y -q rpmlint >/dev/null && rpmlint /dist/$(basename "$rpm") || true"
@@ -120,8 +126,9 @@ gui() {
     local out=$1
     mkdir -p "$out"
     echo "== settings window (debian:13, Xvfb, lavapipe)"
-    "$runtime" run --rm -v "$dist:/dist:ro" -v "$(realpath "$out"):/out" -e OWNER="$(id -u):$(id -g)" \
+    "$runtime" run --rm -e ZT_DEBIAN_MIRROR -v "$dist:/dist:ro" -v "$(realpath "$out"):/out" -e OWNER="$(id -u):$(id -g)" \
         -e DEBIAN_FRONTEND=noninteractive debian:13 bash -c "set -eo pipefail
+        $mirror
         apt-get update -qq
         apt-get install -y -qq /dist/$(basename "$deb") xvfb xdotool imagemagick mesa-vulkan-drivers >/dev/null 2>&1
         Xvfb :9 -ac -screen 0 1400x1000x24 -nolisten tcp >/dev/null 2>&1 & sleep 1
@@ -148,8 +155,9 @@ typing() {
     tests=$(cd "$(dirname "$0")/../../../linux" && pwd)
     [[ -x $build/fcitx-delivery-probe ]] || { echo "verify.sh：$build 沒有 fcitx-delivery-probe（先執行 build.sh linux --test）" >&2; exit 1; }
     echo "== typing through Fcitx 5 (debian:13, installed package, real data)"
-    "$runtime" run --rm --init -v "$dist:/dist:ro" -v "$build:/build:ro" -v "$tests:/linux:ro" \
+    "$runtime" run --rm --init -e ZT_DEBIAN_MIRROR -v "$dist:/dist:ro" -v "$build:/build:ro" -v "$tests:/linux:ro" \
         -e DEBIAN_FRONTEND=noninteractive debian:13 bash -c "set -eo pipefail
+        $mirror
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends /dist/$(basename "$deb") fcitx5-frontend-qt6 libqt6widgets6 \
             xvfb xauth xdotool x11-utils dbus-x11 dbus-daemon mesa-vulkan-drivers fonts-noto-cjk procps >/dev/null 2>&1
