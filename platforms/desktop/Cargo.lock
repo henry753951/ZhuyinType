@@ -8387,6 +8387,8 @@ name = "zhuyintype"
 version = "0.5.3"
 dependencies = [
  "anyhow",
+ "async-channel",
+ "chrono",
  "gpui-kit",
  "log",
  "serde",

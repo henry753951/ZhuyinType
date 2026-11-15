@@ -24,6 +24,9 @@ pub fn h() -> Div {
 pub fn v() -> Div {
     div().flex().flex_col()
 }
+pub mod charts;
 pub mod current_keys;
 pub mod demo;
 pub mod feature;
+pub mod feature_card;
+pub mod shortcuts;

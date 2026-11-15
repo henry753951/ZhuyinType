@@ -19,6 +19,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 log.workspace = true
 async-channel.workspace = true
+chrono.workspace = true
 
 [lints]
 workspace = true

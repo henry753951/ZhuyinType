@@ -44,6 +44,7 @@ pub struct Row {
     dimmed: bool,
     wrap_value: bool,
     on_click: Option<ClickHandler>,
+    hover_group: Option<SharedString>,
 }
 
 /// A row titled `title`; `id` must be unique within the page.
@@ -62,6 +63,7 @@ pub fn row(id: impl Into<ElementId>, title: impl Into<SharedString>) -> Row {
         dimmed: false,
         wrap_value: false,
         on_click: None,
+        hover_group: None,
     }
 }
 
@@ -136,6 +138,12 @@ impl Row {
         self
     }
 
+    /// Names the row as a hover group, so controls inside can show only while the pointer is on the row.
+    pub fn hover_group(mut self, group: impl Into<SharedString>) -> Self {
+        self.hover_group = Some(group.into());
+        self
+    }
+
     /// The whole row is a button with a ›.
     pub fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
@@ -197,6 +205,7 @@ impl RenderOnce for Row {
         };
         let _ = window;
         h().id(self.id)
+            .when_some(self.hover_group, |this, group| this.group(group))
             .relative()
             .w_full()
             .min_h(size::ROW_MIN)
