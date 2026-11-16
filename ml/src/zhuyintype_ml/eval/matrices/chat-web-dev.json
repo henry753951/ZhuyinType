@@ -44,6 +44,38 @@
     "--chat-lm",
     "{data}/lm_chat2/ptt14"
    ]
+  },
+  {
+   "name": "ptt-meme",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-meme"
+   ]
+  },
+  {
+   "name": "ptt-lccc",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-lccc"
+   ]
+  },
+  {
+   "name": "ptt-zhihu",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-zhihu"
+   ]
+  },
+  {
+   "name": "ptt-others",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-others"
+   ]
   }
  ],
  "sets": [

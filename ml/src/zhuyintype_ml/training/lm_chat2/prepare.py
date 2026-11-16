@@ -51,6 +51,7 @@ VARIANTS = {
     "web3": "web3",
     "ptt": "ptt",
     "ptt14": "ptt14",
+    **{v: v for v in ("ptt-meme", "ptt-lccc", "ptt-zhihu", "ptt-others")},
 }
 
 
@@ -108,6 +109,40 @@ def tocp_texts() -> Iterator[str]:
                 for row in data if isinstance(data, list) else data.values():
                     if isinstance(row, dict) and isinstance(row.get("original_sentence"), str):
                         yield row["original_sentence"]
+
+
+OTHERS = RAW / "others"
+EXTRA = {"ptt-meme": ("meme",), "ptt-lccc": ("lccc",), "ptt-zhihu": ("zhihu",), "ptt-others": ("meme", "lccc", "zhihu")}
+
+
+def eighth(text: str) -> bool:
+    """True for the fixed eighth of dialogues or answers kept from the large simplified-Chinese corpora."""
+    return hashlib.blake2b(text.encode(), digest_size=8).digest()[0] % 8 == 0
+
+
+def other_dialogues(source: str) -> Iterator[list[str]]:
+    """Turns (OpenCC s2twp) of one dialogue or QA pair at a time: zh-meme messages, LCCC dialogues (spaces between
+    words removed), 知乎 question and answer."""
+    import gzip
+
+    if source == "meme":
+        for name in ("train.jsonl", "validation.jsonl"):
+            for line in (OTHERS / "GaryYang123__zh-meme-sft-8k" / name).open(encoding="utf-8"):
+                messages = json.loads(line).get("messages") or []
+                yield [normalize(m["content"]) for m in messages if isinstance(m.get("content"), str)]
+    elif source == "lccc":
+        with gzip.open(OTHERS / "silver__lccc" / "lccc_base_train.jsonl.gz", "rt", encoding="utf-8") as f:
+            for line in f:
+                turns = json.loads(line)
+                if isinstance(turns, list) and eighth(line):
+                    yield [normalize(t.replace(" ", "")) for t in turns if isinstance(t, str)]
+    else:
+        with gzip.open(OTHERS / "liwu__MNBVC" / "qa/20230196/zhihu/0.jsonl.gz", "rt", encoding="utf-8") as f:
+            for line in f:
+                row = json.loads(line)
+                question, answer = row.get("问"), row.get("答")
+                if isinstance(question, str) and isinstance(answer, str) and eighth(line):
+                    yield [normalize(question), normalize(answer)]
 
 
 def third(sentence: str) -> bool:
@@ -512,6 +547,18 @@ def prepare(variant: str, workers: int) -> None:
                     sentence = sentence.strip()
                     if 4 <= len(sentence) <= 200 and valid(sentence):
                         add(sentence, "tocp")
+        for source in EXTRA.get(variant, ()):
+            for turns in other_dialogues(source):
+                short = [t for t in turns if valid(t) and len(t) <= 200]
+                for previous, target in zip(short, short[1:]):
+                    add_context(previous, target)
+                for turn in turns:
+                    for sentence in mkn.SPLIT.split(turn):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, source)
+                        elif sentence:
+                            counts[source + "_invalid"] += 1
         if variant == "mixed":
             # Provenance of the 0.3.0 v3 colloquial corpus (data/build/v3 then) excludes TT: synthetic + Common Voice.
             for line in paths.data("v3_030", "colloquial.txt").open():

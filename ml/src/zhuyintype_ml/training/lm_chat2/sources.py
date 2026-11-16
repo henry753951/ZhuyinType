@@ -11,6 +11,9 @@
     ptt          PTT Gossiping title/push pairs, zake7749/Gossiping-Chinese-Corpus 2.0 (repository Apache-2.0; the
                  posts belong to their authors) and the NTOU TOCP profanity sentences (CC BY-SA 4.0); used for
                  training by the maintainer's decision of 2026-11-17 (docs/research/corpus-sources.md)
+    others       the other suggested corpora, pinned Hugging Face revisions: zh-meme-sft-8k (MIT tag), LCCC-base
+                 (silver/lccc mirror, MIT tag; Tsinghua CoAI states research use) and the first 知乎 QA shard of
+                 MNBVC (MIT tag); prints each file's record format
 
 Every response is kept under data/raw/lm_chat2 with a .receipt.json (URL, licence, SHA-256, size, date, headers); a
 cached file whose hash no longer matches its receipt is an error.  Standard library only; may run on the Mac.
@@ -199,9 +202,54 @@ def ptt(directory: Path) -> None:
     )
 
 
+HF = "https://huggingface.co/datasets/{repo}/resolve/{rev}/{path}"
+OTHERS = [
+    (
+        "GaryYang123/zh-meme-sft-8k",
+        "84838bb5b1b023325499012ba956c485bbf592b4",
+        "train.jsonl",
+        "MIT (GaryYang123); comments from Douyin, Xiaohongshu and Bilibili users, LLM-augmented",
+    ),
+    ("GaryYang123/zh-meme-sft-8k", "84838bb5b1b023325499012ba956c485bbf592b4", "validation.jsonl", "same"),
+    ("GaryYang123/zh-meme-sft-8k", "84838bb5b1b023325499012ba956c485bbf592b4", "README.md", "same"),
+    (
+        "silver/lccc",
+        "5bd582fa28cd7143f2f9c852e08e23089d677c44",
+        "lccc_base_train.jsonl.gz",
+        "MIT tag (mirror); Tsinghua CoAI LCCC, research use; Weibo users' posts",
+    ),
+    ("silver/lccc", "5bd582fa28cd7143f2f9c852e08e23089d677c44", "README.md", "same"),
+    (
+        "liwu/MNBVC",
+        "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0",
+        "qa/20230196/zhihu/0.jsonl.gz",
+        "MIT tag (MNBVC); Zhihu users' answers",
+    ),
+    (
+        "liwu/MNBVC",
+        "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0",
+        "game/Genshin_Anime/20230901/Genshin_AnimeGameData.jsonl.gz",
+        "MIT tag (MNBVC); game text of HoYoverse",
+    ),
+    ("liwu/MNBVC", "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0", "README.md", "MIT tag (MNBVC)"),
+]
+
+
+def others(directory: Path) -> None:
+    import gzip
+
+    for repo, rev, path, licence in OTHERS:
+        target = directory / "others" / repo.replace("/", "__") / path
+        body = fetch(HF.format(repo=repo, rev=rev, path=quote(path)), target, licence)
+        if path.endswith((".jsonl", ".jsonl.gz")):
+            text = gzip.decompress(body).decode("utf-8") if path.endswith(".gz") else body.decode("utf-8")
+            first = text.split("\n", 1)[0]
+            print(path, len(body), "bytes; first record:", first[:600], flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt"])
+    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt", "others"])
     parser.add_argument("--first-year", type=int, default=2015)
     parser.add_argument("--last-year", type=int, default=2026)
     parser.add_argument("--documents", type=int, default=800)
@@ -219,6 +267,8 @@ def main(argv: list[str] | None = None) -> int:
         vtaiwan(a.raw)
     elif a.source == "ptt":
         ptt(a.raw)
+    elif a.source == "others":
+        others(a.raw)
     else:
         similar(a.raw)
     return 0

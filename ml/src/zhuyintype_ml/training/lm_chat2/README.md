@@ -38,6 +38,9 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 | `web3` | 同 `web`，提議的句子依雜湊固定只留三分之一（`web3/`） | GPU 主機 |
 | `ptt-sources` | PTT 八卦版問答（zake7749/Gossiping-Chinese-Corpus `65b7e36` 的 2.0 版 CSV）與海大 TOCP v1.0，寫收據 | 任一 |
 | `ptt` | `real` 再加上八卦版的標題與推文（也當成前後句對）與 TOCP 的句子（`ptt/`） | GPU 主機 |
+| `others-sources` | zh-meme-sft-8k、LCCC-base（`silver/lccc` 鏡像）與 MNBVC 知乎問答第一個分片，固定 Hugging Face 的版本，寫收據 | 任一 |
+| `ptt-meme`、`ptt-lccc`、`ptt-zhihu`、`ptt-others` | `ptt` 再加上各一份（LCCC 與知乎依雜湊取八分之一，s2twp 轉成正體）或全部 | GPU 主機 |
+| `ptt14` | 同 `ptt` 的語料，剪到出貨模型的 14 MB（`ptt14/`） | GPU 主機 |
 | `ship` | 把 `no_generated/` 的三個 TSV 與出處檔案複製到 `lm_chat/`，0.3.0 的模型先保存到 `lm_chat_v1/` | 任一 |
 
 `control`、`web`、`web3`、`ptt` 是 2026-11-17 的網路語域實驗（[slang-inventory.md](../../../../../docs/research/slang-inventory.md) 提案 2），都不會取代 `lm_chat/`；評測矩陣是 `ml/src/zhuyintype_ml/eval/matrices/chat-web-{dev,rows}.json`，結果見研究紀錄。
