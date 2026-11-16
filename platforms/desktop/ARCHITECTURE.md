@@ -74,5 +74,5 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 - 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
 - 動畫使用 `theme::motion`，系統要求減少動態效果時略過。
 - 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
-- Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。邊緣交給系統：Windows 11 的圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同）；沒有這些時（Windows 10、關閉透明效果）是實色並自己畫細框。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。Linux 仍由 App 畫浮動視窗。
+- Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。系統會替視窗畫圓角時（Windows 11 且不是虛擬機的基本顯示卡），邊緣交給系統：圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同）；其他情況（Windows 10、虛擬機）改用分層視窗，自己畫圓角、細框與柔和陰影，所以任何環境都是圓角。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。Linux 仍由 App 畫浮動視窗。
 - 不顯示畫面的執行（截圖、測試）不在使用者的桌面開視窗，而在主機的虛擬顯示器上執行。

@@ -5,11 +5,12 @@
 //!   method's window class (`CS_IME`).  An owned window always stays above its owner and lives in the owner's
 //!   z-order band, so the list shows over the Start menu's search box and immersive applications, which no window of
 //!   another process can.
-//! - **Look.**  The system draws the edge as for its own menus: Windows 11 rounds the corners, draws the hairline
-//!   border and the shadow, and puts its acrylic material (`DWMSBT_TRANSIENTWINDOW`) behind the content, in the
-//!   window's light or dark appearance.  Where there is none of that (Windows 10, transparency effects off) the
-//!   window is the panel colour with its own hairline.  The content is Direct2D (`panel_draw`), with the app's
-//!   geometry and colours (`zt_panel`).
+//! - **Look.**  Where the system rounds windows (Windows 11 on a real display adapter) it draws the edge as for its
+//!   own menus: the rounded corners, the hairline border and the shadow, and its acrylic material
+//!   (`DWMSBT_TRANSIENTWINDOW`) behind the content, in the window's light or dark appearance.  Elsewhere (Windows 10,
+//!   a virtual machine's basic display adapter, which Windows 11 never rounds) the window is layered and draws all of
+//!   that itself: rounded corners, the hairline and a soft shadow around a solid surface, so it is rounded
+//!   everywhere.  The content is Direct2D (`panel_draw`), with the app's geometry and colours (`zt_panel`).
 //! - **Focus.**  The windows never activate (`WS_EX_NOACTIVATE`, `MA_NOACTIVATE`); clicks post to the text service's
 //!   message window, which sends them to the host inside an edit session.
 //! - **DPI.**  Created and moved per-monitor aware: sizes are the logical layout times the caret's monitor scale.
@@ -17,7 +18,9 @@
 use std::cell::{Cell, RefCell};
 use std::time::Instant;
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+use std::sync::OnceLock;
+
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
 use windows::Win32::Graphics::Direct2D::Common::{
     D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
 };
@@ -31,22 +34,27 @@ use windows::Win32::Graphics::Dwm::{
     DWMWCP_ROUND, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, GetMonitorInfoW, HDC, InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect,
-    PAINTSTRUCT,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, CreateCompatibleDC,
+    CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC, InvalidateRect,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject,
 };
-use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::System::Registry::{
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
+};
 use windows::Win32::UI::Controls::{MARGINS, WM_MOUSELEAVE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CS_IME, CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GWLP_USERDATA, GetAncestor,
     GetWindowLongPtrW, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW, MA_NOACTIVATE,
-    PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SetCursor, SetTimer, SetWindowLongPtrW,
-    SetWindowPos, ShowWindow, UnregisterClassW, WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE,
-    WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
+    PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetCursor,
+    SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UnregisterClassW, UpdateLayeredWindow, WM_APP,
+    WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT,
+    WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
+use windows_numerics::Matrix3x2;
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
 use zt_panel::position::{Rect, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
@@ -102,6 +110,49 @@ fn to_rect(r: RECT) -> Rect {
     Rect::new(f64::from(r.left), f64::from(r.top), f64::from(r.right - r.left), f64::from(r.bottom - r.top))
 }
 
+/// Room around a layered window's surface for its shadow, in logical pixels.
+const SHADOW_MARGIN: f32 = 16.;
+
+/// Whether the system rounds windows and draws their border, shadow and backdrop: Windows 11 (build 22000 on) on a
+/// real display adapter.  Windows 11 leaves every window square on the basic display adapter of a virtual machine
+/// (Microsoft Basic Render Driver, vendor 0x1414 device 0x8c), as Windows 10 always does; there the windows draw
+/// their own corners.  Asked once per process; anything that cannot be found out counts as no.
+fn system_rounds() -> bool {
+    static ROUNDS: OnceLock<bool> = OnceLock::new();
+    *ROUNDS.get_or_init(|| {
+        let mut buffer = [0u16; 16];
+        let mut size = (buffer.len() * 2) as u32;
+        // SAFETY: a string value read into a buffer of the given size.
+        let read = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                w!("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion"),
+                w!("CurrentBuildNumber"),
+                RRF_RT_REG_SZ,
+                None,
+                Some(buffer.as_mut_ptr().cast()),
+                Some(&raw mut size),
+            )
+        };
+        let build: u32 = if read.is_ok() {
+            let end = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+            String::from_utf16_lossy(&buffer[..end]).trim().parse().unwrap_or(0)
+        } else {
+            0
+        };
+        if build < 22000 {
+            return false;
+        }
+        // SAFETY: DXGI calls with valid arguments.
+        unsafe {
+            let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else { return false };
+            let Ok(adapter) = factory.EnumAdapters1(0) else { return false };
+            let Ok(description) = adapter.GetDesc1() else { return false };
+            !(description.VendorId == 0x1414 && description.DeviceId == 0x8c)
+        }
+    })
+}
+
 /// The apps' light or dark choice (Settings › Personalization › Colors).
 fn system_dark() -> bool {
     let mut value: u32 = 1;
@@ -138,6 +189,10 @@ struct Surface {
     backdrop: Cell<bool>,
     /// The render target has no alpha: the content cannot let the backdrop through.
     opaque: Cell<bool>,
+    /// A layered window that draws its own rounded corners and shadow (`system_rounds` is false).
+    layered: Cell<bool>,
+    /// The surface's top-left corner on screen (physical), for a layered window.
+    origin: Cell<(i32, i32)>,
     dark: Cell<Option<bool>>,
     /// Physical size and the scale it was laid out at.
     size: Cell<(i32, i32)>,
@@ -152,6 +207,8 @@ impl Surface {
             system_edge: Cell::new(false),
             backdrop: Cell::new(false),
             opaque: Cell::new(false),
+            layered: Cell::new(false),
+            origin: Cell::new((0, 0)),
             dark: Cell::new(None),
             size: Cell::new((0, 0)),
             scale: Cell::new(1.),
@@ -212,6 +269,11 @@ impl Surface {
         }
         self.size.set((width, height));
         self.scale.set(scale);
+        if self.layered.get() {
+            // Moved, sized and shown with its next picture (`render_layered`).
+            self.origin.set((x, y));
+            return;
+        }
         let visible = self.visible();
         per_monitor(|| {
             // SAFETY: our own window.
@@ -232,6 +294,10 @@ impl Surface {
     /// into the paint DC instead, with alpha for the backdrop if it can, else opaque (the window then draws its own
     /// surface).
     fn render(&self, dc: HDC, paint: impl FnOnce(&ID2D1RenderTarget)) {
+        if self.layered.get() {
+            self.render_layered(paint);
+            return;
+        }
         let window = self.window.get();
         let (width, height) = self.size.get();
         if window.is_invalid() || width <= 0 || height <= 0 {
@@ -314,11 +380,131 @@ impl Surface {
         }
     }
 
+    /// The shadow margin of a layered window, physical pixels (0 for a framed one).
+    fn margin(&self) -> i32 {
+        if self.layered.get() { (SHADOW_MARGIN * self.scale.get()).ceil() as i32 } else { 0 }
+    }
+
+    /// Draws a layered window's picture in software into a bitmap with alpha, and gives it to the system with the
+    /// window's place and size (and shows it).  The content is drawn `margin` in, the shadow around it.
+    fn render_layered(&self, paint: impl FnOnce(&ID2D1RenderTarget)) {
+        let window = self.window.get();
+        let (width, height) = self.size.get();
+        if window.is_invalid() || width <= 0 || height <= 0 {
+            return;
+        }
+        let Some(g) = graphics() else { return };
+        let margin = self.margin();
+        let (full_w, full_h) = (width + margin * 2, height + margin * 2);
+        let scale = self.scale.get();
+        let existing = self.target.borrow().clone();
+        let target = match existing {
+            Some(Target::Dc(target)) => target,
+            _ => {
+                let properties = D2D1_RENDER_TARGET_PROPERTIES {
+                    r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+                    pixelFormat: D2D1_PIXEL_FORMAT {
+                        format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                        alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+                    },
+                    dpiX: 0.,
+                    dpiY: 0.,
+                    usage: D2D1_RENDER_TARGET_USAGE_NONE,
+                    minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+                };
+                // SAFETY: a valid factory.
+                let Ok(target) = (unsafe { g.d2d.CreateDCRenderTarget(&properties) }) else { return };
+                *self.target.borrow_mut() = Some(Target::Dc(target.clone()));
+                target
+            }
+        };
+        // SAFETY: a memory DC with a top-down 32-bit DIB section, drawn into, handed to UpdateLayeredWindow and freed.
+        unsafe {
+            let memory = CreateCompatibleDC(None);
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: full_w,
+                    biHeight: -full_h,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits = std::ptr::null_mut();
+            let Ok(bitmap) = CreateDIBSection(Some(memory), &info, DIB_RGB_COLORS, &mut bits, None, 0) else {
+                let _ = DeleteDC(memory);
+                return;
+            };
+            let previous = SelectObject(memory, bitmap.into());
+            let drawn = target.BindDC(memory, &RECT { left: 0, top: 0, right: full_w, bottom: full_h }).is_ok() && {
+                let base: ID2D1RenderTarget = target.clone().into();
+                base.SetDpi(96. * scale, 96. * scale);
+                base.BeginDraw();
+                base.Clear(Some(&D2D1_COLOR_F { r: 0., g: 0., b: 0., a: 0. }));
+                let inset = margin as f32 / scale;
+                base.SetTransform(&Matrix3x2::translation(inset, inset));
+                paint(&base);
+                base.SetTransform(&Matrix3x2::identity());
+                base.EndDraw(None, None).is_ok()
+            };
+            if drawn {
+                let (x, y) = self.origin.get();
+                let position = POINT { x: x - margin, y: y - margin };
+                let size = SIZE { cx: full_w, cy: full_h };
+                let blend = BLENDFUNCTION {
+                    BlendOp: AC_SRC_OVER as u8,
+                    BlendFlags: 0,
+                    SourceConstantAlpha: 255,
+                    AlphaFormat: AC_SRC_ALPHA as u8,
+                };
+                let visible = self.visible();
+                per_monitor(|| {
+                    let _ = UpdateLayeredWindow(
+                        window,
+                        None,
+                        Some(&position),
+                        Some(&size),
+                        Some(memory),
+                        Some(&POINT { x: 0, y: 0 }),
+                        COLORREF(0),
+                        Some(&blend),
+                        ULW_ALPHA,
+                    );
+                    let _ = SetWindowPos(window, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE);
+                    if !visible {
+                        let _ = ShowWindow(window, SW_SHOWNOACTIVATE);
+                    }
+                });
+            } else {
+                self.target.borrow_mut().take();
+            }
+            SelectObject(memory, previous);
+            let _ = DeleteObject(bitmap.into());
+            let _ = DeleteDC(memory);
+        }
+    }
+
     /// The surface under the content: the system's backdrop with a tint, or the panel colour; the hairline where
-    /// the system draws no edge.
+    /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.
     fn base(&self, painter: &Painter<'_>, size: (f32, f32)) {
         let whole = Frame::new(0., 0., size.0, size.1);
         let c = painter.c;
+        if self.layered.get() {
+            // Many faint layers 0.9 px apart read as one smooth blur (12 px), a little lower than the surface.
+            const LAYERS: usize = 14;
+            let ink = c.shadow.fade(if c.text.r > 0.5 { 0.03 } else { 0.012 });
+            for layer in (1..=LAYERS).rev() {
+                let grow = layer as f32 * 0.9;
+                let f = Frame::new(-grow, -grow + 3., size.0 + grow * 2., size.1 + grow * 2.);
+                painter.fill(f, tokens::RADIUS + grow, ink);
+            }
+            painter.fill(whole, tokens::RADIUS, c.surface);
+            painter.outline(whole, tokens::RADIUS, c.border);
+            return;
+        }
         let translucent = self.backdrop.get() && !self.opaque.get();
         painter.fill(whole, 0., if translucent { c.backdrop_tint } else { c.surface });
         if !self.system_edge.get() {
@@ -472,6 +658,23 @@ impl PanelWindow {
         Some(class.clone())
     }
 
+    /// Draws `kind`'s window again: at once for a layered window, at the next WM_PAINT for a framed one.
+    fn redraw(&self, kind: Kind) {
+        let surface = self.surface(kind);
+        if surface.layered.get() {
+            match kind {
+                Kind::Panel => self.paint_panel(HDC::default()),
+                Kind::Badge => self.paint_badge(HDC::default()),
+            }
+        } else {
+            let window = surface.window.get();
+            if !window.is_invalid() {
+                // SAFETY: our own window.
+                let _ = unsafe { InvalidateRect(Some(window), None, false) };
+            }
+        }
+    }
+
     fn surface(&self, kind: Kind) -> &Surface {
         match kind {
             Kind::Panel => &self.panel,
@@ -490,15 +693,21 @@ impl PanelWindow {
         let owner = self.owner.get();
         let this: *const PanelWindow = self;
         let params = Box::into_raw(Box::new((this, kind)));
+        let layered = !system_rounds();
+        let (ex_style, style) = if layered {
+            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, WS_POPUP)
+        } else {
+            // A frame (taken away again in WM_NCCALCSIZE) is what gives a popup the system's shadow.
+            (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, WS_POPUP | WS_THICKFRAME)
+        };
         let created = per_monitor(|| {
             // SAFETY: a registered class; the creation parameters are taken back in WM_NCCREATE.
             unsafe {
                 CreateWindowExW(
-                    WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                    ex_style,
                     PCWSTR(class.as_ptr()),
                     w!(""),
-                    // A frame (taken away again in WM_NCCALCSIZE) is what gives a popup the system's shadow.
-                    WS_POPUP | WS_THICKFRAME,
+                    style,
                     0,
                     0,
                     1,
@@ -512,6 +721,12 @@ impl PanelWindow {
         });
         let Ok(window) = created else { return None };
         surface.window.set(window);
+        surface.layered.set(layered);
+        if layered {
+            surface.system_edge.set(false);
+            surface.backdrop.set(false);
+            return Some(window);
+        }
         // SAFETY: our own window; 4-byte attribute values as DWM expects (each fails harmlessly where unsupported).
         unsafe {
             let corner = DWMWCP_ROUND.0 as u32;
@@ -637,6 +852,7 @@ impl PanelWindow {
         state.above = panel.above;
         drop(state);
         self.panel.place(x, y as i32, width, height, scale);
+        self.redraw(Kind::Panel);
         if animating {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(self.panel.window.get()), ANIMATION_TIMER, FRAME_MS, None) };
@@ -675,6 +891,7 @@ impl PanelWindow {
         let (x, y) =
             popup_position_with_gap(to_rect(caret), side_f, side_f, above, 0., to_rect(screen), f64::from(4. * scale));
         self.badge.place(x as i32, y as i32, side, (BADGE_H * scale).ceil() as i32, scale);
+        self.redraw(Kind::Badge);
         // SAFETY: our own window.
         unsafe { SetTimer(Some(window), TOAST_TIMER, (motion::TOAST_HOLD + 200.) as u32, None) };
     }
@@ -777,12 +994,12 @@ impl PanelWindow {
 
     fn mouse(&self, x: i32, y: i32, click: bool) {
         let scale = self.panel.scale.get().max(0.25);
-        let (lx, ly) = (x as f32 / scale, y as f32 / scale);
+        let margin = self.panel.margin();
+        let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
         let hit = self.state.borrow().layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
         if self.state.borrow().hover != hit {
             self.state.borrow_mut().hover = hit;
-            // SAFETY: our own window.
-            let _ = unsafe { InvalidateRect(Some(self.panel.window.get()), None, false) };
+            self.redraw(Kind::Panel);
         }
         if !click {
             return;
@@ -818,8 +1035,7 @@ impl PanelWindow {
                 Some(LRESULT(0))
             }
             WM_TIMER if wparam.0 == ANIMATION_TIMER => {
-                // SAFETY: our own window.
-                let _ = unsafe { InvalidateRect(Some(window), None, false) };
+                self.redraw(kind);
                 Some(LRESULT(0))
             }
             WM_TIMER if wparam.0 == TOAST_TIMER => {
@@ -848,8 +1064,7 @@ impl PanelWindow {
             WM_MOUSELEAVE => {
                 if self.state.borrow().hover.is_some() {
                     self.state.borrow_mut().hover = None;
-                    // SAFETY: our own window.
-                    let _ = unsafe { InvalidateRect(Some(window), None, false) };
+                    self.redraw(kind);
                 }
                 Some(LRESULT(0))
             }
