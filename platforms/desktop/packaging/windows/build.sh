@@ -70,13 +70,15 @@ sed -i -e 's/Code: MIT\./Code: AGPL-3.0-only./g' -e 's/Scripts are MIT-licensed\
 for file in lexicon.bin channel.bin lm/lm.bin lm/NOTICE.md lm/articles.tsv.gz lm_chat/lm.bin channel/NOTICE.md; do
   [[ -s $stage/data/$file ]] || { echo "build.sh: 缺少引擎資料 data/$file" >&2; exit 1; }
 done
+# The neural models (ONNX) and ONNX Runtime, which the app loads from beside itself.
+"$desktop/packaging/neural.sh" "$stage/data" "$stage/licenses" "$stage/onnxruntime.dll" windows
 
 echo "== 授權"
 cp "$root/LICENSE" "$stage/licenses/LICENSE.txt"
 cp "$root/NOTICE" "$stage/licenses/NOTICE.txt"
 cp "$root/resources/SOURCES.md" "$root/resources/sources.json" "$stage/licenses/"
 for licence in Apache-2.0.txt CC-BY-4.0.txt CC-BY-SA-4.0.txt CC0-1.0.txt LEXICON.txt McBopomofo-MIT.txt OGDL-1.0.txt \
-  Unicode-3.0.txt libtabe-COPYING.txt wordfreq-NOTICE.txt; do
+  Reranker-NOTICE.md Unicode-3.0.txt libtabe-COPYING.txt wordfreq-NOTICE.txt; do
   cp "$root/platforms/macos/Resources/Licenses/$licence" "$stage/licenses/"
 done
 cp "$root/platforms/desktop/crates/zhuyintype/assets/fonts/Inter-LICENSE.txt" \

@@ -222,8 +222,33 @@ fn gui_thread() -> Option<GUITHREADINFO> {
     unsafe { GetGUIThreadInfo(GetCurrentThreadId(), &mut gui) }.ok().map(|()| gui)
 }
 
+/// The input scopes of the selection's field (empty when the application reports none).
+fn input_scopes(context: &ITfContext, cookie: u32) -> Option<Vec<InputScope>> {
+    let range = selection(context, cookie).ok()?;
+    // SAFETY: valid objects; the VARIANT is cleared and the scope array freed.
+    unsafe {
+        let Ok(property) = context.GetAppProperty(&GUID_PROP_INPUTSCOPE) else { return Some(Vec::new()) };
+        let Ok(mut value) = property.GetValue(cookie, &range) else { return Some(Vec::new()) };
+        let mut list = Vec::new();
+        if value.Anonymous.Anonymous.vt == VT_UNKNOWN
+            && let Some(unknown) = value.Anonymous.Anonymous.Anonymous.punkVal.as_ref()
+            && let Ok(scopes) = unknown.cast::<ITfInputScope>()
+        {
+            let mut values: *mut InputScope = std::ptr::null_mut();
+            let mut count = 0u32;
+            if scopes.GetInputScopes(&mut values, &mut count).is_ok() && !values.is_null() {
+                list.extend_from_slice(std::slice::from_raw_parts(values, count as usize));
+                CoTaskMemFree(Some(values.cast_const().cast()));
+            }
+        }
+        let _ = VariantClear(&mut value as *mut VARIANT);
+        Some(list)
+    }
+}
+
 /// A field where nothing typed may leave the application: read-only or disabled contexts, password edit controls,
-/// and input scopes for passwords, PINs and private text.  Unknown counts as secure.
+/// and input scopes for passwords and PINs.  Unknown counts as secure.  (A private field, `is_private`, is not
+/// secure: Chinese is typed there, but nothing is learned or read.)
 pub(crate) fn is_secure(context: &ITfContext, cookie: u32) -> bool {
     // SAFETY: a valid context.
     let Ok(status) = (unsafe { context.GetStatus() }) else { return true };
@@ -236,37 +261,47 @@ pub(crate) fn is_secure(context: &ITfContext, cookie: u32) -> bool {
     if gui_thread().is_some_and(|gui| !gui.hwndFocus.is_invalid() && is_password_edit(gui.hwndFocus)) {
         return true;
     }
-    let Ok(range) = selection(context, cookie) else { return true };
-    // SAFETY: valid objects; the VARIANT is cleared and the scope array freed.
+    let Some(scopes) = input_scopes(context, cookie) else { return true };
+    scopes.iter().any(|scope| {
+        [IS_PASSWORD, IS_NUMERIC_PASSWORD, IS_NUMERIC_PIN, IS_ALPHANUMERIC_PIN, IS_ALPHANUMERIC_PIN_SET].contains(scope)
+    })
+}
+
+/// A field that asks input methods not to learn from it (`IS_PRIVATE`: every field of a Chromium or Edge private
+/// window): typing works, nothing is learned or read (IPC.md `private`).
+pub(crate) fn is_private(context: &ITfContext, cookie: u32) -> bool {
+    input_scopes(context, cookie).is_some_and(|scopes| scopes.contains(&IS_PRIVATE))
+}
+
+/// 前文 (IPC.md): up to 255 UTF-16 units of the document before the selection; None when the application does not
+/// say.  Never read in a secure field (the caller checks).
+pub(crate) fn text_before(context: &ITfContext, cookie: u32) -> Option<String> {
+    let range = selection(context, cookie).ok()?;
+    let mut buffer = [0u16; 255];
+    let mut length = 0u32;
+    // SAFETY: valid ranges under the edit cookie; the buffer bounds what is read.
     unsafe {
-        let Ok(property) = context.GetAppProperty(&GUID_PROP_INPUTSCOPE) else { return false };
-        let Ok(mut value) = property.GetValue(cookie, &range) else { return false };
-        let mut secure = false;
-        if value.Anonymous.Anonymous.vt == VT_UNKNOWN
-            && let Some(unknown) = value.Anonymous.Anonymous.Anonymous.punkVal.as_ref()
-            && let Ok(scopes) = unknown.cast::<ITfInputScope>()
-        {
-            let mut values: *mut InputScope = std::ptr::null_mut();
-            let mut count = 0u32;
-            if scopes.GetInputScopes(&mut values, &mut count).is_ok() && !values.is_null() {
-                let list = std::slice::from_raw_parts(values, count as usize);
-                secure = list.iter().any(|scope| {
-                    [
-                        IS_PASSWORD,
-                        IS_NUMERIC_PASSWORD,
-                        IS_NUMERIC_PIN,
-                        IS_ALPHANUMERIC_PIN,
-                        IS_ALPHANUMERIC_PIN_SET,
-                        IS_PRIVATE,
-                    ]
-                    .contains(scope)
-                });
-                CoTaskMemFree(Some(values.cast_const().cast()));
-            }
-        }
-        let _ = VariantClear(&mut value as *mut VARIANT);
-        secure
+        let before = range.Clone().ok()?;
+        before.Collapse(cookie, TF_ANCHOR_START).ok()?;
+        let mut moved = 0;
+        before.ShiftStart(cookie, -(buffer.len() as i32), &mut moved, std::ptr::null()).ok()?;
+        before.GetText(cookie, 0, &mut buffer, &mut length).ok()?;
     }
+    let length = (length as usize).min(buffer.len());
+    // A cut surrogate pair at the start is dropped.
+    let start = usize::from(length > 0 && (0xdc00..=0xdfff).contains(&buffer[0]));
+    Some(String::from_utf16_lossy(&buffer[start..length]))
+}
+
+/// The application's executable name (`app`, IPC.md §前文): separates the text each program was sent.
+pub(crate) fn app_name() -> &'static str {
+    static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.file_name().map(|name| name.to_string_lossy().chars().take(256).collect()))
+            .unwrap_or_default()
+    })
 }
 
 /// Runs `body` with this thread per-monitor DPI aware, so monitor rectangles and scale factors are physical.

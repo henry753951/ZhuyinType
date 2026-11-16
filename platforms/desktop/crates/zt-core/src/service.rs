@@ -58,10 +58,10 @@ pub struct PopupState {
 pub enum UiEvent {
     /// Show, update (`Some`) or hide (`None`) the candidate window.
     Popup(Option<PopupState>),
-    /// Show 中 or 英 beside the caret (only when 「中英提示」 is on).
-    ModeToast { english: bool, anchor: Rect },
+    /// Show 中 or 英 (or 全 or 半, after switching 中文標點's width) beside the caret (only when 「中英提示」 is on).
+    Toast { text: &'static str, anchor: Rect },
     /// Another start of the app asked for the settings window.
-    ShowSettings,
+    ShowSettings(Option<&'static str>),
     /// A page turn or highlight move stopped at the list's end (1 past the last, -1 before the first).
     Boundary(i32),
 }
@@ -277,13 +277,13 @@ impl Service {
         let anchor = self.inner.core.lock().host.anchor();
         for effect in effects {
             let event = match effect {
-                Effect::ShowSettings => UiEvent::ShowSettings,
+                Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
-                Effect::ModeToast { english } => {
+                Effect::Toast { text } => {
                     if !self.inner.settings.bool("showModeToast") {
                         continue;
                     }
-                    UiEvent::ModeToast { english, anchor }
+                    UiEvent::Toast { text, anchor }
                 }
             };
             let _ = self.inner.events.try_send(event);
@@ -331,9 +331,9 @@ impl Service {
         });
         if draws {
             effects.retain(|effect| match effect {
-                Effect::ModeToast { english } => {
+                Effect::Toast { text } => {
                     if self.inner.settings.bool("showModeToast") {
-                        reply.insert("toast".into(), Value::from(if *english { "英" } else { "中" }));
+                        reply.insert("toast".into(), Value::from(*text));
                     }
                     false
                 }
@@ -341,7 +341,7 @@ impl Service {
                     reply.insert("boundary".into(), Value::from(*direction));
                     false
                 }
-                Effect::ShowSettings => true,
+                Effect::ShowSettings(_) => true,
             });
         }
         self.emit(effects, None);
@@ -420,6 +420,11 @@ impl Service {
 
     /// How long the engine took to load, in ms.
     #[must_use]
+    /// How long the neural models took to load (reranker, character model).
+    pub fn model_load_ms(&self) -> (Option<f64>, Option<f64>) {
+        self.inner.core.lock().controller.session().model_load_ms()
+    }
+
     pub fn load_ms(&self) -> Option<f64> {
         self.inner.core.lock().controller.session().load_ms()
     }

@@ -27,7 +27,7 @@ cargo build --release -p zhuyin-ffi             # target/release/libzhuyin.{a,dy
 
 在 repository 根目錄，`tools/zt check engine` 執行 `cargo test --release`，`tools/zt build cli` 建置 `zhuyin-cli`（Linux 上含 ONNX Runtime）；評測一律從目前的原始碼增量建置 `zhuyin-cli`，不會沿用舊的執行檔。
 
-- **ONNX Runtime**（Linux、Windows 上的模型）：`ORT_LIB_PATH=$ONNXRUNTIME_ROOT/lib cargo build --release -p zhuyin-cli --features onnx`。連結系統的 ONNX Runtime 1.24（`.cargo/config.toml` 要求動態連結，不下載任何二進位檔），執行檔與測試記錄該目錄為 rpath。`cargo test -p zhuyin-models --features onnx` 以 `data/build`（或 `ZHUYIN_MODELS`）的模型對 Core ML 的參考值檢查。
+- **ONNX Runtime**（Linux、Windows 上的模型）：`ORT_LIB_PATH=$ONNXRUNTIME_ROOT/lib cargo build --release -p zhuyin-cli --features onnx`。連結系統的 ONNX Runtime 1.24（`.cargo/config.toml` 要求動態連結，不下載任何二進位檔），執行檔與測試記錄該目錄為 rpath。`cargo test -p zhuyin-models --features onnx` 以 `data/build`（或 `ZHUYIN_MODELS`）的模型對 Core ML 的參考值檢查。只有 `RerankerTree.onnx` 時不需要批次模型 `Reranker.onnx`（Linux 與 Windows 的 App 只帶前綴樹模型）；目錄裡有同名的 `.ort`（ONNX Runtime 格式）時改以 memory-map 載入並直接使用其中的權重；`.onnx` 的 int8 加 DequantizeLinear 權重在載入時摺疊成常數（`session.disable_quant_qdq`）。Linux 與 Windows 的 App 以 `ort` 的 `load-dynamic` 在執行時載入 ONNX Runtime（`platforms/desktop/crates/zt-core/src/models.rs`）。
 - **C 標頭**：改了 `zhuyin-ffi` 的介面後執行 `cbindgen --config crates/zhuyin-ffi/cbindgen.toml --crate zhuyin-ffi --output crates/zhuyin-ffi/include/zhuyin.h`（`cargo install --locked cbindgen`）。`cargo test -p zhuyin-ffi` 檢查標頭是否最新，並以 `cc` 編譯、執行 `tests/c/smoke.c`。
 - **macOS App**：`build-app.sh` 先建置 `libzhuyin.a`，`platforms/macos/Sources/ZhuyinEngine` 把它包成 App 用的 Swift 型別，並以 Core ML 執行模型。App 的引擎路徑（不含 App）是 `EngineBench`：`tools/zt build bench`；Mac 上的 `tools/zt eval latency` 量的就是它，`EngineBench --check-v3 data/build/v3` 經 Rust 與 Core ML 檢查 v3 的向量。
 

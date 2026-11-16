@@ -53,6 +53,13 @@ fn loads_and_types_with_the_real_lexicon() {
     assert!(sentence.starts_with("我們今天"), "{sentence}");
     session.key(&Key::new(code::DOWN, 0)).unwrap();
     assert!(session.presentation().count > 1);
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in
+            status.lines().filter(|l| l.starts_with("VmRSS") || l.starts_with("RssAnon") || l.starts_with("RssFile"))
+        {
+            println!("after typing {line}");
+        }
+    }
     latencies.sort_by(f64::total_cmp);
     println!("key latency ms p50={:.3} max={:.3}", latencies[latencies.len() / 2], latencies[latencies.len() - 1]);
 }
@@ -82,4 +89,52 @@ fn service_and_practice_share_the_data() {
     assert_eq!(first.text(), "你好");
     assert!(second.presentation().is_empty());
     drop(dir);
+}
+
+/// With the app's models beside the data (`reranker/RerankerTree.ort`, `v3/*.ort`) and ONNX Runtime
+/// (`ORT_DYLIB_PATH`, or where the packages put it): both load, the composer uses them, and a key stays fast.
+#[test]
+fn the_neural_models_load_and_choose() {
+    let Some(files) = files() else { return };
+    if files.reranker.is_none() || files.character_model.is_none() {
+        eprintln!("no ONNX models beside the data; skipped");
+        return;
+    }
+    let data = EngineData::new(files);
+    let models = data.models();
+    if models.error.as_deref().is_some_and(|error| error.contains("ONNX Runtime")) {
+        eprintln!("{:?}; skipped", models.error);
+        return;
+    }
+    assert!(models.reranker.is_some() && models.character.is_some(), "{:?}", models.error);
+    println!("models load: reranker {:?} ms, character {:?} ms", models.reranker_ms, models.character_ms);
+    let dir = TempDir::new();
+    let mut session = EngineSession::new();
+    session.open(&data, Some(&dir.join("personal"))).unwrap();
+    let mut latencies = Vec::new();
+    // 我們今天去看電影, then a sentence the models decide: 他在銀行上班.
+    for c in "ji3ap6rup wu0 fm4d042u04u/3".chars() {
+        latencies.push(session.key(&common::key_for(c)).unwrap().elapsed_ms.unwrap_or_default());
+    }
+    let sentence = session.presentation().composition.clone();
+    println!("with models: {sentence}");
+    assert!(sentence.starts_with("我們今天"), "{sentence}");
+    session.key(&Key::new(code::DOWN, 0)).unwrap();
+    let calls: Vec<usize> = models.calls.iter().map(|c| c.load(std::sync::atomic::Ordering::Relaxed)).collect();
+    println!("model calls (character, reranker, candidate list): {calls:?}");
+    assert!(calls[0] > 0, "the character model was never asked");
+    assert!(calls[2] > 0, "the candidate list was not ordered by the reranker");
+    latencies.sort_by(f64::total_cmp);
+    println!(
+        "key latency with models ms p50={:.3} max={:.3}",
+        latencies[latencies.len() / 2],
+        latencies[latencies.len() - 1]
+    );
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in
+            status.lines().filter(|l| l.starts_with("VmRSS") || l.starts_with("RssAnon") || l.starts_with("RssFile"))
+        {
+            println!("{line}");
+        }
+    }
 }

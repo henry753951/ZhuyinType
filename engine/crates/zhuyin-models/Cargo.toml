@@ -10,12 +10,13 @@ build = "build.rs"
 
 [features]
 # ONNX Runtime backend (Linux, Windows): links the system ONNX Runtime named by ORT_LIB_PATH (see README.md).
-onnx = ["dep:ort"]
+onnx = ["dep:ort", "dep:memmap2"]
 
 [dependencies]
 zhuyin-core = { path = "../zhuyin-core" }
 serde_json.workspace = true
 ort = { workspace = true, optional = true }
+memmap2 = { workspace = true, optional = true }
 
 [lints]
 workspace = true

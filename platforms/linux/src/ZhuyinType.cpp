@@ -3,6 +3,8 @@
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/statusarea.h>
+#include <fcitx/userinterfacemanager.h>
 #include <fcitx/surroundingtext.h>
 #include <unistd.h>
 #include <utility>
@@ -10,8 +12,12 @@
 namespace zhuyintype {
 namespace {
 bool protectedField(fcitx::CapabilityFlags flags) {
-    return flags.testAny(fcitx::CapabilityFlags{fcitx::CapabilityFlag::Password,
-        fcitx::CapabilityFlag::Sensitive, fcitx::CapabilityFlag::Disable});
+    return flags.testAny(fcitx::CapabilityFlags{fcitx::CapabilityFlag::Password, fcitx::CapabilityFlag::Disable});
+}
+// Sensitive data (a private window, Qt's ImhSensitiveData, GTK's private hint): typing works, nothing is learned or
+// read (IPC.md `private`).
+bool privateField(fcitx::CapabilityFlags flags) {
+    return flags.test(fcitx::CapabilityFlag::Sensitive);
 }
 nlohmann::json geometry(fcitx::InputContext &ic) {
     const auto &r = ic.cursorRect();
@@ -60,9 +66,12 @@ struct ZhuyinType::State final : fcitx::InputContextProperty {
     bool secure = false;
     bool capsSynced = false;
     bool inlinePreedit = true;
+    bool english = false;
+    // The user switched to ZhuyinType from another input method: the next focus says so (IPC `activated`).
+    bool activated = false;
 };
 ZhuyinType::ZhuyinType(fcitx::Instance &instance)
-    : factory_([](fcitx::InputContext &) { return new State; }) {
+    : instance_(instance), factory_([](fcitx::InputContext &) { return new State; }) {
     if (!instance.inputContextManager().registerProperty("zhuyintype", &factory_))
         throw std::runtime_error("無法登記 ZhuyinType 組字狀態。");
     capabilityWatcher_ = instance.watchEvent(fcitx::EventType::InputContextCapabilityAboutToChange,
@@ -90,6 +99,17 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
             active_.unwatch();
             timer_->setEnabled(false);
         });
+    const std::array<std::pair<const char *, const char *>, 5> menu{{{"zhuyintype-settings", "ZhuyinType 設定…"},
+        {"zhuyintype-words", "自訂詞與學到的詞…"}, {"zhuyintype-wizard", "設定嚮導…"},
+        {"zhuyintype-tour", "新功能導覽…"}, {"zhuyintype-about", "關於 ZhuyinType"}}};
+    const std::array<const char *, 5> places{nullptr, "words", "wizard", "tour", "about"};
+    for (size_t i = 0; i < menu.size(); ++i) {
+        actions_[i] = std::make_unique<fcitx::SimpleAction>();
+        actions_[i]->setShortText(menu[i].second);
+        const char *place = places[i];
+        actions_[i]->connect<fcitx::SimpleAction::Activated>([this, place](fcitx::InputContext *) { showSettings(place); });
+        instance.userInterfaceManager().registerAction(menu[i].first, actions_[i].get());
+    }
     timer_ = instance.eventLoop().addTimeEvent(CLOCK_MONOTONIC, 0, 1000,
         [this](fcitx::EventSourceTime *source, uint64_t) {
             poll();
@@ -116,6 +136,10 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     if (!response) { recover(ic, state); timer_->setEnabled(false); return false; }
     // Synchronous exchange and tracked focus bind every result to its originating context.
     if (active_.get() != &ic || state.secure) { clear(ic); return false; }
+    if (const bool english = (*response)["english"].get<bool>(); english != state.english) {
+        state.english = english;
+        ic.updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
+    }
     const auto &commit = (*response)["commit"].get_ref<const std::string &>();
     const auto &preedit = (*response)["preedit"].get_ref<const std::string &>();
     state.preedit = preedit;
@@ -148,8 +172,10 @@ bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     state.context = "fcitx-" + std::to_string(getpid()) + "-" + std::to_string(++serial);
     if (!broker_.connect()) { Broker::launchHost(); clear(ic); return false; }
     auto fields = geometry(ic);
-    fields.update({{"secure", state.secure}, {"inlinePreedit", state.inlinePreedit}});
-    if (!state.secure) addContext(ic, fields);
+    const bool isPrivate = privateField(ic.capabilityFlags());
+    fields.update({{"secure", state.secure}, {"private", isPrivate}, {"inlinePreedit", state.inlinePreedit}});
+    if (std::exchange(state.activated, false)) fields["activated"] = true;
+    if (!state.secure && !isPrivate) addContext(ic, fields);
     exchange(ic, state, "focus", fields);
     timer_->setNextInterval(20000);
     timer_->setEnabled(broker_.connected() && ic.hasFocus());
@@ -173,7 +199,23 @@ void ZhuyinType::blur(fcitx::InputContext &ic, State &state) {
 }
 void ZhuyinType::activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();
-    focus(ic, *ic.propertyFor(&factory_));
+    auto &state = *ic.propertyFor(&factory_);
+    // Picked from another input method (not focus moving between fields): 中/英 starts as the setting says.
+    if (event.type() == fcitx::EventType::InputContextSwitchInputMethod) state.activated = true;
+    for (auto &action : actions_) ic.statusArea().addAction(fcitx::StatusGroup::InputMethod, action.get());
+    focus(ic, state);
+}
+std::string ZhuyinType::subMode(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) {
+    return ic.propertyFor(&factory_)->english ? "英文" : "中文";
+}
+std::string ZhuyinType::subModeLabelImpl(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) {
+    return ic.propertyFor(&factory_)->english ? "英" : "中";
+}
+void ZhuyinType::showSettings(const char *place) {
+    nlohmann::json fields = nlohmann::json::object();
+    if (place) fields["place"] = place;
+    if (!broker_.connected() && !broker_.connect()) { Broker::launchHost(); return; }
+    broker_.request("settings", "show-settings", fields);
 }
 void ZhuyinType::deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();
@@ -216,8 +258,9 @@ void ZhuyinType::keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &even
     state.capsSynced = true; // CapsLock key events toggle in the host; do not also synchronize them.
     auto fields = geometry(ic);
     fields.update({{"key", key->key}, {"modifiers", key->modifiers}, {"shiftSide", key->shiftSide},
-        {"release", event.isRelease()}, {"repeat", event.rawKey().states().test(fcitx::KeyState::Repeat)}, {"secure", false}});
-    if (!event.isRelease() && state.preedit.empty()) addContext(ic, fields);
+        {"release", event.isRelease()}, {"repeat", event.rawKey().states().test(fcitx::KeyState::Repeat)}, {"secure", false},
+        {"private", privateField(ic.capabilityFlags())}});
+    if (!event.isRelease() && state.preedit.empty() && !privateField(ic.capabilityFlags())) addContext(ic, fields);
     if (exchange(ic, state, "key", fields)) event.filterAndAccept();
 }
 void ZhuyinType::poll() {

@@ -32,10 +32,10 @@ use windows::Win32::UI::TextServices::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GWLP_USERDATA, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW,
-    RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD,
-    TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_NCCREATE,
-    WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    GWLP_USERDATA, GetMessageTime, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MF_GRAYED, MF_SEPARATOR, MF_STRING,
+    PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_NONOTIFY,
+    TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{BOOL, ComObject, IUnknown, IUnknownImpl, Interface, PCWSTR, Ref, Result, implement, w};
 
@@ -43,12 +43,24 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::host_wants_key;
+use crate::keys::{host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
 use crate::protocol::Reply;
 use crate::registration::guid_string;
+
+/// Adds 前文 to a request: the application's name and the text before the caret (IPC.md §前文).
+fn put_context(fields: &mut Map<String, Value>, context: &ITfContext, cookie: u32) {
+    fields.insert("app".into(), Value::from(composition::app_name()));
+    if let Some(before) = composition::text_before(context, cookie) {
+        fields.insert("before".into(), Value::from(before));
+    }
+}
+
+/// This application had ZhuyinType deactivated before (the user picked another input method), so an activation is
+/// the user coming back to it rather than the application starting.
+static SWITCHED_AWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 const POLL_TIMER: usize = 1;
 const POLL_MS: u32 = 20;
@@ -108,6 +120,13 @@ pub(crate) struct TextService {
     panel: PanelWindow,
     /// The display attributes' atoms (display_attributes.rs), from activation.
     atoms: Cell<Option<[u32; 4]>>,
+    /// The last key `observe` sent (virtual key, flags, message time).
+    observed: Cell<(usize, isize, i32)>,
+    /// The field is private (`composition::is_private`): no 前文 is sent.
+    private: Cell<bool>,
+    /// The user selected ZhuyinType again after another input method in this application: the next focus says so,
+    /// and 中/英 starts as 「開始輸入時使用英文」 says.
+    activated: Cell<bool>,
     _count: ObjectCount,
 }
 
@@ -146,6 +165,9 @@ impl TextService {
             scale: Cell::new(1.0),
             panel: PanelWindow::new(),
             atoms: Cell::new(None),
+            observed: Cell::new((0, 0, 0)),
+            private: Cell::new(false),
+            activated: Cell::new(false),
             _count: ObjectCount::new(),
         }
         .into()
@@ -278,6 +300,7 @@ impl TextService_Impl {
     }
 
     fn deactivate(&self) {
+        SWITCHED_AWAY.store(true, std::sync::atomic::Ordering::Relaxed);
         self.switch_context(None);
         let button = self.mode_button.try_borrow_mut().ok().and_then(|mut button| button.take());
         if let Some((item, object)) = button {
@@ -414,6 +437,9 @@ impl TextService_Impl {
         }
         let mut fields = Map::new();
         fields.insert("secure".into(), Value::from(secure));
+        let private = !secure && composition::is_private(&context, cookie);
+        self.private.set(private);
+        fields.insert("private".into(), Value::from(private));
         composition::put_rect(&mut fields, rect, scale);
         if !self.host_focused.get() {
             if !caps_key {
@@ -421,6 +447,12 @@ impl TextService_Impl {
             }
             // This text service draws the candidate window itself, inside the application (panel_window).
             fields.insert("panel".into(), Value::from(true));
+            if self.activated.replace(false) {
+                fields.insert("activated".into(), Value::from(true));
+            }
+            if !secure && !private {
+                put_context(&mut fields, &context, cookie);
+            }
             let reply = self.broker.request(&self.name(), "focus", fields);
             let Some(reply) = reply.filter(|_| generation == self.generation.get()) else { return false };
             self.host_focused.set(true);
@@ -484,14 +516,19 @@ impl TextService_Impl {
             && !self.broker.busy()
     }
 
-    fn open_settings(&self) {
+    /// Opens the settings, or one place of them (`words`, `about`, `wizard`, `tour`; IPC `show-settings`).
+    fn open_settings(&self, place: Option<&str>) {
         if self.broker.busy() {
             return;
         }
         if self.broker.connected() || self.broker.connect() {
             let name = self.name();
             let name = if name.is_empty() { "settings".to_owned() } else { name };
-            let _ = self.broker.request(&name, "show-settings", Map::new());
+            let mut fields = Map::new();
+            if let Some(place) = place {
+                fields.insert("place".into(), Value::from(place));
+            }
+            let _ = self.broker.request(&name, "show-settings", fields);
         }
     }
 
@@ -510,7 +547,14 @@ impl TextService_Impl {
                 let label = if self.english.get() { w!("切換成中文") } else { w!("切換成英文") };
                 let _ = AppendMenuW(menu, toggle, 1, label);
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                // The macOS input menu's items.
                 let _ = AppendMenuW(menu, MF_STRING, 2, w!("ZhuyinType 設定…"));
+                let _ = AppendMenuW(menu, MF_STRING, 3, w!("自訂詞與學到的詞…"));
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                let _ = AppendMenuW(menu, MF_STRING, 4, w!("設定嚮導…"));
+                let _ = AppendMenuW(menu, MF_STRING, 5, w!("新功能導覽…"));
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                let _ = AppendMenuW(menu, MF_STRING, 6, w!("關於 ZhuyinType"));
                 let _ = SetForegroundWindow(owner);
                 let command = TrackPopupMenu(
                     menu,
@@ -525,7 +569,11 @@ impl TextService_Impl {
                 let _ = DestroyMenu(menu);
                 match command.0 {
                     1 => self.toggle_mode(),
-                    2 => self.open_settings(),
+                    2 => self.open_settings(None),
+                    3 => self.open_settings(Some("words")),
+                    4 => self.open_settings(Some("wizard")),
+                    5 => self.open_settings(Some("tour")),
+                    6 => self.open_settings(Some("about")),
                     _ => {}
                 }
             }
@@ -629,10 +677,20 @@ impl TextService_Impl {
         fields.insert("repeat".into(), Value::from(key.repeat));
         fields.insert("shiftSide".into(), Value::from(key.shift_side));
         fields.insert("secure".into(), Value::from(false));
+        fields.insert("private".into(), Value::from(self.private.get()));
         if !caps_key {
             fields.insert("capsLock".into(), Value::from(caps_lock_on()));
         }
         composition::put_rect(&mut fields, self.rect.get(), self.scale.get());
+        // 前文 when a composition may start (as the Fcitx 5 addon sends it).
+        if !release
+            && !self.private.get()
+            && !self.composing.get()
+            && load(&self.composition).is_none()
+            && let Some(context) = load(&self.context)
+        {
+            put_context(&mut fields, &context, cookie);
+        }
         let reply = self.broker.request(&self.name(), "key", fields);
         if generation != self.generation.get() {
             return;
@@ -764,14 +822,48 @@ impl TextService_Impl {
 
     fn test_key(&self, context: Ref<ITfContext>, vk: WPARAM, flags: LPARAM, release: bool) -> Result<BOOL> {
         guard(|| {
-            Ok((!context.is_null()
+            let eligible = !context.is_null()
                 && !self.restricted.get()
                 && self.thread_focused.get()
                 && !self.broker.busy()
-                && potential_key(vk)
-                && self.claims(vk, flags, release))
-            .into())
+                && potential_key(vk);
+            if !eligible {
+                return Ok(false.into());
+            }
+            if self.claims(vk, flags, release) {
+                return Ok(true.into());
+            }
+            self.observe(vk, flags, release);
+            Ok(false.into())
         })
+    }
+
+    /// Tells the host about a key the application gets (`host_observes_key`): ⌫, Space and Return when nothing is
+    /// composed.  Once per key, though TSF may test a key more than once.
+    fn observe(&self, vk: WPARAM, flags: LPARAM, release: bool) {
+        let composing = self.composing.get() || load(&self.composition).is_some();
+        let key = translate_key(vk, flags, release);
+        if !host_observes_key(&key, composing, self.english.get())
+            || !self.host_focused.get()
+            || self.secure.get()
+            || !self.broker.connected()
+        {
+            return;
+        }
+        // SAFETY: no preconditions.
+        let stamp = (vk.0, flags.0, unsafe { GetMessageTime() });
+        if self.observed.replace(stamp) == stamp {
+            return;
+        }
+        let mut fields = Map::new();
+        fields.insert("key".into(), Value::from(key.key));
+        fields.insert("modifiers".into(), Value::from(key.modifiers));
+        fields.insert("release".into(), Value::from(false));
+        fields.insert("repeat".into(), Value::from(key.repeat));
+        fields.insert("secure".into(), Value::from(false));
+        if let Some(reply) = self.broker.request(&self.name(), "key", fields) {
+            self.english.set(reply.english);
+        }
     }
 }
 
@@ -823,6 +915,7 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
+            self.activated.set(SWITCHED_AWAY.load(std::sync::atomic::Ordering::Relaxed));
             self.atoms.set(display_attributes::atoms());
             // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
             self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);

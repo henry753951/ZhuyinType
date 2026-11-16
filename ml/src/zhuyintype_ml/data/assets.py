@@ -78,6 +78,15 @@ COMPONENTS: dict[str, list[str]] = {
         "v3/Licenses",
         "v3/articles.tsv.gz",
     ],
+    # The Linux and Windows apps' models: ONNX Runtime's dynamic int8 of the shipped weights in the ORT format, which
+    # the apps memory-map (training/compress/desktop_models.py; manifest.json names the checkpoints).  The apps read
+    # them beside the JSON files of reranker/ and v3/ (platforms/desktop/packaging/neural.sh).
+    "onnx": [
+        "onnx/RerankerTree.ort",
+        "onnx/ContextEncoder.ort",
+        "onnx/SyllableEncoder.ort",
+        "onnx/manifest.json",
+    ],
     "eval-sets": [
         "corpus/dev_colloquial.txt",
         "corpus/dev_wikipedia.txt",
@@ -102,6 +111,7 @@ COMPONENTS: dict[str, list[str]] = {
 GROUPS: dict[str, list[str]] = {
     "app": ["lexicon", "lm", "lm_chat", "reranker", "v3"],
     "engine": ["lexicon", "lm"],
+    "desktop": ["lexicon", "lm", "lm_chat", "reranker", "v3", "onnx"],
     "eval": ["lexicon", "lm", "lm_chat", "reranker", "v3", "eval-sets", "checkpoints"],
     "all": list(COMPONENTS),
 }

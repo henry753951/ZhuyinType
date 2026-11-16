@@ -52,7 +52,8 @@ App 在 `<執行檔目錄>\data` 找引擎資料。
 6. 登入時啟動：`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\ZhuyinType` = `"…\zhuyintype.exe" --background`。
 7. 開始功能表捷徑「ZhuyinType 設定」（所有使用者）。
 8. 「設定 › 應用程式」的項目：名稱、圖示、發行者、版本、大小、解除安裝與安靜解除安裝指令。
-9. 完成頁預設勾選「開啟 ZhuyinType」。安靜安裝（`/S`）時，只有安裝前 App 在同一個工作階段執行（例如更新）才在背景重新啟動；其他情況等下次登入。
+9. 更新服務「ZhuyinType 更新」（`ZhuyinTypeUpdate`）：手動啟動、LocalSystem，執行 `zhuyintype.exe --update-service`。安全性描述元 `D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;LCRP;;;AU)` 讓登入的使用者只能查詢與啟動它。它自己取得並驗證簽章過的更新清單與安裝程式（[DESKTOP.md](../../../../docs/product/DESKTOP.md)〈更新〉），放進 `updates\` 後以 `/S /UPDATE` 執行；帶 `/UPDATE` 的安裝最後以 `--relaunch-sessions` 在每個登入的工作階段重新啟動 App。
+10. 完成頁預設勾選「開啟 ZhuyinType」。安靜安裝（`/S`）時，只有安裝前 App 在同一個工作階段執行（例如更新）才在背景重新啟動；其他情況等下次登入。
 
 App 一律以登入的使用者身分啟動、不提升權限：安裝程式本身以系統管理員權限執行，所以透過 Explorer 開啟執行檔或捷徑。broker 的 named pipe 屬於該使用者。
 
@@ -64,7 +65,7 @@ App 一律以登入的使用者身分啟動、不提升權限：安裝程式本�
 
 「設定 › 應用程式 › ZhuyinType 注音輸入法 › 解除安裝」，或 `uninstall.exe /S`：
 
-1. 結束 App；從解除安裝者的輸入法清單移除（`regsvr32 /u /n /i:user`）。
+1. 停止並刪除更新服務；結束 App；從解除安裝者的輸入法清單移除（`regsvr32 /u /n /i:user`）。
 2. `regsvr32 /u` 兩個 DLL：移除語言設定檔、類別、TSF 登錄機碼與 COM 類別。
 3. 移除 Active Setup、登入啟動、開始功能表捷徑、「設定 › 應用程式」項目與 `HKLM\Software\ZhuyinType`。
 4. 刪除程式檔案。仍被應用程式載入的 DLL 改名後排定下次開機刪除，安裝資料夾也在那時刪除。

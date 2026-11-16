@@ -1,6 +1,7 @@
 //! The ONNX Runtime backend (Linux, Windows; feature `onnx`), set up as Swift's `ONNXBridge`: one CPU session per
 //! model with one intra-op and one inter-op thread (the evaluator supplies process parallelism), every graph
-//! optimization, telemetry off; `int32` inputs and `float32` outputs widened to `f64`.  Tokenization, penalties and
+//! optimization, telemetry off; `int32` inputs and `float32` outputs widened to `f64`.  The Linux and Windows apps'
+//! models are ORT-format files, memory-mapped (see [`session`]).  Tokenization, penalties and
 //! every decision stay in [`NeuralReranker`](crate::NeuralReranker) and [`SyllableScorer`](crate::SyllableScorer).
 
 use std::path::Path;
@@ -26,12 +27,32 @@ fn environment() -> Result<&'static Environment, ModelError> {
         .map_err(|e| ModelError(e.clone()))
 }
 
-/// `directory/name.onnx` as a session.
+/// `directory/name.ort` (memory-mapped) or `directory/name.onnx` as a session.
+///
+/// - An ORT-format file (the Linux and Windows apps' models) is mapped and the session runs from it: its weights are
+///   used in place (`session.use_ort_model_bytes_for_initializers`) and not repacked, so they stay file-backed pages
+///   the system can drop, as Core ML's are on macOS.
+/// - An ONNX file is read into memory.  A weight stored as int8 with a `DequantizeLinear` is folded into an fp32
+///   constant once at load (`session.disable_quant_qdq`).
 fn session(directory: &Path, name: &str) -> Result<Session, ModelError> {
     let builder = Session::builder(environment()?).map_err(error)?;
     let builder = builder.with_intra_threads(1).map_err(error)?;
     let builder = builder.with_inter_threads(1).map_err(error)?;
-    let mut builder = builder.with_optimization_level(GraphOptimizationLevel::All).map_err(error)?;
+    let builder = builder.with_optimization_level(GraphOptimizationLevel::All).map_err(error)?;
+    let mapped = directory.join(format!("{name}.ort"));
+    if mapped.is_file() {
+        let file = std::fs::File::open(&mapped)?;
+        // SAFETY: a read-only model file the app installed; the mapping lives as long as the process, and nothing
+        // writes the file while it runs.
+        #[allow(unsafe_code)]
+        let map = unsafe { memmap2::Mmap::map(&file) }?;
+        let bytes: &'static [u8] = Box::leak(Box::new(map));
+        let builder = builder.with_config_entry("session.use_ort_model_bytes_directly", "1").map_err(error)?;
+        let builder = builder.with_config_entry("session.use_ort_model_bytes_for_initializers", "1").map_err(error)?;
+        let mut builder = builder.with_config_entry("session.disable_prepacking", "1").map_err(error)?;
+        return builder.commit_from_memory(bytes).map_err(error);
+    }
+    let mut builder = builder.with_config_entry("session.disable_quant_qdq", "1").map_err(error)?;
     builder.commit_from_file(directory.join(format!("{name}.onnx"))).map_err(error)
 }
 
@@ -49,9 +70,9 @@ fn doubles(value: &DynValue) -> Result<Vec<f64>, ModelError> {
     Ok(data.iter().map(|&v| f64::from(v)).collect())
 }
 
-/// `Reranker.onnx` and, when present, `RerankerTree.onnx`.
+/// `Reranker.onnx` and `RerankerTree.onnx`: either may be missing, not both.
 pub struct OnnxReranker {
-    batch: Session,
+    batch: Option<Session>,
     tree: Option<Session>,
 }
 
@@ -62,14 +83,19 @@ impl std::fmt::Debug for OnnxReranker {
 }
 
 impl OnnxReranker {
-    /// The reranker models in `directory`.  A tree model that fails to load is left out, as in Swift.
+    /// The reranker models in `directory`.  With the tree model there, the batched one is optional: every call
+    /// the engine makes fits the tree, and the apps ship the tree only (as the macOS app does with Core ML).
+    /// Without it, a tree model that fails to load is left out, as in Swift.
     ///
     /// # Errors
-    /// When `Reranker.onnx` cannot be loaded.
+    /// When no model can be loaded: `Reranker.onnx` when there is no tree model, `RerankerTree.onnx` otherwise.
     pub fn new(directory: &Path) -> Result<Self, ModelError> {
-        let batch = session(directory, "Reranker")?;
-        let tree =
-            if directory.join("RerankerTree.onnx").exists() { session(directory, "RerankerTree").ok() } else { None };
+        let present = |name: &str| ["onnx", "ort"].iter().any(|ext| directory.join(format!("{name}.{ext}")).exists());
+        if !present("Reranker") {
+            return Ok(OnnxReranker { batch: None, tree: Some(session(directory, "RerankerTree")?) });
+        }
+        let batch = Some(session(directory, "Reranker")?);
+        let tree = if present("RerankerTree") { session(directory, "RerankerTree").ok() } else { None };
         Ok(OnnxReranker { batch, tree })
     }
 }
@@ -78,7 +104,8 @@ impl RerankerModel for OnnxReranker {
     fn logprob(&mut self, ids: &[i32], targets: &[i32], rows: usize, length: usize) -> Result<Vec<f64>, ModelError> {
         let inputs =
             ort::inputs!["ids" => tensor(ids, &[rows, length])?, "targets" => tensor(targets, &[rows, length])?];
-        let outputs = self.batch.run(inputs).map_err(error)?;
+        let batch = self.batch.as_mut().ok_or_else(|| ModelError("no batched reranker model".to_owned()))?;
+        let outputs = batch.run(inputs).map_err(error)?;
         doubles(outputs.get("logprob").ok_or_else(|| ModelError("no logprob output".to_owned()))?)
     }
 

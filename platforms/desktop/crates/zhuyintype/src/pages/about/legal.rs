@@ -145,11 +145,12 @@ pub fn groups(data_dir: Option<&Path>) -> Option<Vec<Group>> {
     Some(shown.collect())
 }
 
-/// Where a licence file installed next to the program is (`Licenses/` beside it, or `share/zhuyintype/Licenses`).
+/// Where a licence file installed with the program is: `licenses\` beside it (Windows), `/usr/share/licenses/zhuyintype`
+/// (the Linux packages).
 fn installed(name: &str) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    [dir.join("Licenses"), dir.join("../share/zhuyintype/Licenses")]
+    [dir.join("Licenses"), dir.join("../share/licenses/zhuyintype"), dir.join("../share/zhuyintype/Licenses")]
         .into_iter()
         .map(|folder| folder.join(name))
         .find(|path| path.is_file())

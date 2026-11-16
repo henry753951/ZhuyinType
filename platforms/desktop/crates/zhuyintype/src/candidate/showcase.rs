@@ -260,9 +260,7 @@ pub fn popup_demo(cx: &mut App) {
     // The badge stays 1 s: show it late enough for a screenshot taken at 2.5 s.
     cx.spawn(async move |cx| {
         cx.background_executor().timer(std::time::Duration::from_millis(1800)).await;
-        cx.update(|cx| {
-            popup::handle(UiEvent::ModeToast { english: false, anchor: Rect::new(520., 160., 2., 20.) }, cx)
-        });
+        cx.update(|cx| popup::handle(UiEvent::Toast { text: "中", anchor: Rect::new(520., 160., 2., 20.) }, cx));
     })
     .detach();
 }

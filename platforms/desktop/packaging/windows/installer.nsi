@@ -41,6 +41,8 @@ ${StrStr}
 !define ACTIVE_SETUP_KEY "Software\Microsoft\Active Setup\Installed Components\{25BC3548-B611-4F92-91D0-C9291D427EA8}"
 !define SHORTCUT "ZhuyinType 設定.lnk"
 !define APP "zhuyintype.exe"
+; Installs updates (zt_core::update): started on demand by the signed-in user's app, runs as LocalSystem.
+!define UPDATE_SERVICE "ZhuyinTypeUpdate"
 !define TSF64 "zhuyintype-tsf-x64.dll"
 !define TSF32 "zhuyintype-tsf-x86.dll"
 
@@ -174,6 +176,27 @@ Function LaunchInBackgroundAsUser
   Exec '"$WINDIR\explorer.exe" "$INSTDIR\background.lnk"'
 FunctionEnd
 
+; The update service: demand start, LocalSystem, `zhuyintype.exe --update-service`.  Its security descriptor lets
+; every signed-in user (AU) query and start it and nothing else; administrators and SYSTEM keep full control.  It
+; takes no input: it fetches the signed feed itself and installs only a release signed with the project's key.
+!macro InstallUpdateService
+  nsExec::Exec '"$SYSDIR\sc.exe" create ${UPDATE_SERVICE} binPath= "\"$INSTDIR\${APP}\" --update-service" start= demand obj= LocalSystem DisplayName= "ZhuyinType 更新"'
+  Pop $0
+  nsExec::Exec '"$SYSDIR\sc.exe" config ${UPDATE_SERVICE} binPath= "\"$INSTDIR\${APP}\" --update-service" start= demand obj= LocalSystem DisplayName= "ZhuyinType 更新"'
+  Pop $0
+  nsExec::Exec '"$SYSDIR\sc.exe" description ${UPDATE_SERVICE} "安裝 ZhuyinType 經過簽章驗證的新版本"'
+  Pop $0
+  nsExec::Exec '"$SYSDIR\sc.exe" sdset ${UPDATE_SERVICE} D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;LCRP;;;AU)'
+  Pop $0
+!macroend
+
+!macro RemoveUpdateService
+  nsExec::Exec '"$SYSDIR\sc.exe" stop ${UPDATE_SERVICE}'
+  Pop $0
+  nsExec::Exec '"$SYSDIR\sc.exe" delete ${UPDATE_SERVICE}'
+  Pop $0
+!macroend
+
 ; ---------------------------------------------------------------------------------------------------------------
 ; Install
 
@@ -197,6 +220,8 @@ Section "ZhuyinType" SecMain
   !insertmacro MoveAside "$INSTDIR\${TSF32}"
 
   File "${STAGE}/${APP}"
+  ; ONNX Runtime for the neural models, loaded by the app only (stopped above).
+  File "${STAGE}/onnxruntime.dll"
   File "${STAGE}/${TSF64}"
   File "${STAGE}/${TSF32}"
   File "${STAGE}/logo.ico"
@@ -240,6 +265,10 @@ Section "ZhuyinType" SecMain
   CreateShortcut "$INSTDIR\background.lnk" "$INSTDIR\${APP}" "--background" "$INSTDIR\zhuyintype.ico" 0
   CreateShortcut "$SMPROGRAMS\${SHORTCUT}" "$INSTDIR\${APP}" "" "$INSTDIR\zhuyintype.ico" 0 SW_SHOWNORMAL "" "開啟 ZhuyinType 設定"
 
+  !insertmacro InstallUpdateService
+  ; The update service's download of this installer.
+  RMDir /r "$INSTDIR\updates"
+
   WriteRegStr HKLM "Software\${PRODUCT}" "InstallDir" "$INSTDIR"
   WriteRegStr HKLM "Software\${PRODUCT}" "Version" "${VERSION}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "ZhuyinType 注音輸入法"
@@ -257,8 +286,14 @@ Section "ZhuyinType" SecMain
   WriteRegDWORD HKLM "${UNINSTALL_KEY}" "EstimatedSize" "$0"
 
   ; The finish page offers to start the app.  A silent install starts it again only if it was running in this
-  ; session (an upgrade); otherwise it starts at the next sign-in.
-  ${If} ${Silent}
+  ; session (an upgrade); otherwise it starts at the next sign-in.  An update (/UPDATE, run by the update service as
+  ; SYSTEM) starts it again in every signed-in session.
+  ${GetParameters} $1
+  ClearErrors
+  ${GetOptions} $1 "/UPDATE" $2
+  ${IfNot} ${Errors}
+    Exec '"$INSTDIR\${APP}" --relaunch-sessions'
+  ${ElseIf} ${Silent}
   ${AndIf} $AppWasRunning == 1
     Call LaunchInBackgroundAsUser
   ${EndIf}
@@ -274,6 +309,7 @@ FunctionEnd
 Section "un.ZhuyinType" UnSecMain
   SectionIn RO
   SetShellVarContext all
+  !insertmacro RemoveUpdateService
   !insertmacro StopApp
   ; The uninstalling user's list first, while the profile is still registered.
   ExecWait '"$SYSDIR\regsvr32.exe" /s /u /n /i:user "$INSTDIR\${TSF64}"'
@@ -291,11 +327,13 @@ Section "un.ZhuyinType" UnSecMain
   !insertmacro MoveAside "$INSTDIR\${TSF32}"
   !insertmacro DeleteOldCopies
   Delete "$INSTDIR\${APP}"
+  Delete "$INSTDIR\onnxruntime.dll"
   Delete "$INSTDIR\logo.ico"
   Delete "$INSTDIR\zhuyintype.ico"
   Delete "$INSTDIR\background.lnk"
   RMDir /r "$INSTDIR\data"
   RMDir /r "$INSTDIR\licenses"
+  RMDir /r "$INSTDIR\updates"
   RMDir /r /REBOOTOK "$INSTDIR\fonts"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /REBOOTOK "$INSTDIR"
