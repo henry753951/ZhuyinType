@@ -47,11 +47,12 @@ use windows::Win32::UI::Controls::{MARGINS, WM_MOUSELEAVE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CS_IME, CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GWLP_USERDATA, GetAncestor,
-    GetWindowLongPtrW, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW, MA_NOACTIVATE,
-    PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetCursor,
-    SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UnregisterClassW, UpdateLayeredWindow, WM_APP,
-    WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT,
-    WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
+    GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW,
+    MA_NOACTIVATE, PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SetCursor, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UnregisterClassW, UpdateLayeredWindow,
+    WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST,
+    WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+    WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
 use windows_numerics::Matrix3x2;
@@ -878,6 +879,11 @@ impl PanelWindow {
     }
 
     fn show_toast(&self, text: &str, caret: RECT, scale: f32) {
+        // No caret (nothing to type into, or an application that does not say where it is): no badge, rather than
+        // one in a corner of the screen.
+        if !caret_in_window(caret, self.owner.get()) {
+            return;
+        }
         let Some(window) = self.ensure(Kind::Badge) else { return };
         let (appearance, above) = {
             let state = self.state.borrow();
@@ -1118,4 +1124,21 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
         }
         DefWindowProcW(window, message, wparam, lparam)
     }
+}
+
+/// Whether `caret` (physical pixels) is a place in `window`, the application window being typed in.  Applications
+/// with nothing to type into report an empty rectangle at the screen's origin, nothing at all, or the caret of a
+/// hidden field somewhere else on the screen (File Explorer).
+fn caret_in_window(caret: RECT, window: HWND) -> bool {
+    let empty = caret.left == 0 && caret.top == 0 && caret.right == 0 && caret.bottom == 0;
+    if empty || caret.bottom < caret.top || window.is_invalid() {
+        return false;
+    }
+    let mut frame = RECT::default();
+    // SAFETY: a window handle from the system; per-monitor awareness makes its rectangle physical, as the caret is.
+    let known = crate::composition::per_monitor(|| unsafe {
+        IsWindowVisible(window).as_bool() && GetWindowRect(window, &mut frame).is_ok()
+    });
+    let (x, y) = ((caret.left + caret.right) / 2, (caret.top + caret.bottom) / 2);
+    known && (frame.left..=frame.right).contains(&x) && (frame.top..=frame.bottom).contains(&y)
 }

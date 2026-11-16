@@ -407,7 +407,9 @@ impl Render for ToastWindow {
 
 fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     let settings = app::settings(cx).clone();
-    if !settings.bool("showModeToast") {
+    // No caret reported (nothing to type into): no badge, rather than one in a corner of the screen.
+    let unknown = anchor.x == 0. && anchor.y == 0. && anchor.width == 0. && anchor.height == 0.;
+    if !settings.bool("showModeToast") || unknown {
         return;
     }
     let transparent = popups(cx).transparent;

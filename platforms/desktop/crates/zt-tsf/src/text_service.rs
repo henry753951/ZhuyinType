@@ -589,10 +589,16 @@ impl TextService_Impl {
         let Some(context) = load(&self.context) else { return };
         let generation = self.generation.get();
         let this = self.to_object();
+        let document = context.clone();
         let _ = composition::edit(&context, self.client.get(), false, move |cookie| {
             if generation != this.generation.get() || !this.host_focused.get() || this.secure.get() {
                 return S_OK;
             }
+            // Where the caret is now (the badge goes there, or nowhere), not where it was at the last key.
+            let (rect, scale, owner) = composition::caret(&document, cookie);
+            this.rect.set(rect);
+            this.scale.set(scale);
+            this.panel.set_owner(owner);
             let mut fields = Map::new();
             fields.insert("english".into(), Value::from(!this.english.get()));
             let reply = this.broker.request(&this.name(), "mode", fields);

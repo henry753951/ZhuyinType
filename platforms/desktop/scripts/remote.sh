@@ -11,7 +11,9 @@
 # directory (~/zhuyintype/work/desktop-<checkout>) and cargo target directory (~/zhuyintype/target/desktop-<checkout>),
 # so worktrees never rebuild each other's artefacts.
 set -euo pipefail
-root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+# The checkout's root from this file's place (not git: a git hook's GIT_DIR would make that answer the current
+# directory).
+root=$(cd "$(dirname "$0")/../../.." && pwd)
 host=${ZHUYIN_REMOTE_HOST:-$(sed -n 's/^ZHUYIN_REMOTE_HOST=//p' "$root/.remote.env" 2>/dev/null | tail -1)}
 [ -n "$host" ] || { echo "remote.sh: set ZHUYIN_REMOTE_HOST in $root/.remote.env" >&2; exit 2; }
 name=desktop-$(basename "$root" | tr -c 'A-Za-z0-9._-\n' '-')
