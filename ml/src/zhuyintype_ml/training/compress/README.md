@@ -73,6 +73,7 @@ Mac 上的 `quantize` 和主機上算出的權重逐位元相同（SHA-256 比�
 | `methods.py` | 壓縮方法與輸出目錄（只用標準函式庫） |
 | `quantize.py` | 假量化：線性量化（和 coremltools 相同的 fp16 算法）、一維 k-means 調色盤、紀錄與跨機器的雜湊比對 |
 | `onnx_models.py` | 每種方法的 ONNX 匯出、ONNX Runtime 的 int8 模型、參考輸出與耗時、`no-reranker/` |
+| `desktop_models.py` | Linux 與 Windows App 的模型（資料元件 `onnx`）：出貨權重的動態 int8，存成 ORT 格式供 App memory-map |
 | `coreml.py` | Core ML 匯出、逐值對應常數後以 coremltools 壓縮、編譯、大小與載入時間（macOS） |
 | `parity.py` | Mac 上的一致性檢查與壓縮模型的 golden vectors（macOS） |
 | `test_compress.py` | 單元測試 |

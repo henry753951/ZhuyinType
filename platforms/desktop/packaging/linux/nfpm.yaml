@@ -88,6 +88,13 @@ contents:
     dst: /etc/xdg/autostart/zhuyintype.desktop
     type: config|noreplace
     expand: true
+  # Updates: the root updater and the rule that lets the signed-in user start it (zt_core::update).
+  - src: ${ZT_STAGE}/usr/lib/systemd/system/zhuyintype-update.service
+    dst: /usr/lib/systemd/system/zhuyintype-update.service
+    expand: true
+  - src: ${ZT_STAGE}/usr/share/polkit-1/rules.d/50-zhuyintype-update.rules
+    dst: /usr/share/polkit-1/rules.d/50-zhuyintype-update.rules
+    expand: true
   - src: ${ZT_STAGE}/usr/share/icons/hicolor/16x16/apps/zhuyintype.png
     dst: /usr/share/icons/hicolor/16x16/apps/zhuyintype.png
     expand: true

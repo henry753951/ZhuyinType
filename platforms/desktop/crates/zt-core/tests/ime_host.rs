@@ -192,10 +192,10 @@ fn preceding_text_mode_toast_and_caret() {
     f.request("key", shift(false));
     let reply = f.request("key", shift(true));
     assert_eq!(reply["english"], true);
-    let toasts: Vec<UiEvent> = f.ui_events().into_iter().filter(|e| matches!(e, UiEvent::ModeToast { .. })).collect();
+    let toasts: Vec<UiEvent> = f.ui_events().into_iter().filter(|e| matches!(e, UiEvent::Toast { .. })).collect();
     assert_eq!(toasts.len(), 1);
-    let UiEvent::ModeToast { english, anchor } = &toasts[0] else { unreachable!() };
-    assert!(*english);
+    let UiEvent::Toast { text, anchor } = &toasts[0] else { unreachable!() };
+    assert_eq!(*text, "英");
     assert_eq!(
         (anchor.x, anchor.y, anchor.width, anchor.height),
         (300.0, 200.0, 1.0, 18.0),
@@ -205,7 +205,7 @@ fn preceding_text_mode_toast_and_caret() {
     f.service.settings().set("showModeToast", json!(false)).unwrap();
     f.request("key", shift(false));
     f.request("key", shift(true));
-    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::ModeToast { .. })));
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. })));
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn an_adapter_that_draws_the_window_gets_it_in_its_replies() {
     f.request("key", shift(false));
     let reply = f.request("key", shift(true));
     assert_eq!(reply["toast"], "英");
-    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::ModeToast { .. })));
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. })));
 }
 
 #[test]
@@ -278,6 +278,19 @@ fn replies_mark_the_words_and_the_one_being_changed() {
     assert_eq!(listed["focus"], 0, "the word the list replaces");
     let secure = f.request("key", json!({"secure": true}));
     assert!(secure.get("clauses").is_none(), "nothing about the text leaves a secure field");
+}
+
+#[test]
+fn a_private_field_types_chinese_without_reading_or_learning() {
+    let mut f = Fixture::new();
+    assert!(ok(&f.request("focus", json!({"secure": false, "private": true, "app": "browser", "before": "前文"}))));
+    assert!(f.service.with_controller(|controller| controller.private()));
+    f.keys("su");
+    let typed = f.key('3' as i32);
+    assert_eq!(typed["preedit"], "你", "typing works in a private field");
+    assert!(!ok(&f.request("focus", json!({"secure": false, "private": "yes"}))));
+    assert!(ok(&f.request("focus", json!({"secure": false}))));
+    assert!(!f.service.with_controller(|controller| controller.private()), "a new focus is not private");
 }
 
 #[test]
@@ -305,7 +318,7 @@ fn show_settings_and_single_instance() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     let mut shown = false;
     while !shown && std::time::Instant::now() < deadline {
-        shown = f.ui_events().contains(&UiEvent::ShowSettings);
+        shown = f.ui_events().contains(&UiEvent::ShowSettings(None));
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert!(shown, "the running instance was asked for its settings window");

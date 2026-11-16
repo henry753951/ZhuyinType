@@ -289,6 +289,15 @@ fn confirm_reset(window: &mut Window, cx: &mut App) {
                 if let Err(error) = app::settings(cx).reset_all() {
                     log::warn!("resetting settings: {error:#}");
                 }
+                // As on macOS: the keys set on 快捷鍵 and the app list too.
+                if let Some(service) = app::service(cx) {
+                    if let Err(error) = service.shortcuts().reset(None) {
+                        log::warn!("resetting keys: {error:#}");
+                    }
+                    if let Err(error) = service.set_popup_composition_apps(&[]) {
+                        log::warn!("resetting the app list: {error:#}");
+                    }
+                }
                 cx.refresh_windows();
             })
             .destructive(),

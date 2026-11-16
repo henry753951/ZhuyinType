@@ -14,8 +14,12 @@ pub type ConnectionId = u64;
 /// What a request asks of the UI, besides the reply.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
-    ShowSettings,
-    ModeToast { english: bool },
+    /// Show the settings window, or one place of it (`place` of `show-settings`: words, about, wizard, tour).
+    ShowSettings(Option<&'static str>),
+    /// The badge by the caret: 中 or 英, 全 or 半.
+    Toast {
+        text: &'static str,
+    },
     Boundary(i32),
 }
 
@@ -130,7 +134,10 @@ impl Host {
                     }
                 }
                 ControllerEvent::ModeSwitched { english } if self.focused() => {
-                    effects.push(Effect::ModeToast { english });
+                    effects.push(Effect::Toast { text: if english { "英" } else { "中" } });
+                }
+                ControllerEvent::WidthSwitched { full } if self.focused() => {
+                    effects.push(Effect::Toast { text: if full { "全" } else { "半" } });
                 }
                 ControllerEvent::Boundary(direction) => effects.push(Effect::Boundary(direction)),
                 _ => {}
@@ -224,7 +231,16 @@ impl Host {
             return Err("通訊格式無效。");
         }
         if op == "show-settings" {
-            return Ok((Map::from_iter([("ok".to_owned(), json!(true))]), vec![Effect::ShowSettings]));
+            let place = match r.get("place") {
+                None => None,
+                Some(value) => Some(
+                    ["words", "about", "wizard", "tour"]
+                        .into_iter()
+                        .find(|place| value.as_str() == Some(place))
+                        .ok_or("設定頁面無效。")?,
+                ),
+            };
+            return Ok((Map::from_iter([("ok".to_owned(), json!(true))]), vec![Effect::ShowSettings(place)]));
         }
         if !OPS.contains(&op) {
             return Err("不支援的操作。");
@@ -233,7 +249,7 @@ impl Host {
         if matches!(op, "key" | "focus" | "secure") && flag("secure").is_none() {
             return Err("缺少安全輸入狀態。");
         }
-        for field in ["secure", "repeat", "capsLock", "inlinePreedit", "panel"] {
+        for field in ["secure", "private", "activated", "repeat", "capsLock", "inlinePreedit", "panel"] {
             if r.contains_key(field) && flag(field).is_none() {
                 return Err("輸入狀態格式無效。");
             }
@@ -322,16 +338,22 @@ impl Host {
         }
         self.anchor = rect;
         if op == "focus" {
+            if flag("activated") == Some(true) {
+                controller.activated();
+            }
             self.inline_preedit = flag("inlinePreedit").unwrap_or(true);
             self.draws_panel = flag("panel").unwrap_or(false);
         }
         if let Some(secure) = flag("secure") {
             self.set_secure(controller, secure);
         }
+        if matches!(op, "focus" | "secure") || flag("private").is_some() {
+            controller.set_private(flag("private").unwrap_or(false));
+        }
         if let Some(caps_lock) = flag("capsLock") {
             controller.synchronize_caps_lock(caps_lock);
         }
-        if !self.secure && (op == "focus" || app.is_some() || before.is_some()) {
+        if !self.secure && !controller.private() && (op == "focus" || app.is_some() || before.is_some()) {
             if op == "focus" || app.is_some() {
                 self.client_app = app.unwrap_or_default();
             }

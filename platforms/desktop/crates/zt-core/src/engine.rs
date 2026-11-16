@@ -6,9 +6,8 @@
 //! in-memory personal data; the lexicon and language models are memory-mapped, so the second engine shares their
 //! pages with the first.
 //!
-//! The neural models (reranker, character model) are macOS-only (Core ML).  Their seam is the composer's hooks
-//! (`Composer::set_reranker`, `set_candidate_scorer`, `set_character_scorer`), reached through
-//! [`EngineSession::composer_mut`]; nothing sets them on this platform yet.
+//! The neural models (reranker, character model) run with ONNX Runtime (`crate::models`); [`EngineData`] loads them
+//! once and every session's composer gets them through its hooks, as the macOS app sets them up with Core ML.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,6 +41,10 @@ pub struct DataFiles {
     pub chat_model: Option<PathBuf>,
     /// The reading channel's table (`channel.bin`), if present.
     pub reading_channel: Option<PathBuf>,
+    /// The sentence reranker (`reranker/`: `vocab.json` and `RerankerTree.ort`), if present.
+    pub reranker: Option<PathBuf>,
+    /// The character model (`v3/`: `chars.json`, `ContextEncoder.ort`, `SyllableEncoder.ort`), if present.
+    pub character_model: Option<PathBuf>,
 }
 
 impl DataFiles {
@@ -64,6 +67,12 @@ impl DataFiles {
             language_model: model("lm", &["lm.bin", "bigram.tsv", "unigram.tsv"]),
             chat_model: model("lm_chat", &["lm.bin", "bigram.tsv"]),
             reading_channel: channel.is_file().then_some(channel),
+            reranker: model("reranker", &["RerankerTree.ort", "RerankerTree.onnx", "Reranker.onnx"])
+                .filter(|path| path.join("vocab.json").is_file()),
+            character_model: model("v3", &["ContextEncoder.ort", "ContextEncoder.onnx"]).filter(|path| {
+                path.join("chars.json").is_file()
+                    && ["SyllableEncoder.ort", "SyllableEncoder.onnx"].iter().any(|file| path.join(file).is_file())
+            }),
         })
     }
 
@@ -102,6 +111,7 @@ impl DataFiles {
 pub struct EngineData {
     files: DataFiles,
     config: EngineConfig,
+    models: std::sync::OnceLock<crate::models::NeuralModels>,
 }
 
 impl EngineData {
@@ -113,7 +123,13 @@ impl EngineData {
             reading_channel: files.reading_channel.clone(),
             ..EngineConfig::default()
         };
-        Arc::new(Self { files, config })
+        Arc::new(Self { files, config, models: std::sync::OnceLock::new() })
+    }
+
+    /// The neural models, loaded on first use (by the first session that opens).
+    pub fn models(&self) -> &crate::models::NeuralModels {
+        self.models
+            .get_or_init(|| crate::models::load(self.files.reranker.as_deref(), self.files.character_model.as_deref()))
     }
 
     /// The engine data for the lexicon at `path` (a `lexicon.tsv`, which need not exist when `lexicon.bin` does),
@@ -282,6 +298,11 @@ struct Open {
 /// at a time (the input controller's owner locks it).
 pub struct EngineSession {
     open: Option<Open>,
+    /// What the models read as the text before the composition, whether the shown sentence was a correction, and
+    /// whether commits stay out of that text (`crate::models`).
+    model_context: crate::models::Context,
+    shown_corrected: crate::models::ShownCorrected,
+    suspended: Arc<std::sync::atomic::AtomicBool>,
     values: Values,
     presentation: Presentation,
     committed: String,
@@ -314,6 +335,9 @@ impl EngineSession {
     pub fn new() -> Self {
         Self {
             open: None,
+            model_context: crate::models::Context::default(),
+            shown_corrected: crate::models::ShownCorrected::default(),
+            suspended: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             values: Values::defaults(),
             presentation: Presentation::default(),
             committed: String::new(),
@@ -355,6 +379,13 @@ impl EngineSession {
         composer.set_punctuation_width(PunctuationWidth::Full);
         Self::configure(&mut composer, &engine, &self.values);
         composer.set_learning_suspended(self.learning_suspended);
+        crate::models::attach(
+            &mut composer,
+            data.models(),
+            &self.model_context,
+            &self.shown_corrected,
+            &self.suspended,
+        );
         self.open = Some(Open { data: data.clone(), engine, composer });
         self.committed.clear();
         self.personal_revision += 1;
@@ -626,6 +657,7 @@ impl EngineSession {
         ensure!(valid_text(text), "前文不是有效文字。");
         let uses = !self.learning_suspended && self.values.bool("usesPrecedingText", true);
         self.require()?.composer.set_preceding_text(if uses { text } else { "" });
+        self.model_context.set(if uses { text } else { "" });
         self.refresh();
         Ok(())
     }
@@ -636,6 +668,7 @@ impl EngineSession {
     /// When no engine is open.
     pub fn break_context(&mut self) -> Result<()> {
         self.require()?.composer.break_context();
+        self.model_context.set("");
         self.refresh();
         Ok(())
     }
@@ -650,9 +683,33 @@ impl EngineSession {
         if suspended {
             open.composer.set_preceding_text("");
         }
+        if suspended {
+            self.model_context.set("");
+        }
+        self.suspended.store(suspended, std::sync::atomic::Ordering::Relaxed);
         self.learning_suspended = suspended;
         self.refresh();
         Ok(())
+    }
+
+    /// The sentence the reranker chose last has a typing correction (分析's 自動修正; macOS `shownCorrected`).
+    #[must_use]
+    pub fn shown_corrected(&self) -> bool {
+        self.shown_corrected.get()
+    }
+
+    /// Forgets which sentence the reranker chose (the composition ended).
+    pub fn clear_shown_corrected(&self) {
+        self.shown_corrected.clear();
+    }
+
+    /// How long the neural models took to load (reranker, character model), when they did.
+    #[must_use]
+    pub fn model_load_ms(&self) -> (Option<f64>, Option<f64>) {
+        self.open.as_ref().map_or((None, None), |open| {
+            let models = open.data.models();
+            (models.reranker_ms, models.character_ms)
+        })
     }
 
     /// Learning is suspended.

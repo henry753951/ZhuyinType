@@ -81,7 +81,7 @@ int main() {
         activate(b); // adapter must blur a before focusing b even if deactivate was omitted
         CHECK(a.commits.size()==2); CHECK(a.commits.back()=="你"); CHECK(b.commits.empty());
         type(b,"cl3"); CHECK(b.preedit()=="好");
-        b.setCapabilityFlags(fcitx::CapabilityFlags{fcitx::CapabilityFlag::Preedit,fcitx::CapabilityFlag::Sensitive});
+        b.setCapabilityFlags(fcitx::CapabilityFlags{fcitx::CapabilityFlag::Preedit,fcitx::CapabilityFlag::Password});
         CHECK(b.preedit().empty()); CHECK(!key(b,FcitxKey_s)); CHECK(b.commits.empty());
         CHECK(!key(b,FcitxKey_Caps_Lock)); // Protected fields never serialize actual keys.
         b.setCapabilityFlags(fcitx::CapabilityFlag::Preedit);
@@ -92,6 +92,13 @@ int main() {
         type(b,"su3");
         fcitx::FocusOutEvent blur(&b); addon.deactivate(entry,blur);
         CHECK(b.commits==std::vector<std::string>{"你"});
+        // A private field (Sensitive: a private window) types Chinese; only learning and 前文 stop.
+        activate(b);
+        b.setCapabilityFlags(fcitx::CapabilityFlags{fcitx::CapabilityFlag::Preedit,fcitx::CapabilityFlag::Sensitive});
+        type(b,"cl3"); CHECK(b.preedit()=="好");
+        CHECK(key(b,FcitxKey_Return)); CHECK(b.commits.back()=="好");
+        b.setCapabilityFlags(fcitx::CapabilityFlag::Preedit);
+        fcitx::FocusOutEvent leavePrivate(&b); addon.deactivate(entry,leavePrivate);
         activate(a);
         // A short Shift tap is handled by the shared controller, including releases.
         CHECK(!key(a,FcitxKey_Shift_L,false,fcitx::KeyState::Shift));

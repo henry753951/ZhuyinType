@@ -468,6 +468,13 @@ struct OpenWizard(Option<(AnyWindowHandle, Entity<WizardWindow>)>);
 
 impl Global for OpenWizard {}
 
+/// Whether the wizard window is open.
+pub fn is_open(cx: &mut App) -> bool {
+    cx.try_global::<OpenWizard>()
+        .and_then(|open| open.0.as_ref().map(|(handle, _)| *handle))
+        .is_some_and(|handle| handle.update(cx, |_, _, _| ()).is_ok())
+}
+
 /// How the window opens (screenshots force an appearance and a size and hold still).
 #[derive(Default)]
 struct Opening {

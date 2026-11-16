@@ -15,6 +15,10 @@ rust-version = "1.98"
 
 [workspace.dependencies]
 zhuyin-core = { path = "../../engine/crates/zhuyin-core" }
+# The neural models with ONNX Runtime, which the app loads at run time from beside itself (`load-dynamic`: nothing to
+# link, so the Windows build cross-compiles as before); zt-core/src/models.rs.
+zhuyin-models = { path = "../../engine/crates/zhuyin-models", features = ["onnx"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "api-24", "load-dynamic"] }
 zt-core = { path = "crates/zt-core" }
 zt-panel = { path = "crates/zt-panel" }
 gpui-kit = { version = "=0.9.1" }
@@ -27,6 +31,9 @@ dirs = "6"
 async-channel = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 uuid = { version = "1", features = ["v4"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+ed25519-dalek = "2"
+base64 = "0.22"
 rustix = { version = "1", features = ["net", "process", "fs", "param"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
@@ -37,6 +44,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Pipes",
   "Win32_System_Threading",
   "Win32_System_ProcessStatus",
+  "Win32_System_Services",
+  "Win32_System_RemoteDesktop",
+  "Win32_System_Environment",
 ] }
 
 # GPUI's Windows backend compiles its shaders only on a Windows build host; the vendored copy also takes them

@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
-use zhuyin_core::api::KeyInput;
+use zhuyin_core::api::{KeyInput, PunctuationWidth};
 
 use crate::corrections::{CandidateDetails, CorrectionLog, CorrectionRecorder, ObservedInput, correction_settings};
 use crate::engine::EngineSession;
@@ -31,6 +31,8 @@ pub enum ControllerEvent {
     ModeChanged,
     /// The user switched 中/英 (a Shift tap, Caps Lock, the indicator): the mode toast shows `english`.
     ModeSwitched { english: bool },
+    /// The user switched 中文標點 between full and half width: the badge shows 全 or 半.
+    WidthSwitched { full: bool },
     /// A page turn or highlight move stopped at the list's end (1 past the last, -1 before the first).
     Boundary(i32),
     /// A candidate was picked by a click.
@@ -56,6 +58,8 @@ struct UsageState {
     literal_before: Option<String>,
     corrected: bool,
     last_key: Option<f64>,
+    /// The reranker showed a sentence with a typing correction during this composition (macOS `sawCorrected`).
+    saw_corrected: bool,
 }
 
 fn starts_composition(input: KeyInput) -> bool {
@@ -110,6 +114,8 @@ pub struct InputController {
     english: bool,
     caps_lock: bool,
     secure: bool,
+    /// A private field (a browser's private window): typing works, nothing is learned, read or remembered.
+    private: bool,
     held_shifts: BTreeSet<ShiftSide>,
     shift_tap: Option<(ShiftSide, f64)>,
     recent_text: String,
@@ -142,6 +148,7 @@ impl InputController {
             english,
             caps_lock: false,
             secure: false,
+            private: false,
             held_shifts: BTreeSet::new(),
             shift_tap: None,
             recent_text: String::new(),
@@ -254,7 +261,7 @@ impl InputController {
             return;
         }
         self.events.push(ControllerEvent::Commit(text.to_owned()));
-        if self.secure {
+        if self.secure || self.private {
             return;
         }
         self.recent_text.push_str(text);
@@ -262,7 +269,7 @@ impl InputController {
     }
 
     fn remember(&mut self) {
-        if self.secure || !self.settings.bool("usesPrecedingText") {
+        if self.secure || self.private || !self.settings.bool("usesPrecedingText") {
             self.recent_text.clear();
             self.app_context.remove(&self.app);
             return;
@@ -275,9 +282,13 @@ impl InputController {
     /// Before a composition starts: the app's text before the insertion point, joined with what was sent in this app
     /// within the window (macOS `ControllerCore.prepareContext`).
     fn prepare_context(&mut self) {
-        // Secure input: no text is read or remembered, and nothing is learned from this composition.
-        if self.secure {
+        // Secure input and private fields: no text is read or remembered, and nothing is learned from this
+        // composition.
+        if self.secure || self.private {
             self.recent_text.clear();
+            if self.private && self.session.ready() {
+                let _ = self.session.set_preceding_text("");
+            }
             return;
         }
         let time = (self.now)();
@@ -326,7 +337,7 @@ impl InputController {
 
     fn candidate_details(&self, input: &ObservedInput, before: &Presentation) -> Option<CandidateDetails> {
         let recorder = self.recorder.as_ref()?;
-        if self.secure || !self.settings.bool("recordsCorrections") {
+        if self.secure || self.private || !self.settings.bool("recordsCorrections") {
             return None;
         }
         let index = recorder.candidate_index(input, before)?;
@@ -362,7 +373,7 @@ impl InputController {
         let commit = self.preserving_visible(outcome.commit, &before);
         self.committed(&commit);
         self.observe(observed, &before, &commit, outcome.handled, outcome.elapsed_ms, candidate, time);
-        if !outcome.handled && !self.secure {
+        if !outcome.handled && !self.secure && !self.private {
             // Keys the app receives extend or trim the text before the insertion point.
             match input {
                 KeyInput::Backspace => {
@@ -465,6 +476,7 @@ impl InputController {
             }
             Action::TogglePunctuationWidth => {
                 let Ok(width) = self.session.toggle_punctuation_width() else { return false };
+                self.events.push(ControllerEvent::WidthSwitched { full: width != PunctuationWidth::Half });
                 let after = self.session.presentation().clone();
                 let secure = self.secure;
                 if let Some(recorder) = &mut self.recorder {
@@ -631,13 +643,46 @@ impl InputController {
             }
         }
         if self.session.ready() {
-            let _ = self.session.set_learning_suspended(secure);
+            let _ = self.session.set_learning_suspended(secure || self.private);
+        }
+    }
+
+    /// The input method was selected again after another input source: 中/英 starts as 「開始輸入時使用英文」 says
+    /// (macOS `EngineHost` on activation).
+    pub fn activated(&mut self) {
+        let english = self.settings.bool("startInEnglish");
+        if english == self.english || (self.session.ready() && self.session.composing()) {
+            return;
+        }
+        self.english = english;
+        self.events.push(ControllerEvent::ModeChanged);
+    }
+
+    /// A private field (IPC.md `private`: a browser's private window) on or off: Chinese typing works as anywhere
+    /// else, but nothing is learned, no text before the insertion point is read, and nothing sent is remembered as
+    /// context — macOS's behaviour under secure input.
+    pub fn set_private(&mut self, private: bool) {
+        if private == self.private {
+            return;
+        }
+        self.private = private;
+        if private {
+            self.recent_text.clear();
+            self.app_context.remove(&self.app);
+        }
+        if self.session.ready() {
+            let _ = self.session.set_learning_suspended(self.secure || private);
         }
     }
 
     #[must_use]
     pub fn secure(&self) -> bool {
         self.secure
+    }
+
+    #[must_use]
+    pub fn private(&self) -> bool {
+        self.private
     }
 
     fn discard_secure_composition(&mut self) {
@@ -867,16 +912,23 @@ impl InputController {
         if added && after.notice != before.notice {
             sink(&UsageEvent::PhraseAdded);
         }
+        // 自動修正: the reranker showed a corrected sentence, and whether the one sent was one (macOS
+        // `UsageStatsObserver`).
+        let shown_corrected = self.session.shown_corrected();
+        if shown_corrected && !after.is_empty() {
+            self.usage.saw_corrected = true;
+        }
         if !commit.is_empty() {
-            // No reranker on this platform: no sentence is shown with a typing correction of its own.
             sink(&UsageEvent::Commit {
                 characters: commit.chars().count() as i64,
                 composition_ended: after.is_empty(),
                 clean: Some(!self.usage.corrected),
-                corrected_shown: false,
-                corrected_committed: false,
+                corrected_shown: self.usage.saw_corrected,
+                corrected_committed: shown_corrected,
             });
             if after.is_empty() {
+                self.usage.saw_corrected = false;
+                self.session.clear_shown_corrected();
                 self.usage.corrected = false;
                 self.usage.last_commit = Some(now);
                 self.usage.deleted_since_commit = false;

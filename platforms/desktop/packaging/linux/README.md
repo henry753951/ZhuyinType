@@ -31,6 +31,8 @@ sudo dnf remove zhuyintype
 | `/usr/share/applications/zhuyintype.desktop` | 應用程式選單的「ZhuyinType 設定」 |
 | `/etc/xdg/autostart/zhuyintype.desktop` | 登入時啟動服務 |
 | `/usr/share/icons/hicolor/*/apps/zhuyintype.png` | 16 到 256 px 的圖示（由 `docs/assets/icon.png` 產生） |
+| `/usr/lib/systemd/system/zhuyintype-update.service` | 更新程式（root，`zhuyintype --system-update`）：驗證簽章過的更新清單與套件，用 apt、dnf 或 zypper 安裝（[DESKTOP.md](../../../../docs/product/DESKTOP.md)〈更新〉） |
+| `/usr/share/polkit-1/rules.d/50-zhuyintype-update.rules` | 讓目前在電腦前的使用者不輸入密碼就能啟動上面的服務，此外不能對它做任何事 |
 | `/usr/lib/zhuyintype/fcitx5-setup` | 把 ZhuyinType 加入使用者 Fcitx 5 輸入方式的小工具（見下節） |
 | `/usr/share/licenses/zhuyintype/` | AGPL-3.0 全文、NOTICE、資料來源（SOURCES.md、sources.json）、資料授權、nlohmann/json 告知、`Rust-crates.txt`（連結進執行檔的每個 Rust 套件與授權全文） |
 | `/usr/share/doc/zhuyintype/` | README；deb 另有 `copyright`（DEP-5）與 `changelog.Debian.gz` |

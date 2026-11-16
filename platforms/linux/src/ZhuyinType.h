@@ -2,11 +2,14 @@
 #include "Broker.h"
 #include <fcitx-utils/event.h>
 #include <fcitx/inputcontextproperty.h>
+#include <fcitx/action.h>
 #include <fcitx/inputmethodengine.h>
 #include <fcitx/instance.h>
+#include <array>
+#include <memory>
 
 namespace zhuyintype {
-class ZhuyinType final : public fcitx::InputMethodEngine {
+class ZhuyinType final : public fcitx::InputMethodEngineV2 {
 public:
     explicit ZhuyinType(fcitx::Instance &instance);
     ~ZhuyinType() override;
@@ -14,9 +17,16 @@ public:
     void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &) override;
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &) override;
     void keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &) override;
+    // 中 or 英 in Fcitx's status area and indicator (the macOS menu bar and Windows taskbar show it the same way).
+    std::string subMode(const fcitx::InputMethodEntry &, fcitx::InputContext &) override;
+    std::string subModeLabelImpl(const fcitx::InputMethodEntry &, fcitx::InputContext &) override;
 private:
     struct State;
+    fcitx::Instance &instance_;
     Broker broker_;
+    // The input method's menu in Fcitx (the macOS input menu): settings, words, the wizard, the tour, about.
+    std::array<std::unique_ptr<fcitx::SimpleAction>, 5> actions_;
+    void showSettings(const char *place);
     fcitx::FactoryFor<State> factory_;
     fcitx::TrackableObjectReference<fcitx::InputContext> active_;
     std::unique_ptr<fcitx::EventSourceTime> timer_;

@@ -30,6 +30,12 @@
       "sha256": "a93f6891b879e2f4c0d3127fde848feafaafbfdcdcead8c81d68c0210f976d32",
       "size": 5210068
     },
+    "onnx": {
+      "file": "zhuyintype-onnx-a132a6ca895c.tar.gz",
+      "release": "data-10",
+      "sha256": "a132a6ca895c5e760a1e2297d4a6174d100d1f4bc1fd506f791813b8b22006ff",
+      "size": 79705545
+    },
     "reranker": {
       "file": "zhuyintype-reranker-2f2796febc6a.tar.gz",
       "release": "data-8",

@@ -251,8 +251,13 @@ impl AnalyticsPage {
         } else {
             memory.join("・")
         }));
-        let load = app::service(cx).and_then(|service| service.load_ms());
-        section.row(ui::row("perf-load", "載入時間").subtitle("詞庫與語言模型").value(ms(load)))
+        // macOS `loadTimes`: the lexicon and language models, the reranker, the character model.
+        let load = app::service(cx).map(|service| (service.load_ms(), service.model_load_ms()));
+        let (engine, (reranker, character)) = load.unwrap_or((None, (None, None)));
+        let times = [engine, reranker, character].map(|time| time.map_or_else(|| "—".to_owned(), |t| ms(Some(t))));
+        section.row(
+            ui::row("perf-load", "載入時間").subtitle("詞庫與語言模型、整句重排、逐字模型").value(times.join("・")),
+        )
     }
 
     fn main_page(&mut self, usage: &Usage, narrow: bool, cx: &mut Context<Self>) -> AnyElement {

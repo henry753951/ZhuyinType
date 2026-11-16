@@ -58,6 +58,9 @@ pub(crate) fn host_wants_key(key: &Key, composing: bool, english: bool) -> bool 
     if english || key.release {
         return false;
     }
+    if key.key == 0x20 && key.modifiers & (SHIFT | CONTROL | ALT | META) == SHIFT {
+        return true; // ⇧Space switches 中文標點 between full and half width; declined, the space is typed.
+    }
     if key.key >= KEY_ESCAPE || key.key <= 0x20 {
         return false; // Space, Return, arrows and editing keys when idle.
     }
@@ -72,6 +75,17 @@ pub(crate) fn host_wants_key(key: &Key, composing: bool, english: bool) -> bool 
         || (i32::from(b'a')..=i32::from(b'z')).contains(&key.key);
     // Ctrl or Alt with a symbol key types 中文標點 / the key's symbol; with a letter it is the app's shortcut.
     !letter && chord != (CONTROL | ALT)
+}
+
+/// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
+/// (送出後刪掉重打), Space and Return (they extend 前文).  The application still gets them; the text service only tells
+/// the host.
+pub(crate) fn host_observes_key(key: &Key, composing: bool, english: bool) -> bool {
+    !composing
+        && !english
+        && !key.release
+        && key.modifiers & (CONTROL | ALT | META) == 0
+        && [KEY_BACKSPACE, KEY_RETURN, KEY_ENTER, 0x20].contains(&key.key)
 }
 
 #[cfg(test)]
@@ -102,6 +116,25 @@ mod tests {
         let mut release = key('J' as i32, 0);
         release.release = true;
         assert!(!host_wants_key(&release, false, false));
+    }
+
+    #[test]
+    fn shift_space_is_claimed_when_idle_in_chinese() {
+        assert!(host_wants_key(&key(0x20, SHIFT), false, false));
+        assert!(!host_wants_key(&key(0x20, SHIFT), false, true));
+        assert!(!host_wants_key(&key(0x20, SHIFT | CONTROL), false, false));
+    }
+
+    #[test]
+    fn idle_editing_keys_are_observed_not_claimed() {
+        for code in [KEY_BACKSPACE, KEY_RETURN, 0x20] {
+            assert!(!host_wants_key(&key(code, 0), false, false));
+            assert!(host_observes_key(&key(code, 0), false, false));
+        }
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), true, false));
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), false, true));
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, CONTROL), false, false));
+        assert!(!host_observes_key(&key(KEY_LEFT, 0), false, false));
     }
 
     #[test]

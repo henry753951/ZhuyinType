@@ -1,0 +1,13 @@
+# ZhuyinType's updater (zt_core::update): fetches the signed feed, verifies the package against the project's key and
+# installs it with the system's package manager.  Started on demand by the signed-in user's app when it is idle
+# (zhuyintype-update.rules lets the active local user start it); it takes no input from that user.
+[Unit]
+Description=ZhuyinType 更新
+Documentation=https://github.com/henry753951/ZhuyinType
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zhuyintype --system-update
+PrivateTmp=yes

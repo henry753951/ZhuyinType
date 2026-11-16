@@ -615,5 +615,25 @@
     "details": {
       "false": "關閉時不計數"
     }
+  },
+  {
+    "key": "automaticUpdateChecks",
+    "title": "自動檢查更新",
+    "page": "about",
+    "group": "更新",
+    "kind": "toggle",
+    "default": true,
+    "detail": "每天一次；更新檔都經過簽章驗證",
+    "anchor": "automaticUpdateChecks"
+  },
+  {
+    "key": "automaticUpdateInstalls",
+    "title": "自動安裝更新",
+    "page": "about",
+    "group": "更新",
+    "kind": "toggle",
+    "default": true,
+    "detail": "在組字結束後換上新版本",
+    "anchor": "automaticUpdateInstalls"
   }
 ]

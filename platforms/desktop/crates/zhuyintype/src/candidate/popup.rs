@@ -71,7 +71,7 @@ pub fn handle(event: UiEvent, cx: &mut App) {
     match event {
         UiEvent::Popup(Some(state)) => show_candidates(state, cx),
         UiEvent::Popup(None) => hide_candidates(cx),
-        UiEvent::ModeToast { english, anchor } => show_toast(english, anchor, cx),
+        UiEvent::Toast { text, anchor } => show_toast(text, anchor, cx),
         UiEvent::Boundary(direction) => {
             if let Some(handle) = popups(cx).candidate {
                 let _ = handle.update(cx, |view, _, cx| {
@@ -80,13 +80,28 @@ pub fn handle(event: UiEvent, cx: &mut App) {
                 });
             }
         }
-        UiEvent::ShowSettings => show_settings(cx),
+        UiEvent::ShowSettings(place) => show_settings(place, cx),
     }
 }
 
 /// Another start of the app asked for the settings: bring the open settings window forward, or open one.
-fn show_settings(cx: &mut App) {
-    crate::shell::show(cx);
+/// The settings window, or the place the input method's menu asked for (IPC `show-settings`).
+fn show_settings(place: Option<&'static str>, cx: &mut App) {
+    use crate::app::{self, Place};
+    use crate::pages::Page;
+    use crate::wizard::{self, WizardKind};
+    match place {
+        Some("wizard") => wizard::open(WizardKind::Quick, cx),
+        Some("tour") => match wizard::new_lessons_since(cx) {
+            Some(since) => wizard::open(WizardKind::NewSince(since), cx),
+            None => wizard::open(WizardKind::Quick, cx),
+        },
+        Some(page) => {
+            crate::shell::show(cx);
+            app::go(Place::page(if page == "words" { Page::Words } else { Page::About }), cx);
+        }
+        None => crate::shell::show(cx),
+    }
 }
 
 /// The visible area of the screen with `caret` on it (logical pixels).
@@ -390,7 +405,7 @@ impl Render for ToastWindow {
     }
 }
 
-fn show_toast(english: bool, anchor: Rect, cx: &mut App) {
+fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     let settings = app::settings(cx).clone();
     if !settings.bool("showModeToast") {
         return;
@@ -443,7 +458,7 @@ fn show_toast(english: bool, anchor: Rect, cx: &mut App) {
         platform::place(window, device(frame, window.scale_factor()));
         platform::set_visible(window, true);
         platform::set_input_region(window, None);
-        view.text = if english { "英" } else { "中" };
+        view.text = text;
         view.shown_at = Some(Instant::now());
         view.animates = animates;
         view.appearance = appearance;

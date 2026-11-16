@@ -2,6 +2,25 @@
 
 依日期記錄每個實驗：做了什麼、數字、決定。數字的定義見 [EVALUATION.md](../ml/EVALUATION.md)；未註明時是開發集、每組 400 段、整句全對率。新的實驗寫在最上面，格式照下面的條目：每個實驗一個小標題，有結論的實驗最後寫「決定：……」。
 
+## 2026-11-17
+
+### Linux 與 Windows 的神經模型（0.6.0）
+
+桌面版接上整句重排（v2b）與逐字模型（v3），用 ONNX Runtime 1.24.4 在 CPU 上執行。來源是 `data-5` 出貨的 int8 檢查點（`checkpoints` 元件），以 `zt models export --tree` 匯出 fp32 ONNX。和 macOS 一樣只帶前綴樹的重排模型；`OnnxReranker` 在只有前綴樹時不再要求批次模型。比較了四種執行方式，App 設定、開發集口語與百科各 400 段（`zt eval conversion`），延遲與記憶體為桌面版引擎在 GPU 主機上打一句 25 鍵（`zt-core` 的 `real_data` 測試，App 私有記憶體是 RssAnon，映射的檔案是 RssFile）：
+
+| 方式 | 整句（口語／百科） | 和 fp32 不同的段 | 私有記憶體 | 每鍵中位數／最慢 |
+|---|---|---|---|---|
+| 不用模型 | — | — | 5 MB | 0.6／4 ms |
+| fp32 匯出 | 87.0%／81.2% | 0 | — | — |
+| int8 權重加 DequantizeLinear，載入時摺疊成 fp32 | 87.0%／81.2% | 0 | 492 MB | 4.2／36 ms |
+| 同上不摺疊，ORT 格式 memory-map | 和 fp32 相同 | 0 | 181 MB | 4.5／153 ms |
+| 動態 int8（每通道），讀進記憶體 | 86.2%／81.0% | 18 | 143 MB | 4.2／13 ms |
+| 動態 int8，ORT 格式 memory-map | 86.2%／81.0% | 18 | 26 MB | 4.3／21 ms |
+
+int8 權重的三個檔（107 MB）每個大矩陣都是 int8 值（34、37、38 個），所以摺疊後和 fp32 匯出逐段相同；但摺疊成 fp32 常數要 4 倍的記憶體。ORT 格式加上 `session.use_ort_model_bytes_for_initializers` 與關閉 prepacking，權重直接使用映射的檔案內容，系統可以丟掉再讀回，和 Core ML 在 macOS 上一樣不算進 App 的記憶體。動態 int8 的 18 段差異多數變差（例如「再」成「在」、「接關」成「接官」），整句全對率低 0.8 與 0.2 點。
+
+決定：Linux 與 Windows 0.6.0 起使用動態 int8 的 ORT 格式模型（`data-10` 的 `onnx` 元件，`training/compress/desktop_models.py` 產生），App 只多約 21 MB 記憶體，載入 30 ms 與 55 ms。和 macOS 逐段相同的摺疊方式要多 490 MB，不採用；`data-9` 的 int8 權重檔因此不使用。ONNX Runtime 由 App 在執行時載入（`ort` 的 `load-dynamic`），Windows 的交叉編譯不必連結它；找不到時不用模型。
+
 ## 2026-11-09
 
 ### 右 Shift 單按切換（0.5.3）

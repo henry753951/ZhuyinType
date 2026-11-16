@@ -15,6 +15,7 @@ mod platform;
 mod shell;
 mod theme;
 mod ui;
+mod updates;
 mod wizard;
 
 use pages::Page;
@@ -106,6 +107,9 @@ fn parse_args() -> Args {
 
 fn main() {
     env_logger_init();
+    if let Some(code) = updater_mode() {
+        std::process::exit(code);
+    }
     let args = parse_args();
     let config = ServiceConfig {
         data_dir: args.data_dir.clone(),
@@ -163,6 +167,10 @@ fn main() {
             cx.activate(true);
             return;
         }
+        // The copy that serves the input method keeps it up to date (screenshots and second copies never do).
+        if !args.no_broker && args.settings_file.is_none() && app::service(cx).is_some() {
+            updates::start(cx);
+        }
         if args.background {
             return;
         }
@@ -183,6 +191,50 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+/// The system's updater (`zt_core::update`), run as the administrator or root, never with a window:
+/// `--update-service` (the Windows service), `--system-update` (the Linux systemd unit, or by hand), and
+/// `--relaunch-sessions` (Windows, the installer after an update).  The exit code, or None for the app itself.
+fn updater_mode() -> Option<i32> {
+    let mode = std::env::args().nth(1)?;
+    if mode == "--system-update" {
+        return Some(system_update());
+    }
+    #[cfg(windows)]
+    {
+        let result: anyhow::Result<()> = match mode.as_str() {
+            "--update-service" => zt_core::update::windows::run_service(|| {
+                let _ = system_update();
+            }),
+            "--relaunch-sessions" => zt_core::update::windows::relaunch_sessions().map(|_| ()),
+            _ => return None,
+        };
+        Some(match result {
+            Ok(()) => 0,
+            Err(error) => {
+                log::error!("{mode}: {error:#}");
+                1
+            }
+        })
+    }
+    #[cfg(not(windows))]
+    None
+}
+
+/// Installs the newest release when it is newer than this one (`zt_core::update::system_update`).
+fn system_update() -> i32 {
+    match zt_core::update::system_update(env!("CARGO_PKG_VERSION")) {
+        Ok(Some(next)) => {
+            log::warn!("installing {next}");
+            0
+        }
+        Ok(None) => 0,
+        Err(error) => {
+            log::error!("update: {error:#}");
+            1
+        }
+    }
 }
 
 /// Adds ZhuyinType to the user's Fcitx 5 input methods when it is not there yet, with the helper the package installs

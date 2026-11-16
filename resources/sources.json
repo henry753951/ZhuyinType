@@ -131,6 +131,25 @@
       ]
     },
     {
+      "id": "onnx-runtime",
+      "group": "libraries",
+      "name": "ONNX Runtime",
+      "use": "Linux 與 Windows 執行字模型與整句重排模型",
+      "distribution": "bundled",
+      "license": "MIT",
+      "licenseFiles": [
+        "ONNX-Runtime-LICENSE.txt",
+        "ONNX-Runtime-ThirdPartyNotices.txt"
+      ],
+      "copyright": "Copyright (c) Microsoft Corporation",
+      "version": "1.24.4",
+      "url": "https://github.com/microsoft/onnxruntime",
+      "platforms": [
+        "linux",
+        "windows"
+      ]
+    },
+    {
       "id": "cc-cedict",
       "group": "data",
       "name": "CC-CEDICT",
@@ -277,9 +296,6 @@
       "notices": [
         "lm/NOTICE.md",
         "lm/articles.tsv.gz"
-      ],
-      "platforms": [
-        "macos"
       ]
     },
     {
@@ -322,9 +338,6 @@
         "v3/attribution.jsonl",
         "v3/source-manifest.json",
         "v3/articles.tsv.gz"
-      ],
-      "platforms": [
-        "macos"
       ]
     },
     {
@@ -344,9 +357,6 @@
         "lm/NOTICE.md",
         "lm/articles.tsv.gz",
         "v3/Licenses/Qwen3-8B-LICENSE"
-      ],
-      "platforms": [
-        "macos"
       ]
     },
     {

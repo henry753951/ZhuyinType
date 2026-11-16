@@ -284,6 +284,13 @@ pub fn show(cx: &mut App) {
     crate::wizard::show_on_first_use(cx);
 }
 
+/// Whether the settings window is open.
+pub fn is_open(cx: &mut App) -> bool {
+    cx.try_global::<OpenSettings>()
+        .and_then(|open| open.0)
+        .is_some_and(|handle| handle.update(cx, |_, _, _| ()).is_ok())
+}
+
 /// Brings the settings window to the front if it is open (the setup wizard closing); never opens it.
 pub fn bring_forward(cx: &mut App) {
     if let Some(handle) = cx.try_global::<OpenSettings>().and_then(|open| open.0) {

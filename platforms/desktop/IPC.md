@@ -17,8 +17,8 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 | op | 內容 |
 |---|---|
-| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`app` 與 `before`；取得焦點 |
-| `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`app`、`before` 及矩形 |
+| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設 |
+| `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`private`、`app`、`before` 及矩形。原生端也可以只「告知」應用程式自己會收到的按鍵（Windows 沒有組字時的 ⌫、空白、Enter），讓服務更新前文與「送出後刪掉重打」；這時不看回應的 `handled` |
 | `context` | 只更新 `app` 與 `before`（見〈前文〉），不處理按鍵 |
 | `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形 |
 | `blur` | 結束目前組字並回傳待送出文字，解除焦點 |
@@ -26,7 +26,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
 | `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`）與 `value`（`pick` 的列、`page` 的 ±1）；原生端自己畫的候選字視窗上的點選（見〈候選字視窗〉） |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
-| `show-settings` | 顯示既有設定視窗 |
+| `show-settings` | 顯示既有設定視窗；可選 `place`：`words`（自訂詞與學到的詞）、`about`、`wizard`（設定嚮導）、`tour`（新功能導覽）。輸入法選單用 |
 
 按鍵與修飾鍵沿用 Qt 的數值（`zt_core::keys::code`、`zt_core::keys::modifier`），Linux 與 Windows 的 Control 為 `0x04000000`，Windows 鍵或 Super 為 `0x10000000`。
 
@@ -52,7 +52,15 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 - `app`（最長 256 字元）：欄位所屬的程式，例如 Fcitx 的 `program()`、Windows 的執行檔名稱。只用來分開各程式送出過的文字，不寫入任何檔案或記錄。
 - `before`（最長 1024 個 UTF-16 單位）：平台回報的游標前文字；服務只取最後 128 個字元。不知道時省略欄位，不要送空字串（空字串代表在文件開頭）。
 
-服務把同一個 `app` 在 1 分鐘內送出的文字（最多保留 255 個字元）和 `before` 接在一起，重疊的部分只算一次；沒有 `before` 時只用送出過的文字。送出的字、交給程式的空白、換行與刪除都會更新這段文字。換程式、安全輸入或超過 1 分鐘就清空。安全欄位不傳 `before`，服務也不保留任何文字。Fcitx adapter 在欄位支援 SurroundingText 時傳送游標前文字；TSF adapter 目前只傳 `app`（尚未讀取 `ITfContext` 的文字）。
+服務把同一個 `app` 在 1 分鐘內送出的文字（最多保留 255 個字元）和 `before` 接在一起，重疊的部分只算一次；沒有 `before` 時只用送出過的文字。送出的字、交給程式的空白、換行與刪除都會更新這段文字。換程式、安全輸入或超過 1 分鐘就清空。安全欄位與私人欄位不傳 `before`，服務也不保留任何文字。Fcitx adapter 在欄位支援 SurroundingText 時傳送游標前文字；TSF adapter 傳送執行檔名稱與 `ITfContext` 中選取範圍前最多 255 個 UTF-16 單位的文字。
+
+## 私人欄位
+
+瀏覽器的私密視窗（Windows 的 `IS_PRIVATE`，Fcitx 的 `Sensitive`）要求輸入法不要學習。和 macOS 的安全輸入相同，這種欄位照常打中文，但不學習、不讀取也不保留前文、不記錄改字（`private: true`）。密碼、PIN 與停用的欄位才是安全欄位（`secure: true`）：按鍵直接交給程式，不經過服務。
+
+## 提示
+
+回應的 `toast` 是游標旁的提示：單按 Shift 切換中英時是「中」或「英」，切換中文標點的全形／半形時是「全」或「半」。「中英提示」關閉時不送。
 
 ## 使用統計
 

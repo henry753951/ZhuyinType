@@ -1,5 +1,5 @@
-# A v* tag builds, signs and publishes a release for every platform, then updates the Sparkle appcast on main so
-# installed macOS copies update themselves.  Gate: the tag matches Info.plist and platforms/desktop/Cargo.toml, and
+# A v* tag builds, signs and publishes a release for every platform, then updates the Sparkle appcast and the
+# Windows/Linux update feed (desktop-update.json) on main so installed copies update themselves.  Gate: the tag matches Info.plist and platforms/desktop/Cargo.toml, and
 # docs/releases/<tag>.md exists (notes and benchmark summary).  The Windows installer and the Linux packages come from
 # desktop.yml (called here); the release is published only when all three platforms built, so a release never lacks
 # one of them.  Typical wall time with warm caches: about 6 minutes for macOS, after the desktop builds.
@@ -103,6 +103,35 @@ jobs:
           cp "$rpm" dist/release/ZhuyinType-Linux-x86_64.rpm
           (cd dist/release && shasum -a 256 ZhuyinType-Windows-x64-setup.exe ZhuyinType-Linux-amd64.deb \
             ZhuyinType-Linux-x86_64.rpm "${exe##*/}" "${deb##*/}" "${rpm##*/}" > SHA256SUMS-desktop.txt)
+      - name: Update feed for Windows and Linux
+        # zt_core::update: the installed apps read desktop-update.json from main.  Each installer and the feed itself
+        # are signed with the Sparkle key, whose public half the apps carry.
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          key=$(mktemp)
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
+          tools=$(platforms/macos/scripts/sparkle-tools.sh)
+          sign() { "$tools/sign_update" --ed-key-file "$key" "$1" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p'; }
+          version=${GITHUB_REF_NAME#v}
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          entry() {
+            local signature
+            signature=$(sign "dist/release/$1")
+            [ -n "$signature" ] || { echo "no signature for $1"; exit 1; }
+            printf '{"url":"%s/%s","length":%s,"signature":"%s"}' "$base" "$1" "$(stat -f%z "dist/release/$1")" "$signature"
+          }
+          windows=$(entry "ZhuyinType-$version-windows-x64-setup.exe")
+          deb=$(entry "zhuyintype_${version}_amd64.deb")
+          rpm=$(entry "zhuyintype-$version.x86_64.rpm")
+          printf '{"version":"%s","notes":"https://github.com/%s/blob/main/docs/releases/%s.md","assets":{"windows-x64":%s,"linux-deb":%s,"linux-rpm":%s}}' \
+            "$version" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$windows" "$deb" "$rpm" > dist/desktop-feed.json
+          signature=$(sign dist/desktop-feed.json)
+          [ -n "$signature" ] || { echo "no signature for the feed"; exit 1; }
+          python3 -c 'import json, sys; print(json.dumps({"feed": open(sys.argv[1], encoding="utf-8").read(), "signature": sys.argv[2]}))' \
+            dist/desktop-feed.json "$signature" > desktop-update.json
+          rm -f "$key"
+          cat desktop-update.json
       - name: Publish
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -118,10 +147,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           cp appcast.xml /tmp/appcast.xml
+          cp desktop-update.json /tmp/desktop-update.json
           git fetch origin main && git checkout main && git reset --hard origin/main
           cp /tmp/appcast.xml appcast.xml
-          git add appcast.xml
-          git diff --cached --quiet || git commit -m "Appcast for $GITHUB_REF_NAME"
+          cp /tmp/desktop-update.json desktop-update.json
+          git add appcast.xml desktop-update.json
+          git diff --cached --quiet || git commit -m "Appcast and update feed for $GITHUB_REF_NAME"
           git push origin main
       - name: Start ZhuyinBench on the GPU host
         if: github.event_name != 'workflow_dispatch'

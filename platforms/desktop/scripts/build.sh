@@ -222,6 +222,8 @@ stage_linux() {
     install -Dm755 "$packaging/fcitx5-setup" "$stage/usr/lib/zhuyintype/fcitx5-setup"
     install -Dm644 "$packaging/zhuyintype.desktop" "$stage/usr/share/applications/zhuyintype.desktop"
     install -Dm644 "$packaging/autostart.desktop" "$stage/etc/xdg/autostart/zhuyintype.desktop"
+    install -Dm644 "$packaging/zhuyintype-update.service" "$stage/usr/lib/systemd/system/zhuyintype-update.service"
+    install -Dm644 "$packaging/zhuyintype-update.rules" "$stage/usr/share/polkit-1/rules.d/50-zhuyintype-update.rules"
     local size
     for size in 16 22 24 32 48 64 128 256; do
         icon "$size" "$stage/usr/share/icons/hicolor/${size}x${size}/apps/zhuyintype.png"
@@ -238,6 +240,9 @@ stage_linux() {
     sed -i -e 's/Code: MIT\./Code: AGPL-3.0-only./g' -e 's/Scripts are MIT-licensed\./Scripts are AGPL-3.0-only./g' \
         -e 's/is separately licensed under MIT\./is separately licensed under GNU AGPL version 3 (AGPL-3.0-only)./g' \
         "$share"/{lm,lm_chat,channel}/NOTICE.md
+    # The neural models (ONNX) and ONNX Runtime, which the app loads from /usr/lib/zhuyintype.
+    "$packaging/../neural.sh" "$share" "$stage/usr/share/licenses/zhuyintype" \
+        "$stage/usr/lib/zhuyintype/libonnxruntime.so.1" linux || fail "神經模型或 ONNX Runtime 失敗"
     python3 -I - "$share" "$version" <<'PY'
 import hashlib, json, os, sys
 share, version = sys.argv[1], sys.argv[2]
@@ -260,8 +265,8 @@ PY
         "$root/platforms/desktop/crates/zhuyintype/assets/Lucide-LICENSE.txt" "$licenses/"
     local file
     for file in "$root"/platforms/macos/Resources/Licenses/*; do
-        # Sparkle and the reranker ship with the macOS app only.
-        case "$(basename "$file")" in Sparkle-* | Reranker-*) continue ;; esac
+        # Sparkle ships with the macOS app only.
+        case "$(basename "$file")" in Sparkle-*) continue ;; esac
         install -m644 "$file" "$licenses/"
     done
     install -m644 "$root/README.md" "$stage/usr/share/doc/zhuyintype/README.md"
