@@ -21,6 +21,12 @@
 
 ## 2. 版本
 
+### 0.6.0：Windows 與 Linux 版
+
+發布說明見 [releases/v0.6.0.md](releases/v0.6.0.md)。
+
+Linux 與 Windows 改用 `platforms/desktop/` 的 GPUI 程式（取代 Qt 客戶端），Windows 的 TSF 文字服務以 Rust 重寫並在應用程式行程內畫候選字視窗，組字以顯示屬性標示詞與正在替換的詞。發布流程（`release.yml`）呼叫 `desktop.yml`，三個平台都建置成功才發布，附上 NSIS 安裝程式、`.deb` 與 `.rpm`。引擎與模型不變；Windows 與 Linux 尚未接上神經模型，見 [Linux 與 Windows 版](product/DESKTOP.md)。
+
 ### 0.5.3：右 Shift 單按切換
 
 發布說明見 [releases/v0.5.3.md](releases/v0.5.3.md)。
@@ -155,7 +161,7 @@ macOS 中文模式預設全形標點，⇧ 空白切換標點寬度；英文、�
 - macOS 的建置、行為與速度不變。
 - 整組參數掃描比 Mac 明顯快。
 
-目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`），四種評測工具與參數掃描都能用全部核心執行（當時以 Swift 引擎驗證：Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行）。引擎已移植到 Rust，GPU 主機以 Rust 的 zhuyin-cli 與 ONNX Runtime 1.24.4 評測；C ABI（`zhuyin-ffi`）已完成，macOS App 改用它。2026-10-29 已加入 Linux／Windows 共用的 Qt 介面預覽：九個主頁、十個子頁與設定儲存，並補上示範播放、展開與對話框互動、候選字鍵盤試選、動畫及 640 px 窄版排版；原生前端以 Fcitx5／TSF 接入共用 Qt 服務。Linux 已在 Xfce／X11 測試 VM 完成實際輸入、滑鼠選字、安全欄位與使用者部署；Windows 原生驗證記錄隨平台實作維護。Wayland、神經模型回呼與正式發行套件仍待完成，介面外觀另行修正。逐頁狀態見 [Qt 介面移植](product/QT_DESKTOP.md)，平台整合計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
+目前狀態：遠端評測已完成（`ml/src/zhuyintype_ml/remote/`），四種評測工具與參數掃描都能用全部核心執行（當時以 Swift 引擎驗證：Mac 花 1,174 秒，遠端 CPU 610 秒，遠端 GPU 393 秒，輸出差異 10／6,000 行）。引擎已移植到 Rust，GPU 主機以 Rust 的 zhuyin-cli 與 ONNX Runtime 1.24.4 評測；C ABI（`zhuyin-ffi`）已完成，macOS App 改用它。2026-11-16 起 Linux／Windows 改用 `platforms/desktop/` 的 GPUI 程式（取代 Qt 客戶端）：功能與版面和 macOS 版相同、視覺是自己的現代設計語言，Windows 的 TSF 文字服務改以 Rust 撰寫，並有 NSIS 安裝程式與 `.deb`／`.rpm`；Wayland、神經模型與自動更新仍待完成，見 [Linux 與 Windows 版](product/DESKTOP.md)。平台整合計畫在 `ml/src/zhuyintype_ml/remote/PORTING.md`。
 
 ## 3. 0.5–0.7 規劃：免選字、補標點、補全
 

@@ -1,0 +1,147 @@
+#!/bin/bash
+# Adds ZhuyinType to the current user's Fcitx 5 input methods.  Installed as /usr/lib/zhuyintype/fcitx5-setup and
+# run by the app as the signed-in user (never by the package scripts, never as root):
+#
+#   fcitx5-setup status      key=value lines: fcitx5, running, addon, profile, framework
+#   fcitx5-setup enable      put zhuyintype in the first input method group (keeps every existing entry)
+#   fcitx5-setup framework   make Fcitx 5 this user's input method framework (im-config or imsettings);
+#                            takes effect at the next sign-in
+#
+# Exit status: 0 done (or nothing to do), 1 failed, 2 usage, 3 not possible here (the reason is on stderr).
+set -euo pipefail
+
+im=zhuyintype
+config=${XDG_CONFIG_HOME:-$HOME/.config}/fcitx5
+profile=$config/profile
+service=org.fcitx.Fcitx5
+controller=(/controller org.fcitx.Fcitx.Controller1)
+
+say() { printf 'fcitx5-setup：%s\n' "$*" >&2; }
+[[ $(id -u) != 0 ]] || { say '請以一般使用者執行，不要用 root。'; exit 3; }
+
+has() { command -v "$1" >/dev/null 2>&1; }
+running() {
+    has busctl && busctl --user status "$service" >/dev/null 2>&1
+}
+call() { busctl --user call "$service" "${controller[@]}" "$@"; }
+# busctl prints strings in double quotes; input method names never contain quotes or spaces.
+words() { xargs -n1 printf '%s\n'; }
+addon_loaded() { call AvailableInputMethods 2>/dev/null | grep -q "\"$im\""; }
+in_profile() { [[ -f $profile ]] && grep -qx "Name=$im" "$profile"; }
+
+framework() {
+    if [[ ${XMODIFIERS:-} == *fcitx* || ${GTK_IM_MODULE:-} == fcitx* || ${QT_IM_MODULE:-} == fcitx* ]]; then
+        echo fcitx5
+    elif [[ -f $HOME/.xinputrc ]] && grep -q 'run_im fcitx5' "$HOME/.xinputrc"; then
+        echo fcitx5-next-login
+    elif [[ -n ${XMODIFIERS:-}${GTK_IM_MODULE:-} ]]; then
+        echo other
+    else
+        echo unknown
+    fi
+}
+
+status() {
+    if has fcitx5; then echo fcitx5=installed; else echo fcitx5=missing; fi
+    if running; then
+        echo running=yes
+        if addon_loaded; then echo addon=loaded; else echo addon=not-loaded; fi
+    else
+        echo running=no
+        echo addon=unknown
+    fi
+    if in_profile; then echo profile=added; else echo profile=absent; fi
+    echo "framework=$(framework)"
+}
+
+# The keyboard layout for a new profile: the system's X11 layout, else us.
+layout() {
+    local value=
+    has localectl && value=$(localectl status 2>/dev/null | sed -n 's/^ *X11 Layout: *//p' | cut -d, -f1)
+    echo "${value:-us}"
+}
+
+# Fcitx is not running: edit (or create) the profile file it reads when it starts.
+enable_offline() {
+    mkdir -p "$config"
+    if [[ ! -f $profile ]]; then
+        local kb
+        kb=$(layout)
+        cat > "$profile" <<PROFILE
+[Groups/0]
+Name=Default
+Default Layout=$kb
+DefaultIM=$im
+
+[Groups/0/Items/0]
+Name=keyboard-$kb
+Layout=
+
+[Groups/0/Items/1]
+Name=$im
+Layout=
+
+[GroupOrder]
+0=Default
+PROFILE
+        return
+    fi
+    cp -p "$profile" "$profile.zhuyintype-backup"
+    local last
+    last=$(sed -n 's/^\[Groups\/0\/Items\/\([0-9][0-9]*\)\]$/\1/p' "$profile" | sort -n | tail -1)
+    printf '\n[Groups/0/Items/%d]\nName=%s\nLayout=\n' $((${last:--1} + 1)) "$im" >> "$profile"
+}
+
+# Fcitx is running: it owns the profile, so ask it over D-Bus (it saves the change itself).
+enable_online() {
+    if ! addon_loaded; then
+        # Installed after this Fcitx started: restart it once so it finds the new addon.
+        call Restart >/dev/null 2>&1 || true
+        local attempt
+        for attempt in $(seq 50); do
+            sleep 0.2
+            running && addon_loaded && break
+        done
+        addon_loaded || { say 'Fcitx 5 重新啟動後仍找不到 ZhuyinType 的 addon；請確認套件已安裝。'; exit 1; }
+    fi
+    local group info
+    group=$(call CurrentInputMethodGroup | words | sed -n 2p)
+    mapfile -t info < <(call InputMethodGroupInfo s "$group" | words)
+    # info: signature, layout, count, then name/layout pairs.
+    local default_layout=${info[1]} count=${info[2]} args=() i
+    for ((i = 0; i < count; i++)); do
+        args+=("${info[3 + 2 * i]}" "${info[4 + 2 * i]:-}")
+    done
+    args+=("$im" "")
+    call SetInputMethodGroupInfo 'ssa(ss)' "$group" "$default_layout" $((count + 1)) "${args[@]}" >/dev/null
+}
+
+enable() {
+    has fcitx5 || { say '找不到 Fcitx 5；請先安裝 fcitx5 套件。'; exit 3; }
+    if running; then
+        call InputMethodGroupInfo s "$(call CurrentInputMethodGroup | words | sed -n 2p)" | grep -q "\"$im\"" \
+            && return 0
+        enable_online
+    else
+        in_profile && return 0
+        enable_offline
+    fi
+}
+
+set_framework() {
+    if has im-config; then
+        im-config -n fcitx5
+    elif has imsettings-switch; then
+        imsettings-switch -q fcitx5
+    else
+        say '這個系統沒有 im-config 或 imsettings；請依發行版的說明把輸入法框架設為 Fcitx 5。'
+        exit 3
+    fi
+}
+
+case "${1:-}" in
+    status) status ;;
+    enable) enable ;;
+    framework) set_framework ;;
+    *) say '用法：fcitx5-setup status|enable|framework'; exit 2 ;;
+esac

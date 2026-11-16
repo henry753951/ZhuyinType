@@ -1,4 +1,4 @@
-"""zt build: the engine command line and the macOS app (engine/, platforms/macos/scripts).
+"""zt build: the engine command line, the macOS app and the Linux/Windows app (engine/, platforms/).
 
     zt build cli                      # zhuyin-cli, release (engine/target/release/; with ONNX Runtime on Linux)
     zt build cli --debug
@@ -6,6 +6,7 @@
     zt build app                      # dist/ZhuyinType.app (macOS, needs Xcode)
     zt build install                  # build and install into ~/Library/Input Methods
     zt build pkg                      # dist/ZhuyinType-<version>.pkg
+    zt build desktop [--package]      # Linux/Windows app (platforms/desktop/scripts/build.sh; Linux only)
 
 CARGO_TARGET_DIR moves the engine's build directory (default engine/target), SWIFT_SCRATCH_PATH the app's (default
 .build); on Linux ONNXRUNTIME_ROOT names the ONNX Runtime SDK zhuyin-cli links (default ~/opt/onnxruntime).
@@ -25,19 +26,28 @@ SCRIPTS = paths.CLIENT / "scripts"
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = sub.add_parser(
         "build",
-        description="Build the engine command line and the macOS app.",
-        help="build zhuyin-cli, the app, its installer",
+        description="Build the engine command line, the macOS app and the Linux/Windows app.",
+        help="build zhuyin-cli, the apps, their installers",
         epilog=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     targets = parser.add_subparsers(dest="target", metavar="TARGET")
 
-    targets.add_parser("input-method", help="shared Qt host and native Fcitx5/TSF adapter").set_defaults(
-        func=lambda _: desktop.build_input_method()
+    gui = targets.add_parser(
+        "desktop",
+        help="ZhuyinType for Linux and Windows: the app, the Fcitx 5 addon, the packages (on Linux)",
+        description="Runs platforms/desktop/scripts/build.sh (Linux only; from a Mac use `zt --remote`).",
     )
-
-    targets.add_parser("desktop", help="shared Qt client preview (Linux, Windows, macOS)").set_defaults(
-        func=lambda _: desktop.build()
+    gui.add_argument("--target", choices=desktop.TARGETS, default="linux", help="what to build (default: linux)")
+    gui.add_argument("--release", action="store_true", help="optimised build (default: debug)")
+    gui.add_argument(
+        "--package", action="store_true", help="dist/desktop: .deb and .rpm, or the Windows installer (release)"
+    )
+    gui.add_argument(
+        "--native", action="store_true", help="compile the packages on this machine, not in the Debian 13 image"
+    )
+    gui.set_defaults(
+        func=lambda a: desktop.build(a.target, release=a.release, package=a.package, native=a.native)
     )
 
     cli = targets.add_parser("cli", help="zhuyin-cli (engine/crates/zhuyin-cli)")

@@ -50,25 +50,37 @@ int main(int argc, char **argv) {
     capture("self-host-start");
     if (!run("xdotool",{"windowfocus","--sync",window})) return 2;
     int navigationY=qEnvironmentVariableIntValue("ZT_SELFHOST_NAV_Y");
-    if (!navigationY) navigationY=443;
+    if (!navigationY) navigationY=402; // the middle of 快捷鍵 in the sidebar of the 900×640 settings window
     if (!run("xdotool",{"mousemove",QString::number(x+80),QString::number(y+navigationY),"click","1","sleep","0.5"})) return 2;
     capture("self-host-search");
     int searchY=qEnvironmentVariableIntValue("ZT_SELFHOST_SEARCH_Y");
-    if (!searchY) searchY=100;
+    if (!searchY) searchY=132; // the middle of the page's search field
     if (!run("xdotool",{"mousemove",QString::number(x+350),QString::number(y+searchY),"click","1"}) ||
         !run("fcitx5-remote",{"-s","zhuyintype"}) || !run("fcitx5-remote",{"-o"})) return 2;
+    // GPUI talks to Fcitx through XIM without ever focusing its input context, so Fcitx has no current context for
+    // fcitx5-remote; the trigger key turns the input method on in the context the keys arrive in, as a user would.
+    if (run("fcitx5-remote",{}) && QString::fromUtf8(output).trimmed() == "0" &&
+        !run("xdotool",{"key","--clearmodifiers","ctrl+space","sleep","0.2"})) return 2;
     app.clipboard()->setText("zt-self-host-probe-unset");
     app.processEvents();
     QElapsedTimer elapsed; elapsed.start();
     if (!run("xdotool",{"type","--clearmodifiers","--delay","5","su3cl3"}) ||
         !run("xdotool",{"key","--clearmodifiers","Return","sleep","0.2","key","ctrl+a","ctrl+c","sleep","0.1"})) return 2;
-    const auto delivered=app.clipboard()->text();
+    // The host's clipboard answers asynchronously; give the copy a moment to arrive.
+    QString delivered;
+    for (int attempt=0; attempt<20; ++attempt) {
+        app.processEvents();
+        delivered=app.clipboard()->text();
+        if (delivered != QStringLiteral("zt-self-host-probe-unset")) break;
+        run("xdotool",{"sleep","0.1"});
+    }
     capture("self-host-delivered");
     if (delivered != QStringLiteral("你好")) {
-        std::cerr << "FAIL self-host settings TextField delivery: clipboard UTF-16 units=" << delivered.size() << '\n';
+        std::cerr << "FAIL self-host settings TextField delivery: clipboard UTF-16 units=" << delivered.size()
+            << (delivered == QStringLiteral("zt-self-host-probe-unset") ? " (nothing copied)" : "") << '\n';
         return 1;
     }
-    std::cout << "PASS self-host settings TextField: Qt Fcitx frontend -> Fcitx addon -> same Qt host; exact Chinese commit; pipeline "
+    std::cout << "PASS self-host settings field: the host's own window -> XIM -> Fcitx addon -> the same host; exact Chinese commit; pipeline "
         << elapsed.elapsed() << " ms including 300 ms test waits and 5 ms key spacing\n";
     return 0;
 }

@@ -10,7 +10,7 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 ```
 
 - `engine/` 是所有平台共用的輸入法引擎，以 Rust 寫成（`engine/crates/`）。App 經由 C 介面（`zhuyin-ffi`）使用它，評測工具經由 `zhuyin-cli`。原本的 Swift 引擎已移除（2026-10，第 5 階段），Rust 版和它的輸出逐位元相同（`engine/DESIGN.md`）。
-- `platforms/` 是各作業系統的輸入法前端，macOS 使用原生介面，Linux／Windows 共用 Qt 桌面服務並各自接入 Fcitx5／TSF。前端只透過引擎的公開介面使用它。
+- `platforms/` 是各作業系統的輸入法前端，macOS 使用原生介面，Linux／Windows 共用一個 GPUI 桌面程式（`platforms/desktop`）並各自接入 Fcitx5／TSF。前端只透過引擎的公開介面使用它。
 - `ml/` 是研發：資料、訓練、評測，以及在 GPU 主機上執行這些工作。它不隨 App 出貨，只透過 `zhuyin-cli` 使用引擎。
 - `resources/` 是兩邊之間的契約：資料與模型的版本、來源與授權、二進位格式。
 
@@ -22,8 +22,8 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 |---|---|---|
 | `engine/` | Rust workspace：`zhuyin-core`（引擎核心）、`zhuyin-models`（模型的判斷邏輯與 ONNX Runtime）、`zhuyin-ffi`（C 介面）、`zhuyin-cli`；`parity/` 是兩個建置之間的行為比對 | `engine/README.md`、`engine/DESIGN.md`、`docs/engine/ARCHITECTURE.md`、`docs/engine/MODEL.md` |
 | `platforms/macos/` | InputMethodKit 輸入法、設定介面、Sparkle 更新、建置與發布腳本；`ZhuyinEngine` 是引擎的 Swift 包裝（Core ML 在這裡執行），`EngineBench` 是不含 App 的引擎路徑 | `docs/product/DESIGN.md` |
-| `platforms/qt/` | Linux／Windows 共用 Qt 設定、候選視窗、引擎包裝與本機輸入法服務 | `platforms/qt/README.md`、`platforms/qt/DESIGN_SYSTEM.md`、`platforms/qt/IPC.md` |
-| `platforms/linux/`、`platforms/windows/` | Fcitx5／TSF 原生按鍵、焦點與文字送出介面 | 各目錄的 `README.md` 與驗證紀錄 |
+| `platforms/desktop/` | Linux／Windows 共用的 GPUI 程式 `zhuyintype`：設定、候選字視窗、設定嚮導與輸入法服務；Windows 的 TSF 文字服務（`crates/zt-tsf`）；建置腳本與 `.deb`／`.rpm`／Windows 安裝程式的打包。只在 GPU 主機上建置（`platforms/desktop/scripts/remote.sh`） | `platforms/desktop/ARCHITECTURE.md`、`platforms/desktop/IPC.md`、`platforms/desktop/packaging/linux/README.md` |
+| `platforms/linux/` | Fcitx5 原生按鍵、焦點與文字送出介面 | `platforms/linux/README.md` 與驗證紀錄 |
 | `ml/` | Python 專案（uv）：`src/zhuyintype_ml/` 底下是 `core`（共用核心）、`cli`（`zt` 指令）、`eval`（評測、ZhuyinBench）、`training`（每個模型一個流程）、`data`（資料版本、詞庫建置）、`remote`（GPU 主機） | `ml/README.md`、`ml/CONVENTIONS.md`、`docs/ml/EVALUATION.md` |
 | `ml/eval-sets/` | 納入版本庫的評測集（善解 CC0、日常短句、延遲用句） | `ml/eval-sets/external/shanjie/README.md` |
 | `resources/` | `assets.json`（資料與模型的固定版本）、`SOURCES.md`（來源與授權）、`formats/`（詞庫與語言模型的二進位格式） | `resources/SOURCES.md` |
@@ -40,7 +40,9 @@ platforms/*  ──讀取──▶  resources/assets.json  ◀──發布──
 tools/zt setup                              # 檢查並準備這台機器（uv、Rust，Swift 與 Xcode 或 ONNX Runtime）
 tools/zt data fetch                         # 下載資料與模型到 data/build（版本由 resources/assets.json 固定）
 tools/zt build cli | app | install | pkg    # zhuyin-cli、dist/ZhuyinType.app、安裝到 ~/Library/Input Methods、pkg
+tools/zt --remote --pull dist/desktop build desktop --package   # Linux 的 .deb／.rpm（在 GPU 主機上建置）
 tools/zt check engine | app | python | lint | types | public | all
+tools/zt --remote check desktop             # Linux／Windows 版的 cargo test 與 Fcitx 5 addon 測試
 tools/zt --remote eval conversion --set dev           # 在 GPU 主機上評測（--config app 和 App 的設定相同）
 tools/zt eval stats BEFORE.json AFTER.json            # 成對比較
 tools/zt --remote bench run vX.Y.Z          # ZhuyinBench（CI 會在每次發布後執行）
@@ -55,8 +57,8 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
 
 ## 規則
 
-- **評測與訓練在 GPU 主機上執行，不在開發用的 Mac 上執行**。Mac 只做以下幾件事：
-  - 建置；
+- **評測與訓練在 GPU 主機上執行，不在開發用的 Mac 上執行**。Linux／Windows 版（`platforms/desktop`、`platforms/linux`）也只在 GPU 主機或 CI 上建置。Mac 只做以下幾件事：
+  - 建置 macOS 版；
   - 匯出、編譯 Core ML；
   - 量測延遲與能耗（`tools/zt eval latency`）；
   - 確認遠端結果和 Mac 一致的一次性檢查。

@@ -1,4 +1,4 @@
-"""Build failures stop the Qt pipeline before tests run."""
+"""zt build desktop / zt check desktop hand their options to platforms/desktop/scripts/build.sh, on Linux only."""
 
 import unittest
 from unittest.mock import Mock, patch
@@ -6,37 +6,43 @@ from unittest.mock import Mock, patch
 from zhuyintype_ml.core import desktop
 
 
-class DesktopBuildTests(unittest.TestCase):
-    @patch.object(desktop.paths, "cargo_command", return_value=["cargo", "build"])
-    @patch.object(desktop.shutil, "which", side_effect=lambda name: name)
-    @patch.object(desktop.subprocess, "run")
-    def test_build_failure_stops_checks(self, run, _which, _cargo):
-        run.side_effect = [Mock(returncode=0), Mock(returncode=2)]
-        self.assertEqual(desktop.build(check=True), 2)
-        self.assertEqual(run.call_count, 2)
+class ArgumentTests(unittest.TestCase):
+    def test_defaults_build_linux_debug(self):
+        self.assertEqual(desktop.arguments(), ["linux"])
 
-    @patch.object(desktop.paths, "cargo_command", return_value=["cargo", "build"])
-    @patch.object(desktop.shutil, "which", side_effect=lambda name: name)
-    @patch.object(desktop.subprocess, "run", return_value=Mock(returncode=0))
-    def test_checks_use_multiconfig_release(self, run, _which, _cargo):
-        self.assertEqual(desktop.build(check=True), 0)
-        command = run.call_args.args[0]
-        self.assertEqual(command[0], "ctest")
-        self.assertIn("Release", command)
+    def test_flags_follow_the_target(self):
+        self.assertEqual(
+            desktop.arguments("all", release=True, package=True, native=True),
+            ["all", "--release", "--package", "--native"],
+        )
+
+    def test_unknown_target_is_rejected(self):
+        with self.assertRaises(ValueError):
+            desktop.arguments("macos")
 
 
-class NativeBuildTests(unittest.TestCase):
+class RunTests(unittest.TestCase):
     @patch.object(desktop.sys, "platform", "linux")
-    @patch.object(desktop, "build", return_value=7)
-    @patch.object(desktop.subprocess, "run")
-    def test_host_failure_stops_native_build(self, run, host):
-        self.assertEqual(desktop.build_input_method(check=True), 7)
-        host.assert_called_once_with(check=True)
-        run.assert_not_called()
+    @patch.object(desktop.subprocess, "run", return_value=Mock(returncode=3))
+    def test_script_status_is_returned(self, run):
+        self.assertEqual(desktop.build("linux", package=True), 3)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["bash", str(desktop.SCRIPT)])
+        self.assertEqual(command[2:], ["linux", "--package"])
+
+    @patch.object(desktop.sys, "platform", "linux")
+    @patch.object(desktop.subprocess, "run", return_value=Mock(returncode=0))
+    def test_check_runs_the_tests(self, run):
+        self.assertEqual(desktop.check(), 0)
+        self.assertEqual(run.call_args.args[0][2:], ["linux", "--test"])
 
     @patch.object(desktop.sys, "platform", "darwin")
-    @patch.object(desktop, "build")
-    def test_unsupported_host_changes_nothing(self, host):
+    @patch.object(desktop.subprocess, "run")
+    def test_other_systems_build_nothing(self, run):
         with self.assertRaises(SystemExit):
-            desktop.build_input_method()
-        host.assert_not_called()
+            desktop.build()
+        run.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

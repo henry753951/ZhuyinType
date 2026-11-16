@@ -1,0 +1,49 @@
+[package]
+name = "zhuyintype"
+description = "ZhuyinType for Linux and Windows: settings, candidate window, setup wizard and the input method host"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "zhuyintype"
+path = "src/main.rs"
+
+[dependencies]
+zt-panel.workspace = true
+gpui-kit.workspace = true
+zt-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+async-channel.workspace = true
+chrono.workspace = true
+zhuyin-core.workspace = true
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Moving, showing and hiding the override-redirect candidate window on X11 (GPUI only resizes windows).
+x11rb = { version = "0.13", features = ["shape"] }
+
+# Window behaviour GPUI lacks on Windows (src/platform/windows.rs).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_UI_Controls",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Windows resources (icon, version); nothing for other targets.
+[build-dependencies]
+embed-resource = "3"
+
+[lints]
+workspace = true

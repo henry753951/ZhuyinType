@@ -1,6 +1,8 @@
-# A v* tag builds, signs and publishes a release, then updates the Sparkle appcast on main so installed copies update
-# themselves.  Gate: the tag matches Info.plist and docs/releases/<tag>.md exists (notes and benchmark summary).
-# Typical wall time with warm caches: about 6 minutes.
+# A v* tag builds, signs and publishes a release for every platform, then updates the Sparkle appcast on main so
+# installed macOS copies update themselves.  Gate: the tag matches Info.plist and platforms/desktop/Cargo.toml, and
+# docs/releases/<tag>.md exists (notes and benchmark summary).  The Windows installer and the Linux packages come from
+# desktop.yml (called here); the release is published only when all three platforms built, so a release never lacks
+# one of them.  Typical wall time with warm caches: about 6 minutes for macOS, after the desktop builds.
 name: Release
 
 on:
@@ -17,7 +19,11 @@ permissions:
   actions: write
 
 jobs:
+  desktop:
+    uses: ./.github/workflows/desktop.yml
+
   release:
+    needs: desktop
     runs-on: xcode-27
     timeout-minutes: 45
     env:
@@ -32,6 +38,8 @@ jobs:
         run: |
           version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" platforms/macos/Resources/Info.plist)
           [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match Info.plist $version"; exit 1; }
+          desktop=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' platforms/desktop/Cargo.toml)
+          [ "v$desktop" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match platforms/desktop/Cargo.toml $desktop"; exit 1; }
           [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "docs/releases/$GITHUB_REF_NAME.md is missing"; exit 1; }
           tools/check-public.sh
           echo "latest=$(gh release view --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
@@ -72,11 +80,29 @@ jobs:
       - name: Speed, energy and memory on this Mac
         run: |
           tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources --json dist/release/metrics-mac.json
-      - name: Stable download name
-        # README links to releases/latest/download/ZhuyinType-macOS.pkg, which always points at the newest release.
+      - name: Windows installer and Linux packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: zhuyintype-*
+          merge-multiple: true
+          path: dist/desktop
+      - name: Stable download names
+        # README links to releases/latest/download/<stable name>, which always points at the newest release.  The
+        # versioned files stay beside them for anyone keeping several versions.
         run: |
+          version=${GITHUB_REF_NAME#v}
           pkg=$(ls dist/release/ZhuyinType-*.pkg | head -1)
           cp "$pkg" dist/release/ZhuyinType-macOS.pkg
+          exe=dist/desktop/ZhuyinType-$version-windows-x64-setup.exe
+          deb=dist/desktop/zhuyintype_${version}_amd64.deb
+          rpm=dist/desktop/zhuyintype-$version.x86_64.rpm
+          for file in "$exe" "$deb" "$rpm"; do [ -f "$file" ] || { echo "$file is missing"; ls -l dist/desktop; exit 1; }; done
+          cp "$exe" "$deb" "$rpm" dist/release/
+          cp "$exe" dist/release/ZhuyinType-Windows-x64-setup.exe
+          cp "$deb" dist/release/ZhuyinType-Linux-amd64.deb
+          cp "$rpm" dist/release/ZhuyinType-Linux-x86_64.rpm
+          (cd dist/release && shasum -a 256 ZhuyinType-Windows-x64-setup.exe ZhuyinType-Linux-amd64.deb \
+            ZhuyinType-Linux-x86_64.rpm "${exe##*/}" "${deb##*/}" "${rpm##*/}" > SHA256SUMS-desktop.txt)
       - name: Publish
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

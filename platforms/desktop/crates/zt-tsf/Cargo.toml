@@ -1,0 +1,70 @@
+[package]
+name = "zt-tsf"
+description = "ZhuyinType's Windows text service (TSF): keys, focus, composition and commits, talking to the broker in the app"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+# zhuyintype_tsf.dll; packaging names it zhuyintype-tsf-x64.dll / zhuyintype-tsf-x86.dll.  On other systems the
+# library is empty, so the workspace still builds and tests on Linux (the pure parts are tested there).
+[lib]
+name = "zhuyintype_tsf"
+crate-type = ["cdylib"]
+
+[dependencies]
+serde_json.workspace = true
+zt-panel.workspace = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Environment",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.62"
+
+[target.'cfg(windows)'.dependencies.windows-numerics]
+version = "0.3.1"
+
+[build-dependencies]
+embed-resource = "3"
+
+# The workspace denies unsafe code; a COM server is made of it, so this crate keeps the other lints and allows it.
+[lints.rust]
+unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

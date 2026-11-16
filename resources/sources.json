@@ -65,19 +65,50 @@
       ]
     },
     {
-      "id": "qt",
+      "id": "gpui",
       "group": "libraries",
-      "name": "Qt 6",
-      "use": "Linux 與 Windows 的設定視窗與候選字視窗",
+      "name": "GPUI 與 GPUI Kit",
+      "use": "Linux 與 Windows 的介面框架：設定視窗、候選字視窗與設定嚮導",
       "distribution": "bundled",
-      "license": "LGPL-3.0-only",
+      "license": "Apache-2.0",
       "licenseFiles": [
-        "Qt-NOTICE.txt",
-        "LGPL-3.0.txt",
-        "GPL-3.0.txt"
+        "Apache-2.0.txt"
       ],
-      "copyright": "Copyright (C) The Qt Company Ltd. and other contributors",
-      "url": "https://www.qt.io",
+      "copyright": "Copyright Zed Industries, Inc.; Copyright Longbridge",
+      "url": "https://github.com/longbridge/gpui-kit",
+      "platforms": [
+        "linux",
+        "windows"
+      ]
+    },
+    {
+      "id": "inter",
+      "group": "libraries",
+      "name": "Inter",
+      "use": "Linux 與 Windows 介面的英文與數字字型",
+      "distribution": "bundled",
+      "license": "OFL-1.1",
+      "licenseFiles": [
+        "Inter-LICENSE.txt"
+      ],
+      "version": "4.1",
+      "url": "https://github.com/rsms/inter",
+      "platforms": [
+        "linux",
+        "windows"
+      ]
+    },
+    {
+      "id": "lucide",
+      "group": "libraries",
+      "name": "Lucide",
+      "use": "Linux 與 Windows 介面的圖示",
+      "distribution": "bundled",
+      "license": "ISC",
+      "licenseFiles": [
+        "Lucide-LICENSE.txt"
+      ],
+      "url": "https://lucide.dev",
       "platforms": [
         "linux",
         "windows"

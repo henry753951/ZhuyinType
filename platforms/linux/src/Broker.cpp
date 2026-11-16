@@ -1,5 +1,6 @@
 #include "Broker.h"
 #include "Keys.h"
+#include <fcitx-utils/misc.h>
 #include <fcitx-utils/utf8.h>
 #include <chrono>
 #include <algorithm>
@@ -51,6 +52,17 @@ std::string Broker::endpoint() {
     if (const char *path = std::getenv("XDG_RUNTIME_DIR"); path && *path == '/')
         return std::string(path) + "/zhuyintype/ime-v1";
     return "/tmp/zhuyintype-" + std::to_string(getuid()) + "/ime-v1";
+}
+void Broker::launchHost() {
+    static Clock::time_point last{};
+    if (const char *path = std::getenv("ZT_IME_SOCKET"); path && *path) return;
+    if (access(ZT_HOST_EXECUTABLE, X_OK) != 0) return;
+    const auto now = Clock::now();
+    if (last != Clock::time_point{} && now - last < std::chrono::seconds(3)) return;
+    last = now;
+    // startProcess double-forks: the host is not Fcitx's child and keeps running when Fcitx restarts.  A second
+    // launch while the first one is still starting exits on the host's instance lock.
+    fcitx::startProcess({ZT_HOST_EXECUTABLE, "--background"});
 }
 bool Broker::connect() {
     if (connected()) return true;

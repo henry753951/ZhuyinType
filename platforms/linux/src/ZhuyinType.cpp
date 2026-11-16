@@ -35,6 +35,23 @@ void addContext(fcitx::InputContext &ic, nlohmann::json &fields) {
     while (start < offset && (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) ++start;
     fields["before"] = text.substr(start, offset - start);
 }
+// The words of the composition (IPC.md); left out by older hosts, ignored when malformed.
+std::vector<std::pair<size_t, size_t>> clauses(const nlohmann::json &response) {
+    std::vector<std::pair<size_t, size_t>> result;
+    const auto it = response.find("clauses");
+    if (it == response.end() || !it->is_array()) return result;
+    for (const auto &clause : *it) {
+        if (!clause.is_array() || clause.size() != 2 || !clause[0].is_number_unsigned() ||
+            !clause[1].is_number_unsigned()) return {};
+        result.emplace_back(clause[0].get<size_t>(), clause[1].get<size_t>());
+    }
+    return result;
+}
+std::optional<size_t> index(const nlohmann::json &response, const char *key) {
+    const auto it = response.find(key);
+    if (it == response.end() || !it->is_number_unsigned()) return std::nullopt;
+    return it->get<size_t>();
+}
 }
 // A fresh focus epoch gets a fresh context token. Reconnection never replays input.
 struct ZhuyinType::State final : fcitx::InputContextProperty {
@@ -106,7 +123,13 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     auto &panel = ic.inputPanel();
     panel.reset();
     if (state.inlinePreedit) {
-        fcitx::Text text(preedit, fcitx::TextFormatFlag::Underline);
+        fcitx::Text text;
+        for (auto &part : preeditParts(preedit, clauses(*response), index(*response, "focus"), index(*response, "target"))) {
+            fcitx::TextFormatFlags format{fcitx::TextFormatFlag::Underline};
+            if (part.mark == Mark::Focus) format |= fcitx::TextFormatFlag::HighLight;
+            if (part.mark == Mark::Target) format |= fcitx::TextFormatFlag::Bold;
+            text.append(std::move(part.text), format);
+        }
         text.setCursor(*cursorBytes(preedit, (*response)["cursor"].get<size_t>()));
         panel.setClientPreedit(text);
     }
@@ -123,7 +146,7 @@ bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     state.inlinePreedit = ic.capabilityFlags().test(fcitx::CapabilityFlag::Preedit);
     static uint64_t serial = 0;
     state.context = "fcitx-" + std::to_string(getpid()) + "-" + std::to_string(++serial);
-    if (!broker_.connect()) { clear(ic); return false; }
+    if (!broker_.connect()) { Broker::launchHost(); clear(ic); return false; }
     auto fields = geometry(ic);
     fields.update({{"secure", state.secure}, {"inlinePreedit", state.inlinePreedit}});
     if (!state.secure) addContext(ic, fields);

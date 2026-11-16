@@ -1,0 +1,21 @@
+[package]
+name = "gpui-shaders"
+description = "Compiles GPUI's Windows HLSL shaders to bytecode (vendor/gpui-pre-windows/shaders/shaders_bytes.rs); run on Windows"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = ["Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_Hlsl"]
+
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.62"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

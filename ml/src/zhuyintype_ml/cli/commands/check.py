@@ -2,6 +2,7 @@
 
 zt check engine                   # the engine's tests, release (ZHUYIN_CHECKS_TIMING=warn on slow or busy machines)
 zt check app                      # the built app's self-test and packaging check (after `zt build app`)
+zt check desktop                  # the Linux/Windows app: cargo test and the Fcitx 5 addon's tests (Linux)
 zt check python                   # unittest over ml/src/**/test_*.py
 zt check python --group train     # with PyTorch, for the training tests
 zt check lint [--fix]             # ruff check (and `ruff format --check` with --format)
@@ -29,13 +30,9 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     )
     kinds = parser.add_subparsers(dest="kind", metavar="KIND")
 
-    kinds.add_parser("input-method", help="shared Qt host and native Fcitx5/TSF adapter").set_defaults(
-        func=lambda _: desktop.build_input_method(check=True)
-    )
-
-    kinds.add_parser("desktop", help="shared Qt state tests and isolated UI renders").set_defaults(
-        func=lambda _: desktop.build(check=True)
-    )
+    kinds.add_parser(
+        "desktop", help="Linux/Windows app: Linux build, cargo test, Fcitx 5 addon tests (on Linux)"
+    ).set_defaults(func=lambda _: desktop.check())
 
     kinds.add_parser("engine", help="engine behaviour and latency checks (cargo test, release)").set_defaults(
         func=engine
