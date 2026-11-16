@@ -145,6 +145,13 @@ fn main() {
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         theme::load_fonts(cx);
+        // The copy that serves the input method runs until the session ends: closing the settings window or the
+        // wizard must not end it.  GPUI otherwise quits when the last window closes, and on Windows the app has no
+        // other window (the text service draws the candidate window inside each application), so typing stopped.
+        let serves = service.is_some() && !args.no_broker && args.popover.is_none() && args.wizard.is_none();
+        if serves {
+            cx.set_quit_mode(gpui_kit::QuitMode::Explicit);
+        }
         cx.set_global(app::AppState { settings, service, service_error });
         if let Some(events) = events {
             candidate::popup::run(events, cx);

@@ -2687,7 +2687,7 @@ checksum = "85701631a9bbecf47e6d19f145e85e57767e7c50f7192d5b1bf65b5ef43cb373"
 
 [[package]]
 name = "gpui-shaders"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "windows 0.62.2",
  "windows-core 0.62.2",
@@ -8612,7 +8612,7 @@ dependencies = [
 
 [[package]]
 name = "zhuyintype"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8657,7 +8657,7 @@ dependencies = [
 
 [[package]]
 name = "zt-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -8681,7 +8681,7 @@ dependencies = [
 
 [[package]]
 name = "zt-panel"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -8689,7 +8689,7 @@ dependencies = [
 
 [[package]]
 name = "zt-tsf"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "embed-resource",
  "serde_json",
