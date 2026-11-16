@@ -1,7 +1,7 @@
 //! The one key cap of the app: settings rows, the shortcut fields, demos, the 介紹 stage and the candidate window's
 //! footer all draw keys with it.  A cap is a quiet `subtle` fill without a border, radius `R_XS`; a combination is one
-//! cap per key (「Ctrl」「⇧」「U」, no 「+」).  Symbols that every system draws differently (⇧ ↑ ↓ ← → ↩ ⌫) are icons,
-//! so the caps look the same whatever fonts are installed.
+//! cap per key (「Ctrl」「Shift」「U」, no 「+」).  Arrows, ↩ and ⌫ are icons, so the caps look the same whatever fonts
+//! are installed; ⇧ is written 「Shift」 as Windows and Linux keyboards and menus name it (the ⇧ glyph is the Mac's).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Icon;
@@ -11,10 +11,23 @@ use gpui_kit::{App, Div, Hsla, IntoElement, ParentElement, RenderOnce, SharedStr
 use super::h;
 use crate::theme::{self, size, space, text, weight};
 
-/// A key's label with its symbols as icons, the rest as text, `font_size` large in `color`.
-pub fn key_glyphs(label: &str, font_size: f32, color: Hsla) -> Div {
+/// One piece of a key's label.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Piece {
+    Text(String),
+    Icon(IconName),
+    /// The room between 「Shift」 and the key after it in one cap (「Shift ↓」).
+    Gap,
+}
+
+/// The room a `Piece::Gap` takes at `font_size`.
+pub fn gap(font_size: f32) -> f32 {
+    (font_size * 0.3).round()
+}
+
+/// A key's label as text and icons: 「⇧↓」 → 「Shift」, a gap, the ↓ icon.
+pub fn pieces(label: &str) -> Vec<Piece> {
     let icon = |c: char| match c {
-        '⇧' => Some(IconName::ArrowBigUp),
         '↑' => Some(IconName::ArrowUp),
         '↓' => Some(IconName::ArrowDown),
         '←' => Some(IconName::ArrowLeft),
@@ -23,32 +36,86 @@ pub fn key_glyphs(label: &str, font_size: f32, color: Hsla) -> Div {
         '⌫' => Some(IconName::Delete),
         _ => None,
     };
-    let mut row = div()
+    let mut pieces = Vec::new();
+    let mut text = String::new();
+    let mut chars = label.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '⇧' {
+            text.push_str("Shift");
+            if chars.peek().is_some() {
+                pieces.push(Piece::Text(std::mem::take(&mut text)));
+                pieces.push(Piece::Gap);
+            }
+        } else if let Some(name) = icon(c) {
+            if !text.is_empty() {
+                pieces.push(Piece::Text(std::mem::take(&mut text)));
+            }
+            pieces.push(Piece::Icon(name));
+        } else {
+            text.push(c);
+        }
+    }
+    if !text.is_empty() {
+        pieces.push(Piece::Text(text));
+    }
+    pieces
+}
+
+/// A lone punctuation key (「`」, 「'」, 「;」) is a speck at a key cap's text size: it is drawn this much larger.
+const SPECK_GROWTH: f32 = 7.;
+
+/// Whether `label` is one punctuation key, drawn larger (`SPECK_GROWTH`).
+pub fn is_speck(label: &str) -> bool {
+    let mut chars = label.chars();
+    matches!((chars.next(), chars.next()), (Some(c), None) if c.is_ascii_punctuation())
+}
+
+/// A key's label for running text, as Windows and Linux write shortcuts: 「⇧←」 → 「Shift+←」, 「Ctrl+⇧U」 →
+/// 「Ctrl+Shift+U」.
+pub fn prose(label: &str) -> String {
+    let mut text = String::new();
+    let mut chars = label.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '⇧' {
+            text.push_str(if chars.peek().is_some() { "Shift+" } else { "Shift" });
+        } else {
+            text.push(c);
+        }
+    }
+    text
+}
+
+/// A key's label (`pieces`), `font_size` large in `color`.  A lone punctuation key is drawn larger and the marks
+/// that sit high in their line (「`」「'」「^」) are moved down to the line's centre, so the cap reads as that key and
+/// not as an empty box.
+pub fn key_glyphs(label: &str, font_size: f32, color: Hsla) -> Div {
+    if is_speck(label) {
+        let size = font_size + SPECK_GROWTH;
+        let high = matches!(label, "`" | "'" | "\"" | "^" | "~" | "*");
+        return div()
+            .relative()
+            .top(px(if high { (size * 0.3).round() } else { 0. }))
+            .text_size(px(size))
+            .line_height(px((font_size * 1.3).round()))
+            .text_color(color)
+            .child(SharedString::from(label.to_owned()));
+    }
+    let row = div()
         .flex()
         .flex_row()
         .items_center()
         .text_size(px(font_size))
         .line_height(px((font_size * 1.3).round()))
         .text_color(color);
-    let mut text = String::new();
-    for c in label.chars() {
-        match icon(c) {
-            Some(name) => {
-                if !text.is_empty() {
-                    row = row.child(SharedString::from(std::mem::take(&mut text)));
-                }
-                row = row.child(Icon::new(name).size(px((font_size * 0.95).round())).text_color(color));
-            }
-            None => text.push(c),
-        }
-    }
-    if !text.is_empty() {
-        row = row.child(SharedString::from(text));
-    }
-    row
+    pieces(label).into_iter().fold(row, |row, piece| match piece {
+        Piece::Text(text) => row.child(SharedString::from(text)),
+        Piece::Icon(name) => row.child(Icon::new(name).size(px((font_size * 0.95).round())).text_color(color)),
+        Piece::Gap => row.child(div().w(px(gap(font_size)))),
+    })
 }
 
-/// A shortcut's label split into caps: 「Alt+⌫」 → 「Alt」「⌫」, 「⇧↓」 → 「⇧」「↓」, 「Ctrl+⇧U」 → 「Ctrl」「⇧」「U」.
+/// A shortcut's label split into caps: 「Alt+⌫」 → 「Alt」「⌫」, 「⇧↓」 → 「⇧」「↓」, 「Ctrl+⇧U」 → 「Ctrl」「⇧」「U」 (each ⇧
+/// cap is drawn 「Shift」).
 pub fn split(label: &str) -> Vec<String> {
     let parts: Vec<&str> = label.split('+').collect();
     // A lone 「+」 key (「Ctrl++」) splits into empty parts.
@@ -136,7 +203,24 @@ pub fn bindings(labels: impl IntoIterator<Item = impl AsRef<str>>) -> Div {
 
 #[cfg(test)]
 mod tests {
-    use super::split;
+    use super::{Piece, pieces, split};
+    use gpui_kit::assets::IconName;
+
+    #[test]
+    fn prose_names_shift() {
+        assert_eq!(super::prose("⇧←"), "Shift+←");
+        assert_eq!(super::prose("Ctrl+⇧U"), "Ctrl+Shift+U");
+        assert_eq!(super::prose("⇧"), "Shift");
+        assert_eq!(super::prose("`"), "`");
+    }
+
+    #[test]
+    fn shift_is_a_word() {
+        assert_eq!(pieces("⇧"), [Piece::Text("Shift".into())]);
+        assert_eq!(pieces("⇧↓"), [Piece::Text("Shift".into()), Piece::Gap, Piece::Icon(IconName::ArrowDown)]);
+        assert_eq!(pieces("Ctrl"), [Piece::Text("Ctrl".into())]);
+        assert_eq!(pieces("⇧U"), [Piece::Text("Shift".into()), Piece::Gap, Piece::Text("U".into())]);
+    }
 
     #[test]
     fn splits_modifiers_into_caps() {

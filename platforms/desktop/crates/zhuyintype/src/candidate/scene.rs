@@ -20,7 +20,7 @@ use crate::ui::h;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
     pub text: String,
-    /// The span the list changes (or that is selected): tinted, with an accent underline.
+    /// The span the list changes (or that is selected): tinted, with a heavier underline.
     pub focus: bool,
 }
 
@@ -75,7 +75,6 @@ pub struct SceneLayout {
     /// The window's size and place (x; y set by `fitted`).
     pub panel: Option<(f32, f32, f32, f32)>,
     pub badge: Option<(f32, f32)>,
-    pub keycap_x: f32,
     /// Each marked segment's x and width.
     pub segments: Vec<(f32, f32)>,
     pub caret_x: f32,
@@ -96,14 +95,16 @@ impl SceneLayout {
             x += w;
         }
         let caret_x = x;
+        // The window's candidates line up with the clause they replace (the focused one), else the composition.
+        let anchor =
+            scene.marked.iter().zip(&segments).find(|(segment, _)| segment.focus).map_or(start, |(_, (x, _))| *x);
         let panel = scene.presentation().map(|presentation| {
             let layout = panel_layout(&presentation, style, measure);
-            let x = (start - layout.text_inset).max(6.).min((width - layout.width - 6.).max(6.));
+            let x = (anchor - layout.text_inset).max(6.).min((width - layout.width - 6.).max(6.));
             (x, 0., layout.width, layout.height)
         });
         let badge = scene.badge.map(|_| (caret_x.max(6.).min((width - BADGE_W - 6.).max(6.)), 0.));
-        let mut layout =
-            Self { width, height: 0., above, line_top: 0., panel, badge, keycap_x: caret_x + 7., segments, caret_x };
+        let mut layout = Self { width, height: 0., above, line_top: 0., panel, badge, segments, caret_x };
         let natural = layout.natural_height(scene);
         layout.fit(natural);
         layout
@@ -175,7 +176,7 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
             .top(px(line_top))
             .w(px(*w))
             .h(px(LINE_HEIGHT + 2.))
-            .when(segment.focus, |this| this.bg(p.accent_faint))
+            .when(segment.focus, |this| this.bg(p.selection))
             .text_size(text::HEADLINE)
             .line_height(px(LINE_HEIGHT))
             .text_color(p.text)
@@ -188,16 +189,18 @@ pub fn scene_card(card: Card<'_>, window: &mut Window, cx: &App) -> AnyElement {
                     .bottom_0()
                     .w_full()
                     .h(px(if segment.focus { 2. } else { 1. }))
-                    .bg(if segment.focus { p.accent } else { p.text }),
+                    .bg(if segment.focus { p.text } else { p.text_tertiary }),
             )
     });
     let caret = (!scene.marked.is_empty() || !scene.committed.is_empty()).then(|| {
         div().absolute().left(px(layout.caret_x + 0.5)).top(px(line_top)).w(px(1.5)).h(px(LINE_HEIGHT + 1.)).bg(p.text)
     });
+    // The keys just pressed at the right end of the line's row, like a keystroke overlay, apart from the text (beside
+    // the caret they read as a button in the document).
     let keys = (!scene.keys.is_empty()).then(|| {
         h().absolute()
-            .left(px(layout.keycap_x))
-            .top(px(line_top - 3.))
+            .right(px(INSET))
+            .top(px(line_top - 2.))
             .gap(px(4.))
             .children(scene.keys.iter().map(|key| pressed_keycap(key, &p)))
             .when_some(scene.note.clone(), |this, note| {

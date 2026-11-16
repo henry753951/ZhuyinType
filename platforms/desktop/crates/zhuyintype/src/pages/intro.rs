@@ -235,12 +235,13 @@ impl IntroPage {
         let can_try = app::service(cx).is_some();
         let trying = self.trial.is_some();
         let stage = self.stage(script, cx);
-        // A standard push button `H_SM` tall, in the stage's corner.
+        // A standard push button `H_SM` tall, in the stage's corner: as far in from the right as the text is from
+        // the left, centred on the first line.
         let try_button = can_try.then(|| {
             h().id("intro-try")
                 .absolute()
-                .top(space::S8)
-                .right(space::S8)
+                .top(stage::CORNER_TOP)
+                .right(stage::CORNER_RIGHT)
                 .gap(space::S4)
                 .px(space::S8)
                 .h(size::H_SM)
@@ -319,11 +320,11 @@ fn features(cx: &App) -> Vec<Feature> {
     let keys = store::store(cx);
     let punctuation = if settings.string("punctuationKeys") != "mac" {
         format!(
-            "⇧ 加符號鍵打出鍵上的符號{}。標點預設全形，可切換全半形。",
+            "Shift 加符號鍵打出鍵上的符號{}。標點預設全形，可切換全半形。",
             if settings.bool("feature.controlPunctuation") { "，Ctrl 加符號鍵打中文標點" } else { "" }
         )
     } else {
-        "⇧ 加符號鍵打出中文標點。標點預設全形，可切換全半形。".to_owned()
+        "Shift 加符號鍵打出中文標點。標點預設全形，可切換全半形。".to_owned()
     };
     let width = keys.active_label("togglePunctuationWidth");
     let width = if width.is_empty() {

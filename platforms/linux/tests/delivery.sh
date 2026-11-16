@@ -78,7 +78,11 @@ done
 # The host after Fcitx, as when the addon starts it: GPUI looks for an XIM server once, when it starts, so its own
 # text fields (the self-host case) use the input method only if Fcitx is already there.
 host_args=(--background)
-if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then host_args=(--page keys); fi
+if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then
+    # The settings window as a returning user has it: fresh settings would open the setup wizard over it.
+    printf '{"setupWizardSeenVersion": "999.0.0"}\n' > "$work/settings.json"
+    host_args=(--page keys --settings-file "$work/settings.json")
+fi
 # ZT_DELIVERY_REAL_DATA=1: the host's own engine data (an installed package) instead of the four-word fixture.
 lexicon=(--lexicon "$assets/lexicon.tsv")
 if [[ ${ZT_DELIVERY_REAL_DATA:-0} == 1 ]]; then lexicon=(); fi

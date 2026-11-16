@@ -33,6 +33,9 @@ pub struct Palette {
     pub pressed: Hsla,
     /// Hairlines between rows and around cards.
     pub separator: Hsla,
+    /// The page surface's edge against the window frame (a little stronger than a row's hairline, so the inset
+    /// surface reads as a surface).
+    pub surface_border: Hsla,
     /// Main text.
     pub text: Hsla,
     /// Subtitles and values.
@@ -81,8 +84,8 @@ impl Palette {
     pub fn light() -> Self {
         Self {
             dark: false,
-            window: c(0xf1efe9),
-            sidebar: c(0xf1efe9),
+            window: c(0xefede6),
+            sidebar: c(0xefede6),
             surface: c(0xfbfaf7),
             card: c(0xffffff),
             subtle: ca(0x1e1c180d),
@@ -90,6 +93,7 @@ impl Palette {
             hover: ca(0x1e1c180a),
             pressed: ca(0x1e1c1814),
             separator: ca(0x1e1c1817),
+            surface_border: ca(0x1e1c1824),
             text: c(0x1f1e1b),
             text_secondary: c(0x6b6962),
             text_tertiary: c(0x8b887f),
@@ -122,6 +126,7 @@ impl Palette {
             hover: ca(0xfffcf00b),
             pressed: ca(0xfffcf017),
             separator: ca(0xfffcf014),
+            surface_border: ca(0xfffcf01f),
             text: c(0xedebe5),
             text_secondary: c(0xa6a39b),
             text_tertiary: c(0x85827a),
@@ -164,7 +169,7 @@ pub mod size {
     use super::*;
 
     // The window and the page.
-    pub const TITLE_BAR: Pixels = px(44.);
+    pub const TITLE_BAR: Pixels = px(40.);
     pub const SIDEBAR: Pixels = px(228.);
     pub const SIDEBAR_ROW: Pixels = px(32.);
     /// The page surface's inset from the window edge (right and bottom; the sidebar is on the left).
@@ -346,6 +351,20 @@ pub fn font() -> gpui_kit::Font {
     }
 }
 
+/// Zhuyin readings (the candidate window's reading row and annotations): the system's CJK font first, so the tone
+/// marks (ˇ ˊ ˋ ˙, which Inter also has, in its Latin shapes) come from the same font as the Bopomofo letters.
+pub fn zhuyin_font() -> gpui_kit::Font {
+    let mut fonts = cjk_fallbacks();
+    let family = fonts.remove(0);
+    gpui_kit::Font {
+        family: family.into(),
+        features: gpui_kit::FontFeatures::default(),
+        fallbacks: Some(gpui_kit::FontFallbacks::from_fonts(fonts)),
+        weight: gpui_kit::FontWeight::NORMAL,
+        style: gpui_kit::FontStyle::Normal,
+    }
+}
+
 /// Registers the bundled fonts with the text system.  Call once at start-up.
 pub fn load_fonts(cx: &App) {
     let fonts: Vec<std::borrow::Cow<'static, [u8]>> = vec![
@@ -469,6 +488,10 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.scrollbar_thumb = if p.dark { ca(0xffffff33) } else { ca(0x00000033) };
     colors.switch_thumb = p.knob;
     theme.tokens = ThemeTokens::from(&theme.colors);
+    // The base layer (scrollbars, text views) keeps its own copy of the theme, made by `Theme::change` above, before
+    // the font and colours were set: without this it reads the platform's ".SystemUIFont" (no CJK fallbacks; on Linux
+    // possibly no font at all) and the library's default colours.
+    Theme::sync_base(cx);
 }
 
 // MARK: - Candidate window tokens (append-only block, owned by the candidate window)

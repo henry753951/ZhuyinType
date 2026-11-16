@@ -164,7 +164,7 @@ impl Render for CandidatesPage {
         let layout_subtitle = if vertical {
             "↑ ↓ 移動反白，← → 改前一個或後一個字".to_owned()
         } else {
-            let previous = keys.text("previousCharacter");
+            let previous = keys.spoken("previousCharacter");
             format!(
                 "← → 移動反白，↑ ↓ 翻頁{}",
                 if previous.is_empty() { String::new() } else { format!("，{previous} 改前一個字") }
@@ -214,9 +214,9 @@ impl Render for CandidatesPage {
         list_rows.push(registry_row("pageAtListEdge", None, cx).into_any_element());
 
         // 清單的內容
-        let zhuyin = keys.text("typeZhuyin");
-        let corrections = keys.text("correctionsList");
-        let single = keys.text("singleCharacterList");
+        let zhuyin = keys.spoken("typeZhuyin");
+        let corrections = keys.spoken("correctionsList");
+        let single = keys.spoken("singleCharacterList");
         let switches: Vec<String> = [(single.clone(), "單字"), (corrections.clone(), "修正")]
             .into_iter()
             .filter(|(key, _)| !key.is_empty())

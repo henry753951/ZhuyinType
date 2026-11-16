@@ -180,6 +180,11 @@ impl CurrentKeys {
         }
     }
 
+    /// The command's first key for running text (「Shift+↑」), or "".
+    pub fn spoken(&self, command: &str) -> String {
+        crate::ui::keycap::prose(&self.text(command))
+    }
+
     /// The command's first key as key caps (「⇧↑」 → 「⇧」「↑」, 「Alt+↓」 → 「Alt」「↓」), or None.
     pub fn caps(&self, command: &str) -> Option<Vec<String>> {
         let text = self.text(command);

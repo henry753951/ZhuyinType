@@ -6,6 +6,8 @@ use std::collections::HashMap;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, TitleBar, window_border};
+
+use crate::ui::title_bar::title_bar;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyView, App, AppContext as _, Bounds, Context, Entity, InteractiveElement,
@@ -95,14 +97,13 @@ impl SettingsWindow {
     /// page itself.
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        TitleBar::new().h(sz::TITLE_BAR).pl(px(0.)).bg(p.window).border_b_0().child(
+        // The app's name small and quiet, as Discord's and Claude's bars carry it: the page has the large title.
+        title_bar(sz::TITLE_BAR, p.window).child(
             h().h_full()
                 .px(space::S24)
                 .gap(space::S8)
                 .child(img("app-icon.png").size(MARK).rounded(MARK_RADIUS))
-                .child(
-                    div().text_size(text::BODY).font_weight(weight::SEMIBOLD).text_color(p.text).child("ZhuyinType"),
-                ),
+                .child(div().text_size(text::CAPTION).text_color(p.text_secondary).child("ZhuyinType")),
         )
     }
 
@@ -216,7 +217,7 @@ impl Render for SettingsWindow {
                                 .bg(p.surface)
                                 .rounded(sz::R_XL)
                                 .border_1()
-                                .border_color(p.separator)
+                                .border_color(p.surface_border)
                                 .shadow_xs()
                                 .overflow_y_scroll()
                                 .track_scroll(&scroll)

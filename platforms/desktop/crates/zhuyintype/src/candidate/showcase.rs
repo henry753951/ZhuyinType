@@ -182,6 +182,7 @@ impl Render for Showcase {
         div()
             .relative()
             .size_full()
+            .font(crate::theme::font())
             .bg(palette.card)
             .children(lines)
             .child(div().absolute().left(px(inset_x)).top(px(inset_y)).child(content))

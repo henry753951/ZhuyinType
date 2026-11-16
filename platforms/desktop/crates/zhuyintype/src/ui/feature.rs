@@ -97,9 +97,11 @@ impl FeatureRow {
             (Some(availability), _) => availability.note.into(),
             (None, false) if self.feature == Some("feature.zhuyinRowClick") => "關閉時，點注音列不做事".into(),
             (None, false) => match self.commands.first() {
-                Some(&command) => {
-                    format!("關閉時，{} 交給 App", compact(&CurrentKeys::new(cx).assigned(command))).into()
-                }
+                Some(&command) => format!(
+                    "關閉時，{} 交給 App",
+                    super::keycap::prose(&compact(&CurrentKeys::new(cx).assigned(command)))
+                )
+                .into(),
                 None => self.subtitle.clone(),
             },
             (None, true) => self.subtitle.clone(),

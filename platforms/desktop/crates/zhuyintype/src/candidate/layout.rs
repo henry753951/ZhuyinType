@@ -2,7 +2,7 @@
 //! `CandidateContentView.update(list:…)` with the same numbers, so the window has the macOS sizes at every font size,
 //! density and layout.  Pure geometry over measured text widths; the panel draws what this returns.
 
-use gpui_kit::{FontWeight, TextRun, Window, font, px};
+use gpui_kit::{FontWeight, TextRun, Window, px};
 use zt_core::presentation::Presentation;
 
 use super::style::{Layout, PanelStyle};
@@ -37,7 +37,7 @@ impl Measure for WindowMeasure<'_> {
         if text.is_empty() {
             return 0.;
         }
-        let mut run_font = font(theme::ui_font());
+        let mut run_font = theme::font();
         run_font.weight = if medium { FontWeight::MEDIUM } else { FontWeight::NORMAL };
         let run = TextRun {
             len: text.len(),
@@ -51,19 +51,18 @@ impl Measure for WindowMeasure<'_> {
     }
 }
 
-/// The width of a key's label as `panel::key_glyphs` draws it: ⇧ ↑ ↓ ← → ↩ are icons of `size × 0.95`.
+/// The width of a key's label as `panel::key_glyphs` draws it (`ui::keycap::pieces`: its arrows are icons of
+/// `size × 0.95`, ⇧ is the word 「Shift」).
 pub fn key_width(measure: &mut dyn Measure, key: &str, size: f32) -> f32 {
-    let icon = (size * 0.95).round();
-    let mut width = 0.;
-    let mut text = String::new();
-    for c in key.chars() {
-        if matches!(c, '⇧' | '↑' | '↓' | '←' | '→' | '↩') {
-            width += icon;
-        } else {
-            text.push(c);
-        }
-    }
-    width + measure.width(&text, size, false)
+    use crate::ui::keycap::Piece;
+    crate::ui::keycap::pieces(key)
+        .iter()
+        .map(|piece| match piece {
+            Piece::Icon(_) => (size * 0.95).round(),
+            Piece::Text(text) => measure.width(text, size, false),
+            Piece::Gap => crate::ui::keycap::gap(size),
+        })
+        .sum()
 }
 
 /// The geometry below is the macOS window's functional layout (what goes where, how big at each font size);
@@ -105,19 +104,10 @@ pub fn number_column(measure: &mut dyn Measure, font_size: f32, letters: bool) -
     (size, ceil(measure.width(if letters { "W" } else { "9" }, size, true)))
 }
 
-/// How far the number's box moves down so its baseline sits on the candidate's (both are centred in the row; the
-/// smaller text's baseline would sit higher by the difference of the two half-heights below the centre).
-pub fn number_baseline_shift(font_size: f32, number_size: f32) -> f32 {
-    ((font_size - number_size) * BASELINE_BELOW_CENTRE).round()
-}
-
 /// The annotations' text size (the corrections' readings): smaller than the candidates, never under the micro size.
 pub fn annotation_font(font_size: f32) -> f32 {
     (font_size * 0.68).round().max(11.)
 }
-
-/// The baseline's distance below the line box's centre, in ems, for the UI font (Inter: (ascent − descent) / 2).
-const BASELINE_BELOW_CENTRE: f32 = 0.3633;
 
 /// One candidate row, in the rows' area of the window.
 #[derive(Clone, Debug, PartialEq)]
@@ -207,10 +197,10 @@ pub struct PanelLayout {
     pub radius: f32,
     pub padding: f32,
     pub row_radius: f32,
-    /// The selection keys' column: text size, fixed width, and the shift that puts its baseline on the candidate's.
+    /// The selection keys' column: text size and fixed width.  The number is centred on the row, not set on the
+    /// candidate's baseline: next to an ideograph (centred on its em box) a digit on the baseline reads as a subscript.
     pub number_font: f32,
     pub number_width: f32,
-    pub number_shift: f32,
     pub notice: Option<NoticeLayout>,
     /// The composition, underlined, when the app cannot show it inline.
     pub preview: Option<(Frame, String, f32)>,
@@ -301,7 +291,8 @@ fn compute_fitted(
     let has_footer = has_pages || has_toggle || has_single;
     // Between the footer's groups (switches, pager).
     let group_gap = 10.;
-    let page_width = if has_footer { PAGE_BUTTON * 2. + PAGE_LABEL } else { 0. };
+    // The pager only when there is another page to turn to (one page: no 「1/1」).
+    let page_width = if has_pages { PAGE_BUTTON * 2. + PAGE_LABEL } else { 0. };
 
     let toggle = |key: &str, label: &'static str, on: bool, measure: &mut dyn Measure| {
         let keycap_w = keycap_width(measure, key);
@@ -347,7 +338,8 @@ fn compute_fitted(
     let hint_label = "注音";
     let hint_label_w = if hint_key.is_empty() { 0. } else { ceil(measure.width(hint_label, SMALL_FONT, false)) };
     if has_hint {
-        let reading_w = measure.width(p.reading.as_deref().unwrap_or_default(), SMALL_FONT, false);
+        // Measured in the UI font while drawn in the CJK one (`theme::zhuyin_font`): a little room for the tone marks.
+        let reading_w = measure.width(p.reading.as_deref().unwrap_or_default(), SMALL_FONT, false) + 4.;
         let key_room =
             if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
@@ -519,7 +511,7 @@ fn compute_fitted(
         corrections
     });
     let next_x = width - padding - 2. - PAGE_BUTTON;
-    let pager = has_footer.then(|| PagerLayout {
+    let pager = has_pages.then(|| PagerLayout {
         label: if p.page_count > 0 { format!("{}/{}", p.page + 1, p.page_count) } else { String::new() },
         label_frame: Frame::new(next_x - PAGE_LABEL, page_y + 3., PAGE_LABEL, 16.),
         previous: Frame::new(next_x - PAGE_LABEL - PAGE_BUTTON, page_y, PAGE_BUTTON, PAGE_BUTTON),
@@ -543,7 +535,6 @@ fn compute_fitted(
         row_radius: tokens::ROW_RADIUS,
         number_font,
         number_width,
-        number_shift: number_baseline_shift(fs, number_font),
         notice: notice.map(|notice| notice.layout),
         preview: preview.map(|text| {
             (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)
@@ -718,8 +709,6 @@ mod tests {
         let letters = compute(&letters, Extras::default(), &style, 4000., (0., 0.), &mut Fixed);
         assert_eq!(letters.rows[0].key, "A");
         assert!(letters.number_width >= digits.number_width);
-        // The smaller number moves down to the candidate's baseline.
-        assert!(digits.number_shift > 0.);
     }
 
     #[test]

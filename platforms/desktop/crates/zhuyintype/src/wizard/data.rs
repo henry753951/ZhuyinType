@@ -131,9 +131,9 @@ pub fn group(id: &str) -> Option<Group> {
                     "punctuationKeys",
                     "windows",
                     "Windows",
-                    Some("Ctrl 加符號鍵打中文標點，⇧ 加符號鍵打鍵上的符號".into()),
+                    Some("Ctrl 加符號鍵打中文標點，Shift 加符號鍵打鍵上的符號".into()),
                 ),
-                Style::value("punctuationKeys", "mac", "macOS", Some("⇧ 加符號鍵打中文標點".into())),
+                Style::value("punctuationKeys", "mac", "macOS", Some("Shift 加符號鍵打中文標點".into())),
             ],
         ),
         "modeSwitch" => (

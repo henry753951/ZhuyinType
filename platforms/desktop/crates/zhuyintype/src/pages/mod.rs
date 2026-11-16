@@ -90,13 +90,13 @@ impl Page {
     /// The sidebar icon (macOS: an SF Symbol on a coloured tile; here the Lucide glyph of the same meaning).
     pub fn icon(self) -> IconName {
         match self {
-            Page::Intro => IconName::Sparkles,
-            Page::Typing => IconName::Keyboard,
-            Page::Choosing => IconName::WandSparkles,
+            Page::Intro => IconName::House,
+            Page::Typing => IconName::Type,
+            Page::Choosing => IconName::ListOrdered,
             Page::Candidates => IconName::PanelsTopLeft,
             Page::Words => IconName::BookOpenText,
             Page::Analytics => IconName::ChartColumn,
-            Page::Keys => IconName::Command,
+            Page::Keys => IconName::Keyboard,
             Page::Advanced => IconName::SlidersHorizontal,
             Page::About => IconName::Info,
         }

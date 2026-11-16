@@ -453,9 +453,9 @@ struct Mark {
 enum MarkStyle {
     /// A word of the composition: a thin underline.
     Clause,
-    /// What the list changes: an accent wash and a thick accent underline.
+    /// What the list changes: a faint wash and a thick underline.
     Focus,
-    /// What ↓ would change: a thick accent underline.
+    /// What ↓ would change: a thick underline.
     Target,
 }
 
@@ -701,10 +701,11 @@ impl Render for PracticeField {
                 .w(px(mark.w.max(1.)))
                 .h(px(LINE_H + 1.))
                 .when(mark.style == MarkStyle::Focus, |this| this.bg(p.selection))
+                // Neutral like the rest of the composition: the thick line says which clause, not a colour.
                 .child(div().absolute().left_0().bottom_0().w_full().h(px(if thick { 2. } else { 1. })).bg(if thick {
-                    p.accent
-                } else {
                     p.text
+                } else {
+                    p.text_tertiary
                 }))
                 .into_any_element()
         });

@@ -417,7 +417,7 @@ pub fn shell(chrome: Chrome, c: &Colors, radius: f32) -> Div {
     div()
         .relative()
         .bg(c.surface)
-        .font_family(theme::ui_font())
+        .font(theme::font())
         .when(chrome == Chrome::Floating, |this| this.rounded(px(radius)).shadow(c.shadow_list()))
 }
 
@@ -480,11 +480,9 @@ fn page_element(
                     actions(PopupAction::Pick(index), window, cx)
                 })
             })
-            // The selection key, right-aligned in its fixed column, on the candidate's baseline.
+            // The selection key, right-aligned in its fixed column, centred on the row like the candidate.
             .child(
                 cell(row.key_inset, layout.number_width)
-                    .top(px(layout.number_shift))
-                    .bottom(px(-layout.number_shift))
                     .justify_end()
                     .text_size(px(number))
                     .line_height(px(number * 1.3))
@@ -504,8 +502,7 @@ fn page_element(
             .when_some(row.annotation.clone(), |this, annotation| {
                 this.child(
                     cell(row.text_inset + row.main_width + 8., row.annotation_width + 1.)
-                        .top(px(layout::number_baseline_shift(fs, small)))
-                        .bottom(px(-layout::number_baseline_shift(fs, small)))
+                        .font(theme::zhuyin_font())
                         .text_size(px(small))
                         .line_height(px(small * 1.3))
                         .text_color(annotation_color)
@@ -519,9 +516,8 @@ fn page_element(
 /// text colour, while its switch is on), vertically centred in a control box `box_h` tall.
 fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) -> Div {
     let color = if on { p.text } else { p.text_secondary };
-    // A lone punctuation key (「`」, 「'」) is a speck at the key caps' size: drawn larger so the cap reads as a key.
-    let speck = key.chars().count() == 1 && key.chars().all(|c| c.is_ascii_punctuation());
-    let font = if speck { tokens::KEYCAP_FONT + 4. } else { tokens::KEYCAP_FONT };
+    // A lone punctuation key is drawn larger by `key_glyphs`, in the text colour so the mark is clearly there.
+    let glyphs = key_glyphs(key, tokens::KEYCAP_FONT, if crate::ui::keycap::is_speck(key) { p.text } else { color });
     div()
         .absolute()
         .left_0()
@@ -534,7 +530,7 @@ fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) 
         .rounded(px(tokens::KEYCAP_RADIUS))
         .bg(if on { c.keycap_on } else { c.keycap })
         .font_weight(FontWeight::MEDIUM)
-        .child(key_glyphs(key, font, color))
+        .child(glyphs)
 }
 
 /// The key glyphs live with the shared key cap (`ui::keycap`).
@@ -563,6 +559,7 @@ fn hint_element(
                 .w(px((hint.frame.w - hint.text_x - key_room).max(0.)))
                 .flex()
                 .items_center()
+                .font(theme::zhuyin_font())
                 .text_size(px(SMALL_FONT))
                 .line_height(px(SMALL_FONT * 1.3))
                 .text_color(p.text_secondary)

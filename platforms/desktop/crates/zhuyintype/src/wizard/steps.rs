@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{Icon, TitleBar, window_border};
+use gpui_kit::component::{Icon, window_border};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Anchor, AnchoredPositionMode, AnyElement, App, ClickEvent, Context, Decorations, Div, ElementId,
@@ -545,12 +545,13 @@ impl WizardWindow {
             .relative()
             .flex_shrink_0()
             .child(
-                TitleBar::new()
-                    .h(px(layout::HEADER))
-                    .pl(px(0.))
-                    .bg(gpui_kit::transparent_black())
-                    .border_b_0()
-                    .on_close_window(cx.listener(|this, _, window, cx| this.close(window, cx)))
+                crate::ui::title_bar::title_bar(px(layout::HEADER), gpui_kit::transparent_black())
+                    .on_close({
+                        let this = cx.entity().downgrade();
+                        move |window, cx| {
+                            let _ = this.update(cx, |this, cx| this.close(window, cx));
+                        }
+                    })
                     .child(
                         div().flex_1().h_full().child(
                             h().h_full()
@@ -1499,9 +1500,15 @@ fn bindings_width(labels: &[String], window: &Window) -> f32 {
         f32::from(window.text_system().layout_line(text, px(font_size), &[run], None).width)
     };
     let cap = |label: &str| -> f32 {
-        let symbols = label.chars().filter(|c| "⇧↑↓←→↩⌫".contains(*c)).count() as f32;
-        let rest: String = label.chars().filter(|c| !"⇧↑↓←→↩⌫".contains(*c)).collect();
-        (measure(&rest) + symbols * icon + f32::from(space::S6) * 2.).max(f32::from(size::H_XS))
+        let glyphs: f32 = keycap::pieces(label)
+            .iter()
+            .map(|piece| match piece {
+                keycap::Piece::Text(text) => measure(text),
+                keycap::Piece::Icon(_) => icon,
+                keycap::Piece::Gap => keycap::gap(font_size),
+            })
+            .sum();
+        (glyphs + f32::from(space::S6) * 2.).max(f32::from(size::H_XS))
     };
     let one = |label: &str| -> f32 {
         let caps = keycap::split(label);
@@ -1513,7 +1520,7 @@ fn bindings_width(labels: &[String], window: &Window) -> f32 {
 /// What the correction log records, with the draft's keys (the 改字記錄 lesson; macOS `CorrectionLogInfo`).
 fn correction_log_facts(draft: &zt_core::settings::Settings) -> AnyElement {
     let keys = CurrentKeys::sandboxed(draft);
-    let key = |command: &str| Some(keys.text(command)).filter(|text| !text.is_empty());
+    let key = |command: &str| Some(keys.spoken(command)).filter(|text| !text.is_empty());
     let lists: Vec<String> = std::iter::once("從清單選字".to_owned())
         .chain(key("correctionsList").map(|k| format!("{k} 修正")))
         .chain(key("singleCharacterList").map(|k| format!("{k} 單字")))

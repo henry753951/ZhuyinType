@@ -11,6 +11,8 @@ icon_assets!(
     pub UsedIcons,
     [
         Sparkles,
+        House,
+        ListOrdered,
         Keyboard,
         WandSparkles,
         PanelsTopLeft,
@@ -86,7 +88,14 @@ icon_assets!(
 
 pub struct Assets;
 
-const OWN: &[(&str, &[u8])] = &[("app-icon.png", include_bytes!("../assets/app-icon.png"))];
+const OWN: &[(&str, &[u8])] = &[
+    ("app-icon.png", include_bytes!("../assets/app-icon.png")),
+    // The window controls (`ui::title_bar`): 1 px strokes on a 10 px grid, like the system's own caption buttons.
+    ("window/minimize.svg", include_bytes!("../assets/window/minimize.svg")),
+    ("window/maximize.svg", include_bytes!("../assets/window/maximize.svg")),
+    ("window/restore.svg", include_bytes!("../assets/window/restore.svg")),
+    ("window/close.svg", include_bytes!("../assets/window/close.svg")),
+];
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {

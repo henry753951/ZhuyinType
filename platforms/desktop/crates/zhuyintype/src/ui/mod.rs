@@ -12,6 +12,7 @@ pub mod search;
 pub mod section;
 pub mod slider;
 pub mod stepper;
+pub mod title_bar;
 
 pub use controls::*;
 pub use keycap::{key_combo, keycap};

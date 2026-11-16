@@ -50,11 +50,11 @@ int main(int argc, char **argv) {
     capture("self-host-start");
     if (!run("xdotool",{"windowfocus","--sync",window})) return 2;
     int navigationY=qEnvironmentVariableIntValue("ZT_SELFHOST_NAV_Y");
-    if (!navigationY) navigationY=410; // 快捷鍵 in the sidebar of the 900×640 settings window
+    if (!navigationY) navigationY=402; // the middle of 快捷鍵 in the sidebar of the 900×640 settings window
     if (!run("xdotool",{"mousemove",QString::number(x+80),QString::number(y+navigationY),"click","1","sleep","0.5"})) return 2;
     capture("self-host-search");
     int searchY=qEnvironmentVariableIntValue("ZT_SELFHOST_SEARCH_Y");
-    if (!searchY) searchY=143; // the page's search field
+    if (!searchY) searchY=132; // the middle of the page's search field
     if (!run("xdotool",{"mousemove",QString::number(x+350),QString::number(y+searchY),"click","1"}) ||
         !run("fcitx5-remote",{"-s","zhuyintype"}) || !run("fcitx5-remote",{"-o"})) return 2;
     // GPUI talks to Fcitx through XIM without ever focusing its input context, so Fcitx has no current context for

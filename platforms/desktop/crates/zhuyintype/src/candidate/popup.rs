@@ -217,7 +217,7 @@ impl Render for CandidateWindow {
             }
         }
         let _ = cx;
-        div().size_full().p(px(self.margin)).child(
+        div().size_full().font(crate::theme::font()).p(px(self.margin)).child(
             div().relative().top(px(dy)).opacity(alpha).child(self.panel.render(&palette, Some(actions), window)),
         )
     }
@@ -382,11 +382,11 @@ impl Render for ToastWindow {
                 }
             }
         }
-        div().size_full().p(px(self.margin)).child(div().opacity(alpha).child(mode_badge_in(
-            self.text,
-            &palette,
-            popup_chrome(self.margin),
-        )))
+        div()
+            .size_full()
+            .font(crate::theme::font())
+            .p(px(self.margin))
+            .child(div().opacity(alpha).child(mode_badge_in(self.text, &palette, popup_chrome(self.margin))))
     }
 }
 

@@ -308,8 +308,14 @@ pub fn sample_corrections(cx: &App) -> Option<usize> {
     cx.try_global::<SampleCell>().map(|sample| sample.0.borrow().corrections)
 }
 
-/// The key that runs shortcut `command` (「⇧←」), or None when it has none or its feature is off.
+/// The key that runs shortcut `command`, written for running text (「Shift+←」), or None when it has none or its
+/// feature is off.
 pub fn key_text(command: &str, cx: &App) -> Option<String> {
+    key_label(command, cx).map(|label| crate::ui::keycap::prose(&label))
+}
+
+/// The key that runs shortcut `command` as the shortcuts store it (「⇧←」).
+fn key_label(command: &str, cx: &App) -> Option<String> {
     if let Some(service) = app::service(cx) {
         let label = service.shortcuts().active_label(command);
         return (!label.is_empty()).then_some(label);

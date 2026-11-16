@@ -29,8 +29,9 @@ use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindow
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE, SW_HIDE,
     SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
-    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE, WM_NCDESTROY,
-    WM_NCHITTEST, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, WM_MOUSEACTIVATE, WM_NCCALCSIZE,
+    WM_NCDESTROY, WM_NCHITTEST, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT,
 };
 
 use crate::candidate::platform::DeviceRect;
@@ -76,6 +77,11 @@ unsafe extern "system" fn subclass(
     unsafe {
         match message {
             WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),
+            // GPUI creates the popup with no style at all, which Windows turns into WS_OVERLAPPED, so it gets a caption
+            // and a frame; GPUI then gives the caption back but keeps the frame on the left, right and bottom.  The
+            // window's whole rectangle is its client area instead (the surface is laid out to exactly that size), and
+            // DWM still draws the border, the small round corners and the shadow (`make_non_activating`).
+            WM_NCCALCSIZE if wparam.0 != 0 => return LRESULT(0),
             WM_NCHITTEST => {
                 let region = REGIONS.with(|regions| regions.borrow().get(&key(window)).copied());
                 if let Some(region) = region {
@@ -100,10 +106,12 @@ unsafe extern "system" fn subclass(
 }
 
 /// The settings and wizard windows: the app draws the title bar; everything else stays a native Windows 11 window,
-/// as Discord's or Claude's do.  GPUI's client-drawn window keeps `WS_THICKFRAME` (resizing, Snap, the shadow), and
-/// this asks for rounded corners explicitly (`DWMWCP_ROUND`; Windows 11 leaves them out when the display has no
-/// hardware acceleration, as in a basic-display VM).  Adding `WS_CAPTION` after GPUI has made the window stops its
-/// DirectComposition content from showing, so the style is left as GPUI sets it.  Call once after the window opens.
+/// as Discord's or Claude's do.  GPUI's client-drawn window keeps `WS_THICKFRAME` (resizing, Snap), this asks for
+/// rounded corners explicitly (`DWMWCP_ROUND`) and extends the frame one pixel into the client area, which is what
+/// gives a window without a caption DWM's shadow and border (GPUI does neither).  Adding `WS_CAPTION` after GPUI has
+/// made the window stops its DirectComposition content from showing, so the style is left as GPUI sets it.  Windows 11
+/// leaves the corners square when the display has no hardware acceleration (a basic-display VM).  Call once after the
+/// window opens.
 pub fn native_frame(window: &Window) -> bool {
     let Some(window) = hwnd(window) else { return false };
     // SAFETY: the window's own HWND, on its thread; a 4-byte value as DWM expects (fails harmlessly before
@@ -116,6 +124,15 @@ pub fn native_frame(window: &Window) -> bool {
             (&raw const corner).cast(),
             size_of::<u32>() as u32,
         );
+        let policy = DWMNCRP_ENABLED.0 as u32;
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_NCRENDERING_POLICY,
+            (&raw const policy).cast(),
+            size_of::<u32>() as u32,
+        );
+        let margins = MARGINS { cxLeftWidth: 0, cxRightWidth: 0, cyTopHeight: 1, cyBottomHeight: 0 };
+        let _ = DwmExtendFrameIntoClientArea(window, &raw const margins);
     }
     true
 }

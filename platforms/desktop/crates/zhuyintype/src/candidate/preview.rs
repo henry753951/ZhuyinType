@@ -239,7 +239,7 @@ fn note_text(state: PreviewState, settings: &Settings, keys: &CurrentKeys) -> St
             keys.selection()
         ),
         PreviewState::Corrections => {
-            let key = keys.text("correctionsList");
+            let key = keys.spoken("correctionsList");
             format!(
                 "{}列出按錯修正與模糊音的字{}",
                 if key.is_empty() { String::new() } else { format!("按 {key} ") },
@@ -248,7 +248,8 @@ fn note_text(state: PreviewState, settings: &Settings, keys: &CurrentKeys) -> St
         }
         PreviewState::Composing => "打完一個注音就轉成中文，整句一起轉換；要改的字可以之後再選。".into(),
         PreviewState::Paging => {
-            let next: Vec<String> = keys.all("nextPage").into_iter().take(3).collect();
+            let next: Vec<String> =
+                keys.all("nextPage").into_iter().take(3).map(|key| crate::ui::keycap::prose(&key)).collect();
             format!(
                 "{}{}",
                 if next.is_empty() {
