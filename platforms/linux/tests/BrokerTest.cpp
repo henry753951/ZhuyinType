@@ -60,6 +60,19 @@ int main() {
         CHECK(!cursorBytes("𠀀好",1));
         CHECK(!cursorBytes("\xff",0));
         CHECK(!cursorBytes("好",2));
+        {
+            const auto parts = preeditParts("你好嗎𠀀", {{0,2},{2,3},{3,5}}, 1, std::nullopt);
+            CHECK(parts.size() == 3);
+            CHECK(parts[0].text == "你好" && parts[0].mark == Mark::Word);
+            CHECK(parts[1].text == "嗎" && parts[1].mark == Mark::Focus);
+            CHECK(parts[2].text == "𠀀" && parts[2].mark == Mark::Word);
+            const auto target = preeditParts("你好嗎", {{0,2}}, std::nullopt, 0);
+            CHECK(target.size() == 2 && target[0].mark == Mark::Target && target[1].text == "嗎");
+            const auto bad = preeditParts("你好", {{0,3}}, 0, std::nullopt);
+            CHECK(bad.size() == 1 && bad[0].text == "你好" && bad[0].mark == Mark::Word);
+            CHECK(preeditParts("ㄓ", {}, std::nullopt, std::nullopt).size() == 1);
+            CHECK(preeditParts("", {}, std::nullopt, std::nullopt).empty());
+        }
         CHECK(translateKey(fcitx::Key(FcitxKey_Shift_R))->shiftSide == 2);
         CHECK(translateKey(fcitx::Key(FcitxKey_c,fcitx::KeyState::Ctrl))->modifiers == 0x04000000);
         CHECK(translateKey(fcitx::Key(FcitxKey_KP_2))->key == '2');

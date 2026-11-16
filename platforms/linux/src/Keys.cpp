@@ -89,4 +89,22 @@ std::optional<int> cursorBytes(std::string_view text, size_t utf16Offset) {
     if (units != utf16Offset) return std::nullopt;
     return static_cast<int>(it - text.begin());
 }
+std::vector<PreeditPart> preeditParts(std::string_view preedit, const std::vector<std::pair<size_t, size_t>> &clauses,
+                                      std::optional<size_t> focus, std::optional<size_t> target) {
+    std::vector<PreeditPart> parts;
+    const std::vector<PreeditPart> whole{{std::string(preedit), Mark::Word}};
+    if (preedit.empty()) return {};
+    int done = 0;
+    for (size_t index = 0; index < clauses.size(); ++index) {
+        const auto start = cursorBytes(preedit, clauses[index].first);
+        const auto end = cursorBytes(preedit, clauses[index].second);
+        if (!start || !end || *start < done || *end <= *start) return whole;
+        if (*start > done) parts.push_back({std::string(preedit.substr(done, *start - done)), Mark::Word});
+        const Mark mark = focus == index ? Mark::Focus : target == index ? Mark::Target : Mark::Word;
+        parts.push_back({std::string(preedit.substr(*start, *end - *start)), mark});
+        done = *end;
+    }
+    if (static_cast<size_t>(done) < preedit.size()) parts.push_back({std::string(preedit.substr(done)), Mark::Word});
+    return parts;
+}
 }

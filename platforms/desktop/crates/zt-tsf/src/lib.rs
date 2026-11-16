@@ -18,6 +18,8 @@ mod broker;
 #[cfg(windows)]
 mod composition;
 #[cfg(windows)]
+mod display_attributes;
+#[cfg(windows)]
 mod keyboard;
 #[cfg(windows)]
 mod mode_button;

@@ -177,6 +177,16 @@ impl Host {
         object.insert("ok".into(), true.into());
         object.insert("handled".into(), handled.into());
         object.insert("commit".into(), if self.secure { String::new() } else { commit }.into());
+        if !preedit.is_empty() {
+            // How the application marks the composition (IPC.md): every word underlined, the word the candidate
+            // list replaces (`focus`) or the one ↓ would change (`target`) set apart.
+            let clauses: Vec<Value> = p.clauses.iter().map(|range| Value::from(vec![range.start, range.end])).collect();
+            let index =
+                |clause: Option<usize>| clause.filter(|&index| index < clauses.len()).map_or(Value::Null, Value::from);
+            object.insert("focus".into(), index(p.focused_clause));
+            object.insert("target".into(), index(p.target_clause));
+            object.insert("clauses".into(), clauses.into());
+        }
         object.insert("preedit".into(), preedit.into());
         object.insert("cursor".into(), cursor.into());
         object.insert("candidates".into(), visible.into());

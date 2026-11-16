@@ -29,6 +29,12 @@ pub(crate) struct Reply {
     pub(crate) preedit: Vec<u16>,
     /// The caret inside `preedit`, in UTF-16 units, never inside a surrogate pair.
     pub(crate) cursor: usize,
+    /// The words of `preedit` (UTF-16 ranges, in order, not overlapping), each underlined.
+    pub(crate) clauses: Vec<(usize, usize)>,
+    /// The word the candidate list replaces, set apart from the others.
+    pub(crate) focus: Option<usize>,
+    /// The word ↓ would change while no list is open.
+    pub(crate) target: Option<usize>,
     /// The candidate window, which the text service draws.
     pub(crate) panel: PanelUpdate,
     /// The 中/英 badge to show by the caret.
@@ -122,6 +128,29 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         None => None,
         Some(value) => Some(value.as_str().filter(|text| text.chars().count() <= 4)?.to_owned()),
     };
+    // Left out by older hosts and with no composition; a bad value fails the reply like any other field.
+    let mut clauses = Vec::new();
+    if let Some(value) = object.get("clauses") {
+        let mut end = 0;
+        for clause in value.as_array()? {
+            let pair = clause.as_array().filter(|pair| pair.len() == 2)?;
+            let start = usize::try_from(pair[0].as_u64()?).ok()?;
+            let stop = usize::try_from(pair[1].as_u64()?).ok()?;
+            if start < end || stop <= start || stop > preedit.len() {
+                return None;
+            }
+            clauses.push((start, stop));
+            end = stop;
+        }
+    }
+    let clause = |key: &str| -> Option<Option<usize>> {
+        match object.get(key) {
+            None | Some(Value::Null) => Some(None),
+            Some(value) => Some(Some(usize::try_from(value.as_u64()?).ok().filter(|&i| i < clauses.len())?)),
+        }
+    };
+    let focus = clause("focus")?;
+    let target = clause("target")?;
     let boundary = match object.get("boundary") {
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
@@ -134,6 +163,9 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         commit: text("commit")?.encode_utf16().collect(),
         preedit,
         cursor,
+        clauses,
+        focus,
+        target,
         panel,
         toast,
         boundary,
@@ -230,6 +262,33 @@ mod tests {
         assert_eq!((reply.toast.as_deref(), reply.boundary), (Some("英"), Some(-1)));
         for (key, value) in [("panel", json!(3)), ("toast", json!(1)), ("boundary", json!(2))] {
             let mut bad = good();
+            bad[key] = value;
+            assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn clauses_focus_and_target() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!((reply.clauses, reply.focus, reply.target), (vec![], None, None));
+        let mut marked = good();
+        marked["preedit"] = json!("你好嗎");
+        marked["cursor"] = json!(3);
+        marked["clauses"] = json!([[0, 2], [2, 3]]);
+        marked["focus"] = json!(1);
+        marked["target"] = json!(null);
+        let reply = parse_reply(&line(marked.clone()), 7, "{A}").unwrap();
+        assert_eq!((reply.clauses, reply.focus, reply.target), (vec![(0, 2), (2, 3)], Some(1), None));
+        for (key, value) in [
+            ("clauses", json!([[0, 4]])),
+            ("clauses", json!([[1, 1]])),
+            ("clauses", json!([[0, 2], [1, 3]])),
+            ("clauses", json!([[0]])),
+            ("clauses", json!("0-2")),
+            ("focus", json!(2)),
+            ("target", json!(-1)),
+        ] {
+            let mut bad = marked.clone();
             bad[key] = value;
             assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
         }

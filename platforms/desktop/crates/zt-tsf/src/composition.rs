@@ -35,6 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{BOOL, GUID, HRESULT, Interface, Result, implement};
 
 use crate::coordinates::logical_rect;
+use crate::display_attributes;
 use crate::module::{ObjectCount, guard};
 use crate::protocol::Reply;
 
@@ -142,8 +143,12 @@ pub(crate) fn finish(cookie: u32, slot: &Slot, discard: bool) -> Result<()> {
     let Some(composition) = load(slot) else { return Ok(()) };
     // SAFETY: a valid composition under the write cookie.
     unsafe {
+        let range = composition.GetRange()?;
         if discard {
-            composition.GetRange()?.SetText(cookie, 0, &[]).map_err(|_| windows::core::Error::from(E_FAIL))?;
+            range.SetText(cookie, 0, &[]).map_err(|_| windows::core::Error::from(E_FAIL))?;
+        } else if let Ok(context) = range.GetContext() {
+            // The text stays, as plain text.
+            display_attributes::clear(&context, cookie, &range);
         }
         composition.EndComposition(cookie)?;
     }
@@ -152,13 +157,15 @@ pub(crate) fn finish(cookie: u32, slot: &Slot, discard: bool) -> Result<()> {
 }
 
 /// Puts a reply into the document: the commit replaces the composition (or the selection) and the caret goes after
-/// it; then the composition shows `preedit` with the caret at `cursor`, or ends when it is empty.
+/// it; then the composition shows `preedit`, its words marked with the display attributes of `atoms`
+/// (display_attributes.rs), with the caret at `cursor`, or ends when it is empty.
 pub(crate) fn apply_reply(
     context: &ITfContext,
     cookie: u32,
     sink: &ITfCompositionSink,
     slot: &Slot,
     reply: &Reply,
+    atoms: Option<[u32; 4]>,
 ) -> Result<()> {
     // SAFETY: valid TSF objects under the write cookie.
     unsafe {
@@ -186,6 +193,10 @@ pub(crate) fn apply_reply(
         };
         let range = composition.GetRange()?;
         range.SetText(cookie, 0, &reply.preedit)?;
+        if let Some(atoms) = &atoms {
+            // Unmarked text still types: a failure here leaves the composition as it is.
+            let _ = display_attributes::mark(context, cookie, &range, atoms, reply);
+        }
         move_caret(context, cookie, &range, reply.cursor)
     }
 }

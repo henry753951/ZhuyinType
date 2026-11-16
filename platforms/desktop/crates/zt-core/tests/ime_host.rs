@@ -264,6 +264,23 @@ fn an_adapter_that_draws_the_window_gets_it_in_its_replies() {
 }
 
 #[test]
+fn replies_mark_the_words_and_the_one_being_changed() {
+    let mut f = Fixture::new();
+    let focused = f.request("focus", json!({"secure": false}));
+    assert!(focused.get("clauses").is_none(), "no composition, no marks");
+    f.keys("su3cl");
+    let typed = f.key('3' as i32);
+    assert_eq!(typed["preedit"], "你好");
+    assert_eq!(typed["clauses"], json!([[0, 2]]), "UTF-16 ranges of the words");
+    assert_eq!((&typed["focus"], &typed["target"]), (&Value::Null, &Value::Null));
+    let listed = f.key(code::DOWN);
+    assert_eq!(listed["candidates"], true);
+    assert_eq!(listed["focus"], 0, "the word the list replaces");
+    let secure = f.request("key", json!({"secure": true}));
+    assert!(secure.get("clauses").is_none(), "nothing about the text leaves a secure field");
+}
+
+#[test]
 fn mode_switch_from_the_indicator() {
     let mut f = Fixture::new();
     assert!(ok(&f.request("focus", json!({"secure": false}))));

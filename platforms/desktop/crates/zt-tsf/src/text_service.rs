@@ -23,8 +23,9 @@ use windows::Win32::System::Com::CoCreateGuid;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, VK_CAPITAL};
 use windows::Win32::UI::TextServices::{
-    ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext, ITfDocumentMgr, ITfKeyEventSink,
-    ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
+    IEnumTfDisplayAttributeInfo, ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext,
+    ITfDisplayAttributeInfo, ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfDocumentMgr,
+    ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
     ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink,
     ITfThreadFocusSink_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl, TF_INVALID_COOKIE,
     TF_TMAE_COMLESS, TF_TMAE_SECUREMODE, TF_TMAE_UIELEMENTENABLEDONLY,
@@ -40,6 +41,7 @@ use windows::core::{BOOL, ComObject, IUnknown, IUnknownImpl, Interface, PCWSTR, 
 
 use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
+use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
 use crate::keys::host_wants_key;
 use crate::mode_button::{self, ModeButton};
@@ -59,7 +61,14 @@ fn hresult(result: Result<()>) -> windows::core::HRESULT {
     result.map_or_else(|error| error.code(), |()| S_OK)
 }
 
-#[implement(ITfTextInputProcessorEx, ITfThreadMgrEventSink, ITfThreadFocusSink, ITfKeyEventSink, ITfCompositionSink)]
+#[implement(
+    ITfTextInputProcessorEx,
+    ITfThreadMgrEventSink,
+    ITfThreadFocusSink,
+    ITfKeyEventSink,
+    ITfCompositionSink,
+    ITfDisplayAttributeProvider
+)]
 pub(crate) struct TextService {
     manager: RefCell<Option<ITfThreadMgr>>,
     source: RefCell<Option<ITfSource>>,
@@ -97,6 +106,8 @@ pub(crate) struct TextService {
     rect: Cell<RECT>,
     scale: Cell<f64>,
     panel: PanelWindow,
+    /// The display attributes' atoms (display_attributes.rs), from activation.
+    atoms: Cell<Option<[u32; 4]>>,
     _count: ObjectCount,
 }
 
@@ -134,6 +145,7 @@ impl TextService {
             rect: Cell::new(RECT::default()),
             scale: Cell::new(1.0),
             panel: PanelWindow::new(),
+            atoms: Cell::new(None),
             _count: ObjectCount::new(),
         }
         .into()
@@ -333,6 +345,7 @@ impl TextService_Impl {
                 None
             };
             let secure = self.secure.get();
+            let atoms = self.atoms.get();
             let sink: ITfCompositionSink = self.to_interface();
             let document = old.clone();
             // Blur is bound to the old document, even if its edit lock is deferred.  With no broker reply, the
@@ -342,7 +355,7 @@ impl TextService_Impl {
                 hresult(if secure || composition::is_secure(&document, cookie) {
                     composition::finish(cookie, &slot, true)
                 } else if let Some(reply) = &reply {
-                    composition::apply_reply(&document, cookie, &sink, &slot, reply)
+                    composition::apply_reply(&document, cookie, &sink, &slot, reply, atoms)
                 } else {
                     composition::finish(cookie, &slot, false)
                 })
@@ -441,7 +454,7 @@ impl TextService_Impl {
             composition::finish(cookie, &self.composition, true)
         } else {
             let sink: ITfCompositionSink = self.to_interface();
-            composition::apply_reply(&context, cookie, &sink, &self.composition, reply)
+            composition::apply_reply(&context, cookie, &sink, &self.composition, reply, self.atoms.get())
         };
         self.applying.set(false);
         if result.is_err() {
@@ -810,6 +823,7 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
+            self.atoms.set(display_attributes::atoms());
             // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
             self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
             let sinks = || -> Result<()> {
@@ -944,6 +958,24 @@ impl ITfCompositionSink_Impl for TextService_Impl {
                 }
             }
             Ok(())
+        })
+    }
+}
+
+/// The composition's display attributes (display_attributes.rs).  TSF also asks a text service that was created
+/// only for this, never activated.
+impl ITfDisplayAttributeProvider_Impl for TextService_Impl {
+    fn EnumDisplayAttributeInfo(&self) -> Result<IEnumTfDisplayAttributeInfo> {
+        guard(|| Ok(display_attributes::Enumeration::create(0)))
+    }
+
+    fn GetDisplayAttributeInfo(&self, guid: *const windows::core::GUID) -> Result<ITfDisplayAttributeInfo> {
+        guard(|| {
+            if guid.is_null() {
+                return Err(E_INVALIDARG.into());
+            }
+            // SAFETY: checked for null.
+            display_attributes::info(unsafe { &*guid })
         })
     }
 }

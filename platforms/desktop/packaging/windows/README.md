@@ -46,7 +46,7 @@ App 在 `<執行檔目錄>\data` 找引擎資料。
 
 1. 結束執行中的 ZhuyinType（先以 `taskkill` 要求結束，1.5 秒後強制結束），並記下它是否在目前的工作階段執行。
 2. 複製檔案。應用程式正在使用的舊 DLL 無法覆寫，但可以改名：先改名為 `*.old`，再排定下次開機刪除；正在使用它的程式繼續使用舊版，重新開啟後載入新版。不需要重新開機，完成頁也不詢問。
-3. 以 `regsvr32` 登記兩個 DLL（64 位元用 `System32\regsvr32.exe`，32 位元用 `SysWOW64\regsvr32.exe`）。`DllRegisterServer` 登記本機的 COM 類別（`InprocServer32`、`ThreadingModel=Apartment`）、zh-TW（0x0404）語言設定檔與類別：鍵盤、Store／沉浸式 App、工作列輸入指示器、UI-less。CLSID 與設定檔 GUID 和先前的 C++ 版相同。
+3. 以 `regsvr32` 登記兩個 DLL（64 位元用 `System32\regsvr32.exe`，32 位元用 `SysWOW64\regsvr32.exe`）。`DllRegisterServer` 登記本機的 COM 類別（`InprocServer32`、`ThreadingModel=Apartment`）、zh-TW（0x0404）語言設定檔與類別：鍵盤、顯示屬性提供者（組字的底線與反白）、Store／沉浸式 App、工作列輸入指示器、UI-less。CLSID 與設定檔 GUID 和先前的 C++ 版相同。
 4. 把「ZhuyinType 注音」加入安裝者的輸入法清單（`regsvr32 /n /i:user`，在 DLL 內呼叫 `InstallLayoutOrTip`）。原有的語言、輸入法與預設輸入法不變。
 5. 登記 Active Setup：這台電腦的其他使用者下次登入時，各自的清單也加入一次。版本固定為 1，之後更新不會替已經自行移除的人再加回去。
 6. 登入時啟動：`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\ZhuyinType` = `"…\zhuyintype.exe" --background`。
