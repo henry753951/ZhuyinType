@@ -44,6 +44,9 @@ case $mode in
   *) echo "usage: tools/check-changes.sh --staged | --push BASE [TIP] | --all" >&2; exit 2 ;;
 esac
 [[ -n $changed ]] || exit 0
+# Git runs hooks with GIT_DIR (and for commits GIT_INDEX_FILE) set; the tools below find their repository
+# themselves, and with these set `git rev-parse --show-toplevel` answers the current directory instead.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 has() { grep -qE "$1" <<< "$changed"; }
 
 step "隱私檢查（tools/check-public.sh）"
