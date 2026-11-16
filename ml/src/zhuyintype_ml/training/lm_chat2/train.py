@@ -46,7 +46,7 @@ def audit(work: Path, variant: str) -> dict[str, Any]:
     """Rescans every training sentence and turn pair against all holdouts."""
     files = evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"]
     held = blocked_text(files)
-    if variant.startswith("web"):
+    if variant.startswith(("web", "ptt")):
         rows = row_files()
         held.update(blocked_rows(rows))
         files += rows
@@ -97,8 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--variant", choices=list(VARIANTS), default="mixed")
     p.add_argument("--workers", type=int, default=24)
-    p.add_argument("--max-bytes", type=int, default=60_000_000)
+    p.add_argument("--max-bytes", type=int, default=None, help="default: 14,000,000 for ptt14, else 60,000,000")
     a = p.parse_args(argv)
+    if a.max_bytes is None:
+        a.max_bytes = 14_000_000 if a.variant == "ptt14" else 60_000_000
     started = time.monotonic()
     a.output = variant_directory(a.variant)
     a.work = a.output / "work"

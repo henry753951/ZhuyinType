@@ -8,6 +8,9 @@
     join         公共政策網路參與平臺「提點子」proposals written by the public, one JSON per year (data.gov.tw/58036,
                  OGDL v1); the platform's open data has no comments
     vtaiwan      the one vTaiwan conversation in compdemocracy/openData (vtaiwan.uberx comments, CC BY 4.0)
+    ptt          PTT Gossiping title/push pairs, zake7749/Gossiping-Chinese-Corpus 2.0 (repository Apache-2.0; the
+                 posts belong to their authors) and the NTOU TOCP profanity sentences (CC BY-SA 4.0); used for
+                 training by the maintainer's decision of 2026-11-17 (docs/research/corpus-sources.md)
 
 Every response is kept under data/raw/lm_chat2 with a .receipt.json (URL, licence, SHA-256, size, date, headers); a
 cached file whose hash no longer matches its receipt is an error.  Standard library only; may run on the Mac.
@@ -180,9 +183,25 @@ def vtaiwan(directory: Path) -> None:
     )
 
 
+GOSSIPING = "65b7e3630a560223a2b4d702d78d120d5ff1e8dd"  # zake7749/Gossiping-Chinese-Corpus, 2024-10-18
+
+
+def ptt(directory: Path) -> None:
+    base = f"https://raw.githubusercontent.com/zake7749/Gossiping-Chinese-Corpus/{GOSSIPING}/"
+    licence = "Apache-2.0 (zake7749, repository); PTT Gossiping posts and pushes belong to their authors"
+    fetch(base + "LICENSE", directory / "ptt" / "Gossiping-LICENSE", licence)
+    fetch(base + "README.md", directory / "ptt" / "Gossiping-README.md", licence)
+    fetch(base + "data/Gossiping-QA-Dataset-2_0.csv", directory / "ptt" / "Gossiping-QA-Dataset-2_0.csv", licence)
+    fetch(
+        "https://nlp.cse.ntou.edu.tw/resources/TOCP/TOCP_v1.0.zip",
+        directory / "ptt" / "TOCP_v1.0.zip",
+        "CC BY-SA 4.0; NTOU NLP Lab (Hsu Yang, Chuan-Jie Lin, LREC 2020 TRAC-2); sentences from PTT and Twitch users",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan"])
+    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt"])
     parser.add_argument("--first-year", type=int, default=2015)
     parser.add_argument("--last-year", type=int, default=2026)
     parser.add_argument("--documents", type=int, default=800)
@@ -198,6 +217,8 @@ def main(argv: list[str] | None = None) -> int:
         join(a.raw, a.first_year, a.last_year)
     elif a.source == "vtaiwan":
         vtaiwan(a.raw)
+    elif a.source == "ptt":
+        ptt(a.raw)
     else:
         similar(a.raw)
     return 0

@@ -28,6 +28,22 @@
     "--chat-lm",
     "{data}/lm_chat2/web3"
    ]
+  },
+  {
+   "name": "ptt",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt"
+   ]
+  },
+  {
+   "name": "ptt14",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt14"
+   ]
   }
  ],
  "sets": [
@@ -138,6 +154,10 @@
   {
    "name": "sj-moedict",
    "set": "data/build/loss-analysis/rows/sj-sets-moedict.txt"
+  },
+  {
+   "name": "slang-tech",
+   "set": "slang-tech"
   }
  ]
 }

@@ -8,7 +8,9 @@
               Voice) or mixed (also the 0.3.0 colloquial corpus); refuses to run twice.  control (control/) is real
               again in a fresh tree; web (web/) is real plus 公共政策網路參與平臺 proposals (title, proposal,
               benefits; never the proposer) and vTaiwan comments, with every tracked row set and the pushed
-              loss-analysis rows also blocked; web3 (web3/) keeps a fixed third of the proposal sentences
+              loss-analysis rows also blocked; web3 (web3/) keeps a fixed third of the proposal sentences; ptt
+              (ptt/) is real plus PTT Gossiping title/push pairs (as turn pairs too) and TOCP sentences; ptt14
+              (ptt14/) is the same corpus pruned to the shipped model's size
 
 Every training text equal to, or sharing 8 characters with, a holdout or any frozen evaluation file is removed,
 also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 workers).
@@ -41,7 +43,15 @@ from zhuyintype_ml.training.lm_chat.train import grams, normalized
 
 OUT = paths.data("lm_chat2")
 RAW = raw("lm_chat2")
-VARIANTS = {"mixed": "", "real": "no_generated", "control": "control", "web": "web", "web3": "web3"}
+VARIANTS = {
+    "mixed": "",
+    "real": "no_generated",
+    "control": "control",
+    "web": "web",
+    "web3": "web3",
+    "ptt": "ptt",
+    "ptt14": "ptt14",
+}
 
 
 def variant_directory(variant: str) -> Path:
@@ -75,6 +85,29 @@ def join_texts() -> Iterator[str]:
                 value = row.get(field)
                 if isinstance(value, str):
                     yield from mkn.SPLIT.split(value)
+
+
+def gossiping_pairs() -> Iterator[tuple[str, str]]:
+    """(title, push) pairs of the cached PTT Gossiping corpus; pushes marked 沒有資料 are skipped."""
+    path = RAW / "ptt" / "Gossiping-QA-Dataset-2_0.csv"
+    with path.open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            question, answer = (row.get("question") or "").strip(), (row.get("answer") or "").strip()
+            if question and answer and answer != "沒有資料":
+                yield question, answer
+
+
+def tocp_texts() -> Iterator[str]:
+    """Original sentences of TOCP v1.0 (the JSON file inside the cached zip)."""
+    import zipfile
+
+    with zipfile.ZipFile(RAW / "ptt" / "TOCP_v1.0.zip") as archive:
+        for name in archive.namelist():
+            if name.lower().endswith(".json"):
+                data = json.loads(archive.read(name).decode("utf-8-sig"))
+                for row in data if isinstance(data, list) else data.values():
+                    if isinstance(row, dict) and isinstance(row.get("original_sentence"), str):
+                        yield row["original_sentence"]
 
 
 def third(sentence: str) -> bool:
@@ -392,7 +425,7 @@ def prepare(variant: str, workers: int) -> None:
     if marker.exists():
         raise ValueError("training corpus already prepared")
     held = blocked_text(evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"])
-    if variant.startswith("web"):
+    if variant.startswith(("web", "ptt")):
         held.update(blocked_rows(row_files()))
     # Canonical variants are also blocked so 台/臺 conversion cannot bypass the guard.
     held.update(normalize(s).replace("臺", "台") for s in list(held))
@@ -462,6 +495,23 @@ def prepare(variant: str, workers: int) -> None:
                         add(sentence, source)
                     elif sentence:
                         counts[source + "_invalid"] += 1
+        if variant.startswith("ptt"):
+            for question, answer in gossiping_pairs():
+                q, r = normalized(question), normalized(answer)
+                if valid(q) and valid(r) and len(q) <= 200 and len(r) <= 200:
+                    add_context(q, r)
+                for text in (question, answer):
+                    for sentence in mkn.SPLIT.split(text):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "gossiping")
+                        elif sentence:
+                            counts["gossiping_invalid"] += 1
+            for text in tocp_texts():
+                for sentence in mkn.SPLIT.split(text):
+                    sentence = sentence.strip()
+                    if 4 <= len(sentence) <= 200 and valid(sentence):
+                        add(sentence, "tocp")
         if variant == "mixed":
             # Provenance of the 0.3.0 v3 colloquial corpus (data/build/v3 then) excludes TT: synthetic + Common Voice.
             for line in paths.data("v3_030", "colloquial.txt").open():

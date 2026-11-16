@@ -139,6 +139,13 @@ PIPELINE = Pipeline(
         Step("control", "the real variant retrained in a fresh tree, control/ (GPU host)", variant("control")),
         Step("web", "real plus 公共政策網路參與平臺 and vTaiwan text, web/ (GPU host)", variant("web")),
         Step("web3", "real plus a fixed third of the proposals and vTaiwan, web3/ (GPU host)", variant("web3")),
+        Step(
+            "ptt-sources",
+            "cache PTT Gossiping title/push pairs and TOCP with receipts",
+            run(f"{MODULE}.sources", "ptt"),
+        ),
+        Step("ptt", "real plus PTT Gossiping pairs and TOCP sentences, ptt/ (GPU host)", variant("ptt")),
+        Step("ptt14", "the ptt corpus pruned to the shipped model's 14 MB, ptt14/ (GPU host)", variant("ptt14")),
         Step("ship", "real variant and provenance into lm_chat/, the 0.3.0 model into lm_chat_v1/", ship),
     ),
 )

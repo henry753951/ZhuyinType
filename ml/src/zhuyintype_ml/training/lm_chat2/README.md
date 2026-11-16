@@ -36,9 +36,11 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 | `control` | 出貨的 `real` 變體在新的工作目錄重訓一次（`control/`），當作對照組 | GPU 主機 |
 | `web` | `real` 再加上提議的標題、內容與利益影響（不讀提議者欄位）與 vTaiwan 留言（`web/`）；追蹤的列檔與 `data/build/loss-analysis/rows/` 的前文與答案也一併排除 | GPU 主機 |
 | `web3` | 同 `web`，提議的句子依雜湊固定只留三分之一（`web3/`） | GPU 主機 |
+| `ptt-sources` | PTT 八卦版問答（zake7749/Gossiping-Chinese-Corpus `65b7e36` 的 2.0 版 CSV）與海大 TOCP v1.0，寫收據 | 任一 |
+| `ptt` | `real` 再加上八卦版的標題與推文（也當成前後句對）與 TOCP 的句子（`ptt/`） | GPU 主機 |
 | `ship` | 把 `no_generated/` 的三個 TSV 與出處檔案複製到 `lm_chat/`，0.3.0 的模型先保存到 `lm_chat_v1/` | 任一 |
 
-`control`、`web`、`web3` 是 2026-11-17 的網路語域實驗（[slang-inventory.md](../../../../../docs/research/slang-inventory.md) 提案 2），都不會取代 `lm_chat/`；評測矩陣是 `ml/src/zhuyintype_ml/eval/matrices/chat-web-{dev,rows}.json`，結果見研究紀錄。
+`control`、`web`、`web3`、`ptt` 是 2026-11-17 的網路語域實驗（[slang-inventory.md](../../../../../docs/research/slang-inventory.md) 提案 2），都不會取代 `lm_chat/`；評測矩陣是 `ml/src/zhuyintype_ml/eval/matrices/chat-web-{dev,rows}.json`，結果見研究紀錄。
 
 `extract` 之後、`split` 之前，先審查 `source_samples.json`。`split` 不會重新抽樣，`real`、`mixed` 不會重新準備語料；要改資料請另開一個實驗目錄。訓練時工作目錄中的輸入、程式碼或設定改變會拒絕繼續。
 
@@ -60,7 +62,7 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 - 出處：`source-manifest.json`、`attribution.jsonl`（每份來源文件的連結、日期、版本）、`NOTICE.md`、`inputs/Qwen3-8B-LICENSE`；
 - 評估：`perplexity.json`、`perplexity-lines.tsv`、`conversion/`、`conversion-summary.json`。
 
-授權：模型與合併後的語料為 CC BY-SA 4.0；`web` 實驗另含提點子的提議（政府資料開放授權條款第 1 版，國家發展委員會）與 vTaiwan 留言（CC BY 4.0，The Computational Democracy Project）；公報經 OpenFun LYAPI 為 CC BY 4.0（原始資料為政府資料開放授權第 1 版），討論頁為 CC BY-SA 4.0，Common Voice 為 CC0。兩個版本都不含 Taiwan Tongues。再散布時保留 `NOTICE.md`、`source-manifest.json` 與 `attribution.jsonl`。
+授權：模型與合併後的語料為 CC BY-SA 4.0；`web` 實驗另含提點子的提議（政府資料開放授權條款第 1 版，國家發展委員會）與 vTaiwan 留言（CC BY 4.0，The Computational Democracy Project）；`ptt` 實驗另含 PTT 八卦版的貼文（著作權屬各作者，整理者 zake7749 以 Apache-2.0 釋出）與 TOCP（CC BY-SA 4.0，海大 NLP 實驗室），依 2026-11-17 的使用決定只出貨統計模型、不散布原文（[corpus-sources.md](../../../../../docs/research/corpus-sources.md)）；公報經 OpenFun LYAPI 為 CC BY 4.0（原始資料為政府資料開放授權第 1 版），討論頁為 CC BY-SA 4.0，Common Voice 為 CC0。兩個版本都不含 Taiwan Tongues。再散布時保留 `NOTICE.md`、`source-manifest.json` 與 `attribution.jsonl`。
 
 ## 檔案
 
