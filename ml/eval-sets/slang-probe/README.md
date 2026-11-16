@@ -1,6 +1,6 @@
 # 現代用語探針
 
-量 ZhuyinType 打現代日常與網路用語的情形：一個問題類別一個檔，每列是含一個目標詞的短句，目標詞照一般人實際的打法標音。分析與修正建議見 [slang-inventory.md](../../../docs/research/slang-inventory.md)。
+量 ZhuyinType 打現代日常與網路用語的情形：一個問題類別一個檔，共 347 列，每列是含一個目標詞的短句，目標詞照一般人實際的打法標音。分析與修正建議見 [slang-inventory.md](../../../docs/research/slang-inventory.md)。
 
 | 檔案（集合名稱） | 列數 | 內容 |
 |---|---:|---|
@@ -13,6 +13,7 @@
 | `reading.rows.txt`（`slang-reading`） | 35 | 實際打的讀音和詞庫不同：什麼 ㄕㄜˊ ㄇㄜ˙、這個 ㄓㄟˋ、垃圾 ㄌㄜˋ ㄙㄜˋ、輕聲打本調 |
 | `variant.rows.txt`（`slang-variant`） | 19 | 寫法：台／臺、什麼／甚麼、計畫／計劃、身分／身份 |
 | `zhuyinwen.rows.txt`（`slang-zhuyinwen`） | 8 | 注音文：好ㄉ、ㄏㄏ、ㄘ飯了沒 |
+| `tech.rows.txt`（`slang-tech`） | 61 | 技術、軟體與學術詞：資料集、組態、首幀、版控、捷徑鍵、文獻回顧（2026-11-17 補） |
 
 格式和善解的評測集相同：`前文|答案|注音`，注音以空白分隔，一聲不標。`labels.tsv` 每列對應同一類別檔案的同一列，欄位是：
 
@@ -39,6 +40,6 @@ tools/zt --remote eval losses --set slang -k 64 --json data/build/remote_eval/sl
 tools/zt --remote eval rows --set slang --json data/build/remote_eval/slang/rows.json
 ```
 
-決定任何改變時，探針和開發集一起做成對比較（`tools/zt eval stats`）。探針只有 286 列，單一類別的差異通常不顯著，只用來看方向與改壞；目標詞的選擇本身有偏差（見文件的「限制」）。
+決定任何改變時，探針和開發集一起做成對比較（`tools/zt eval stats`）。探針只有 347 列，單一類別的差異通常不顯著，只用來看方向與改壞；目標詞的選擇本身有偏差（見文件的「限制」）。
 
 授權：CC0 1.0。

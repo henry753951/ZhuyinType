@@ -116,6 +116,7 @@ SLANG_CLASSES = {
     "reading": "實際打的讀音",
     "variant": "寫法",
     "zhuyinwen": "注音文",
+    "tech": "技術、軟體與學術詞",
 }
 SETS += [
     EvalSet(f"slang-{name}", f"{SLANG}/{name}.rows.txt", "rows", "dev", "tracked", f"現代用語探針：{text}")
