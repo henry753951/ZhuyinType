@@ -35,7 +35,7 @@ use crate::candidate::layout::{BADGE_H, Extras, WindowMeasure};
 use crate::candidate::panel::{ActionHandler, CandidatePanel, ease_out, mode_badge};
 use crate::candidate::sample;
 use crate::candidate::scene::panel_layout;
-use crate::candidate::style::{CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
+use crate::candidate::style::{self, CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
 use crate::theme::{self, size, space, text, weight};
 use crate::ui::demo::field_fill;
 use crate::ui::shortcuts::keystroke;
@@ -402,7 +402,7 @@ impl PracticeField {
         let key = (self.settings.revision(), dark);
         if self.look.as_ref().is_none_or(|look| look.key != key) {
             let keys = CurrentKeys::sandboxed(&self.settings);
-            let style = PanelStyle::from_settings(&self.settings, &keys);
+            let style = style::style_from_settings(&self.settings, &keys);
             let selection = selection_keys(&self.settings);
             let sample =
                 sample::list(sample::PANEL_WORDS, &[], false, selection.len().max(1), 0).presentation("", &selection);

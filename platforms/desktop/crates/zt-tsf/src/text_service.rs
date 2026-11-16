@@ -44,6 +44,7 @@ use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_characte
 use crate::keys::host_wants_key;
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, guard, instance};
+use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
 use crate::protocol::Reply;
 use crate::registration::guid_string;
 
@@ -95,6 +96,7 @@ pub(crate) struct TextService {
     mode_button: RefCell<Option<(ITfLangBarItemButton, ComObject<ModeButton>)>>,
     rect: Cell<RECT>,
     scale: Cell<f64>,
+    panel: PanelWindow,
     _count: ObjectCount,
 }
 
@@ -131,6 +133,7 @@ impl TextService {
             mode_button: RefCell::new(None),
             rect: Cell::new(RECT::default()),
             scale: Cell::new(1.0),
+            panel: PanelWindow::new(),
             _count: ObjectCount::new(),
         }
         .into()
@@ -273,6 +276,7 @@ impl TextService_Impl {
             }
         }
         store(&self.lang_bar, None);
+        self.panel.destroy();
         self.destroy_windows();
         let keys = self.keys.try_borrow_mut().ok().and_then(|mut keys| keys.take());
         if let Some(keys) = keys {
@@ -320,6 +324,7 @@ impl TextService_Impl {
         }
         self.bump();
         self.kill_timer();
+        self.panel.hide();
         let old_composition = self.composition.try_borrow_mut().ok().and_then(|mut slot| slot.take());
         if let Some(old) = current {
             let reply = if self.broker.connected() && self.host_focused.get() {
@@ -379,9 +384,11 @@ impl TextService_Impl {
                 return false;
             }
         }
-        let (rect, scale) = composition::caret(&context, cookie);
+        let (rect, scale, owner) = composition::caret(&context, cookie);
         self.rect.set(rect);
         self.scale.set(scale);
+        self.panel.set_owner(owner);
+        self.panel.set_notify(self.window.get());
         if !self.broker.connected() {
             self.host_focused.set(false);
             // A reconnect starts a new host session; keep the earlier composition's text locally first.
@@ -399,6 +406,8 @@ impl TextService_Impl {
             if !caps_key {
                 fields.insert("capsLock".into(), Value::from(caps_lock_on()));
             }
+            // This text service draws the candidate window itself, inside the application (panel_window).
+            fields.insert("panel".into(), Value::from(true));
             let reply = self.broker.request(&self.name(), "focus", fields);
             let Some(reply) = reply.filter(|_| generation == self.generation.get()) else { return false };
             self.host_focused.set(true);
@@ -442,6 +451,11 @@ impl TextService_Impl {
         }
         self.english.set(reply.english);
         self.composing.set(reply.composing);
+        if self.secure.get() {
+            self.panel.hide();
+        } else {
+            self.panel.apply(&reply.panel, reply.boundary, reply.toast.as_deref(), self.rect.get(), self.scale.get());
+        }
         self.caps_at_reply.set(caps_lock_on());
         if let Some(button) = self.button() {
             button.set_english(reply.english);
@@ -684,6 +698,39 @@ impl TextService_Impl {
         }
     }
 
+    /// A click in the candidate window (posted by `panel_window`): sent to the host in an edit session, whose reply
+    /// is applied like a key's.
+    fn panel_action(&self, action: usize, value: isize) {
+        let Some(name) = action_name(action) else { return };
+        if !self.thread_focused.get() || self.broker.busy() {
+            return;
+        }
+        let Some(context) = load(&self.context) else { return };
+        let generation = self.generation.get();
+        let this = self.to_object();
+        let _ = composition::edit(&context, self.client.get(), false, move |cookie| {
+            this.action_session(cookie, generation, name, value);
+            S_OK
+        });
+    }
+
+    fn action_session(&self, cookie: u32, generation: u64, name: &str, value: isize) {
+        if generation != self.generation.get() || !self.prepare(cookie, false) {
+            return;
+        }
+        let mut fields = Map::new();
+        fields.insert("action".into(), Value::from(name));
+        fields.insert("value".into(), Value::from(value as i64));
+        composition::put_rect(&mut fields, self.rect.get(), self.scale.get());
+        let reply = self.broker.request(&self.name(), "action", fields);
+        if generation != self.generation.get() {
+            return;
+        }
+        if let Some(reply) = reply {
+            self.apply(cookie, &reply);
+        }
+    }
+
     fn on_timer(&self, window: HWND) {
         if self.broker.connected() {
             self.schedule();
@@ -727,6 +774,13 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
             let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
             if !service.is_null() {
                 let _ = catch_unwind(AssertUnwindSafe(|| (*service).on_timer(window)));
+            }
+            return LRESULT(0);
+        }
+        if message == WM_PANEL_ACTION {
+            let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
+            if !service.is_null() {
+                let _ = catch_unwind(AssertUnwindSafe(|| (*service).panel_action(wparam.0, lparam.0)));
             }
             return LRESULT(0);
         }

@@ -19,6 +19,7 @@ use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, LogicalToPhysicalPointForPerMonitorDPI,
     SetThreadDpiAwarenessContext,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::Shell::GetScaleFactorForMonitor;
 use windows::Win32::UI::TextServices::{
     GUID_COMPARTMENT_EMPTYCONTEXT, GUID_COMPARTMENT_KEYBOARD_DISABLED, GUID_PROP_INPUTSCOPE, IS_ALPHANUMERIC_PIN,
@@ -258,7 +259,7 @@ pub(crate) fn is_secure(context: &ITfContext, cookie: u32) -> bool {
 }
 
 /// Runs `body` with this thread per-monitor DPI aware, so monitor rectangles and scale factors are physical.
-fn per_monitor<T>(body: impl FnOnce() -> T) -> T {
+pub(crate) fn per_monitor<T>(body: impl FnOnce() -> T) -> T {
     // SAFETY: changes only this thread's awareness, restored below.
     let previous = unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
     let result = body();
@@ -269,13 +270,14 @@ fn per_monitor<T>(body: impl FnOnce() -> T) -> T {
     result
 }
 
-/// The caret (the selection's text extent, else the Win32 caret) in physical screen pixels, and the scale of the
-/// monitor it is on.  Text stores report in their window's DPI space, even DPI-unaware ones; that is undone first.
-pub(crate) fn caret(context: &ITfContext, cookie: u32) -> (RECT, f64) {
+/// The caret (the selection's text extent, else the Win32 caret) in physical screen pixels, the scale of the monitor
+/// it is on, and the window that shows the text (the candidate window's owner; the focus window when the view has
+/// none).  Text stores report in their window's DPI space, even DPI-unaware ones; that is undone first.
+pub(crate) fn caret(context: &ITfContext, cookie: u32) -> (RECT, f64, HWND) {
     let mut rect = RECT::default();
     // SAFETY: valid objects under the edit cookie.
     unsafe {
-        let Ok(view) = context.GetActiveView() else { return (rect, 1.0) };
+        let Ok(view) = context.GetActiveView() else { return (rect, 1.0, GetFocus()) };
         let mut window = view.GetWnd().unwrap_or_default();
         let mut clipped = BOOL::default();
         let extent =
@@ -304,7 +306,8 @@ pub(crate) fn caret(context: &ITfContext, cookie: u32) -> (RECT, f64) {
             GetScaleFactorForMonitor(MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST))
                 .map_or(1.0, |factor| f64::from(factor.0) / 100.0)
         });
-        (rect, scale)
+        let owner = if window.is_invalid() { GetFocus() } else { window };
+        (rect, scale, owner)
     }
 }
 

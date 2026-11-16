@@ -19,7 +19,7 @@ use super::layout::{Extras, WindowMeasure};
 use super::panel::{CandidatePanel, Pinned, mode_badge};
 use super::popup;
 use super::sample;
-use super::style::{CurrentKeys, PanelStyle, selection_keys};
+use super::style::{self, CurrentKeys, selection_keys};
 use crate::app;
 use crate::theme::Palette;
 
@@ -107,7 +107,7 @@ impl Showcase {
     fn new(variant: &str, dark: bool, window: &mut Window, cx: &mut App) -> Self {
         configure(variant, cx);
         let settings = app::settings(cx).clone();
-        let style = PanelStyle::from_settings(&settings, &CurrentKeys::new(&settings, None));
+        let style = style::style_from_settings(&settings, &CurrentKeys::new(&settings, None));
         let (mut presentation, preview, badge, paging) = presentation_for(variant, cx);
         if variant == "minimal" {
             presentation.reading = None;
@@ -143,7 +143,7 @@ impl Render for Showcase {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = if self.dark { Palette::dark() } else { Palette::light() };
         let settings = app::settings(cx).clone();
-        let style = PanelStyle::from_settings(&settings, &CurrentKeys::new(&settings, None));
+        let style = style::style_from_settings(&settings, &CurrentKeys::new(&settings, None));
         let (width, height) = match self.badge {
             Some(_) => (super::layout::BADGE_W, super::layout::BADGE_H),
             None if self.panel.pinned.is_some() => self.panel.layout().map_or((0., 0.), |l| (l.width, l.height)),

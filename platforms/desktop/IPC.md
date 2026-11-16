@@ -17,13 +17,14 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 | op | 內容 |
 |---|---|
-| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`app` 與 `before`；取得焦點 |
+| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`app` 與 `before`；取得焦點 |
 | `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`app`、`before` 及矩形 |
 | `context` | 只更新 `app` 與 `before`（見〈前文〉），不處理按鍵 |
 | `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形 |
 | `blur` | 結束目前組字並回傳待送出文字，解除焦點 |
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
+| `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`）與 `value`（`pick` 的列、`page` 的 ±1）；原生端自己畫的候選字視窗上的點選（見〈候選字視窗〉） |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
 | `show-settings` | 顯示既有設定視窗 |
 
@@ -32,6 +33,17 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 成功的輸入回應含 `ok`、`handled`、`commit`、`preedit`、UTF-16 `cursor`、`candidates`、`english`、`composing`（有組字或候選字視窗；原生端據此預先判斷要不要攔下按鍵）。`preedit` 為空字串時 `cursor` 為 0。失敗回應含 `ok: false` 與錯誤說明。每份 `commit` 只在一個回應中取出；沒有未經請求的封包。原生介面必須核對識別碼與欄位，不能把舊欄位回應送入新欄位，也不能重送超時的按鍵。安全欄位不傳輸實際按鍵或文字。
 
 同一時間只有一個取得焦點的欄位可操作組字。轉移焦點前，原生介面先處理舊欄位的 `blur` 回應，再送出新欄位的 `focus`。舊欄位的遲到請求會被拒絕。斷線清除服務端狀態；原生端僅能保留同一個仍聚焦且非安全欄位的已確認組字，不得重送未確認的按鍵。沒有輸入文字的持久化通訊記錄。
+
+## 候選字視窗
+
+候選字視窗有兩種畫法，由原生介面在 `focus` 時以 `panel` 決定：
+
+- **App 畫（預設，Fcitx5 外掛）**：服務送 `UiEvent::Popup` 給 GPUI，App 開自己的浮動視窗（見〈視窗與設定〉）。
+- **原生端畫（`panel: true`，Windows TSF DLL）**：App 不開視窗；每個回應多一個 `panel` 欄位，原生端在打字的應用程式行程裡自己畫。視窗由輸入法在應用程式內建立、以該應用程式的視窗為擁有者，所以會出現在開始功能表的搜尋框與沉浸式 App 之上（任何其他行程的視窗都做不到）。
+
+`panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview`）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中` 或 `英`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
+
+原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。
 
 ## 前文
 

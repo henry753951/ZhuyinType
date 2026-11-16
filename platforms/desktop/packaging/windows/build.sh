@@ -44,12 +44,14 @@ cargo xwin build --release --locked -p zt-tsf --target i686-pc-windows-msvc
 work=$target_dir/windows-installer
 stage=$work/stage
 rm -rf "$work"
-mkdir -p "$stage/data" "$stage/licenses"
+mkdir -p "$stage/data" "$stage/licenses" "$stage/fonts"
 cp "$target_dir/x86_64-pc-windows-msvc/release/zhuyintype.exe" "$stage/"
 cp "$target_dir/x86_64-pc-windows-msvc/release/zhuyintype_tsf.dll" "$stage/zhuyintype-tsf-x64.dll"
 cp "$target_dir/i686-pc-windows-msvc/release/zhuyintype_tsf.dll" "$stage/zhuyintype-tsf-x86.dll"
 cp "$desktop/crates/zt-tsf/logo.ico" "$stage/logo.ico"
 cp "$desktop/crates/zhuyintype/windows/zhuyintype.ico" "$stage/zhuyintype.ico"
+# The candidate window the text service draws inside applications uses the app's typeface (panel_draw.rs).
+cp "$desktop/crates/zhuyintype/assets/fonts/"Inter-*.ttf "$stage/fonts/"
 for binary in zhuyintype.exe zhuyintype-tsf-x64.dll zhuyintype-tsf-x86.dll; do sign "$stage/$binary"; done
 
 # The engine data, at <exe dir>\data, the same set as the Linux packages and the macOS app (build-app.sh): the

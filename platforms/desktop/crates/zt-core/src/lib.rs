@@ -6,6 +6,7 @@ pub mod controller;
 pub mod corrections;
 pub mod engine;
 pub mod keys;
+pub mod panel;
 pub mod paths;
 pub mod practice;
 pub mod presentation;

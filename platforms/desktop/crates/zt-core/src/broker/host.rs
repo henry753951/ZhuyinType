@@ -19,7 +19,7 @@ pub enum Effect {
     Boundary(i32),
 }
 
-const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode"];
+const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action"];
 
 fn failure(message: &str) -> Map<String, Value> {
     let mut object = Map::new();
@@ -39,6 +39,16 @@ fn utf16_len(text: &str) -> usize {
     text.encode_utf16().count()
 }
 
+/// A click in a candidate window the adapter draws (`op: "action"`).
+#[derive(Clone, Copy, Debug)]
+enum Action {
+    Pick(usize),
+    Page(i32),
+    Single,
+    Corrections,
+    Zhuyin,
+}
+
 /// The broker's state: who has focus, and the text waiting for its next reply.
 #[derive(Debug)]
 pub struct Host {
@@ -47,6 +57,8 @@ pub struct Host {
     commit: String,
     secure: bool,
     inline_preedit: bool,
+    /// The focused field's adapter draws the candidate window itself (`IPC.md` §候選字視窗).
+    draws_panel: bool,
     client_app: String,
     anchor: Rect,
     /// 在候選字視窗顯示組字的 App (executable names, compared without case).
@@ -61,6 +73,7 @@ impl Default for Host {
             commit: String::new(),
             secure: false,
             inline_preedit: true,
+            draws_panel: false,
             client_app: String::new(),
             anchor: Rect::default(),
             popup_apps: Vec::new(),
@@ -79,6 +92,13 @@ impl Host {
     #[must_use]
     pub fn focused(&self) -> bool {
         self.active.is_some() && !self.secure
+    }
+
+    /// The focused field's adapter draws the candidate window itself: the app's own window stays hidden and the
+    /// replies carry the window instead.
+    #[must_use]
+    pub fn draws_panel(&self) -> bool {
+        self.focused() && self.draws_panel
     }
 
     fn popup_app(&self) -> bool {
@@ -203,7 +223,7 @@ impl Host {
         if matches!(op, "key" | "focus" | "secure") && flag("secure").is_none() {
             return Err("缺少安全輸入狀態。");
         }
-        for field in ["secure", "repeat", "capsLock", "inlinePreedit"] {
+        for field in ["secure", "repeat", "capsLock", "inlinePreedit", "panel"] {
             if r.contains_key(field) && flag(field).is_none() {
                 return Err("輸入狀態格式無效。");
             }
@@ -235,6 +255,19 @@ impl Host {
         if op == "mode" && flag("english").is_none() {
             return Err("中英模式格式無效。");
         }
+        let action = if op == "action" {
+            let value = || integer(r.get("value"), -1000.0, 1000.0).map(|n| n as i32);
+            Some(match r.get("action").and_then(Value::as_str) {
+                Some("pick") => Action::Pick(value().filter(|row| *row >= 0).ok_or("動作格式無效。")? as usize),
+                Some("page") => Action::Page(value().filter(|d| d.abs() == 1).ok_or("動作格式無效。")?),
+                Some("single") => Action::Single,
+                Some("corrections") => Action::Corrections,
+                Some("zhuyin") => Action::Zhuyin,
+                _ => return Err("動作格式無效。"),
+            })
+        } else {
+            None
+        };
         // 前文: the app and the text before the insertion point, when the platform reports them (IPC.md §前文).
         let text = |name: &str, limit: usize| match r.get(name) {
             None => Ok(None),
@@ -280,6 +313,7 @@ impl Host {
         self.anchor = rect;
         if op == "focus" {
             self.inline_preedit = flag("inlinePreedit").unwrap_or(true);
+            self.draws_panel = flag("panel").unwrap_or(false);
         }
         if let Some(secure) = flag("secure") {
             self.set_secure(controller, secure);
@@ -304,6 +338,13 @@ impl Host {
                 }
             }
             "mode" if !self.secure => controller.set_english(flag("english") == Some(true)),
+            "action" if !self.secure => match action.expect("validated") {
+                Action::Pick(row) => self.pick(controller, row),
+                Action::Page(delta) => self.turn_page(controller, delta),
+                Action::Single => self.toggle_single(controller),
+                Action::Corrections => self.toggle_corrections(controller),
+                Action::Zhuyin => self.type_reading(controller),
+            },
             "reset" => {
                 self.commit.clear();
                 let _ = controller.session_mut().reset();

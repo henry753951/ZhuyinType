@@ -1504,7 +1504,7 @@ fn bindings_width(labels: &[String], window: &Window) -> f32 {
             .iter()
             .map(|piece| match piece {
                 keycap::Piece::Text(text) => measure(text),
-                keycap::Piece::Icon(_) => icon,
+                keycap::Piece::Glyph(_) => icon,
                 keycap::Piece::Gap => keycap::gap(font_size),
             })
             .sum();

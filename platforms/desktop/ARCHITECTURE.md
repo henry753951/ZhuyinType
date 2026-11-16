@@ -10,10 +10,13 @@ Linux 與 Windows 的前端是一個 Rust 行程：用 [GPUI](https://www.gpui.r
 platforms/desktop/
   settings.json             所有頁面與嚮導共用的設定描述
   IPC.md                    服務與原生輸入法介面之間的通訊協定
+  crates/zt-panel/          候選字視窗本身，不依賴介面框架：顯示內容、樣式、版面、配色、鍵帽寫法與視窗位置；
+                            GPUI 與 TSF DLL 共用，兩邊畫出來的視窗一樣
   crates/zt-core/           不含介面：設定、路徑、引擎工作階段、輸入控制、快捷鍵、使用統計、改字記錄、
                             試打工作階段、通訊服務（Unix socket／named pipe）
   crates/zhuyintype/        GPUI App（執行檔 `zhuyintype`）：theme、ui/ 元件、pages/、candidate/、wizard/
-  crates/zt-tsf/            只用於 Windows：TSF 文字服務 DLL 與登記，以 Rust（`windows` crate）撰寫
+  crates/zt-tsf/            只用於 Windows：TSF 文字服務 DLL 與登記，以 Rust（`windows` crate）撰寫；
+                            候選字視窗與中英提示在應用程式內以 Direct2D 畫（panel_window.rs、panel_draw.rs）
   packaging/windows/        NSIS 安裝程式（正體中文介面、一次 UAC、登記 TSF、登入啟動、解除安裝）
   packaging/linux/          nfpm 產生 .deb／.rpm、桌面項目、自動啟動、Fcitx5 外掛設定
   scripts/                  remote.sh（Mac → GPU 主機）、build.sh（主機：Linux、Windows 與安裝檔）、screenshot.sh
@@ -71,4 +74,5 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 - 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
 - 動畫使用 `theme::motion`，系統要求減少動態效果時略過。
 - 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
+- Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。邊緣交給系統：Windows 11 的圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同）；沒有這些時（Windows 10、關閉透明效果）是實色並自己畫細框。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。Linux 仍由 App 畫浮動視窗。
 - 不顯示畫面的執行（截圖、測試）不在使用者的桌面開視窗，而在主機的虛擬顯示器上執行。

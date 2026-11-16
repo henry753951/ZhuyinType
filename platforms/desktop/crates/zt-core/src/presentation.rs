@@ -8,31 +8,8 @@ use std::ops::Range;
 
 use zhuyin_core::api::{Candidate, CandidateList};
 
-/// A rectangle in logical pixels (screen coordinates for the caret).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Rect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl Rect {
-    #[must_use]
-    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self { x, y, width, height }
-    }
-
-    #[must_use]
-    pub fn bottom(&self) -> f64 {
-        self.y + self.height
-    }
-
-    #[must_use]
-    pub fn right(&self) -> f64 {
-        self.x + self.width
-    }
-}
+/// A rectangle in logical pixels (screen coordinates for the caret), and where the candidate window goes.
+pub use zt_panel::position::{Rect, popup_position};
 
 /// One row of the current page.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,34 +139,39 @@ impl Presentation {
         (range.start <= range.end && range.end <= units.len()).then(|| String::from_utf16_lossy(&units[range.clone()]))
     }
 
+    /// What the candidate window shows of this (`zt_panel`), with the composition above the list when the
+    /// application cannot show it (`preview`).
+    #[must_use]
+    pub fn panel_model(&self, preview: Option<&str>) -> zt_panel::model::PanelModel {
+        zt_panel::model::PanelModel {
+            rows: self
+                .rows
+                .iter()
+                .map(|row| zt_panel::model::Row {
+                    key: row.key,
+                    text: row.text.clone(),
+                    annotation: row.annotation.clone(),
+                })
+                .collect(),
+            count: self.count,
+            page: self.page,
+            page_count: self.page_count,
+            page_size: self.page_size,
+            selected: self.selected,
+            reading: self.reading.clone(),
+            notice: self.notice.clone(),
+            single: self.single,
+            tolerant: self.tolerant,
+            focused_clause: self.focused_clause,
+            preview: preview.filter(|text| !text.is_empty()).map(str::to_owned),
+        }
+    }
+
     /// The focused clause's text.
     #[must_use]
     pub fn focused_text(&self) -> Option<String> {
         self.focused_clause.and_then(|index| self.clause_text(index))
     }
-}
-
-/// Where the candidate window goes (macOS `InputPanelPlacement`): below the caret's line (or above it, `above`) with a
-/// gap of 4, its text lined up with the composition (`text_inset`: the distance from the window's left edge to its
-/// text); on the other side when `screen` (the visible area) has no room, and always inside it.
-#[must_use]
-pub fn popup_position(anchor: Rect, width: f64, height: f64, above: bool, text_inset: f64, screen: Rect) -> (f64, f64) {
-    const GAP: f64 = 4.0;
-    let right = screen.right() - 1.0;
-    let bottom = screen.bottom() - 1.0;
-    let x = (anchor.x - text_inset).clamp(screen.x, screen.x.max(right - width + 1.0));
-    let below = anchor.bottom() + GAP;
-    let over = anchor.y - height - GAP;
-    let fits_below = below + height <= bottom + 1.0;
-    let fits_above = over >= screen.y;
-    let y = if above {
-        if fits_above || !fits_below { over } else { below }
-    } else if fits_below || !fits_above {
-        below
-    } else {
-        over
-    };
-    (x, y.clamp(screen.y, screen.y.max(bottom - height + 1.0)))
 }
 
 /// A list of fixed candidates that pages like the real one, for previews (port of the Qt `Candidates` model): the

@@ -1,0 +1,17 @@
+[package]
+name = "zt-panel"
+description = "ZhuyinType's candidate window without a UI toolkit: what it shows, its style, layout, colours and placement, shared by the GPUI app and the Windows text service that draws it inside applications"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

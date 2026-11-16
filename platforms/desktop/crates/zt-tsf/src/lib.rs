@@ -24,6 +24,10 @@ mod mode_button;
 #[cfg(windows)]
 mod module;
 #[cfg(windows)]
+mod panel_draw;
+#[cfg(windows)]
+mod panel_window;
+#[cfg(windows)]
 mod registration;
 #[cfg(windows)]
 mod text_service;

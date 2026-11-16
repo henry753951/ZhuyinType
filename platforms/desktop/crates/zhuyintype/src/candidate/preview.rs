@@ -22,7 +22,7 @@ use super::layout::{Extras, Measure as _, WindowMeasure};
 use super::panel::CandidatePanel;
 use super::sample;
 use super::scene::{Card, Scene, SceneLayout, focus, scene_card, seg};
-use super::style::{CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
+use super::style::{self, CurrentKeys, Layout, PanelAppearance, PanelStyle, selection_keys};
 use crate::app;
 use crate::pages::Page;
 use crate::theme::{self, size, text};
@@ -593,7 +593,7 @@ impl Render for UnifiedPreview {
         self.theme_dark = p.dark;
         let (settings, keys) = self.shown_settings(cx);
         self.notice_changes(&settings, &keys, window, cx);
-        let style = PanelStyle::from_settings(&settings, &keys);
+        let style = style::style_from_settings(&settings, &keys);
         let above = settings.string("candidatePlacement") == "above";
         let panel_palette = PanelAppearance::from_settings(&settings).palette(p.dark);
         let animates = settings.bool("panelAnimation");

@@ -229,6 +229,41 @@ fn listed_apps_show_composition_in_the_window() {
 }
 
 #[test]
+fn an_adapter_that_draws_the_window_gets_it_in_its_replies() {
+    let mut f = Fixture::new();
+    assert!(ok(&f.request("focus", json!({"secure": false, "panel": true}))));
+    assert!(!ok(&f.request("focus", json!({"secure": false, "panel": "yes"}))));
+    assert!(ok(&f.request("focus", json!({"secure": false, "panel": true}))));
+    f.ui_events();
+    f.keys("su3cl3");
+    let reply = f.key(code::DOWN);
+    assert_eq!(reply["candidates"], true);
+    let panel = &reply["panel"];
+    assert_eq!(panel["model"]["rows"][0]["text"], "你好");
+    assert_eq!(panel["model"]["selected"], 0);
+    assert_eq!(panel["style"]["layout"], "vertical");
+    assert_eq!(panel["appearance"], "system");
+    assert!(!f.visible(), "the app's own window stays hidden");
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Popup(Some(_)))));
+    // Unchanged: left out; changed: sent again.
+    assert!(f.request("poll", json!({})).get("panel").is_none());
+    let moved = f.key(code::DOWN);
+    assert_eq!(moved["panel"]["model"]["selected"], 1);
+    // A click on the second row picks it.
+    assert!(!ok(&f.request("action", json!({"action": "pick", "value": -1}))));
+    assert!(!ok(&f.request("action", json!({"action": "nonsense"}))));
+    let picked = f.request("action", json!({"action": "pick", "value": 0}));
+    assert_eq!(picked["preedit"], "你好", "the clause becomes the picked candidate");
+    assert_eq!(picked["panel"], Value::Null, "the window closes");
+    // The 中/英 badge comes in the reply, not as an event.
+    let shift = |release| json!({"secure": false, "key": code::SHIFT, "modifiers": if release { 0 } else { modifier::SHIFT }, "release": release});
+    f.request("key", shift(false));
+    let reply = f.request("key", shift(true));
+    assert_eq!(reply["toast"], "英");
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::ModeToast { .. })));
+}
+
+#[test]
 fn mode_switch_from_the_indicator() {
     let mut f = Fixture::new();
     assert!(ok(&f.request("focus", json!({"secure": false}))));

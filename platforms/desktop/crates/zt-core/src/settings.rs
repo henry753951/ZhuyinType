@@ -300,7 +300,8 @@ impl Settings {
 
 fn read(path: &Path) -> Result<BTreeMap<String, Value>> {
     let text = std::fs::read_to_string(path)?;
-    Ok(serde_json::from_str(&text)?)
+    // Editors on Windows (Notepad, PowerShell) may start the file with a byte-order mark.
+    Ok(serde_json::from_str(text.trim_start_matches('\u{feff}'))?)
 }
 
 /// Writes `bytes` to a temporary file beside `path`, then renames it over `path`.
@@ -324,6 +325,16 @@ mod tests {
         for descriptor in descriptors() {
             assert!(descriptor.accepts(&descriptor.default), "{}", descriptor.key);
         }
+    }
+
+    #[test]
+    fn a_byte_order_mark_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("zt-settings-bom-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, "\u{feff}{\"panelAppearance\": \"dark\"}").unwrap();
+        assert_eq!(Settings::open(Some(path)).string("panelAppearance"), "dark");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

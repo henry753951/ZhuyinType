@@ -5,77 +5,11 @@ use zt_core::settings::Settings;
 
 use crate::theme::Palette;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Layout {
-    Vertical,
-    Horizontal,
-}
+pub use zt_panel::style::{KeyLabels, Layout, PanelStyle};
 
-/// The key caps the window shows: each command's current first key, or "" when its feature is off or it has none.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyLabels {
-    /// Types the highlighted span's Zhuyin (the reading row's key cap).
-    pub zhuyin: String,
-    pub single: String,
-    pub corrections: String,
-    /// Clicking the reading row types the Zhuyin itself.
-    pub zhuyin_clickable: bool,
-}
-
-impl Default for KeyLabels {
-    fn default() -> Self {
-        Self { zhuyin: "`".into(), single: "⇧↓".into(), corrections: "⇧↑".into(), zhuyin_clickable: true }
-    }
-}
-
-/// Everything on the 「視窗與提示」 page that changes how the window looks.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PanelStyle {
-    pub layout: Layout,
-    pub font_size: f32,
-    pub compact: bool,
-    pub shows_zhuyin_hint: bool,
-    pub shows_annotations: bool,
-    pub shows_list_switches: bool,
-    pub keys: KeyLabels,
-}
-
-impl Default for PanelStyle {
-    fn default() -> Self {
-        Self {
-            layout: Layout::Vertical,
-            font_size: 18.,
-            compact: false,
-            shows_zhuyin_hint: true,
-            shows_annotations: true,
-            shows_list_switches: true,
-            keys: KeyLabels::default(),
-        }
-    }
-}
-
-impl PanelStyle {
-    /// The style the settings ask for now.
-    pub fn from_settings(settings: &Settings, keys: &CurrentKeys) -> Self {
-        Self {
-            layout: if settings.string("candidateLayout") == "horizontal" {
-                Layout::Horizontal
-            } else {
-                Layout::Vertical
-            },
-            font_size: settings.number("candidateFontSize").clamp(13., 28.) as f32,
-            compact: settings.string("candidateDensity") == "compact",
-            shows_zhuyin_hint: settings.bool("showsZhuyinHint"),
-            shows_annotations: settings.bool("showsAnnotations"),
-            shows_list_switches: settings.bool("showsListSwitches"),
-            keys: KeyLabels {
-                zhuyin: keys.text("typeZhuyin"),
-                single: keys.text("singleCharacterList"),
-                corrections: keys.text("correctionsList"),
-                zhuyin_clickable: settings.bool("feature.zhuyinRowClick"),
-            },
-        }
-    }
+/// The style the settings ask for now (`zt_core::panel::style` with these keys).
+pub fn style_from_settings(settings: &Settings, keys: &CurrentKeys) -> PanelStyle {
+    zt_core::panel::style(settings, |command| keys.text(command))
 }
 
 /// 「外觀」: the candidate window, the phrase notice and the 中/英 badge follow the system or are forced.
@@ -264,6 +198,6 @@ mod tests {
         assert_eq!(keys.text("correctionsList"), "");
         assert_eq!(keys.assigned("correctionsList"), ["⇧↑"]);
         assert_eq!(keys.selection(), "A S D F G");
-        assert_eq!(PanelStyle::from_settings(&settings, &keys).keys.corrections, "");
+        assert_eq!(super::style_from_settings(&settings, &keys).keys.corrections, "");
     }
 }

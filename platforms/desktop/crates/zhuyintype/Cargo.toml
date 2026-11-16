@@ -13,6 +13,7 @@ name = "zhuyintype"
 path = "src/main.rs"
 
 [dependencies]
+zt-panel.workspace = true
 gpui-kit.workspace = true
 zt-core.workspace = true
 serde.workspace = true

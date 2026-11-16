@@ -68,8 +68,6 @@ pub struct Palette {
     pub panel: Hsla,
     /// The candidate window's border.
     pub panel_border: Hsla,
-    /// Shadows of floating surfaces.
-    pub shadow: Hsla,
 }
 
 fn c(hex: u32) -> Hsla {
@@ -110,7 +108,6 @@ impl Palette {
             success: c(0x2f8f5b),
             panel: c(0xfefdfb),
             panel_border: ca(0x1e1c181f),
-            shadow: ca(0x1e1c1822),
         }
     }
 
@@ -143,7 +140,6 @@ impl Palette {
             success: c(0x5cc28a),
             panel: c(0x2a2927),
             panel_border: ca(0xfffcf024),
-            shadow: ca(0x0000006b),
         }
     }
 }
@@ -504,32 +500,7 @@ pub mod candidate {
 
     use super::Palette;
 
-    /// The shell: outer radius = padding + row radius, so the selection's corners run parallel to the window's.
-    pub const RADIUS: f32 = 10.;
-    pub const PADDING: f32 = 4.;
-    pub const ROW_RADIUS: f32 = RADIUS - PADDING;
-    /// Key caps of the reading row, the footer and the notices: borderless, `keycap` fill.
-    pub const KEYCAP_H: f32 = 18.;
-    pub const KEYCAP_RADIUS: f32 = 4.;
-    pub const KEYCAP_FONT: f32 = 11.;
-    /// The reading row's and the footer's labels.
-    pub const LABEL_FONT: f32 = 12.;
-    /// Between the selection key column and the candidate.
-    pub const NUMBER_GAP: f32 = 8.;
-    /// The number column's text, relative to the candidates' font size.
-    pub const NUMBER_SCALE: f32 = 0.62;
-    /// Between candidates in the horizontal layout.
-    pub const HORIZONTAL_GAP: f32 = 14.;
-    /// The vertical hairline between the last candidate and the footer in the horizontal layout.
-    pub const DIVIDER_H: f32 = 14.;
-    /// The paging chevrons.
-    pub const CHEVRON: f32 = 14.;
-    /// The 中/英 badge.
-    pub const BADGE: f32 = 44.;
-    pub const BADGE_FONT: f32 = 20.;
-    /// A notice on its own.
-    pub const NOTICE_H: f32 = 32.;
-    pub const NOTICE_ICON: f32 = 14.;
+    pub use zt_panel::tokens::{CHEVRON, KEYCAP_FONT, KEYCAP_RADIUS, NOTICE_ICON, RADIUS};
 
     /// The candidate window's colours in one appearance.
     #[derive(Clone, Debug)]
@@ -548,32 +519,32 @@ pub mod candidate {
         pub shadows: [BoxShadow; 2],
     }
 
-    /// `color`'s ink at exactly `alpha` (the spec's opacities on the palette's warm ink).
-    fn at(color: Hsla, alpha: f32) -> Hsla {
-        Hsla { a: alpha, ..color }
+    fn hsla(color: zt_panel::tokens::Rgba) -> Hsla {
+        gpui_kit::Rgba { r: color.r, g: color.g, b: color.b, a: color.a }.into()
     }
 
-    /// The window's colours for `p`'s appearance: the palette's panel, selection, hover and shadow inks at the
-    /// candidate window's own opacities (text colours come from `p` itself).
+    /// The window's colours for `p`'s appearance (`zt_panel::tokens`, shared with the Windows text service), with
+    /// the shadows this app draws itself.
     pub fn colors(p: &Palette) -> Colors {
         let dark = p.dark;
+        let shared = zt_panel::tokens::colors(dark);
         let pick = |light: f32, dark_value: f32| if dark { dark_value } else { light };
         let shadow = |alpha: f32, y: f32, blur: f32| BoxShadow {
-            color: at(p.shadow, alpha),
+            color: hsla(shared.shadow.fade(alpha)),
             offset: point(px(0.), px(y)),
             blur_radius: px(blur),
             spread_radius: px(if blur > 2. { -4. } else { 0. }),
             inset: false,
         };
         Colors {
-            surface: p.panel,
-            border: at(p.panel_border, 0.10),
-            outline: dark.then(|| at(gpui_kit::black(), 0.4)),
-            selection: at(p.selection, pick(0.07, 0.09)),
-            hover: at(p.hover, 0.04),
-            hairline: at(p.panel_border, 0.08),
-            keycap: at(p.subtle, pick(0.06, 0.07)),
-            keycap_on: at(p.text, pick(0.12, 0.14)),
+            surface: hsla(shared.surface),
+            border: hsla(shared.border),
+            outline: dark.then(|| gpui_kit::black().opacity(0.4)),
+            selection: hsla(shared.selection),
+            hover: hsla(shared.hover),
+            hairline: hsla(shared.hairline),
+            keycap: hsla(shared.keycap),
+            keycap_on: hsla(shared.keycap_on),
             shadows: [shadow(pick(0.06, 0.3), 1., 2.), if dark { shadow(0.5, 8., 24.) } else { shadow(0.16, 6., 20.) }],
         }
     }

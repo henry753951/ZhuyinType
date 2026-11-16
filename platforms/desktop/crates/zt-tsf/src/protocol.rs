@@ -6,8 +6,19 @@ use serde_json::{Map, Value};
 /// The largest frame either side sends, newline included.
 pub(crate) const MAX_FRAME: usize = 256 * 1024;
 
+/// The candidate window in a reply (`IPC.md` §候選字視窗).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) enum PanelUpdate {
+    /// Left out: as in the last reply.
+    #[default]
+    Unchanged,
+    /// `null`: no window.
+    Hidden,
+    Show(Box<zt_panel::style::Panel>),
+}
+
 /// What the text service needs from a reply.  Text is UTF-16, the unit TSF ranges count in.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Reply {
     pub(crate) handled: bool,
     pub(crate) candidates: bool,
@@ -18,6 +29,12 @@ pub(crate) struct Reply {
     pub(crate) preedit: Vec<u16>,
     /// The caret inside `preedit`, in UTF-16 units, never inside a surrogate pair.
     pub(crate) cursor: usize,
+    /// The candidate window, which the text service draws.
+    pub(crate) panel: PanelUpdate,
+    /// The 中/英 badge to show by the caret.
+    pub(crate) toast: Option<String>,
+    /// A page turn stopped at the list's end (1 past the last, -1 before the first): the page nudges.
+    pub(crate) boundary: Option<i32>,
 }
 
 impl Reply {
@@ -96,6 +113,19 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         Some(value) => value.as_bool()?,
         None => !preedit.is_empty() || candidates,
     };
+    let panel = match object.get("panel") {
+        None => PanelUpdate::Unchanged,
+        Some(Value::Null) => PanelUpdate::Hidden,
+        Some(value) => PanelUpdate::Show(Box::new(serde_json::from_value(value.clone()).ok()?)),
+    };
+    let toast = match object.get("toast") {
+        None => None,
+        Some(value) => Some(value.as_str().filter(|text| text.chars().count() <= 4)?.to_owned()),
+    };
+    let boundary = match object.get("boundary") {
+        None => None,
+        Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
+    };
     Some(Reply {
         handled: boolean("handled")?,
         candidates,
@@ -104,6 +134,9 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         commit: text("commit")?.encode_utf16().collect(),
         preedit,
         cursor,
+        panel,
+        toast,
+        boundary,
     })
 }
 
@@ -172,6 +205,34 @@ mod tests {
         let mut missing = good();
         missing.as_object_mut().unwrap().remove("english");
         assert!(parse_reply(&line(missing), 7, "{A}").is_none());
+    }
+
+    #[test]
+    fn panel_toast_and_boundary() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!((reply.panel, reply.toast, reply.boundary), (PanelUpdate::Unchanged, None, None));
+        let mut hidden = good();
+        hidden["panel"] = json!(null);
+        assert_eq!(parse_reply(&line(hidden), 7, "{A}").unwrap().panel, PanelUpdate::Hidden);
+        let panel = zt_panel::style::Panel {
+            model: zt_panel::model::PanelModel::default(),
+            style: zt_panel::style::PanelStyle::default(),
+            appearance: zt_panel::style::Appearance::Dark,
+            animates: true,
+            above: false,
+        };
+        let mut shown = good();
+        shown["panel"] = serde_json::to_value(&panel).unwrap();
+        shown["toast"] = json!("英");
+        shown["boundary"] = json!(-1);
+        let reply = parse_reply(&line(shown), 7, "{A}").unwrap();
+        assert_eq!(reply.panel, PanelUpdate::Show(Box::new(panel)));
+        assert_eq!((reply.toast.as_deref(), reply.boundary), (Some("英"), Some(-1)));
+        for (key, value) in [("panel", json!(3)), ("toast", json!(1)), ("boundary", json!(2))] {
+            let mut bad = good();
+            bad[key] = value;
+            assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
+        }
     }
 
     #[test]

@@ -24,7 +24,7 @@ use zt_core::service::{PopupAction, PopupState, UiEvent};
 use super::layout::{BADGE_H, BADGE_W, Extras, WindowMeasure};
 use super::panel::{ActionHandler, CandidatePanel, Chrome, SHADOW_MARGIN, ease_out, mode_badge_in, motion};
 use super::platform::{self, DeviceRect};
-use super::style::{CurrentKeys, PanelAppearance, PanelStyle};
+use super::style::{self, CurrentKeys, PanelAppearance};
 use crate::app;
 
 /// Where clicks in the candidate window go: the service, or (screenshots, demos) a stand-in.
@@ -247,7 +247,7 @@ fn show_candidates(state: PopupState, cx: &mut App) {
     let screen = screen_at(state.caret, cx);
     let settings = app::settings(cx).clone();
     let keys = CurrentKeys::new(&settings, app::service(cx));
-    let style = PanelStyle::from_settings(&settings, &keys);
+    let style = style::style_from_settings(&settings, &keys);
     let animates = settings.bool("panelAnimation");
     let above = settings.string("candidatePlacement") == "above";
     let appearance = PanelAppearance::from_settings(&settings);

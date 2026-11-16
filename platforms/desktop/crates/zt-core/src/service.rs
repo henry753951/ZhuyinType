@@ -96,6 +96,8 @@ struct Core {
     controller: InputController,
     host: Host,
     popup: Option<PopupState>,
+    /// The candidate window last sent in a reply to an adapter that draws it (unchanged ones are left out).
+    sent_panel: Option<Value>,
 }
 
 struct Shared {
@@ -220,7 +222,7 @@ impl Service {
                 shortcuts,
                 stats,
                 corrections,
-                core: Mutex::new(Core { controller, host: Host::default(), popup: None }),
+                core: Mutex::new(Core { controller, host: Host::default(), popup: None, sent_panel: None }),
                 events: sender,
                 data,
                 engine_error,
@@ -255,9 +257,10 @@ impl Service {
             let mut core = self.inner.core.lock();
             core.host.popup_apps = popup_apps(&self.inner.settings);
             let result = work(&mut core);
-            let Core { controller, host, popup } = &mut *core;
+            let Core { controller, host, popup, .. } = &mut *core;
             let effects = host.drain(controller);
-            let next = host.visible(controller).then(|| PopupState {
+            // An adapter that draws the window itself gets it in its replies; the app's own window stays hidden.
+            let next = (host.visible(controller) && !host.draws_panel()).then(|| PopupState {
                 presentation: controller.presentation().clone(),
                 caret: host.anchor(),
                 inline_preedit: host.inline_preedit(),
@@ -291,14 +294,56 @@ impl Service {
     }
 
     /// One broker request (also for tests that drive the service without a socket).
+    ///
+    /// An adapter that draws the candidate window itself (`"panel": true` at focus) gets the window in the reply's
+    /// `panel` (null: hidden; left out: unchanged since its last reply), the 中/英 badge in `toast` and a page turn
+    /// that stopped at the list's end in `boundary`, instead of the app showing them (`IPC.md` §候選字視窗).
     #[must_use]
     pub fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
         let mut effects = Vec::new();
-        let reply = self.with_core(|core| {
-            let (reply, found) = core.host.dispatch(&mut core.controller, connection, request);
+        let mut draws = false;
+        let mut reply = self.with_core(|core| {
+            let (mut reply, found) = core.host.dispatch(&mut core.controller, connection, request);
             effects = found;
+            draws = core.host.draws_panel() && reply.get("ok") == Some(&Value::Bool(true));
+            if draws {
+                let panel = if core.host.visible(&core.controller) {
+                    let shortcuts = &self.inner.shortcuts;
+                    let panel = crate::panel::panel(
+                        &self.inner.settings,
+                        |command| shortcuts.active_label(command),
+                        core.controller.presentation(),
+                        core.host.inline_preedit(),
+                    );
+                    serde_json::to_value(panel).unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                let focus = request.get("op").and_then(Value::as_str) == Some("focus");
+                if focus || core.sent_panel.as_ref() != Some(&panel) {
+                    reply.insert("panel".into(), panel.clone());
+                    core.sent_panel = Some(panel);
+                }
+            } else {
+                core.sent_panel = None;
+            }
             reply
         });
+        if draws {
+            effects.retain(|effect| match effect {
+                Effect::ModeToast { english } => {
+                    if self.inner.settings.bool("showModeToast") {
+                        reply.insert("toast".into(), Value::from(if *english { "英" } else { "中" }));
+                    }
+                    false
+                }
+                Effect::Boundary(direction) => {
+                    reply.insert("boundary".into(), Value::from(*direction));
+                    false
+                }
+                Effect::ShowSettings => true,
+            });
+        }
         self.emit(effects, None);
         reply
     }

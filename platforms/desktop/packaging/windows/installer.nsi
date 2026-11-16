@@ -207,6 +207,12 @@ Section "ZhuyinType" SecMain
   RMDir /r "$INSTDIR\licenses"
   SetOutPath "$INSTDIR\licenses"
   File /r "${STAGE}/licenses/*"
+  ; The candidate window's typeface, read by the text service inside running applications: a file in use stays as
+  ; it is (the same font) rather than failing the upgrade.
+  SetOutPath "$INSTDIR\fonts"
+  SetOverwrite try
+  File /r "${STAGE}/fonts/*"
+  SetOverwrite on
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -290,6 +296,7 @@ Section "un.ZhuyinType" UnSecMain
   Delete "$INSTDIR\background.lnk"
   RMDir /r "$INSTDIR\data"
   RMDir /r "$INSTDIR\licenses"
+  RMDir /r /REBOOTOK "$INSTDIR\fonts"
   Delete "$INSTDIR\uninstall.exe"
   RMDir /REBOOTOK "$INSTDIR"
   SetRebootFlag false
