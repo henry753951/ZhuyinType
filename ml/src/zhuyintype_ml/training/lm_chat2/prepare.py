@@ -5,7 +5,10 @@
     split     dev_dialogue.txt and test_dialogue.txt: 1,000 `previous<TAB>target` pairs each (900 gazette, 100
               talk page), whole documents reserved to one split; refuses to resample once splits.json exists
     prepare   training sentence shards and turn pairs for --variant real (no_generated/: real turns and Common
-              Voice) or mixed (also the 0.3.0 colloquial corpus); refuses to run twice
+              Voice) or mixed (also the 0.3.0 colloquial corpus); refuses to run twice.  control (control/) is real
+              again in a fresh tree; web (web/) is real plus 公共政策網路參與平臺 proposals (title, proposal,
+              benefits; never the proposer) and vTaiwan comments, with every tracked row set and the pushed
+              loss-analysis rows also blocked; web3 (web3/) keeps a fixed third of the proposal sentences
 
 Every training text equal to, or sharing 8 characters with, a holdout or any frozen evaluation file is removed,
 also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 workers).
@@ -17,6 +20,7 @@ also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 w
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import random
@@ -37,6 +41,54 @@ from zhuyintype_ml.training.lm_chat.train import grams, normalized
 
 OUT = paths.data("lm_chat2")
 RAW = raw("lm_chat2")
+VARIANTS = {"mixed": "", "real": "no_generated", "control": "control", "web": "web", "web3": "web3"}
+
+
+def variant_directory(variant: str) -> Path:
+    return OUT / VARIANTS[variant] if VARIANTS[variant] else OUT
+
+
+def row_files() -> list[Path]:
+    """Row sets (context|truth|syllables) the web corpus must not overlap: tracked ones and pushed analysis rows."""
+    files = sorted((paths.ROOT / "ml" / "eval-sets").rglob("*.txt"))
+    files += sorted(paths.data("loss-analysis", "rows").glob("*.txt"))
+    return [p for p in files if p.is_file()]
+
+
+def blocked_rows(files: list[Path]) -> set[str]:
+    """The context and truth of every row (a line without `|` counts whole)."""
+    texts: set[str] = set()
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            fields = line.split("|")
+            texts.update(f.strip() for f in (fields[:2] if len(fields) >= 3 else fields) if len(f.strip()) >= 4)
+    return texts
+
+
+def join_texts() -> Iterator[str]:
+    """Sentences of every cached 提點子 proposal: title, proposal and benefits (the proposer field is never read)."""
+    for path in sorted((RAW / "join").glob("idea-*.json")):
+        for row in json.loads(path.read_text(encoding="utf-8")):
+            if not isinstance(row, dict):
+                continue
+            for field in ("標題", "提議內容", "利益與影響"):
+                value = row.get(field)
+                if isinstance(value, str):
+                    yield from mkn.SPLIT.split(value)
+
+
+def third(sentence: str) -> bool:
+    """True for the two thirds of sentences web3 leaves out (a fixed hash, independent of order)."""
+    return hashlib.blake2b(sentence.encode(), digest_size=8).digest()[0] % 3 != 0
+
+
+def vtaiwan_texts() -> Iterator[str]:
+    """Sentences of the vTaiwan uberx comments that moderation did not reject."""
+    path = RAW / "vtaiwan" / "uberx-comments.csv"
+    with path.open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("moderated") != "-1":
+                yield from mkn.SPLIT.split(row.get("comment-body") or "")
 
 
 def evaluation_files() -> list[Path]:
@@ -333,13 +385,15 @@ def split() -> None:
 
 def prepare(variant: str, workers: int) -> None:
     """Training sentence shards and turn pairs of one variant (once)."""
-    out = OUT if variant == "mixed" else OUT / "no_generated"
+    out = variant_directory(variant)
     work = out / "work"
     work.mkdir(parents=True, exist_ok=True)
     marker = work / "prepared.json"
     if marker.exists():
         raise ValueError("training corpus already prepared")
     held = blocked_text(evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"])
+    if variant.startswith("web"):
+        held.update(blocked_rows(row_files()))
     # Canonical variants are also blocked so 台/臺 conversion cannot bypass the guard.
     held.update(normalize(s).replace("臺", "台") for s in list(held))
     machine = mkn.automaton(held)
@@ -398,6 +452,16 @@ def prepare(variant: str, workers: int) -> None:
                         add(sentence, record["source"])
         for line in (paths.data("corpus", "train_commonvoice.txt")).open():
             add(line.strip(), "commonvoice")
+        if variant.startswith("web"):
+            for source, texts in (("join", join_texts()), ("vtaiwan", vtaiwan_texts())):
+                for sentence in texts:
+                    sentence = sentence.strip()
+                    if variant == "web3" and source == "join" and third(sentence):
+                        counts[source + "_sampled_out"] += 1
+                    elif 4 <= len(sentence) <= 200 and valid(sentence):
+                        add(sentence, source)
+                    elif sentence:
+                        counts[source + "_invalid"] += 1
         if variant == "mixed":
             # Provenance of the 0.3.0 v3 colloquial corpus (data/build/v3 then) excludes TT: synthetic + Common Voice.
             for line in paths.data("v3_030", "colloquial.txt").open():
@@ -426,7 +490,7 @@ def prepare(variant: str, workers: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("phase", choices=["extract", "split", "prepare"])
-    p.add_argument("--variant", choices=["mixed", "real"], default="mixed")
+    p.add_argument("--variant", choices=list(VARIANTS), default="mixed")
     p.add_argument("--workers", type=int, default=24)
     a = p.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)

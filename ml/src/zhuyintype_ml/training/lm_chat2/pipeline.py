@@ -8,6 +8,10 @@ Steps run in the order they were run.  Review data/build/lm_chat2/source_samples
 `split`.  `split`, `real` and `mixed` never redo finished work (their modules refuse to); `--force` on them only
 reports that.  `real` is the shipped variant (no_generated/); `ship` copies it with its provenance into lm_chat/,
 first archiving the 0.3.0 TSVs there as lm_chat_v1/.
+
+The web experiment (2026-11-17, docs/research/slang-inventory.md proposal 2) adds public-written text:
+`web-sources` caches 公共政策網路參與平臺 proposals and the vTaiwan conversation, `control` retrains the shipped
+real variant in a fresh tree (control/), and `web` trains real plus that text (web/).  Neither replaces lm_chat/.
 """
 
 from __future__ import annotations
@@ -25,6 +29,12 @@ def sources(ctx: Context) -> None:
     """The three sources as cached for the experiment (the gazette API stopped at 506 of 800 documents)."""
     for source, *options in (["government", "--documents", "800"], ["wikipedia", "--batches", "20"], ["similar"]):
         ctx.python(f"{MODULE}.sources", source, *options)
+
+
+def web_sources(ctx: Context) -> None:
+    """公共政策網路參與平臺 proposals 2015–2026 and the vTaiwan uberx comments, with receipts."""
+    ctx.python(f"{MODULE}.sources", "join")
+    ctx.python(f"{MODULE}.sources", "vtaiwan")
 
 
 def once(marker: str, step: Callable[[Context], None]) -> Callable[[Context], None]:
@@ -55,8 +65,8 @@ def freeze(ctx: Context) -> None:
 
 
 def variant(name: str) -> Callable[[Context], None]:
-    """Prepares (once) and trains one variant: real → no_generated/, mixed → lm_chat2/."""
-    directory = "no_generated/work" if name == "real" else "work"
+    """Prepares (once) and trains one variant: real → no_generated/, mixed → lm_chat2/, control/ and web/."""
+    directory = {"real": "no_generated/work", "mixed": "work"}.get(name, f"{name}/work")
     prepare = once(
         f"{directory}/prepared.json",
         run(f"{MODULE}.prepare", "prepare", "--variant", name, "--workers", "24"),
@@ -125,6 +135,10 @@ PIPELINE = Pipeline(
             "dev conversion at chat priors 0.3/0.5/0.7; stopped at 7 of 24 rows (GPU host)",
             run(f"{MODULE}.evaluate", "--phase", "conversion"),
         ),
+        Step("web-sources", "cache 公共政策網路參與平臺 proposals and vTaiwan comments with receipts", web_sources),
+        Step("control", "the real variant retrained in a fresh tree, control/ (GPU host)", variant("control")),
+        Step("web", "real plus 公共政策網路參與平臺 and vTaiwan text, web/ (GPU host)", variant("web")),
+        Step("web3", "real plus a fixed third of the proposals and vTaiwan, web3/ (GPU host)", variant("web3")),
         Step("ship", "real variant and provenance into lm_chat/, the 0.3.0 model into lm_chat_v1/", ship),
     ),
 )

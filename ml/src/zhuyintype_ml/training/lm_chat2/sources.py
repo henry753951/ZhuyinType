@@ -5,6 +5,9 @@
     wikipedia    Chinese Wikipedia talk pages of at least 8,000 bytes (CC BY-SA 4.0), --batches API pages of 50,
                  ten seconds apart, honouring HTTP 429 Retry-After
     similar      one data.gov.tw meeting-minutes ODT, to check whether it holds speech (it holds only decisions)
+    join         公共政策網路參與平臺「提點子」proposals written by the public, one JSON per year (data.gov.tw/58036,
+                 OGDL v1); the platform's open data has no comments
+    vtaiwan      the one vTaiwan conversation in compdemocracy/openData (vtaiwan.uberx comments, CC BY 4.0)
 
 Every response is kept under data/raw/lm_chat2 with a .receipt.json (URL, licence, SHA-256, size, date, headers); a
 cached file whose hash no longer matches its receipt is an error.  Standard library only; may run on the Mac.
@@ -151,9 +154,37 @@ def similar(directory: Path) -> None:
     fetch(url, directory / "data-gov-16827-sample.odt", "Taiwan OGDL v1")
 
 
+JOIN = "https://join.gov.tw/toOpenData/v2/ey/idea?year={year}"
+OPEN_DATA = "3be5785c3f5975d31f4578ee8bbf4426d45b7bf2"  # compdemocracy/openData, 2026-03-08
+
+
+def join(directory: Path, first: int, last: int) -> None:
+    fetch("https://data.gov.tw/license", directory / "ogdl.html", "Taiwan OGDL v1")
+    for year in range(first, last + 1):
+        body = fetch(
+            JOIN.format(year=year),
+            directory / "join" / f"idea-{year}.json",
+            "Taiwan OGDL v1; 國家發展委員會 公共政策網路參與平臺 (data.gov.tw/58036)",
+        )
+        print("join", year, len(json.loads(body)), "proposals", flush=True)
+        time.sleep(2)
+
+
+def vtaiwan(directory: Path) -> None:
+    base = f"https://raw.githubusercontent.com/compdemocracy/openData/{OPEN_DATA}/"
+    fetch(base + "README.md", directory / "vtaiwan" / "README.md", "CC BY 4.0; The Computational Democracy Project")
+    fetch(
+        base + "vtaiwan.uberx/comments.csv",
+        directory / "vtaiwan" / "uberx-comments.csv",
+        "CC BY 4.0; The Computational Democracy Project (vTaiwan)",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", choices=["government", "wikipedia", "similar"])
+    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan"])
+    parser.add_argument("--first-year", type=int, default=2015)
+    parser.add_argument("--last-year", type=int, default=2026)
     parser.add_argument("--documents", type=int, default=800)
     parser.add_argument("--batches", type=int, default=100)
     parser.add_argument("--raw", type=Path, default=raw("lm_chat2"), help="default: data/raw/lm_chat2")
@@ -163,6 +194,10 @@ def main(argv: list[str] | None = None) -> int:
         government(a.raw, a.documents)
     elif a.source == "wikipedia":
         wikipedia(a.raw, a.batches)
+    elif a.source == "join":
+        join(a.raw, a.first_year, a.last_year)
+    elif a.source == "vtaiwan":
+        vtaiwan(a.raw)
     else:
         similar(a.raw)
     return 0

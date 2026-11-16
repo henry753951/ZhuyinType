@@ -1,0 +1,143 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "shipped",
+   "config": "app"
+  },
+  {
+   "name": "control",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/control"
+   ]
+  },
+  {
+   "name": "web",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/web"
+   ]
+  },
+  {
+   "name": "web3",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/web3"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "slang-slang",
+   "set": "slang-slang"
+  },
+  {
+   "name": "slang-particle",
+   "set": "slang-particle"
+  },
+  {
+   "name": "slang-loan",
+   "set": "slang-loan"
+  },
+  {
+   "name": "slang-japanese",
+   "set": "slang-japanese"
+  },
+  {
+   "name": "slang-entity",
+   "set": "slang-entity"
+  },
+  {
+   "name": "slang-newword",
+   "set": "slang-newword"
+  },
+  {
+   "name": "slang-reading",
+   "set": "slang-reading"
+  },
+  {
+   "name": "slang-variant",
+   "set": "slang-variant"
+  },
+  {
+   "name": "slang-zhuyinwen",
+   "set": "slang-zhuyinwen"
+  },
+  {
+   "name": "shanjie-dev302",
+   "set": "shanjie-dev302"
+  },
+  {
+   "name": "shanjie-typing76",
+   "set": "shanjie-typing76"
+  },
+  {
+   "name": "shanjie-reported",
+   "set": "shanjie-reported"
+  },
+  {
+   "name": "shanjie-fw",
+   "set": "shanjie-fw"
+  },
+  {
+   "name": "shanjie-trap",
+   "set": "shanjie-trap"
+  },
+  {
+   "name": "shanjie-daily",
+   "set": "shanjie-daily"
+  },
+  {
+   "name": "sj-net-slang",
+   "set": "data/build/loss-analysis/rows/sj-dev-net-slang-words.txt"
+  },
+  {
+   "name": "sj-net-slang2",
+   "set": "data/build/loss-analysis/rows/sj-dev-net-slang-round2.txt"
+  },
+  {
+   "name": "sj-stores",
+   "set": "data/build/loss-analysis/rows/sj-dev-names-stores.txt"
+  },
+  {
+   "name": "sj-it",
+   "set": "data/build/loss-analysis/rows/sj-dev-it-words.txt"
+  },
+  {
+   "name": "sj-user-dev",
+   "set": "data/build/loss-analysis/rows/sj-dev-user-reported.txt"
+  },
+  {
+   "name": "sj-holdout",
+   "set": "data/build/loss-analysis/rows/sj-dev-holdout-2026-10-03-holdout.txt"
+  },
+  {
+   "name": "sj-talk",
+   "set": "data/build/loss-analysis/rows/sj-holdout-talk.txt"
+  },
+  {
+   "name": "sj-talk2",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-2-talk.txt"
+  },
+  {
+   "name": "sj-talk3",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-3-talk.txt"
+  },
+  {
+   "name": "sj-news",
+   "set": "data/build/loss-analysis/rows/sj-holdout-news.txt"
+  },
+  {
+   "name": "sj-neutral",
+   "set": "data/build/loss-analysis/rows/sj-dev-neutral-words.txt"
+  },
+  {
+   "name": "sj-moedict",
+   "set": "data/build/loss-analysis/rows/sj-sets-moedict.txt"
+  }
+ ]
+}
