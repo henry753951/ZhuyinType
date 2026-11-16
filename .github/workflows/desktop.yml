@@ -87,14 +87,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang lld llvm nsis imagemagick
-          # Ubuntu ships no clang-cl; clang called by that name runs in cl mode.  lld-link and llvm-rc are in the
-          # LLVM bin directory.
+          rustup show active-toolchain || rustup toolchain install
+          # Ubuntu ships no clang-cl; clang called by that name runs in cl mode.  The linker is the toolchain's own
+          # rust-lld called as lld-link: Ubuntu's lld 18 rejects the EXPORTAS exports rustc writes for the 32-bit DLL.
+          # llvm-rc is in the LLVM bin directory.
           llvm=$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1)
           mkdir -p "$HOME/.local/bin"
           ln -sf "$llvm/clang" "$HOME/.local/bin/clang-cl"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          ln -sf "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld" "$HOME/.local/bin/lld-link"
           echo "$llvm" >> "$GITHUB_PATH"
-          rustup show active-toolchain || rustup toolchain install
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           cargo install --locked cargo-xwin
       - if: steps.script.outputs.present == 'true'
         uses: actions/cache@v6
