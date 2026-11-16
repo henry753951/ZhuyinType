@@ -89,6 +89,7 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
   - 發布說明與對外文字比照正式產品；
   - 提到其他輸入法時視為相關工作：說明對方的貢獻、註明出處、寫出比較的條件與限制，不寫成要打敗的對象。
 - GPU 主機上的長時間工作用 `nohup`，記錄放在 `~/zhuyintype/logs/`。不要用模糊的名稱比對來終止程序。
+- **提交與推送前的檢查不可略過**：`tools/zt setup` 會開啟 `tools/git-hooks`（`core.hooksPath`）。每次 commit 檢查暫存檔案的格式與 lint（`cargo fmt --check`、`ruff check`、`ruff format --check`、Swift 的 `swift-format lint` 規則、隱私檢查），每次 push 再加上 clippy（引擎與桌面版，有 `.remote.env` 時在 GPU 主機上編譯）、mypy 與 Python 測試，範圍是這次推送新增的變更（`tools/check-changes.sh`）。CI 擋下的格式或 lint 問題應該在本機就被擋下；hook 失敗時修正後再提交，不要用 `--no-verify` 跳過，除非使用者明確要求。新 checkout 或新 worktree 先跑一次 `tools/zt setup`。
 - Python 用 uv、ruff 與 mypy，`tools/zt check all` 必須通過。Rust 在 `engine/` 執行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo deny check`，必須零警告。
 - 引擎的改變用 `engine/parity/gate.sh` 和 main 的建置逐行比對（`engine/README.md`「比對」）：開發時每次修改跑快速比對（`--quick`，幾分鐘），合併前與合併 main 之後跑完整比對。不應改變行為的修改（重構、效能）必須 0 差異；有意改變行為的修改要說明差異的範圍，並附上評測。golden 摘要（`engine/parity/golden/digests.tsv`）記錄的是 Swift 引擎的結果，只在有意改變行為時重新記錄。比對在 GPU 主機上跑，優先於主機上其他工作，不加 `nice`；主機上另開一份 checkout 跑快速比對與 `cargo` 檢查，不和完整比對共用建置目錄。
 - 提交訊息結尾附上工作階段要求的署名行；不要對 `main` 強制推送。

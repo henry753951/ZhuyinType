@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Formatting and lint of the staged files before every commit (tools/check-changes.sh; `tools/zt setup` installs
+# this directory as core.hooksPath).  Skip deliberately with `git commit --no-verify`.
+exec "$(git rev-parse --show-toplevel)/tools/check-changes.sh" --staged

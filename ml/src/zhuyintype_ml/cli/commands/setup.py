@@ -5,14 +5,18 @@ zt setup --group export           # also the ONNX export packages (PyTorch, onnx
 zt setup --group train --group dev
 zt setup --install-onnxruntime    # Linux: ONNX Runtime C SDK into ~/opt (or ONNXRUNTIME_ROOT)
 zt setup --quiet                  # print only problems (zt --remote runs this on the host)
+
+In a git checkout it also turns on the hooks in tools/git-hooks (core.hooksPath): every commit checks the staged
+files' formatting and lint, every push also runs clippy, types and tests for what it adds (tools/check-changes.sh).
 """
 
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 
-from zhuyintype_ml.core import environment
+from zhuyintype_ml.core import environment, paths
 
 GROUPS = ("dev", "data", "export", "train")
 
@@ -42,7 +46,22 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser.set_defaults(func=run)
 
 
+def install_hooks(quiet: bool) -> None:
+    """Points git at tools/git-hooks, so format and lint failures stop a commit or a push here, not on CI."""
+    hooks = "tools/git-hooks"
+    if not (paths.ROOT / hooks).is_dir() or not (paths.ROOT / ".git").exists():
+        return
+    current = subprocess.run(
+        ["git", "-C", str(paths.ROOT), "config", "--get", "core.hooksPath"], capture_output=True, text=True
+    ).stdout.strip()
+    if current != hooks:
+        subprocess.run(["git", "-C", str(paths.ROOT), "config", "core.hooksPath", hooks], check=True)
+    if not quiet:
+        print(f"✓ {'git hooks':12} {hooks} (pre-commit, pre-push)")
+
+
 def run(args: argparse.Namespace) -> int:
+    install_hooks(args.quiet)
     if args.install_onnxruntime:
         print(f"ONNX Runtime: {environment.install_onnxruntime()}")
     missing = 0

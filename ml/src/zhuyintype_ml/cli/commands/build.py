@@ -46,9 +46,7 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     gui.add_argument(
         "--native", action="store_true", help="compile the packages on this machine, not in the Debian 13 image"
     )
-    gui.set_defaults(
-        func=lambda a: desktop.build(a.target, release=a.release, package=a.package, native=a.native)
-    )
+    gui.set_defaults(func=lambda a: desktop.build(a.target, release=a.release, package=a.package, native=a.native))
 
     cli = targets.add_parser("cli", help="zhuyin-cli (engine/crates/zhuyin-cli)")
     cli.add_argument("--debug", action="store_true", help="debug build (default: release)")
