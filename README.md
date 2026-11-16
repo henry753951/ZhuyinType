@@ -4,20 +4,26 @@
 
 # ZhuyinType 注音
 
-開源、在本機運作的注音輸入法，目前提供 macOS 安裝檔。<br>
+開源、在本機運作的注音輸入法，支援 macOS、Windows 與 Linux。<br>
 整句選字、修正按錯的鍵、依前文調整用語，所有輸入都在這台電腦上處理。
+
+[![下載 macOS 版](https://img.shields.io/badge/macOS-%E4%B8%8B%E8%BC%89%20.pkg-1d1d1f?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-macOS.pkg)
+[![下載 Windows 版](https://img.shields.io/badge/Windows-%E4%B8%8B%E8%BC%89%20.exe-0067c0?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0yIDMuNSAxMC41IDIuM3Y4LjlIMnptOS41LTEuM0wyMiAuOHYxMC40SDExLjV6TTIgMTIuOGg4LjV2OC45TDIgMjAuNXptOS41IDBIMjJ2MTAuNGwtMTAuNS0xLjR6Ii8+PC9zdmc+)](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Windows-x64-setup.exe)
+[![下載 Linux .deb](https://img.shields.io/badge/Debian%20%C2%B7%20Ubuntu-%E4%B8%8B%E8%BC%89%20.deb-c7244c?style=for-the-badge&logo=debian&logoColor=white)](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-amd64.deb)
+[![下載 Linux .rpm](https://img.shields.io/badge/Fedora%20%C2%B7%20openSUSE-%E4%B8%8B%E8%BC%89%20.rpm-3c6eb4?style=for-the-badge&logo=fedora&logoColor=white)](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-x86_64.rpm)
 
 [![最新版本](https://img.shields.io/github/v/release/henry753951/ZhuyinType?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases/latest)
 [![下載次數](https://img.shields.io/github/downloads/henry753951/ZhuyinType/total?label=%E4%B8%8B%E8%BC%89&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases)
-[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-3969FA)](#安裝)
+[![發布日期](https://img.shields.io/github/release-date/henry753951/ZhuyinType?label=%E7%99%BC%E5%B8%83%E6%97%A5%E6%9C%9F&color=3969FA)](https://github.com/henry753951/ZhuyinType/releases/latest)
 [![授權](https://img.shields.io/github/license/henry753951/ZhuyinType?label=%E6%8E%88%E6%AC%8A)](LICENSE)
 <br>
 [![Engine](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/engine.yml?branch=main&label=Engine&logo=rust)](https://github.com/henry753951/ZhuyinType/actions/workflows/engine.yml)
 [![macOS](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/macos.yml?branch=main&label=macOS&logo=swift&logoColor=white)](https://github.com/henry753951/ZhuyinType/actions/workflows/macos.yml)
+[![Windows 與 Linux](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/desktop.yml?branch=main&label=Windows%20%E8%88%87%20Linux)](https://github.com/henry753951/ZhuyinType/actions/workflows/desktop.yml)
 [![ML](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/ml.yml?branch=main&label=ML&logo=python&logoColor=white)](https://github.com/henry753951/ZhuyinType/actions/workflows/ml.yml)
 [![ZhuyinBench](https://img.shields.io/github/actions/workflow/status/henry753951/ZhuyinType/benchmark.yml?label=ZhuyinBench)](docs/benchmarks/)
 
-[下載](#安裝) · [發布說明](docs/releases/) · [每版成績](docs/benchmarks/) · [文件](docs/README.md) · [規劃](docs/ROADMAP.md)
+[下載](#下載) · [系統需求](#系統需求) · [安裝](#安裝) · [移除](#移除) · [發布說明](docs/releases/) · [每版成績](docs/benchmarks/) · [文件](docs/README.md)
 
 </div>
 
@@ -48,62 +54,141 @@
 - **記住你的用法**：選過的字詞與常一起出現的詞會越打越順，也可以新增自訂詞。
 - **在本機處理**：選字不連網路，前文只放在記憶體中，密碼欄位裡暫停讀取前文與學習。
 
-## 安裝
+## 下載
 
-最新版本的安裝檔固定在 [最新發布頁](https://github.com/henry753951/ZhuyinType/releases/latest)，下方連結會自動指向最新版：
+下方連結固定指向 [最新版本](https://github.com/henry753951/ZhuyinType/releases/latest)；舊版本與檢查碼（`SHA256SUMS-desktop.txt`）在 [所有發布](https://github.com/henry753951/ZhuyinType/releases)。
 
-| 平台 | 下載 | 需求 |
+| 系統 | 下載 | 適用 |
 |---|---|---|
-| macOS | [ZhuyinType-macOS.pkg](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-macOS.pkg) | macOS 14 或更新版本 |
-| Windows | 暫停提供編譯成品 | 原始碼保留供開發 |
-| Linux | 暫停提供編譯成品 | 原始碼保留供開發 |
+| macOS | [ZhuyinType-macOS.pkg](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-macOS.pkg) | macOS 14 以後，Apple 晶片 |
+| Windows | [ZhuyinType-Windows-x64-setup.exe](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Windows-x64-setup.exe) | Windows 10、11（64 位元） |
+| Debian、Ubuntu | [ZhuyinType-Linux-amd64.deb](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-amd64.deb) | Debian 13、Ubuntu 25.04 以後 |
+| Fedora、openSUSE | [ZhuyinType-Linux-x86_64.rpm](https://github.com/henry753951/ZhuyinType/releases/latest/download/ZhuyinType-Linux-x86_64.rpm) | Fedora 42 以後、openSUSE Tumbleweed |
+
+## 各系統的支援
+
+三個系統使用同一個引擎，選字結果相同；設定頁與設定嚮導的功能、版面一致。macOS 版使用原生外觀，Windows 與 Linux 版共用一套自己的介面。
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| 輸入法架構 | InputMethodKit | TSF（64 與 32 位元的程式都能用） | Fcitx 5 |
+| 整句輸入、按錯鍵修正、依前文選字、記住用法 | ✓ | ✓ | ✓ |
+| 神經模型（逐字評分、整句重排） | ✓ | 尚未提供 | 尚未提供 |
+| 設定、設定嚮導、自訂詞 | ✓ | ✓ | ✓ |
+| 候選字視窗 | 原生視窗 | 在打字的程式內繪製，開始功能表搜尋也看得到 | X11 由 ZhuyinType 繪製；Wayland 由 Fcitx 5 顯示 |
+| 自動更新 | ✓ | 下載新版安裝 | 下載新版套件安裝 |
+| 安裝檔簽章 | 未公證 | 未簽章 | 未簽章 |
+
+## 系統需求
+
+**macOS**
+
+- macOS 14 Sonoma 或更新版本。
+- Apple 晶片（M 系列）的 Mac。Intel 處理器的 Mac 目前沒有安裝檔，可從原始碼建置。
+- 約 200 MB 的磁碟空間。
+
+**Windows**
+
+- Windows 10 或 Windows 11，64 位元（x64）。ARM 版 Windows 尚不支援。
+- 安裝時需要系統管理員權限（一次 UAC 確認）。
+- 約 150 MB 的磁碟空間。不需要另外安裝 Visual C++ 執行階段。
+
+**Linux**
+
+- x86_64 的 Debian 13、Ubuntu 25.04、Fedora 42、openSUSE Tumbleweed 或更新版本。
+- Fcitx 5（5.1.9 以後）作為輸入法框架，套件會自動安裝。Ubuntu 與 Fedora 的 GNOME 預設使用 IBus，需要先切換到 Fcitx 5（見[安裝](#linux)）。
+- 支援 Vulkan 的顯示卡驅動程式（Mesa 即可）。
+- 約 150 MB 的磁碟空間。
+
+## 安裝
 
 ### macOS
 
-開啟 `ZhuyinType-<版本>.pkg`，依指示安裝，需要管理員權限。套件會安裝到 `/Library/Input Methods/ZhuyinType.app`。
+開啟 `ZhuyinType-macOS.pkg`，依指示安裝，需要管理員權限。套件會安裝到 `/Library/Input Methods/ZhuyinType.app`。
 
 第一次使用時：
 
 1. 開啟「系統設定 → 鍵盤 → 輸入方式 → 編輯」（部分版本顯示為「文字輸入」）。
-2. 按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。已加入時可直接進行下一步。
+2. 按「＋」，選擇「繁體中文」，加入「ZhuyinType 注音」。
 3. 從選單列的輸入法選單選擇「注音 ZhuyinType」，或按 Control-Space 切換（依系統快捷鍵設定）。
 
 清單尚未出現時，請登出再登入。每個帳號各自加入輸入方式。
 
-之後的版本會在你停止打字後自動更新（設定 → 關於 → 更新），更新檔都經過簽章驗證，正在使用的輸入法會在組字結束後換成新版，不需要登出或重新選擇輸入法。
-
 > [!NOTE]
-> 目前 app 採 ad-hoc 簽章，pkg 的簽署與公證尚待完成，套件使用建置機的架構。若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」查看開啟選項。曾從原始碼安裝者，請先移除 `~/Library/Input Methods/ZhuyinType.app`，再使用 pkg 版本。
+> App 採 ad-hoc 簽章，pkg 尚未簽署與公證。若 macOS 顯示安全性提示，請至「系統設定 → 隱私權與安全性」選擇仍要開啟。曾從原始碼安裝者，請先移除 `~/Library/Input Methods/ZhuyinType.app`。
 
 ### Windows
 
-編譯成品已撤下，以下為既有開發版本的安裝方式。
+1. 執行 `ZhuyinType-Windows-x64-setup.exe`，在 UAC 視窗按「是」，依指示完成安裝。
+2. 安裝程式會把「ZhuyinType 注音」加入你的輸入法清單，並設定登入時啟動。這台電腦的其他帳號下次登入時也會加入。
+3. 按 Win＋空白鍵切換到 ZhuyinType。第一次開啟時，設定嚮導會帶你選好打法並試打。
 
-解壓縮 `ZhuyinType-Windows-x64.zip`，在資料夾中以 PowerShell 執行 `install.ps1`。安裝程式會：
-
-- 把程式放到 `%LOCALAPPDATA%\ZhuyinType`，並註冊「ZhuyinType 注音」輸入法；
-- 設定登入後自動啟動，並在開始功能表建立「ZhuyinType Settings」捷徑。
-
-安裝後到「設定 → 時間與語言 → 語言與地區」確認已加入「ZhuyinType 注音」，再以 Win＋空白鍵切換。工作列的輸入指示器左格顯示「中」／「英」，按一下切換；右格是 ZhuyinType 的標誌，右鍵可開啟設定。
-
-解除安裝：執行 `install.ps1 -Uninstall`。
+工作列的輸入指示器顯示「中」或「英」，按一下切換；在上面按右鍵可開啟設定。開始功能表也有「ZhuyinType 設定」。
 
 > [!NOTE]
-> 安裝檔尚未簽章，Windows 可能顯示 SmartScreen 提示；請確認來源為本發布頁後，選擇「其他資訊 → 仍要執行」。
+> 安裝程式尚未簽章，Windows 可能顯示「Windows 已保護您的電腦」。確認檔案是從本專案的發布頁下載後，選擇「其他資訊 → 仍要執行」。
 
 ### Linux
 
-編譯成品已撤下，以下為既有開發版本的安裝方式。
-
-Ubuntu 26.04 可用 `apt` 安裝需求：
-
 ```sh
-sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts qml6-module-qtquick-shapes qml6-module-qtquick-dialogs qml6-module-qtquick-window qml6-module-qtquick-templates
+sudo apt install ./ZhuyinType-Linux-amd64.deb        # Debian、Ubuntu
+sudo dnf install ./ZhuyinType-Linux-x86_64.rpm       # Fedora
+sudo zypper install ./ZhuyinType-Linux-x86_64.rpm    # openSUSE
 ```
 
-解開 `ZhuyinType-Linux-x86_64.tar.gz` 後，在資料夾中執行 `./install.sh`。安裝程式會複製 Fcitx 5 附加元件、啟動服務，並設定登入後自動啟動。之後在 Fcitx 5 設定中加入「ZhuyinType」並切換使用。
+在檔案管理員中按兩下套件檔，也能以軟體中心安裝。相依套件（Fcitx 5、字型、繪圖函式庫）會一併安裝。安裝後：
 
-目前 Linux 版使用 X11 桌面（Xfce、GNOME、KDE 的 X11 工作階段）；Wayland 原生候選字視窗尚未完成，Wayland 工作階段會顯示提示並停止服務。
+1. 目前的輸入法框架不是 Fcitx 5 時（例如 GNOME 預設的 IBus），執行 `/usr/lib/zhuyintype/fcitx5-setup framework` 把它設為 Fcitx 5。
+2. 登出再登入一次。登入時輸入法服務會在背景啟動，並把 ZhuyinType 加入 Fcitx 5 的輸入方式，原有的輸入方式不變。
+3. 以 Fcitx 5 的切換鍵（預設 Ctrl＋空白鍵）切換到 ZhuyinType。從應用程式選單開啟「ZhuyinType 設定」，設定嚮導會帶你選好打法並試打。
+
+## 更新
+
+- **macOS**：有新版本時，在你停止打字後自動更新（設定 → 關於 → 更新）。更新檔都經過簽章驗證，正在使用的輸入法會在組字結束後換成新版，不需要登出。
+- **Windows**：下載新版安裝程式直接執行，會覆蓋舊版並保留設定與個人資料。正在使用輸入法的程式繼續使用舊版，重新開啟後換成新版，不需要重新開機。
+- **Linux**：以同樣的安裝指令安裝新版套件。設定與個人資料保留在家目錄。
+
+設定頁的「關於」會顯示目前的版本，並連到發布頁。
+
+## 移除
+
+移除程式時，自訂詞、記住的字詞與設定預設保留，重新安裝後可以繼續使用。要一併刪除的位置列在各系統之後。
+
+### macOS
+
+1. 先切換到其他輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」選取 ZhuyinType，按「－」移除。
+2. 在終端機執行：
+
+   ```sh
+   sudo rm -rf "/Library/Input Methods/ZhuyinType.app"
+   sudo pkgutil --forget org.zhuyintype.pkg
+   ```
+
+3. 登出再登入。
+
+個人資料：`~/Library/Application Support/ZhuyinType`，設定可用 `defaults delete org.zhuyintype.inputmethod.ZhuyinType` 刪除。從原始碼安裝者可執行 `platforms/macos/scripts/uninstall.sh`（加上 `--purge` 會一併刪除個人資料）。
+
+### Windows
+
+「設定 → 應用程式 → 已安裝的應用程式 → ZhuyinType 注音輸入法 → 解除安裝」。解除安裝程式會移除輸入法、登入啟動、捷徑與登錄項目，並刪除程式；在「選取元件」頁勾選「同時刪除我的自訂詞、學習記錄與設定」可一併刪除個人資料。仍被其他程式載入的檔案會在下次開機時刪除。
+
+也可以用指令安靜解除安裝：
+
+```bat
+"C:\Program Files\ZhuyinType\uninstall.exe" /S
+```
+
+個人資料：`%APPDATA%\ZhuyinType`（設定）與 `%LOCALAPPDATA%\ZhuyinType`（自訂詞、學習記錄、使用統計）。
+
+### Linux
+
+```sh
+sudo apt remove zhuyintype      # Debian、Ubuntu；apt purge 會一併刪除登入啟動設定
+sudo dnf remove zhuyintype      # Fedora
+sudo zypper remove zhuyintype   # openSUSE
+```
+
+移除後在 Fcitx 5 設定中刪除 ZhuyinType 輸入方式。個人資料：`~/.config/zhuyintype`（設定）與 `~/.local/share/zhuyintype`（自訂詞、學習記錄、使用統計）。
 
 ## 基本按鍵
 
@@ -202,7 +287,7 @@ sudo apt install fcitx5 libqt6quick6 qml6-module-qtcore qml6-module-qtquick qml6
 4. 整句重排：引擎對首選沒有把握時，字級 Transformer 語言模型（v2b）依前文為前 16 句評分，選出最後顯示的整句。你選過的詞會保留。
 5. 送出與學習：送出後更新個人統計與記住的字詞；選了修正過的字時，記下按錯的鍵。
 
-詞庫與語言模型以 mmap 載入，常駐記憶體約 29 MB。兩個神經模型在 CPU 上執行：macOS 使用 Core ML，Windows 與 Linux 使用 ONNX Runtime。
+詞庫與語言模型以 mmap 載入，常駐記憶體約 29 MB。兩個神經模型在 CPU 上以 Core ML 執行；Windows 與 Linux 版目前只使用第 ① 到 ③ 層的統計部分，神經模型尚未接上。
 
 ## 準確率
 
@@ -255,12 +340,6 @@ tools/zt check engine    # 引擎的測試（cargo test --release）
 | `docs/` | 產品設計、引擎架構與模型、評測、規劃、研究、每版成績、發布說明（[文件地圖](docs/README.md)） |
 
 給 AI 代理與貢獻者的說明在 [AGENTS.md](AGENTS.md)。
-
-## 移除
-
-- **macOS**：先切換至英文輸入方式，並在「系統設定 → 鍵盤 → 輸入方式」移除 ZhuyinType，再刪除安裝的 app。原始碼提供 `platforms/macos/scripts/uninstall.sh`，可移除系統與目前帳號的 app，預設保留自訂詞、記住的字詞與設定；執行 `platforms/macos/scripts/uninstall.sh --purge` 會一併刪除這些個人資料。
-- **Windows**：在安裝資料夾中執行 `install.ps1 -Uninstall`。
-- **Linux**：在安裝資料夾中執行 `./install.sh --uninstall`。
 
 ## 文件
 

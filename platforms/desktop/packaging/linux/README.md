@@ -5,9 +5,9 @@ ZhuyinType 的 Linux 版以一般的發行版套件安裝：Debian／Ubuntu 用 
 ## 安裝與移除（使用者）
 
 ```sh
-sudo apt install ./zhuyintype_0.5.3_amd64.deb      # Debian 13、Ubuntu 25.04 以後
-sudo dnf install ./zhuyintype-0.5.3.x86_64.rpm     # Fedora 42 以後
-sudo zypper install ./zhuyintype-0.5.3.x86_64.rpm  # openSUSE Tumbleweed
+sudo apt install ./ZhuyinType-Linux-amd64.deb        # Debian 13、Ubuntu 25.04 以後
+sudo dnf install ./ZhuyinType-Linux-x86_64.rpm       # Fedora 42 以後
+sudo zypper install ./ZhuyinType-Linux-x86_64.rpm    # openSUSE Tumbleweed
 
 sudo apt remove zhuyintype                         # 或 sudo apt purge zhuyintype
 sudo dnf remove zhuyintype
@@ -104,4 +104,4 @@ platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop
 
 ## 發布
 
-`release.yml` 目前只發布 macOS 版。`desktop.yml` 在每次修改 `platforms/desktop` 或 `platforms/linux` 時建置這兩個套件，以 artifact 保存。發布流程接上時，在推送 `vX.Y.Z` 標籤的工作中執行 `platforms/desktop/scripts/build.sh linux --package`，把 `dist/desktop/` 的 `.deb`、`.rpm` 與 `SHA256SUMS-linux` 附加到同一個 GitHub release。
+`desktop.yml` 在每次修改 `platforms/desktop` 或 `platforms/linux` 時建置這兩個套件（並在乾淨的容器中安裝、移除），以 artifact 保存。推送 `vX.Y.Z` 標籤時，`release.yml` 先呼叫 `desktop.yml`，三個平台都建置成功才發布：GitHub release 附上 `zhuyintype_<版本>_amd64.deb`、`zhuyintype-<版本>.x86_64.rpm`，以及固定檔名的 `ZhuyinType-Linux-amd64.deb`、`ZhuyinType-Linux-x86_64.rpm`（README 的下載連結指向 `releases/latest/download/` 的這兩個檔名），檢查碼在 `SHA256SUMS-desktop.txt`。版本號取自 `platforms/desktop/Cargo.toml`，必須和標籤相同。

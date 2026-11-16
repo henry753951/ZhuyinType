@@ -1,6 +1,7 @@
 # ZhuyinType for Linux and Windows on every change to platforms/desktop or platforms/linux: the .deb and .rpm (built
 # in the Debian 13 image by scripts/build.sh, then installed and removed in clean containers) and the Windows
-# installer (cross-compiled with cargo-xwin, NSIS), kept as artifacts.  Releases still come from release.yml.
+# installer (cross-compiled with cargo-xwin, NSIS), kept as artifacts.  release.yml calls this workflow for a v* tag and
+# attaches the artifacts to the release.
 name: Desktop
 
 on:
@@ -20,6 +21,7 @@ on:
       - "resources/assets.json"
       - ".github/workflows/desktop.yml"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: desktop-${{ github.ref }}

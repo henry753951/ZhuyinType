@@ -70,10 +70,14 @@ App 一律以登入的使用者身分啟動、不提升權限：安裝程式本�
 4. 刪除程式檔案。仍被應用程式載入的 DLL 改名後排定下次開機刪除，安裝資料夾也在那時刪除。
 5. 個人資料（`%APPDATA%\ZhuyinType` 的設定、`%LOCALAPPDATA%\ZhuyinType` 的自訂詞、學習記錄、使用統計與改字記錄）預設保留；在「選取元件」頁勾選「同時刪除我的自訂詞、學習記錄與設定」才刪除。
 
+## 發布
+
+推送 `vX.Y.Z` 標籤時，`release.yml` 呼叫 `desktop.yml` 建置安裝程式，附加到 GitHub release：`ZhuyinType-<版本>-windows-x64-setup.exe`，以及固定檔名的 `ZhuyinType-Windows-x64-setup.exe`（README 的下載連結指向 `releases/latest/download/` 的這個檔名），檢查碼在 `SHA256SUMS-desktop.txt`。
+
 ## 安靜安裝與參數
 
 ```bat
-ZhuyinType-0.5.3-windows-x64-setup.exe /S
+ZhuyinType-Windows-x64-setup.exe /S
 "C:\Program Files\ZhuyinType\uninstall.exe" /S
 ```
 

@@ -21,6 +21,12 @@
 
 ## 2. 版本
 
+### 0.6.0：Windows 與 Linux 版
+
+發布說明見 [releases/v0.6.0.md](releases/v0.6.0.md)。
+
+Linux 與 Windows 改用 `platforms/desktop/` 的 GPUI 程式（取代 Qt 客戶端），Windows 的 TSF 文字服務以 Rust 重寫並在應用程式行程內畫候選字視窗，組字以顯示屬性標示詞與正在替換的詞。發布流程（`release.yml`）呼叫 `desktop.yml`，三個平台都建置成功才發布，附上 NSIS 安裝程式、`.deb` 與 `.rpm`。引擎與模型不變；Windows 與 Linux 尚未接上神經模型，見 [Linux 與 Windows 版](product/DESKTOP.md)。
+
 ### 0.5.3：右 Shift 單按切換
 
 發布說明見 [releases/v0.5.3.md](releases/v0.5.3.md)。
