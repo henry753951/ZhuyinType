@@ -90,12 +90,10 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           # Ubuntu ships no clang-cl; clang called by that name runs in cl mode.  The linker is the toolchain's own
           # rust-lld called as lld-link: Ubuntu's lld 18 rejects the EXPORTAS exports rustc writes for the 32-bit DLL.
-          # llvm-rc is in the LLVM bin directory.
-          llvm=$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1)
+          # llvm-rc comes from the llvm package (/usr/bin).
           mkdir -p "$HOME/.local/bin"
-          ln -sf "$llvm/clang" "$HOME/.local/bin/clang-cl"
+          ln -sf "$(readlink -f "$(command -v clang)")" "$HOME/.local/bin/clang-cl"
           ln -sf "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld" "$HOME/.local/bin/lld-link"
-          echo "$llvm" >> "$GITHUB_PATH"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           cargo install --locked cargo-xwin
       - if: steps.script.outputs.present == 'true'
