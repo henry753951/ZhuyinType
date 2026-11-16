@@ -87,6 +87,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang lld llvm nsis imagemagick
+          # Ubuntu ships no clang-cl; clang called by that name runs in cl mode.  lld-link and llvm-rc are in the
+          # LLVM bin directory.
+          llvm=$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1)
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$llvm/clang" "$HOME/.local/bin/clang-cl"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$llvm" >> "$GITHUB_PATH"
           rustup show active-toolchain || rustup toolchain install
           cargo install --locked cargo-xwin
       - if: steps.script.outputs.present == 'true'
