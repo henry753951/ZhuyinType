@@ -1,9 +1,11 @@
 # ZhuyinType: the shared engine (engine/, Rust), its data, training and evaluation (ml/), and the macOS client
 # (platforms/macos).  Every target runs from the repository root and calls tools/zt (`tools/zt help` lists more).
-.PHONY: setup fetch lexicon data app debug-app install pkg checks cli test lint types clean
+.PHONY: setup hooks fetch lexicon data app debug-app install pkg checks cli test lint types clean
 
 setup:              ## check tools, prepare the uv environment
 	tools/zt setup
+hooks:              ## the format and lint checks the git hooks run, for every file (tools/check-changes.sh --all)
+	tools/check-changes.sh --all
 fetch:              ## download the pinned data and models into data/build
 	tools/zt data fetch
 lexicon:            ## build or reuse data/build/lexicon.tsv

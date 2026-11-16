@@ -35,8 +35,9 @@ PyTorch 在 Linux 上使用 CUDA 13.0 的版本（`download.pytorch.org/whl/cu13
 
 | 指令 | 說明 |
 |---|---|
-| `zt setup` | 檢查 uv、cargo、git，macOS 另查 Swift 與 Xcode、Linux 另查 ONNX Runtime，再 `uv sync`；缺少的工具會附上安裝方式 |
+| `zt setup` | 檢查 uv、cargo、git，macOS 另查 Swift 與 Xcode、Linux 另查 ONNX Runtime，再 `uv sync`，並開啟 `tools/git-hooks`；缺少的工具會附上安裝方式 |
 | `zt setup --group export --group dev` | 一併安裝相依群組 |
+| `tools/check-changes.sh --staged`／`--push BASE`／`--all` | git hooks 執行的格式與 lint 檢查，也可以手動執行；`zt setup` 會把 `tools/git-hooks` 設為 `core.hooksPath`，commit 前檢查暫存檔案，push 前再跑 clippy、mypy 與測試 |
 | `zt setup --install-onnxruntime` | Linux：把 ONNX Runtime 1.24.4 C SDK 下載到 `~/opt`（或 `ONNXRUNTIME_ROOT` 所在的目錄） |
 | `zt setup --quiet` | 只印出缺少的項目（`zt --remote` 在主機上每次都先執行） |
 
