@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     }
     with tempfile.TemporaryDirectory() as work:
         for name, source in sources.items():
-            quantize_dynamic(str(source), str(Path(work) / f"{name}.onnx"), per_channel=True, weight_type=QuantType.QInt8)
+            target = Path(work) / f"{name}.onnx"
+            quantize_dynamic(str(source), str(target), per_channel=True, weight_type=QuantType.QInt8)
         subprocess.run(
             [sys.executable, "-m", "onnxruntime.tools.convert_onnx_models_to_ort", "--optimization_style=Fixed", work],
             check=True,
