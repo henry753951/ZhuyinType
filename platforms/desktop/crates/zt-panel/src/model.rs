@@ -71,6 +71,12 @@ pub struct PanelModel {
     /// The list is next-word suggestions after a commit (聯想詞), not conversions: the window says so.
     #[serde(default)]
     pub associated: bool,
+    /// The footer for a span shown through an automatic correction: 「你打的是 ㄊㄜˇ」 (+「 · ⌫ 還原」).
+    #[serde(default)]
+    pub typed: Option<String>,
+    /// UTF-16 ranges of `preview` shown through an automatic correction (a dotted underline marks them).
+    #[serde(default)]
+    pub preview_corrected: Vec<std::ops::Range<usize>>,
 }
 
 impl PanelModel {

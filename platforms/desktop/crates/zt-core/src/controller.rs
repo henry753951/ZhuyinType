@@ -967,6 +967,13 @@ impl InputController {
             corrected = true;
         }
         let now = self.clock();
+        // ⌫ (or a command) put an automatic correction back to the keys as typed: counted on its own, not as a
+        // deletion.
+        let reverted = handled && after.reverted;
+        if reverted {
+            sink(&UsageEvent::CorrectionReverted);
+            corrected = true;
+        }
         match input {
             ObservedInput::Key { input: key, .. } => {
                 let u = &mut self.usage;
@@ -985,7 +992,7 @@ impl InputController {
                 } else {
                     u.literal_before = None;
                     if matches!(key, KeyInput::Backspace | KeyInput::OptionBackspace) {
-                        if handled && !before.is_empty() && !before.has_list() {
+                        if handled && !reverted && !before.is_empty() && !before.has_list() {
                             sink(&UsageEvent::Backspace);
                             corrected = true;
                         } else if !handled

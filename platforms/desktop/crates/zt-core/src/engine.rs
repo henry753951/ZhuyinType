@@ -260,6 +260,7 @@ impl Values {
             page_at_list_edge: self.bool("pageAtListEdge", true),
             character_forms: CharacterForms::from_raw(self.string("characterForms")).unwrap_or_default(),
             punctuation_keys: PunctuationKeys::from_raw(self.string("punctuationKeys")).unwrap_or_default(),
+            undo_correction_with_backspace: self.bool("undoCorrectionWithBackspace", true),
             ..ComposerOptions::default()
         }
     }
@@ -427,6 +428,10 @@ impl EngineSession {
                     &open.composer.options().selection_keys,
                     page_size,
                     open.engine.reading_channel().is_some(),
+                )
+                .with_correction_marks(
+                    self.values.bool("showCorrections", true),
+                    self.values.bool("undoCorrectionWithBackspace", true),
                 );
                 p.row_actions = p
                     .rows
@@ -645,6 +650,18 @@ impl EngineSession {
         self.committed.clear();
         self.refresh();
         Ok(())
+    }
+
+    /// Puts the correction in the open window's span (else the one the last key made, else the one at the cursor's
+    /// target) back to the keys as typed; false when there is none.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn revert_correction(&mut self) -> Result<bool> {
+        let reverted = self.require()?.composer.revert_correction();
+        self.committed.clear();
+        self.refresh();
+        Ok(reverted)
     }
 
     /// The width of punctuation typed from now on.

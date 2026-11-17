@@ -77,6 +77,18 @@ int main() {
             CHECK(bad.size() == 1 && bad[0].text == "你好" && bad[0].mark == Mark::Word);
             CHECK(preeditParts("ㄓ", {}, std::nullopt, std::nullopt).size() == 1);
             CHECK(preeditParts("", {}, std::nullopt, std::nullopt).empty());
+            // 「標示自動修正」: the parts cut again at the corrections, inside a word or across two.
+            const auto marked = preeditParts("你特別好𠀀", {{0,1},{1,3},{3,4},{4,6}}, std::nullopt, 1, {{2,3},{4,6}});
+            CHECK(marked.size() == 5);
+            CHECK(marked[0].text == "你" && !marked[0].corrected);
+            CHECK(marked[1].text == "特" && marked[1].mark == Mark::Target && !marked[1].corrected);
+            CHECK(marked[2].text == "別" && marked[2].mark == Mark::Target && marked[2].corrected);
+            CHECK(marked[3].text == "好" && !marked[3].corrected);
+            CHECK(marked[4].text == "𠀀" && marked[4].corrected);
+            const auto across = preeditParts("你好嗎", {{0,1},{1,2},{2,3}}, std::nullopt, std::nullopt, {{0,2}});
+            CHECK(across.size() == 3 && across[0].corrected && across[1].corrected && !across[2].corrected);
+            const auto outside = preeditParts("你好", {{0,2}}, std::nullopt, std::nullopt, {{1,3}});
+            CHECK(outside.size() == 1 && !outside[0].corrected);
         }
         CHECK(translateKey(fcitx::Key(FcitxKey_Shift_R))->shiftSide == 2);
         CHECK(translateKey(fcitx::Key(FcitxKey_c,fcitx::KeyState::Ctrl))->modifiers == 0x04000000);

@@ -56,6 +56,8 @@ pub enum UsageEvent {
     DeleteAfterCommit,
     LiteralZhuyin,
     UndoLiteral,
+    /// An automatic correction put back to the keys as typed (⌫ right after it, or in its window).
+    CorrectionReverted,
     PhraseAdded,
     /// Reserved for platforms with a reranker.
     CorrectionShown,
@@ -83,6 +85,7 @@ pub struct Counters {
     pub undo_literal: i64,
     pub corrected_shown: i64,
     pub corrected_committed: i64,
+    pub corrections_reverted: i64,
     pub phrases_added: i64,
     pub typing_milliseconds: i64,
     pub thinking_milliseconds: i64,
@@ -196,8 +199,8 @@ const PAUSE_BOUNDS: &[f64] = &[2., 3., 4., 5., 6., 8., 10., 13., 16., 20., 25., 
 macro_rules! fields {
     ($($name:literal => $field:ident),* $(,)?) => {
         impl Counters {
-            fn fields_mut(&mut self) -> [(&'static str, &mut i64); 18] { [$(($name, &mut self.$field)),*] }
-            fn fields(&self) -> [(&'static str, i64); 18] { [$(($name, self.$field)),*] }
+            fn fields_mut(&mut self) -> [(&'static str, &mut i64); 19] { [$(($name, &mut self.$field)),*] }
+            fn fields(&self) -> [(&'static str, i64); 19] { [$(($name, self.$field)),*] }
         }
     };
 }
@@ -207,7 +210,7 @@ fields! {
     "picksSingle" => picks_single, "picksPunctuation" => picks_punctuation, "backspaces" => backspaces,
     "escapes" => escapes, "deleteAfterCommit" => delete_after_commit, "literalZhuyin" => literal_zhuyin,
     "undoLiteral" => undo_literal, "correctedShown" => corrected_shown, "correctedCommitted" => corrected_committed,
-    "phrasesAdded" => phrases_added, "typingMilliseconds" => typing_milliseconds,
+    "correctionsReverted" => corrections_reverted, "phrasesAdded" => phrases_added, "typingMilliseconds" => typing_milliseconds,
     "thinkingMilliseconds" => thinking_milliseconds,
 }
 
@@ -614,6 +617,7 @@ impl Store {
             UsageEvent::DeleteAfterCommit => delta.delete_after_commit = 1,
             UsageEvent::LiteralZhuyin => delta.literal_zhuyin = 1,
             UsageEvent::UndoLiteral => delta.undo_literal = 1,
+            UsageEvent::CorrectionReverted => delta.corrections_reverted = 1,
             UsageEvent::PhraseAdded => delta.phrases_added = 1,
             UsageEvent::CorrectionShown => {
                 self.saw_corrected = true;

@@ -1,4 +1,5 @@
 #include "Keys.h"
+#include <algorithm>
 #include <fcitx-utils/utf8.h>
 #include <limits>
 
@@ -89,8 +90,39 @@ std::optional<int> cursorBytes(std::string_view text, size_t utf16Offset) {
     if (units != utf16Offset) return std::nullopt;
     return static_cast<int>(it - text.begin());
 }
-std::vector<PreeditPart> preeditParts(std::string_view preedit, const std::vector<std::pair<size_t, size_t>> &clauses,
-                                      std::optional<size_t> focus, std::optional<size_t> target) {
+namespace {
+// `parts` (which cover `preedit` in order) cut at the byte ranges of `corrections` and marked inside them.
+std::vector<PreeditPart> markCorrections(std::string_view preedit, std::vector<PreeditPart> parts,
+                                         const std::vector<std::pair<size_t, size_t>> &corrections) {
+    std::vector<std::pair<int, int>> ranges;
+    int last = 0;
+    for (const auto &[first, second] : corrections) {
+        const auto start = cursorBytes(preedit, first);
+        const auto end = cursorBytes(preedit, second);
+        if (!start || !end || *start < last || *end <= *start) return parts;
+        ranges.emplace_back(*start, *end);
+        last = *end;
+    }
+    if (ranges.empty()) return parts;
+    std::vector<PreeditPart> result;
+    int offset = 0;
+    for (auto &part : parts) {
+        const int partEnd = offset + static_cast<int>(part.text.size());
+        int at = offset;
+        for (const auto &[start, end] : ranges) {
+            if (end <= at || start >= partEnd) continue;
+            if (start > at) result.push_back({part.text.substr(at - offset, start - at), part.mark});
+            const int cut = std::min(end, partEnd);
+            result.push_back({part.text.substr(std::max(start, at) - offset, cut - std::max(start, at)), part.mark, true});
+            at = cut;
+        }
+        if (at < partEnd) result.push_back({part.text.substr(at - offset), part.mark});
+        offset = partEnd;
+    }
+    return result;
+}
+std::vector<PreeditPart> clauseParts(std::string_view preedit, const std::vector<std::pair<size_t, size_t>> &clauses,
+                                     std::optional<size_t> focus, std::optional<size_t> target) {
     std::vector<PreeditPart> parts;
     const std::vector<PreeditPart> whole{{std::string(preedit), Mark::Word}};
     if (preedit.empty()) return {};
@@ -106,6 +138,13 @@ std::vector<PreeditPart> preeditParts(std::string_view preedit, const std::vecto
     }
     if (static_cast<size_t>(done) < preedit.size()) parts.push_back({std::string(preedit.substr(done)), Mark::Word});
     return parts;
+}
+}
+
+std::vector<PreeditPart> preeditParts(std::string_view preedit, const std::vector<std::pair<size_t, size_t>> &clauses,
+                                      std::optional<size_t> focus, std::optional<size_t> target,
+                                      const std::vector<std::pair<size_t, size_t>> &corrections) {
+    return markCorrections(preedit, clauseParts(preedit, clauses, focus, target), corrections);
 }
 std::string_view undelivered(std::string_view commit, std::string_view delivered) {
     if (delivered.empty()) return commit;

@@ -203,6 +203,12 @@ impl Host {
             object.insert("focus".into(), index(p.focused_clause));
             object.insert("target".into(), index(p.target_clause));
             object.insert("clauses".into(), clauses.into());
+            // The words shown through an automatic correction (「標示自動修正」: empty, so left out, when off).
+            if !p.corrected.is_empty() {
+                let corrections: Vec<Value> =
+                    p.corrected.iter().map(|range| Value::from(vec![range.start, range.end])).collect();
+                object.insert("corrections".into(), corrections.into());
+            }
         }
         object.insert("preedit".into(), preedit.into());
         object.insert("cursor".into(), cursor.into());

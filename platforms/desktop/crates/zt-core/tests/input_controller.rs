@@ -295,6 +295,52 @@ fn usage_events_follow_mac_stats() {
 }
 
 #[test]
+fn corrections_are_marked_and_backspace_puts_them_back() {
+    let mut f = Fixture::with_lexicon(common::CORRECTION_LEXICON);
+    f.settings.set("recordsUsageStats", Value::Bool(true)).unwrap();
+    let events: Arc<Mutex<Vec<UsageEvent>>> = Arc::default();
+    let sink_events = events.clone();
+    let sink: UsageSink = Arc::new(move |event| sink_events.lock().push(*event));
+    f.input.set_usage_sink(Some(sink));
+    let take = || std::mem::take(&mut *events.lock());
+    f.type_keys("wk3");
+    let p = f.input.presentation();
+    assert_eq!(p.composition, "乙", "the tone corrected");
+    assert!(p.corrected.len() == 1 && p.corrected[0] == (0..1), "「標示自動修正」 marks it");
+    assert!(p.backspace_reverts, "「⌫ 還原自動修正」 is on by default");
+    take();
+    // ⌫ right after the correction converts the keys as typed; counted as a revert, not a deletion.
+    assert!(f.press(code::BACKSPACE, 0));
+    assert_eq!(f.composition(), "甲");
+    assert!(f.input.presentation().corrected.is_empty());
+    let seen = take();
+    assert!(seen.contains(&UsageEvent::CorrectionReverted));
+    assert!(!seen.contains(&UsageEvent::Backspace));
+    // The window on a corrected span names the keys as typed.
+    f.input.deactivate();
+    f.type_keys("wk3");
+    assert!(f.press(code::DOWN, 0));
+    let p = f.input.presentation();
+    assert_eq!(p.typed_reading.as_deref(), Some("ㄊㄜˇ"));
+    assert_eq!(p.typed_footer().as_deref(), Some("你打的是 ㄊㄜˇ · ⌫ 還原"));
+    assert_eq!(p.panel_model(None).typed.as_deref(), Some("你打的是 ㄊㄜˇ · ⌫ 還原"));
+    f.settings.set("undoCorrectionWithBackspace", Value::Bool(false)).unwrap();
+    f.input.deactivate();
+    f.type_keys("wk3");
+    assert!(!f.input.presentation().backspace_reverts);
+    assert!(f.press(code::DOWN, 0));
+    assert_eq!(f.input.presentation().typed_footer().as_deref(), Some("你打的是 ㄊㄜˇ"));
+    // 「標示自動修正」 off: no marks, no footer.
+    f.settings.set("showCorrections", Value::Bool(false)).unwrap();
+    f.input.deactivate();
+    f.type_keys("wk3");
+    assert_eq!(f.composition(), "乙");
+    assert!(f.input.presentation().corrected.is_empty());
+    assert!(f.press(code::DOWN, 0));
+    assert_eq!(f.input.presentation().typed_footer(), None);
+}
+
+#[test]
 fn correction_log_writes_mac_records() {
     let mut f = Fixture::new();
     let log = CorrectionLog::open(Some(&f.dir.join("user")));
