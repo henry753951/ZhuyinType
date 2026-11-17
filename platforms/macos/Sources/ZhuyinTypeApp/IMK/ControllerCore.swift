@@ -367,7 +367,8 @@ final class ControllerCore {
             }
             return false
         }
-        guard keyCode == 56 || keyCode == 60 else {
+        // A Shift tap while the symbol picker is open does not switch 中/英.
+        guard keyCode == 56 || keyCode == 60, symbolPicker == nil else {
             shiftTap = nil
             return false
         }

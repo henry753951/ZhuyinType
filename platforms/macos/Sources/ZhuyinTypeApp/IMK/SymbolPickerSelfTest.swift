@@ -57,7 +57,7 @@ enum SymbolPickerSelfTest {
             try expect(Preferences(defaults: MemorySettingsStorage()).isEnabled(KeyFeature.symbolPicker), "the picker is off by default")
         }
 
-        test("symbols: the shortcut opens and closes the picker; Esc closes; nothing is typed") {
+        test("symbols: the shortcut opens and closes the picker; Esc closes; nothing is typed; Shift does not switch") {
             let (core, client, _) = session()
             var shown = 0
             var hidden = 0
@@ -68,6 +68,10 @@ enum SymbolPickerSelfTest {
             _ = press(core, comma, shortcut)
             try expect(press(core, 53) && !core.isSymbolPickerOpen, "Esc did not close the picker")
             try expect(client.inserts.isEmpty, "opening and closing typed something: \(client.inserts)")
+            _ = press(core, comma, shortcut)
+            _ = core.flagsChanged(keyCode: 56, modifiers: .shift, physicallyDown: true, timestamp: 1)
+            _ = core.flagsChanged(keyCode: 56, modifiers: [], physicallyDown: false, timestamp: 1.1)
+            try expect(!core.isEnglish && core.isSymbolPickerOpen, "a Shift tap with the picker open switched to English")
         }
 
         test("symbols: turned off, the shortcut goes to the app; in English mode it opens the picker too") {
