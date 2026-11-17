@@ -191,6 +191,11 @@ fn click_and_commit_all() {
     let (mut composer, _) = after_thanks(&engine, true);
     composer.set_associated_phrases(false);
     assert!(composer.presentation().is_empty(), "turning the setting off closes the list");
+    // Another setting redraws: the list is gone, and ⇧1 is no longer a pick.
+    let (mut composer, _) = after_thanks(&engine, true);
+    composer.set_options(ComposerOptions { vertical_list: false, ..options() });
+    assert!(composer.presentation().is_empty());
+    assert_eq!(composer.handle(KeyInput::ShiftedChar('1')).commit, None);
 }
 
 #[test]

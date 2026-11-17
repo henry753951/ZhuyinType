@@ -1871,6 +1871,8 @@ impl Composer {
             self.notice = Some(format!("Enter 加入自訂詞：{}", self.shown(&range)));
         }
         self.presentation = self.present();
+        // Anything that redraws the composition (a setting, a model) ends the 聯想詞 list it replaced.
+        self.predictions.clear();
     }
 
     /// Words the user picked in this place before stay: the reranker chooses among the sentences that keep them.
