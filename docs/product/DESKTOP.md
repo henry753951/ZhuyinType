@@ -14,9 +14,9 @@
 
 | 設定 | 選項 | 預設 | 內容 |
 |---|---|---|---|
-| 主題（`theme`） | 跟隨系統、淺色、深色 | 跟隨系統 | App 畫的每個視窗：設定視窗、設定嚮導、候選字視窗與中英提示。Windows 的標題列與視窗邊框（`DWMWA_USE_IMMERSIVE_DARK_MODE`）也跟著主題 |
+| 主題（`theme`） | 跟隨系統、淺色、深色 | 跟隨系統 | App 畫的每個視窗：設定視窗、設定嚮導、候選字視窗與中英提示。Linux 的 Wayland 工作階段中候選字視窗與中英提示由 Fcitx 5 顯示，樣式是 Fcitx 的，不跟著主題（見「尚未完成」）。Windows 的標題列與視窗邊框（`DWMWA_USE_IMMERSIVE_DARK_MODE`）也跟著主題 |
 | 透明效果（`transparency`） | 跟隨系統、開啟、關閉 | 跟隨系統 | 視窗背景透出桌面的顏色。「跟隨系統」在 Windows 依照「設定 › 個人化 › 色彩 › 透明效果」（`EnableTransparency`），在 KDE Plasma 為開啟 |
-| 候選字視窗（`panelAppearance`） | 跟隨主題、淺色、深色 | 跟隨主題 | 只改候選字視窗與中英提示，和 macOS 的「外觀」是同一個設定與值（`system` 在這裡表示跟隨主題） |
+| 候選字視窗（`panelAppearance`） | 跟隨主題、淺色、深色 | 跟隨主題 | 只改候選字視窗與中英提示（Wayland 工作階段中由 Fcitx 5 顯示，不受這個設定影響），和 macOS 的「外觀」是同一個設定與值（`system` 在這裡表示跟隨主題） |
 
 改設定立即套用，不需要重新開啟。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
 
