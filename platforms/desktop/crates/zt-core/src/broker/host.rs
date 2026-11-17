@@ -69,6 +69,25 @@ enum Action {
     Undo,
 }
 
+/// A command the user can run with nothing composed, whose keys the adapter must claim (`Host::claims`).
+struct IdleCommand {
+    id: &'static str,
+    /// Also in English mode.
+    in_english: bool,
+    /// Also in a private field (no 前文 is sent from it).
+    in_private: bool,
+}
+
+/// Every command reachable with nothing composed.  Others act on the composition or the candidate list, while the
+/// adapter claims every key anyway.
+const IDLE_COMMANDS: [IdleCommand; 3] = [
+    // 開啟快速設定 and 符號與 Emoji: in either mode (Ctrl+Alt chords are otherwise the application's or AltGr's).
+    IdleCommand { id: "quickSettings", in_english: true, in_private: true },
+    IdleCommand { id: "symbolPicker", in_english: true, in_private: true },
+    // 選取的字加入自訂詞 reads the field's selection: Chinese mode only, never from a private field.
+    IdleCommand { id: "addSelectedText", in_english: false, in_private: false },
+];
+
 /// The broker's state: who has focus, and the text waiting for its next reply.
 #[derive(Debug)]
 pub struct Host {
@@ -92,8 +111,8 @@ pub struct Host {
     /// 繁／簡 asked for by `op: "quick"`, for the service to set once its lock is released (a setting's observer
     /// takes that lock).
     pending_script: Option<bool>,
-    /// The 開啟快速設定 keys last sent in `hotkeys` (IPC.md §快速設定).
-    sent_hotkeys: Option<Vec<(i32, u32)>>,
+    /// The keys last sent in `claims` (IPC.md §攔截的按鍵).
+    sent_claims: Option<Vec<(i32, u32)>>,
 }
 
 impl Default for Host {
@@ -111,7 +130,7 @@ impl Default for Host {
             flush: false,
             popup_apps: Vec::new(),
             pending_script: None,
-            sent_hotkeys: None,
+            sent_claims: None,
         }
     }
 }
@@ -232,6 +251,31 @@ impl Host {
         }
     }
 
+    /// The keys an adapter that passes on only the keys it knows the service takes (TSF) must claim with nothing
+    /// composed (IPC.md §攔截的按鍵): the bound keys of every command in `IDLE_COMMANDS` that can run in this field
+    /// and mode now.  None in a secure field, where the service takes no key.
+    fn claims(&self, controller: &InputController) -> Vec<(i32, u32)> {
+        let mut claims = Vec::new();
+        if self.secure {
+            return claims;
+        }
+        let shortcuts = controller.shortcuts();
+        let allowed = |command: &IdleCommand| {
+            (command.in_english || !controller.english())
+                && (command.in_private || !controller.private())
+                && shortcuts.is_enabled(command.id)
+        };
+        for command in IDLE_COMMANDS.iter().filter(|command| allowed(command)) {
+            for label in shortcuts.bindings(command.id) {
+                let key = (label.binding.key, label.binding.modifiers);
+                if !claims.contains(&key) {
+                    claims.push(key);
+                }
+            }
+        }
+        claims
+    }
+
     fn snapshot(&mut self, controller: &InputController, handled: bool) -> Map<String, Value> {
         let commit = std::mem::take(&mut self.commit);
         // 繁／簡: the composition as the app shows it (the conversion keeps offsets and clauses).
@@ -267,14 +311,6 @@ impl Host {
         object.insert("simplified".into(), controller.simplified().into());
         object.insert("learningPaused".into(), controller.learning_paused().into());
         object.insert("fullWidth".into(), controller.full_width().into());
-        // Keys the adapter sends even with nothing composed: 符號與 Emoji's (Ctrl+Alt is otherwise AltGr's).
-        let shortcuts = controller.shortcuts();
-        let claims: Vec<Value> = if self.secure || !shortcuts.is_enabled("symbolPicker") {
-            Vec::new()
-        } else {
-            shortcuts.bindings("symbolPicker").iter().map(|b| json!([b.binding.key, b.binding.modifiers])).collect()
-        };
-        object.insert("claims".into(), claims.into());
         // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
         object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible)).into());
         object
@@ -513,19 +549,12 @@ impl Host {
             reply.insert("quick".into(), self.quick_state(controller));
             reply.insert("simplified".into(), self.simplified(controller).into());
         }
-        // The keys of 開啟快速設定, for adapters that pass on only the keys they know the service takes (TSF):
-        // at focus, and when they change.
-        let hotkeys: Vec<(i32, u32)> = controller
-            .shortcuts()
-            .bindings("quickSettings")
-            .iter()
-            .map(|label| (label.binding.key, label.binding.modifiers))
-            .collect();
-        if op != "blur" && (op == "focus" || self.sent_hotkeys.as_ref() != Some(&hotkeys)) {
-            let list: Vec<Value> =
-                hotkeys.iter().map(|(key, modifiers)| json!({"key": key, "modifiers": modifiers})).collect();
-            reply.insert("hotkeys".into(), list.into());
-            self.sent_hotkeys = Some(hotkeys);
+        // The keys the adapter claims with nothing composed: at focus, and when they change.
+        let claims = self.claims(controller);
+        if op != "blur" && (op == "focus" || self.sent_claims.as_ref() != Some(&claims)) {
+            let list: Vec<Value> = claims.iter().map(|&(key, modifiers)| json!([key, modifiers])).collect();
+            reply.insert("claims".into(), list.into());
+            self.sent_claims = Some(claims);
         }
         if op == "blur" {
             self.active = None;

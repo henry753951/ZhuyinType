@@ -54,7 +54,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{ALT, CONTROL, META, SHIFT, claimed_key, host_observes_key, host_wants_key, is_hotkey};
+use crate::keys::{claimed_key, host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
@@ -155,11 +155,10 @@ pub(crate) struct TextService {
     reset_deferred: Cell<bool>,
     english: Cell<bool>,
     composing: Cell<bool>,
-    /// Keys the host takes when idle (the reply's `claims`: 符號與 Emoji's shortcut).
+    /// The keys claimed even when nothing is composed (IPC `claims`, already filtered by the host for this field and
+    /// mode).
     claimed: RefCell<Vec<(i32, i32)>>,
     caps_at_reply: Cell<bool>,
-    /// The keys claimed even when nothing is composed (選取的字加入自訂詞's; IPC `idleKeys`).
-    idle_keys: RefCell<Vec<(i32, i32)>>,
     lang_bar: RefCell<Option<ITfLangBarItemMgr>>,
     mode_button: RefCell<Option<(ITfLangBarItemButton, ComObject<ModeButton>)>>,
     rect: Cell<RECT>,
@@ -180,8 +179,6 @@ pub(crate) struct TextService {
     quick: Cell<QuickState>,
     /// `QUICK_TIMER` ticks spent waiting for the modifiers to be released.
     quick_wait: Cell<u8>,
-    /// Keys bound to host commands, claimed in any mode (`hotkeys` in a reply).
-    hotkeys: RefCell<Vec<(i32, i32)>>,
     _count: ObjectCount,
 }
 
@@ -217,7 +214,6 @@ impl TextService {
             composing: Cell::new(false),
             claimed: RefCell::new(Vec::new()),
             caps_at_reply: Cell::new(false),
-            idle_keys: RefCell::new(Vec::new()),
             lang_bar: RefCell::new(None),
             mode_button: RefCell::new(None),
             rect: Cell::new(RECT::default()),
@@ -230,7 +226,6 @@ impl TextService {
             warm_posted: Cell::new(false),
             quick: Cell::new(QuickState { full_width: true, ..QuickState::default() }),
             quick_wait: Cell::new(0),
-            hotkeys: RefCell::new(Vec::new()),
             _count: ObjectCount::new(),
         }
         .into()
@@ -276,17 +271,8 @@ impl TextService {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
         let composing = self.composing.get() || load(&self.composition).is_some();
         let key = translate_key(vk, flags, release);
-        if self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed)) {
-            return true;
-        }
-        let chord = key.modifiers & (SHIFT | CONTROL | ALT | META);
-        let idle = !composing
-            && !release
-            && !self.english.get()
-            && !self.private.get()
-            && self.idle_keys.borrow().iter().any(|&(code, modifiers)| (code, modifiers) == (key.key, chord));
-        idle || host_wants_key(&key, composing, self.english.get() && !caps_changed)
-            || self.hotkeys.try_borrow().is_ok_and(|hotkeys| is_hotkey(&key, &hotkeys))
+        self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed))
+            || host_wants_key(&key, composing, self.english.get() && !caps_changed)
     }
 
     fn destroy_windows(&self) {
@@ -659,14 +645,6 @@ impl TextService_Impl {
         quick.simplified = reply.simplified;
         quick.learning_paused = reply.learning_paused;
         self.quick.set(quick);
-        if let Some(hotkeys) = &reply.hotkeys
-            && let Ok(mut slot) = self.hotkeys.try_borrow_mut()
-        {
-            slot.clone_from(hotkeys);
-        }
-        if let Some(keys) = &reply.idle_keys {
-            self.idle_keys.replace(keys.clone());
-        }
         if let Some(claims) = &reply.claims
             && let Ok(mut claimed) = self.claimed.try_borrow_mut()
         {
@@ -776,6 +754,8 @@ impl TextService_Impl {
             }
             let items = quick_menu::items(&self.quick.get(), true, false);
             let caret = self.rect.get();
+            // The menu's hidden owner may take the activation; the field gets it back afterwards.
+            let focus = crate::focus::Remembered::now();
             // SAFETY: a menu created, shown and destroyed here; coordinates are physical pixels, as the caret is.
             let command = unsafe {
                 let menu = build_menu(&items)?;
@@ -799,6 +779,7 @@ impl TextService_Impl {
                 command.0
             };
             self.run_command(command);
+            focus.restore(owner);
             Ok(())
         });
     }

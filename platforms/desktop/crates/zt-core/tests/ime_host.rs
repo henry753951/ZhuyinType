@@ -480,8 +480,7 @@ fn selected_text_opens_the_add_form_filled_in() {
     let mut f = Fixture::new();
     let (j, alt) = ('J' as i32, modifier::ALT);
     f.service.shortcuts().record("addSelectedText", j, alt, None).unwrap();
-    let focus = f.request("focus", json!({"secure": false}));
-    assert_eq!(focus["idleKeys"], json!([[j, alt]]), "the key the adapter claims when idle");
+    assert!(ok(&f.request("focus", json!({"secure": false}))));
     let press = json!({"secure": false, "key": j, "modifiers": alt, "release": false});
     let reply = f.request("key", press.clone());
     assert_eq!((reply["handled"].clone(), reply["selection"].clone()), (json!(true), json!(true)));
@@ -516,4 +515,41 @@ fn selected_text_opens_the_add_form_filled_in() {
         !f.ui_events().iter().any(|e| matches!(e, UiEvent::AddPhrase(_))),
         "nothing from a private or secure field"
     );
+}
+
+/// `claims` (IPC.md §攔截的按鍵): the keys of 開啟快速設定, 符號與 Emoji and 選取的字加入自訂詞 the adapter claims with
+/// nothing composed, each where its command can run; sent at focus and when they change.
+#[test]
+fn claims_list_the_keys_reachable_with_nothing_composed() {
+    let mut f = Fixture::new();
+    let picker = json!([',' as i32, modifier::CONTROL | modifier::ALT]);
+    let quick = json!(['Q' as i32, modifier::ALT]);
+    let add = json!(['J' as i32, modifier::ALT]);
+    let focus = f.request("focus", json!({"secure": false}));
+    assert_eq!(focus["claims"], json!([picker]), "only 符號與 Emoji has a key by default, sent at focus");
+    assert!(f.request("poll", json!({})).get("claims").is_none(), "unchanged: left out");
+    // A shortcut edit.
+    f.service.shortcuts().record("quickSettings", 'Q' as i32, modifier::ALT, None).unwrap();
+    f.service.shortcuts().record("addSelectedText", 'J' as i32, modifier::ALT, None).unwrap();
+    let changed = f.request("poll", json!({}));
+    assert_eq!(changed["claims"], json!([quick, picker, add]));
+    assert!(f.request("poll", json!({})).get("claims").is_none());
+    // English mode: 選取的字加入自訂詞 is Chinese only.
+    let english = f.request("mode", json!({"english": true}));
+    assert_eq!(english["claims"], json!([quick, picker]));
+    let chinese = f.request("mode", json!({"english": false}));
+    assert_eq!(chinese["claims"], json!([quick, picker, add]));
+    // A private field: never 選取的字加入自訂詞; a secure one: nothing (the service takes no key there).
+    let private = f.request("focus", json!({"secure": false, "private": true}));
+    assert_eq!(private["claims"], json!([quick, picker]));
+    let secure = f.request("secure", json!({"secure": true}));
+    assert_eq!(secure["claims"], json!([]));
+    let open = f.request("secure", json!({"secure": false, "private": false}));
+    assert_eq!(open["claims"], json!([quick, picker, add]));
+    // 符號與 Emoji turned off.
+    f.service.settings().set("feature.symbolPicker", Value::Bool(false)).unwrap();
+    assert_eq!(f.request("poll", json!({}))["claims"], json!([quick, add]));
+    // Every focus carries the list, changed or not.
+    assert_eq!(f.request("focus", json!({"secure": false}))["claims"], json!([quick, add]));
+    assert!(f.request("blur", json!({})).get("claims").is_none(), "not at blur");
 }
