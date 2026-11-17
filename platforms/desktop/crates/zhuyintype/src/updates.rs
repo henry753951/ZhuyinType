@@ -93,7 +93,7 @@ fn tick(cx: &mut App) {
         check_now(cx);
     }
     if checks && installs && ready && idle(cx) {
-        install_now(cx);
+        install(false, cx);
     }
     #[cfg(target_os = "linux")]
     restart_if_replaced(cx);
@@ -138,11 +138,16 @@ pub fn check_now(cx: &mut App) {
     .detach();
 }
 
-/// 立即安裝 (or automatically when idle): starts the system's updater for the version found.
+/// 立即安裝: starts the system's updater for the version found (Linux may ask for a password).
 pub fn install_now(cx: &mut App) {
+    install(true, cx);
+}
+
+/// Starts the system's updater; automatically (`ask` false) it never brings up a password dialog.
+fn install(ask: bool, cx: &mut App) {
     let Some(Found::Newer { version, .. }) = state(cx).found.clone() else { return };
     let state = cx.global_mut::<Updates>();
-    match update::start_system_update() {
+    match update::start_system_update(ask) {
         Ok(()) => {
             log::info!("installing update {version}");
             state.installing = Some(version);
