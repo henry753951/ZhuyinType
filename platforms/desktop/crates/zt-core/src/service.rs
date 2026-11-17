@@ -504,9 +504,11 @@ impl Service {
             core.host.inline_preedit(),
         );
         if core.controller.picker_open() {
-            // 符號與 Emoji: the highlighted row of the grid, across like the grid's rows.
+            // 符號與 Emoji: the grid, which the text service draws; and for one that does not know it, the
+            // highlighted row of the grid, across like the grid's rows.
             panel.style.layout = zt_panel::style::Layout::Horizontal;
             panel.style.shows_list_switches = false;
+            panel.picker = core.controller.picker_view();
         }
         serde_json::to_value(panel).unwrap_or(Value::Null)
     }

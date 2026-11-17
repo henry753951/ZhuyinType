@@ -67,6 +67,7 @@ use windows_numerics::Matrix3x2;
 use zt_panel::a11y::{self, AccentChoice};
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
 use zt_panel::model::WORD_ACTIONS;
+use zt_panel::picker::{self, PickerHit, PickerLayout};
 use zt_panel::position::{Rect, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
 use zt_panel::tokens::{self, Colors, motion};
@@ -76,6 +77,7 @@ use crate::announce::{self, Shown};
 use crate::composition::per_monitor;
 use crate::module::instance;
 use crate::panel_draw::{self, Control, DirectWriteMeasure, Hit, Motion, Painter, graphics};
+use crate::picker_draw;
 use crate::protocol::PanelUpdate;
 use crate::system_look;
 
@@ -89,6 +91,9 @@ pub(crate) const ACTION_ZHUYIN: usize = 5;
 pub(crate) const ACTION_UNDO: usize = 6;
 /// A word action on a row: `ACTION_WORD + n` is `zt_panel::model::WORD_ACTIONS[n]`.
 pub(crate) const ACTION_WORD: usize = 7;
+/// 符號與 Emoji: a cell of the grid (`lparam` the item's index in the whole list) and a category tab.
+pub(crate) const ACTION_SYMBOL: usize = 32;
+pub(crate) const ACTION_SYMBOL_TAB: usize = 33;
 
 /// The broker's name for an action.
 pub(crate) fn action_name(action: usize) -> Option<&'static str> {
@@ -99,6 +104,8 @@ pub(crate) fn action_name(action: usize) -> Option<&'static str> {
         ACTION_CORRECTIONS => "corrections",
         ACTION_ZHUYIN => "zhuyin",
         ACTION_UNDO => "undo",
+        ACTION_SYMBOL => "symbol",
+        ACTION_SYMBOL_TAB => "symbolTab",
         word if (ACTION_WORD..ACTION_WORD + WORD_ACTIONS.len()).contains(&word) => WORD_ACTIONS[word - ACTION_WORD].0,
         _ => return None,
     })
@@ -634,6 +641,9 @@ struct State {
     /// Windows' 「動畫效果」 is off: a page turn only cross-fades and the bounce dims the page instead of moving it.
     reduced: bool,
     hover: Option<Hit>,
+    /// 符號與 Emoji is open: its grid's geometry (drawn instead of the list), and the cell or tab under the mouse.
+    picker: Option<PickerLayout>,
+    picker_hover: Option<PickerHit>,
     /// The caret of the last placement and the window's x then (it keeps its x while the caret stays on the line).
     last_caret: Option<RECT>,
     last_x: i32,
@@ -960,6 +970,10 @@ impl PanelWindow {
         {
             direction = if *page + 1 == model.page_count && model.page == 0 || model.page > *page { 1 } else { -1 };
         }
+        // The grid never slides: its rows are the picker's, not pages of a list.
+        if panel.picker.is_some() {
+            direction = 0;
+        }
         if identity.is_none()
             || identity.as_ref() != state.shown.as_ref().map(|(identity, _)| identity)
             || state.panel.as_ref().map(|p| &p.style) != Some(&panel.style)
@@ -986,14 +1000,22 @@ impl PanelWindow {
             state.outgoing = None;
             state.old_label = None;
         }
-        let width = (layout.width * scale).ceil() as i32;
-        let height = (layout.height * scale).ceil() as i32;
+        let grid = panel.picker.as_ref().map(PickerLayout::compute);
+        let (logical_w, logical_h, inset) =
+            grid.as_ref().map_or((layout.width, layout.height, layout.text_inset), |grid| {
+                (grid.width, grid.height, picker::TEXT_INSET)
+            });
+        if grid.is_none() || state.picker.is_none() {
+            state.picker_hover = None;
+        }
+        let width = (logical_w * scale).ceil() as i32;
+        let height = (logical_h * scale).ceil() as i32;
         let (x, y) = popup_position_with_gap(
             to_rect(caret),
             f64::from(width),
             f64::from(height),
             panel.above,
-            f64::from(layout.text_inset * scale),
+            f64::from(inset * scale),
             to_rect(screen),
             f64::from(4. * scale),
         );
@@ -1010,6 +1032,7 @@ impl PanelWindow {
         state.last_caret = Some(caret);
         state.last_x = x;
         let animating = state.turn.is_some();
+        state.picker = grid;
         state.layout = Some(layout);
         state.panel = Some(panel.clone());
         state.appearance = panel.appearance;
@@ -1070,6 +1093,7 @@ impl PanelWindow {
         if window.is_invalid()
             || !state.panel.as_ref().is_some_and(|panel| panel.animates)
             || !state.layout.as_ref().is_some_and(|layout| layout.list_open)
+            || state.picker.is_some()
         {
             return;
         }
@@ -1152,6 +1176,18 @@ impl PanelWindow {
         let Some(g) = graphics() else { return };
         let state = self.state.borrow();
         let (Some(layout), Some(panel)) = (state.layout.clone(), state.panel.clone()) else { return };
+        if let (Some(grid), Some(view)) = (state.picker.clone(), panel.picker.as_ref()) {
+            let hover = state.picker_hover;
+            drop(state);
+            let (colors, opaque) = colors(panel.appearance, panel.accent);
+            let surface = &self.panel;
+            surface.render(dc, |target| {
+                let Some(painter) = Painter::new(&g, target, colors) else { return };
+                surface.base(&painter, (grid.width, grid.height), !panel.translucent || opaque);
+                picker_draw::content(&painter, view, &grid, hover);
+            });
+            return;
+        }
         let frames = Self::frames(&state, &layout);
         let (hover, hover_control) = match state.hover {
             Some(Hit::Row(index)) => (Some(index), None),
@@ -1213,6 +1249,9 @@ impl PanelWindow {
         let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
         let (hit, actions) = {
             let state = self.state.borrow();
+            if state.picker.is_some() {
+                return;
+            }
             let hit = state.layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
             let Some(Hit::Row(row)) = hit else { return };
             let bits = state.panel.as_ref().and_then(|panel| panel.model.rows.get(row)).map_or(0, |r| r.actions);
@@ -1248,6 +1287,10 @@ impl PanelWindow {
         let scale = self.panel.scale.get().max(0.25);
         let margin = self.panel.margin();
         let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
+        if self.state.borrow().picker.is_some() {
+            self.picker_mouse(lx, ly, click);
+            return;
+        }
         let hit = self.state.borrow().layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
         if self.state.borrow().hover != hit {
             self.state.borrow_mut().hover = hit;
@@ -1267,6 +1310,23 @@ impl PanelWindow {
             None => return,
         };
         self.post_action(action, value);
+    }
+
+    /// The mouse over 符號與 Emoji's grid: a cell or tab lights up; a click inserts the symbol or switches the tab.
+    fn picker_mouse(&self, x: f32, y: f32, click: bool) {
+        let hit = self.state.borrow().picker.as_ref().and_then(|grid| grid.hit(x, y));
+        if self.state.borrow().picker_hover != hit {
+            self.state.borrow_mut().picker_hover = hit;
+            self.redraw(Kind::Panel);
+        }
+        if !click {
+            return;
+        }
+        match hit {
+            Some(PickerHit::Symbol(index)) => self.post_action(ACTION_SYMBOL, index as isize),
+            Some(PickerHit::Tab(index)) => self.post_action(ACTION_SYMBOL_TAB, index as isize),
+            None => {}
+        }
     }
 
     fn post_action(&self, action: usize, value: isize) {
@@ -1340,8 +1400,9 @@ impl PanelWindow {
                 Some(LRESULT(0))
             }
             WM_MOUSELEAVE => {
-                if self.state.borrow().hover.is_some() {
+                if self.state.borrow().hover.is_some() || self.state.borrow().picker_hover.is_some() {
                     self.state.borrow_mut().hover = None;
+                    self.state.borrow_mut().picker_hover = None;
                     self.redraw(kind);
                 }
                 Some(LRESULT(0))

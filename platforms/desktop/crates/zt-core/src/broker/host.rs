@@ -67,6 +67,10 @@ enum Action {
     Zhuyin,
     Word(CandidateAction, usize),
     Undo,
+    /// 符號與 Emoji: item `n` of the picker's whole list (a cell of the grid).
+    Symbol(usize),
+    /// 符號與 Emoji: tab `n`.
+    SymbolTab(usize),
 }
 
 /// A command the user can run with nothing composed, whose keys the adapter must claim (`Host::claims`).
@@ -406,6 +410,11 @@ impl Host {
                 Some("corrections") => Action::Corrections,
                 Some("zhuyin") => Action::Zhuyin,
                 Some("undo") => Action::Undo,
+                // An index in the picker's whole list, which can be longer than a page's ±1000.
+                Some(name @ ("symbol" | "symbolTab")) => {
+                    let n = integer(r.get("value"), 0.0, 1_000_000.0).ok_or("動作格式無效。")? as usize;
+                    if name == "symbol" { Action::Symbol(n) } else { Action::SymbolTab(n) }
+                }
                 Some(name @ ("block" | "forget" | "addPhrase")) => {
                     let action = match name {
                         "block" => CandidateAction::Block,
@@ -528,6 +537,12 @@ impl Host {
                 Action::Zhuyin => self.type_reading(controller),
                 Action::Word(action, row) => self.word_action(controller, action, row),
                 Action::Undo => self.undo_word_action(controller),
+                Action::Symbol(index) => {
+                    if self.visible(controller) {
+                        controller.pick_symbol(index);
+                    }
+                }
+                Action::SymbolTab(index) => controller.select_symbol_tab(index),
             },
             "reset" => {
                 self.commit.clear();

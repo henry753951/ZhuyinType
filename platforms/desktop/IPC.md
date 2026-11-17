@@ -24,7 +24,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `blur` | 結束目前組字並回傳待送出文字，解除焦點。個人資料在回應之後、不持有服務的鎖時寫入磁碟，失焦不必等磁碟 |
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
-| `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`、`block`、`forget`、`addPhrase`、`undo`）與 `value`（`pick`、`block`、`forget`、`addPhrase` 的列，`page` 的 ±1）；原生端自己畫的候選字視窗上的點選：`block`「不要再推薦」、`forget`「忘記這個選字」、`addPhrase`「加入自訂詞」是某一列的右鍵選單，`undo` 是提示列的「復原」（見〈候選字視窗〉） |
+| `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`、`block`、`forget`、`addPhrase`、`undo`、`symbol`、`symbolTab`）與 `value`（`pick`、`block`、`forget`、`addPhrase` 的列，`page` 的 ±1，`symbol` 是符號面板整份清單裡的第幾個、`symbolTab` 是第幾個類別）；原生端自己畫的候選字視窗上的點選：`block`「不要再推薦」、`forget`「忘記這個選字」、`addPhrase`「加入自訂詞」是某一列的右鍵選單，`undo` 是提示列的「復原」（見〈候選字視窗〉） |
 | `selection` | `text` 字串（最多 32 個 UTF-16 單位，沒選取時是空字串）；回應裡有 `selection: true` 時才送：欄位中選取的文字，服務以它開啟填好的「加入自訂詞」（見〈選取的字加入自訂詞〉）。安全或私人欄位不送，服務也不接受 |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
 | `quick` | 快速設定：可選的 `english`、`fullWidth`、`simplified`、`learningPaused` 布林，只套用有送的欄位，都沒有時只讀取（見〈快速設定〉） |
@@ -53,7 +53,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「復原」，原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
 
-「符號與 Emoji」面板開著時，回應的 `composing` 與 `candidates` 為真、`preedit` 為空，原生端把每個鍵都送給服務；App 畫的視窗顯示面板的格子（`PopupState::picker`），原生端畫的視窗收到反白的那一列（最多 9 個，按鍵 1–9）當成候選字清單、類別與列數在 `notice`，點選照常送 `pick`。
+「符號與 Emoji」面板開著時，回應的 `composing` 與 `candidates` 為真、`preedit` 為空，原生端把每個鍵都送給服務；App 畫的視窗顯示面板的格子（`PopupState::picker`），原生端畫的視窗收到反白的那一列（最多 9 個，按鍵 1–9）當成候選字清單、類別與列數在 `notice`，點選照常送 `pick`；`panel.picker` 另帶整個格子（`zt_panel::picker::PickerView`，和 App 畫的同一份：類別、搜尋、顯示的列、反白），認得它的原生端（Windows 文字服務）改畫格子，點格子送 `symbol`、點類別送 `symbolTab`。舊的原生端忽略 `picker`，照舊畫那一列。
 
 ## 攔截的按鍵
 

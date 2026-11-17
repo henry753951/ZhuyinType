@@ -98,4 +98,8 @@ pub struct Panel {
     /// 「強調色」: the selection follows the system's accent colour, or keeps ZhuyinType's own look.
     #[serde(default)]
     pub accent: AccentChoice,
+    /// 符號與 Emoji is open: its grid, which the adapter draws instead of `model` (the highlighted row as a list, for
+    /// adapters that do not know the grid).  Left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picker: Option<crate::picker::PickerView>,
 }

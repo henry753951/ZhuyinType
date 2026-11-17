@@ -38,6 +38,8 @@ mod panel_draw;
 #[cfg(windows)]
 mod panel_window;
 #[cfg(windows)]
+mod picker_draw;
+#[cfg(windows)]
 mod registration;
 #[cfg(windows)]
 mod text_service;
