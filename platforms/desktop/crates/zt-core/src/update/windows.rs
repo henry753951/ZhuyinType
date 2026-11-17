@@ -404,6 +404,15 @@ pub fn enable_input_method_for_user() -> Result<()> {
     if read_string(HKEY_CURRENT_USER, ACTIVE_SETUP_KEY, "Version").is_some() {
         return Ok(());
     }
+    add_input_method_for_user()?;
+    write_string(HKEY_CURRENT_USER, ACTIVE_SETUP_KEY, "Version", &installed);
+    Ok(())
+}
+
+/// Adds ZhuyinType to the signed-in user's input method list now (`regsvr32 /n /i:user`, the text service's
+/// `DllInstall`), whether or not it was offered before: 檢查輸入法's 「加入輸入法清單」.  Other input methods and the
+/// default stay as they are.
+pub fn add_input_method_for_user() -> Result<()> {
     let exe = std::env::current_exe()?;
     let dll = exe.with_file_name("zhuyintype-tsf-x64.dll");
     let system = std::env::var_os("SystemRoot").map_or_else(|| r"C:\Windows".into(), std::path::PathBuf::from);
@@ -414,7 +423,6 @@ pub fn enable_input_method_for_user() -> Result<()> {
     if !status.success() {
         bail!("regsvr32 /n /i:user {}: {status}", dll.display());
     }
-    write_string(HKEY_CURRENT_USER, ACTIVE_SETUP_KEY, "Version", &installed);
     Ok(())
 }
 

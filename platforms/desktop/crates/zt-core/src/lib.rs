@@ -6,6 +6,7 @@ pub mod broker;
 pub mod controller;
 pub mod corrections;
 pub mod engine;
+pub mod health;
 pub mod keys;
 pub mod models;
 pub mod panel;
