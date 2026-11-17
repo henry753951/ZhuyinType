@@ -68,7 +68,8 @@ pub struct Presentation {
     pub undo: bool,
     /// The word actions' tip under the list, the first few times a list opens.
     pub tip: Option<String>,
-    /// The list is next-word suggestions after a commit (聯想詞): no composition, ⇧ + a selection key picks.
+    /// The list is next-word suggestions after a commit (聯想詞): no composition; ↓ enters it.  While it is not
+    /// entered (passive) nothing is highlighted: `selection` and `selected` are `None`.
     pub associated: bool,
     /// UTF-16 ranges of `composition` shown through an automatic typing correction or fuzzy sound (「標示自動修正」
     /// marks them); empty when that setting is off.
@@ -154,6 +155,10 @@ impl Presentation {
         self.page_count = list.page_count();
         let range = list.page_range();
         self.selected = Some(list.selection() - range.start);
+        if list.passive() {
+            self.selection = None;
+            self.selected = None;
+        }
         self.rows = list.items()[range.clone()]
             .iter()
             .zip(range)

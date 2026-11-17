@@ -627,6 +627,13 @@ impl TextService_Impl {
             self.host_focused.set(false);
             return false;
         }
+        // A commit that leaves only a list (聯想詞) ended the composition: the list goes at the caret after the
+        // commit, not where the key was typed.
+        if !self.secure.get() && reply.preedit.is_empty() && !reply.commit.is_empty() {
+            let (rect, scale, _) = composition::caret(&context, cookie);
+            self.rect.set(rect);
+            self.scale.set(scale);
+        }
         let switched = self.english.replace(reply.english) != reply.english;
         self.composing.set(reply.composing);
         let mut quick = reply.quick.unwrap_or(self.quick.get());

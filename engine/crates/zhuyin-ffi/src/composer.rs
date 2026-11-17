@@ -664,6 +664,8 @@ pub struct ZtCandidateList {
     pub single_character: bool,
     /// Next-word suggestions after a commit (聯想詞), not conversions: the window marks them.
     pub associated: bool,
+    /// 聯想詞 shown but not entered (↓ enters): no highlight; `selection` means nothing.
+    pub passive: bool,
 }
 
 /// What to draw (Swift's `Presentation`).  Offsets are UTF-16 units.
@@ -732,6 +734,7 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
             tolerant: list.tolerant().map_or(-1, i8::from),
             single_character: list.single_character(),
             associated: list.associated(),
+            passive: list.passive(),
         }))
     });
     Box::into_raw(Box::new(ZtPresentation {

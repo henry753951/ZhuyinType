@@ -560,7 +560,7 @@ final class CandidateContentView: InputMaterialView {
         addSubview(noticeView)
         associationLabel.textColor = .secondaryLabelColor
         associationLabel.lineBreakMode = .byTruncatingTail
-        associationLabel.setAccessibilityLabel("聯想詞，按 Shift 加選字鍵選用")
+        associationLabel.setAccessibilityLabel("聯想詞，按向下鍵選擇")
         addSubview(associationLabel)
         zhuyinButton.isBordered = false
         zhuyinButton.target = self
@@ -693,7 +693,7 @@ final class CandidateContentView: InputMaterialView {
         associationLabel.isHidden = !hasAssociation
         if hasAssociation {
             associationLabel.font = .systemFont(ofSize: (fontSize * 0.72).rounded())
-            associationLabel.stringValue = "聯想詞・⇧ 加選字鍵"
+            associationLabel.stringValue = "聯想詞・↓ 選擇"
             width = max(width, ceil(associationLabel.intrinsicContentSize.width) + 28)
             y += hintHeight
         }
@@ -704,7 +704,8 @@ final class CandidateContentView: InputMaterialView {
             var candidate = list.items[index]
             if !style.showsAnnotations { candidate.annotation = nil }
             row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
-                       fontSize: fontSize, compact: compact, selected: index == list.selection, accent: style.accentColor)
+                       fontSize: fontSize, compact: compact, selected: index == list.selection && !list.passive,
+                       accent: style.accentColor)
             row.action = { [weak self] in self?.onSelect?(index) }
             row.menuAction = { [weak self] event, view in self?.onMenu?(index, event, view) }
         }

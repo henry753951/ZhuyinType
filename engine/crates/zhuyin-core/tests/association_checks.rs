@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use common::{LmTrigram, TempDir, bigram, bigram_backoff, lm_fixture};
-use zhuyin_core::api::{ComposerOptions, KeyInput, PunctuationKeys, SpaceAction, TypoTolerance};
+use zhuyin_core::api::{ComposerOptions, KeyInput, KeyResult, PunctuationKeys, SpaceAction, TypoTolerance};
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
 use zhuyin_core::language_model::{BigramLanguageModel, VocabularyLanguageModel};
@@ -136,47 +136,92 @@ fn off_leaves_commits_unchanged() {
     assert!(associated(&on) && on.is_composing() && on.presentation().text.is_empty());
 }
 
-#[test]
-fn shift_selection_key_picks_and_continues() {
-    let temp = TempDir::new("predict-pick");
-    let engine = engine(&model_directory(&temp));
-    let (mut composer, _) = after_thanks(&engine, true);
-    let result = composer.handle(KeyInput::ShiftedChar('2'));
-    assert_eq!((result.handled, result.commit.as_deref()), (true, Some("大家")));
-    assert_eq!(items(&composer), ["好"], "suggestions for what follows the pick");
-    let result = composer.handle(KeyInput::ShiftedChar('1'));
-    assert_eq!(result.commit.as_deref(), Some("好"));
-    assert!(composer.presentation().is_empty(), "nothing follows 好 in the model");
+fn passive(composer: &Composer) -> bool {
+    composer.presentation().candidates.as_ref().is_some_and(zhuyin_core::api::CandidateList::passive)
+}
+
+/// Enters the list with ↓ and picks word `index` with its selection key.
+fn pick(composer: &mut Composer, index: usize) -> Option<String> {
+    assert!(composer.handle(KeyInput::Down).handled);
+    composer.handle(KeyInput::Char(char::from(b'1' + index as u8))).commit
 }
 
 #[test]
-fn other_keys_close_the_list_and_act_as_usual() {
+fn down_enters_and_keys_pick() {
+    let temp = TempDir::new("predict-pick");
+    let engine = engine(&model_directory(&temp));
+    let (mut composer, _) = after_thanks(&engine, true);
+    assert!(passive(&composer), "the list opens without a highlight");
+    // ↓ enters (the first word highlighted), ↓ again moves, ↑ on the first word goes back to passive.
+    assert_eq!(composer.handle(KeyInput::Down), KeyResult::CONSUMED);
+    let list = composer.presentation().candidates.clone().unwrap();
+    assert!(!list.passive() && list.selection() == 0);
+    composer.handle(KeyInput::Down);
+    assert_eq!(composer.presentation().candidates.as_ref().unwrap().selection(), 1);
+    composer.handle(KeyInput::Down);
+    assert_eq!(composer.presentation().candidates.as_ref().unwrap().selection(), 1, "stays on the last word");
+    composer.handle(KeyInput::Up);
+    composer.handle(KeyInput::Up);
+    assert!(passive(&composer));
+    // Return sends the highlighted word and lists, passively, what follows it.
+    composer.handle(KeyInput::Down);
+    composer.handle(KeyInput::Down);
+    assert_eq!(composer.presentation().candidates.as_ref().map(|l| (l.selection(), l.passive())), Some((1, false)));
+    let result = composer.handle(KeyInput::Enter);
+    assert_eq!((result.handled, result.commit.as_deref()), (true, Some("大家")));
+    assert_eq!(items(&composer), ["好"]);
+    assert!(passive(&composer));
+    // In the list, a selection key and ⇧ with it pick too.  (Picking 大家 above made it the first suggestion.)
+    let (mut composer, _) = after_thanks(&engine, true);
+    assert_eq!(items(&composer), ["大家", "你"]);
+    assert_eq!(pick(&mut composer, 0).as_deref(), Some("大家"));
+    composer.handle(KeyInput::Down);
+    assert_eq!(composer.handle(KeyInput::ShiftedChar('1')).commit.as_deref(), Some("好"));
+    assert!(composer.presentation().is_empty(), "nothing follows 好 in the model");
+    // Esc in the list closes it and is used up.
+    let (mut composer, _) = after_thanks(&engine, true);
+    composer.handle(KeyInput::Down);
+    assert_eq!(composer.handle(KeyInput::Escape), KeyResult::CONSUMED);
+    assert!(composer.presentation().is_empty());
+}
+
+#[test]
+fn passive_list_leaves_every_other_key_alone() {
     let temp = TempDir::new("predict-keys");
     let engine = engine(&model_directory(&temp));
+    // ⇧1 after 謝謝 types ！ (⇧ with a symbol key types Chinese punctuation here), not a suggestion.
+    let (mut composer, _) = after_thanks(&engine, true);
+    let result = composer.handle(KeyInput::ShiftedChar('1'));
+    assert!(result.handled && result.commit.is_none());
+    assert_eq!(composer.presentation().text, "！");
+    assert!(composer.presentation().candidates.is_none(), "the list closed");
+    assert_eq!(composer.handle(KeyInput::Enter).commit.as_deref(), Some("！"));
+    assert!(composer.presentation().is_empty(), "nothing is suggested after punctuation");
+    // With ⇧ typing the key's own symbol, ⇧1 does exactly what it does with the feature off.
+    let windows = ComposerOptions { punctuation_keys: PunctuationKeys::Windows, ..options() };
+    let mut results = Vec::new();
+    for on in [false, true] {
+        let mut composer = Composer::new(engine.clone(), windows.clone());
+        composer.set_associated_phrases(on);
+        type_keys(&mut composer, "vu,4vu,4");
+        composer.handle(KeyInput::Enter);
+        assert_eq!(composer.presentation().candidates.is_some(), on);
+        results.push((composer.handle(KeyInput::ShiftedChar('1')), composer.presentation().clone()));
+    }
+    assert_eq!(results[0], results[1]);
     // A Zhuyin key (1 is ㄅ) starts a composition.
     let (mut composer, _) = after_thanks(&engine, true);
     let result = composer.handle(KeyInput::Char('1'));
     assert!(result.handled && result.commit.is_none());
     assert_eq!(composer.presentation().text, "ㄅ");
     assert!(composer.presentation().candidates.is_none());
-    // Space is not a pick: with nothing composed the app gets it.
-    let (mut composer, _) = after_thanks(&engine, true);
-    assert_eq!(composer.handle(KeyInput::Space), zhuyin_core::api::KeyResult::PASS_THROUGH);
-    assert!(composer.presentation().is_empty());
-    // Esc closes the list and is used up.
-    let (mut composer, _) = after_thanks(&engine, true);
-    assert_eq!(composer.handle(KeyInput::Escape), zhuyin_core::api::KeyResult::CONSUMED);
-    assert!(composer.presentation().is_empty());
-    // Enter and arrows go to the app.
-    for key in [KeyInput::Enter, KeyInput::Down, KeyInput::Left, KeyInput::Backspace] {
+    // Space, Return, Tab, Esc, ← and ⌫ go to the app, as with no list.
+    for key in [KeyInput::Space, KeyInput::Enter, KeyInput::Tab, KeyInput::Escape, KeyInput::Left, KeyInput::Backspace]
+    {
         let (mut composer, _) = after_thanks(&engine, true);
         assert!(!composer.handle(key).handled, "{key:?}");
         assert!(composer.presentation().is_empty(), "{key:?}");
     }
-    // ⇧ with a key past the list closes it and does what it does.
-    let (mut composer, _) = after_thanks(&engine, true);
-    composer.handle(KeyInput::ShiftedChar('9'));
-    assert!(composer.presentation().candidates.is_none());
 }
 
 #[test]
@@ -184,18 +229,18 @@ fn click_and_commit_all() {
     let temp = TempDir::new("predict-click");
     let engine = engine(&model_directory(&temp));
     let (mut composer, _) = after_thanks(&engine, true);
-    assert_eq!(composer.select_candidate(0).commit.as_deref(), Some("你"));
+    assert_eq!(composer.select_candidate(0).commit.as_deref(), Some("你"), "a click picks without entering");
     assert_eq!(items(&composer), ["好"]);
     assert_eq!(composer.commit_all(), "", "the app's commit with only suggestions shown sends nothing");
     assert!(composer.presentation().is_empty());
     let (mut composer, _) = after_thanks(&engine, true);
     composer.set_associated_phrases(false);
     assert!(composer.presentation().is_empty(), "turning the setting off closes the list");
-    // Another setting redraws: the list is gone, and ⇧1 is no longer a pick.
+    // Another setting redraws: the list is gone, and ↓ no longer enters it.
     let (mut composer, _) = after_thanks(&engine, true);
     composer.set_options(ComposerOptions { vertical_list: false, ..options() });
     assert!(composer.presentation().is_empty());
-    assert_eq!(composer.handle(KeyInput::ShiftedChar('1')).commit, None);
+    assert!(!composer.handle(KeyInput::Down).handled);
 }
 
 #[test]
@@ -210,12 +255,11 @@ fn private_fields_and_learning() {
     assert!(composer.presentation().is_empty(), "no suggestions while learning is suspended");
     // Learning on: picking 大家 makes it the user's first suggestion after 謝謝.
     let (mut composer, _) = after_thanks(&engine, true);
-    composer.handle(KeyInput::ShiftedChar('2'));
+    pick(&mut composer, 1);
     for _ in 0..2 {
         let (mut again, _) = after_thanks(&engine, true);
-        again.handle(KeyInput::ShiftedChar(char::from(
-            b'1' + items(&again).iter().position(|w| w == "大家").unwrap() as u8,
-        )));
+        let index = items(&again).iter().position(|w| w == "大家").unwrap();
+        pick(&mut again, index);
     }
     let personal = engine.predict_next("謝謝", 9, true);
     assert_eq!((personal[0].text.as_str(), personal[0].personal), ("大家", true));

@@ -202,7 +202,7 @@ final class ControllerCore {
                                              secure: composer.learningSuspended || secureInput())
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
         if let move = Self.listMove(key, vertical: composer.options.verticalList), let old = before.candidates,
-           let new = composer.presentation.candidates, old.items.count == new.items.count, old.pageSize == new.pageSize,
+           let new = composer.presentation.candidates, !old.passive, old.items.count == new.items.count, old.pageSize == new.pageSize,
            move.page ? old.page == new.page : old.selection == new.selection {
             listEdge?(move.direction)
         }

@@ -75,18 +75,20 @@ public struct CandidateList: Equatable, Sendable {
     public var tolerant: Bool?
     /// Only the one character at the target (Shift-↓), not every span from it.
     public var singleCharacter: Bool
-    /// Next-word suggestions after a commit (聯想詞), not conversions: the window marks them, ⇧ + a selection key
-    /// picks one.
+    /// Next-word suggestions after a commit (聯想詞), not conversions: the window marks them; ↓ enters the list.
     public var associated: Bool
+    /// 聯想詞 shown but not entered: no highlight (`selection` means nothing), keys go on as if there were no list.
+    public var passive: Bool
 
     public init(items: [Candidate], selection: Int = 0, pageSize: Int = 9, tolerant: Bool? = nil,
-                singleCharacter: Bool = false, associated: Bool = false) {
+                singleCharacter: Bool = false, associated: Bool = false, passive: Bool = false) {
         self.items = items
         self.selection = selection
         self.pageSize = max(1, pageSize)
         self.tolerant = tolerant
         self.singleCharacter = singleCharacter
         self.associated = associated
+        self.passive = passive
     }
 
     public var page: Int { selection / pageSize }

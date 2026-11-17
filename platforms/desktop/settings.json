@@ -364,7 +364,7 @@
     "group": "聯想詞",
     "kind": "toggle",
     "default": false,
-    "detail": "送出後列出常接在後面的詞，按 Shift 加選字鍵選用；其他鍵照常輸入",
+    "detail": "送出後列出常接在後面的詞，按 ↓ 進入清單再選；其他鍵照常輸入",
     "anchor": "associatedPhrases"
   },
   {

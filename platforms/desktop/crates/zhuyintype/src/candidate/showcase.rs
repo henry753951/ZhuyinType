@@ -1,12 +1,12 @@
 //! `--panel VARIANT`: one candidate window (or notice, or badge) drawn over a few lines of a document, as the macOS
 //! UI renderer's `panels/` show it, for screenshots.  `--popup demo` drives the real floating windows instead.
 //!
-//! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
-//! `minimal`, `composing`, `corrected` (a window on a corrected word: the typed reading under the list, the
-//! composition dotted under it), `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, `quick-settings`
-//! (the 快速設定 panel), and the paging frames `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` …
-//! (`next`, `previous` or `end` at a percentage), and the word actions: `word-menu` (a row's right-click menu and the
-//! tip) and `word-undo` (the notice with 復原).
+//! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`, `minimal`,
+//! `associated` (聯想詞 after a commit), `composing`, `corrected` (a window on a corrected word: the typed reading under
+//! the list, the composition dotted under it), `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`,
+//! `quick-settings` (the 快速設定 panel), and the paging frames `vertical-next-35`, `horizontal-previous-20`,
+//! `vertical-end-50` … (`next`, `previous` or `end` at a percentage), and the word actions: `word-menu` (a row's
+//! right-click menu and the tip) and `word-undo` (the notice with 復原).
 
 use std::rc::Rc;
 
@@ -15,7 +15,7 @@ use gpui_kit::{
     WindowDecorations, WindowOptions, div, point, px, size,
 };
 use serde_json::Value;
-use zt_core::presentation::{Presentation, PreviewList, Rect};
+use zt_core::presentation::{CandidateRow, Presentation, PreviewList, Rect};
 use zt_core::service::{PopupAction, PopupState, UiEvent};
 
 use super::layout::{Extras, WindowMeasure};
@@ -101,6 +101,27 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
             }
             .with_correction_marks(true, true);
             (presentation, Some(composition.to_owned()), None, None)
+        }
+        "associated" => {
+            let rows: Vec<CandidateRow> = ["你", "大家", "你們", "您", "各位"]
+                .iter()
+                .enumerate()
+                .map(|(index, text)| CandidateRow {
+                    index,
+                    text: (*text).to_owned(),
+                    annotation: None,
+                    key: keys.get(index).copied(),
+                })
+                .collect();
+            let p = Presentation {
+                count: rows.len(),
+                rows,
+                page_count: 1,
+                page_size: per_page,
+                associated: true,
+                ..Presentation::default()
+            };
+            (p, None, None, None)
         }
         "minimal" => {
             let list = sample::list(sample::WORDS, sample::PANEL_CORRECTIONS, true, per_page, 0);

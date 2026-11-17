@@ -285,6 +285,8 @@ typedef struct {
   bool single_character;
   // Next-word suggestions after a commit (聯想詞), not conversions: the window marks them.
   bool associated;
+  // 聯想詞 shown but not entered (↓ enters): no highlight; `selection` means nothing.
+  bool passive;
 } ZtCandidateList;
 
 // What to draw (Swift's `Presentation`).  Offsets are UTF-16 units.
