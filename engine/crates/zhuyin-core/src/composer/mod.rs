@@ -230,6 +230,11 @@ pub struct Composer {
     /// Text committed by the key being handled before what it composes (a full composition's head).
     sent: String,
     commit_listener: Option<CommitListener>,
+    /// The tokens of the correction the last key made appear: ⌫ next converts them as typed
+    /// (`undo_correction_with_backspace`).
+    correction_undo: Option<Range<usize>>,
+    /// The last key or call put a correction back to the keys as typed.
+    reverted: bool,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -321,6 +326,8 @@ impl Composer {
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,
+            correction_undo: None,
+            reverted: false,
         }
     }
 
@@ -527,7 +534,21 @@ impl Composer {
 
     /// Handles a key.
     pub fn handle(&mut self, key: KeyInput) -> KeyResult {
-        let mut result = self.process(key);
+        self.reverted = false;
+        let undo = self.correction_undo.take();
+        let tracks = self.options.undo_correction_with_backspace;
+        let before = if tracks { self.corrected_words() } else { vec![] };
+        let mut result = match undo {
+            Some(range) if key == KeyInput::Backspace && self.revert_on_backspace(&range) => KeyResult::CONSUMED,
+            _ => self.process(key),
+        };
+        if tracks && !self.reverted && key != KeyInput::Backspace {
+            // The correction this key made appear, the last if several did.
+            self.correction_undo =
+                self.corrected_words().into_iter().filter(|w| !before.contains(w)).map(|(range, _)| range).next_back();
+        }
+        self.presentation.backspace_reverts = self.correction_undo.is_some();
+        self.presentation.reverted = self.reverted;
         // A full composition sent its head first: that text goes before anything else the key commits.
         let sent = std::mem::take(&mut self.sent);
         if !sent.is_empty() {
@@ -1151,6 +1172,7 @@ impl Composer {
 
     /// Clears the composition without committing or learning.
     pub fn reset(&mut self) {
+        self.correction_undo = None;
         self.settle_run();
         self.tokens.clear();
         self.cursor = 0;
@@ -1519,6 +1541,8 @@ impl Composer {
             KeyInput::ShiftDown => self.candidate_toggle_single(),
             KeyInput::ShiftUp if self.candidate_toggle_corrections() => return Some(KeyResult::CONSUMED),
             KeyInput::Char('`') | KeyInput::ShiftUp => {}
+            KeyInput::Backspace if self.options.undo_correction_with_backspace && self.revert_selected_correction() => {
+            }
             KeyInput::Escape | KeyInput::Backspace => self.close_candidates(),
             KeyInput::Left if vertical => self.move_list_target(false),
             KeyInput::Right if vertical => self.move_list_target(true),
@@ -1654,6 +1678,86 @@ impl Composer {
             components: parts,
             frozen: false,
         }
+    }
+
+    /// The words shown through an automatic correction, as (tokens, text).  Picks are never among them.
+    fn corrected_words(&self) -> Vec<(Range<usize>, Arc<str>)> {
+        self.conversion.iter().filter(|w| w.corrected).map(|w| (w.range.clone(), w.text.clone())).collect()
+    }
+
+    /// ⌫ right after a correction appeared: its keys as typed, when it is still shown and nothing is being typed.
+    fn revert_on_backspace(&mut self, range: &Range<usize>) -> bool {
+        self.options.undo_correction_with_backspace
+            && self.candidate_window.is_closed()
+            && !self.has_buffer()
+            && self.selection_anchor.is_none()
+            && self.revert_corrections(range)
+            && {
+                self.refresh();
+                true
+            }
+    }
+
+    /// The open window's span holds a correction: it is converted as typed and the window closes.
+    fn revert_selected_correction(&mut self) -> bool {
+        let Some(range) = self.candidate_window.selected().map(|c| c.range.clone()) else { return false };
+        if !self.revert_corrections(&range) {
+            return false;
+        }
+        self.close_candidates();
+        true
+    }
+
+    /// Converts the automatic corrections overlapping `range` as typed: the lattice is decoded again with no
+    /// correction or fuzzy sound over their tokens, and the words it puts there stay as shown (frozen, not picks:
+    /// nothing is learnt).  False when no correction overlaps `range`.
+    fn revert_corrections(&mut self, range: &Range<usize>) -> bool {
+        let spans: Vec<Range<usize>> =
+            self.corrected_words().into_iter().map(|(r, _)| r).filter(|r| overlaps(r, range)).collect();
+        let (Some(first), Some(last)) = (spans.first(), spans.last()) else { return false };
+        let span = first.start..last.end;
+        self.settle_run();
+        self.fixed.retain(|f| !(f.frozen && overlaps(&f.range, &span)));
+        let mut request = self.request(&self.tokens);
+        request.characters = self.character_scores.as_ref();
+        request.literal = Some(span.clone());
+        let words = self.engine.convert(&request, &mut None);
+        for word in words.iter().filter(|w| overlaps(&w.range, &span) && !w.reading.is_empty()) {
+            if self.fixed.iter().any(|f| overlaps(&f.range, &word.range)) {
+                continue;
+            }
+            let mut pinned = self.choice(&word.range, &word.text, &word.reading, Some(&words));
+            pinned.frozen = true;
+            self.fixed.push(pinned);
+        }
+        self.correction_undo = None;
+        self.conversion_dirty = true;
+        self.reverted = true;
+        true
+    }
+
+    /// Converts the automatic correction at the cursor as typed: the open candidate window's span, else the
+    /// correction the last key made appear, else the character ↓ would change.  False when there is none.
+    pub fn revert_correction(&mut self) -> bool {
+        self.reverted = false;
+        let reverted = if self.candidate_window.is_open() {
+            self.revert_selected_correction()
+        } else if let Some(range) = self.correction_undo.clone()
+            && self.revert_corrections(&range)
+        {
+            true
+        } else if !self.has_buffer() && !self.tokens.is_empty() {
+            let forward = self.cursor == 0
+                || (self.options.candidate_anchor == CandidateAnchor::AfterCursor && self.cursor < self.tokens.len());
+            let target = if forward { self.cursor } else { self.cursor - 1 };
+            self.revert_corrections(&(target..target + 1))
+        } else {
+            false
+        };
+        if reverted {
+            self.refresh();
+        }
+        reverted
     }
 
     /// Switches the open candidate window between words for the keys as typed and typing corrections.
@@ -1904,9 +2008,9 @@ impl Composer {
                     reading: word.reading.as_str().into(),
                     word_id,
                     history: Some(history),
-                    corrected: false,
+                    corrected: word.corrected,
                     channel: None,
-                    reading_corrected: false,
+                    reading_corrected: word.reading_corrected,
                 }
             })
             .collect();
@@ -2067,7 +2171,28 @@ impl Composer {
                     .then(|| keyboard::plain(&parts.into_iter().flatten().collect::<Vec<_>>().join(" ")))
             })
             .flatten();
+        let corrections: Vec<Range<usize>> = self
+            .conversion
+            .iter()
+            .filter(|w| w.corrected)
+            .map(|w| offsets[w.range.start]..offsets[w.range.end])
+            .filter(|r| !r.is_empty())
+            .collect();
+        let typed_reading =
+            self.candidate_window.selected().filter(|_| self.candidate_window.is_open()).and_then(|c| {
+                let typed: Vec<&str> = self
+                    .conversion
+                    .iter()
+                    .filter(|w| w.corrected && overlaps(&w.range, &c.range))
+                    .map(|w| &*w.reading)
+                    .collect();
+                (!typed.is_empty()).then(|| keyboard::plain(&typed.join(" ")))
+            });
         Presentation {
+            corrections,
+            typed_reading,
+            backspace_reverts: self.correction_undo.is_some(),
+            reverted: self.reverted,
             text,
             cursor: caret,
             focused_clause: focus.and_then(|f| clauses.iter().position(|c| *c == f)),

@@ -200,6 +200,18 @@ pub struct Presentation {
     pub notice: Option<String>,
     /// Standard plain Zhuyin for the highlighted span; the backtick action in the window footer.
     pub zhuyin_hint: Option<String>,
+    /// UTF-16 ranges of `text` converted through an automatic typing correction or fuzzy sound, not the keys as
+    /// typed: the client marks them (`showCorrections`).  Words the user picked are not listed.
+    pub corrections: Vec<Range<usize>>,
+    /// Plain Zhuyin as typed for the corrections in the highlighted span, while the candidate window is open on
+    /// one: the window's footer shows it (你打的是 ㄗˋ).
+    pub typed_reading: Option<String>,
+    /// ⌫ now puts back the keys as typed instead of deleting: a correction appeared with the last key and
+    /// [`ComposerOptions::undo_correction_with_backspace`] is on.
+    pub backspace_reverts: bool,
+    /// The last key or [`crate::composer::Composer::revert_correction`] put a correction back to the keys as
+    /// typed (counted in the usage statistics).
+    pub reverted: bool,
 }
 
 impl Presentation {
@@ -625,6 +637,10 @@ pub struct ComposerOptions {
     pub character_forms: CharacterForms,
     /// What Shift and Control with a symbol key type.
     pub punctuation_keys: PunctuationKeys,
+    /// The first ⌫ right after a key that made an automatic correction appear converts those keys as typed instead
+    /// of deleting (a second ⌫ deletes); in a candidate window open on a correction, ⌫ does the same.  Off in the
+    /// engine (its recorded behaviour); the apps turn it on (`undoCorrectionWithBackspace`).
+    pub undo_correction_with_backspace: bool,
 }
 
 impl ComposerOptions {
@@ -656,6 +672,7 @@ impl Default for ComposerOptions {
             page_at_list_edge: true,
             character_forms: CharacterForms::Common,
             punctuation_keys: PunctuationKeys::Windows,
+            undo_correction_with_backspace: false,
         }
     }
 }

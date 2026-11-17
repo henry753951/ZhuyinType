@@ -207,6 +207,8 @@ pub struct ZtComposerOptions {
     pub punctuation_keys: u32,
     /// 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
     pub early_commit_syllables: usize,
+    /// The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting.
+    pub undo_correction_with_backspace: bool,
 }
 
 static DEFAULT_SELECTION_KEYS: &[u8] = b"123456789\0";
@@ -229,6 +231,7 @@ pub extern "C" fn zt_composer_options_default() -> ZtComposerOptions {
         character_forms: options.character_forms as u32,
         punctuation_keys: options.punctuation_keys as u32,
         early_commit_syllables: options.early_commit_syllables,
+        undo_correction_with_backspace: options.undo_correction_with_backspace,
     }
 }
 
@@ -264,6 +267,7 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
         character_forms: CharacterForms::ALL[o.character_forms as usize],
         punctuation_keys: PunctuationKeys::ALL[o.punctuation_keys as usize],
         early_commit_syllables: o.early_commit_syllables,
+        undo_correction_with_backspace: o.undo_correction_with_backspace,
     })
 }
 
@@ -484,6 +488,17 @@ pub unsafe extern "C" fn zt_composer_toggle_corrections(composer: *mut ZtCompose
     }
 }
 
+/// Converts the automatic correction at the cursor as typed (the open window's span, the correction the last key
+/// made, or the character ↓ would change); false when there is none.
+///
+/// # Safety
+/// `composer` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_revert_correction(composer: *mut ZtComposer) -> bool {
+    // SAFETY: live handle.
+    unsafe { composer_mut(composer) }.is_some_and(Composer::revert_correction)
+}
+
 /// The text before the insertion point, read from the app when a composition starts.
 ///
 /// # Safety
@@ -659,6 +674,16 @@ pub struct ZtPresentation {
     pub notice: *mut c_char,
     /// Standard plain Zhuyin for the highlighted span, or NULL.
     pub zhuyin_hint: *mut c_char,
+    /// The ranges of `text` shown through an automatic correction.
+    pub corrections: *mut ZtRange,
+    /// How many corrections.
+    pub correction_count: usize,
+    /// Plain Zhuyin as typed for the corrections in the open window's span, or NULL.
+    pub typed_reading: *mut c_char,
+    /// ⌫ now converts the last correction as typed instead of deleting.
+    pub backspace_reverts: bool,
+    /// The last key or call converted a correction as typed.
+    pub reverted: bool,
 }
 
 fn index(value: Option<usize>) -> isize {
@@ -676,6 +701,8 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
     let p = composer.presentation();
     let clauses: Box<[ZtRange]> = p.clauses.iter().map(|r| ZtRange { start: r.start, end: r.end }).collect();
     let clause_count = clauses.len();
+    let corrections: Box<[ZtRange]> = p.corrections.iter().map(|r| ZtRange { start: r.start, end: r.end }).collect();
+    let correction_count = corrections.len();
     let candidates = p.candidates.as_ref().map_or(std::ptr::null_mut(), |list| {
         let items: Box<[ZtCandidate]> = list
             .items()
@@ -702,6 +729,11 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
         candidates,
         notice: owned_optional(p.notice.as_deref()),
         zhuyin_hint: owned_optional(p.zhuyin_hint.as_deref()),
+        corrections: Box::into_raw(corrections).cast(),
+        correction_count,
+        typed_reading: owned_optional(p.typed_reading.as_deref()),
+        backspace_reverts: p.backspace_reverts,
+        reverted: p.reverted,
     }))
 }
 
@@ -720,7 +752,9 @@ pub unsafe extern "C" fn zt_presentation_free(presentation: *mut ZtPresentation)
         crate::zt_string_free(p.text);
         crate::zt_string_free(p.notice);
         crate::zt_string_free(p.zhuyin_hint);
+        crate::zt_string_free(p.typed_reading);
         drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(p.clauses, p.clause_count)));
+        drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(p.corrections, p.correction_count)));
         if !p.candidates.is_null() {
             let list = Box::from_raw(p.candidates);
             let items = Box::from_raw(std::ptr::slice_from_raw_parts_mut(list.items, list.count));

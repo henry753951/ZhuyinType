@@ -165,7 +165,7 @@ pub(crate) fn apply_reply(
     sink: &ITfCompositionSink,
     slot: &Slot,
     reply: &Reply,
-    atoms: Option<[u32; 4]>,
+    atoms: Option<display_attributes::Atoms>,
 ) -> Result<()> {
     // SAFETY: valid TSF objects under the write cookie.
     unsafe {

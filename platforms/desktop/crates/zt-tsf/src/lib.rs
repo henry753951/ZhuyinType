@@ -11,6 +11,7 @@
 
 mod coordinates;
 mod keys;
+mod marks;
 mod protocol;
 
 #[cfg(windows)]
