@@ -20,6 +20,8 @@ mod composition;
 #[cfg(windows)]
 mod display_attributes;
 #[cfg(windows)]
+mod focus;
+#[cfg(windows)]
 mod keyboard;
 #[cfg(windows)]
 mod mode_button;

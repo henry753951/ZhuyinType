@@ -334,7 +334,10 @@ impl TextService_Impl {
         let this = self.to_object();
         let (item, object) = mode_button::create(Rc::new(move |right_click, point| {
             if right_click {
+                // The menu's hidden owner takes the activation; the field gets it back afterwards.
+                let focus = crate::focus::Remembered::now();
                 this.show_menu(point);
+                focus.restore(this.menu_owner.get());
             } else {
                 this.toggle_mode();
             }
