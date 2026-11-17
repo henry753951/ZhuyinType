@@ -48,6 +48,8 @@ pub enum Action {
     /// 不要再推薦, 忘記這個選字, 加入自訂詞: a word action on the highlighted candidate (or, adding, the whole
     /// composition).
     Word(CandidateAction),
+    /// 快速設定: the host shows the quick settings panel at the caret.
+    QuickSettings,
 }
 
 /// One rebindable command.
@@ -273,6 +275,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             &[b(code::RETURN, CONTROL)],
             Action::Word(CandidateAction::AddPhrase),
         ),
+        command("quickSettings", "快速設定", "開啟快速設定", "typing", None, false, &[], Action::QuickSettings),
     ]
 });
 

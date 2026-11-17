@@ -167,6 +167,20 @@ impl Presentation {
             .collect();
     }
 
+    /// The presentation with its texts in 簡體 (繁／簡): the composition and every candidate.  The conversion keeps
+    /// the length in UTF-16 units, so the cursor and clauses stay valid; readings, annotations and notices are not
+    /// characters to send and stay as they are.
+    #[must_use]
+    pub fn simplified(&self) -> Self {
+        use zhuyin_core::simplified::to_simplified;
+        let mut p = self.clone();
+        p.composition = to_simplified(&p.composition);
+        for row in &mut p.rows {
+            row.text = to_simplified(&row.text);
+        }
+        p
+    }
+
     /// Nothing composed.
     #[must_use]
     pub fn is_empty(&self) -> bool {

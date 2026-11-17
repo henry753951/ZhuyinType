@@ -3,6 +3,8 @@
 
 use serde_json::{Map, Value};
 
+use crate::quick_menu::QuickState;
+
 /// The largest frame either side sends, newline included.
 pub(crate) const MAX_FRAME: usize = 256 * 1024;
 
@@ -44,6 +46,16 @@ pub(crate) struct Reply {
     pub(crate) toast: Option<String>,
     /// A page turn stopped at the list's end (1 past the last, -1 before the first): the page nudges.
     pub(crate) boundary: Option<i32>,
+    /// 簡體 output (the 中 badge shows 简); older hosts leave it out.
+    pub(crate) simplified: bool,
+    /// 暫停學習 is on (the button's tooltip says so); older hosts leave it out.
+    pub(crate) learning_paused: bool,
+    /// The four switches, in a reply to the `quick` op.
+    pub(crate) quick: Option<QuickState>,
+    /// The `quickSettings` shortcut was pressed: the text service shows its quick menu at the caret.
+    pub(crate) quick_panel: bool,
+    /// Keys bound to host commands that the text service claims in any mode (`(key, modifiers)`); left out: as before.
+    pub(crate) hotkeys: Option<Vec<(i32, i32)>>,
 }
 
 impl Reply {
@@ -151,6 +163,41 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
     };
+    // Left out by older hosts; a value of the wrong type fails the reply.
+    let optional = |key: &str| -> Option<bool> {
+        match object.get(key) {
+            None => Some(false),
+            Some(value) => value.as_bool(),
+        }
+    };
+    let hotkeys = match object.get("hotkeys") {
+        None => None,
+        Some(value) => {
+            let mut keys = Vec::new();
+            for item in value.as_array()? {
+                let code = |name: &str| item.get(name).and_then(Value::as_i64).and_then(|n| i32::try_from(n).ok());
+                keys.push((code("key")?, code("modifiers")?));
+            }
+            Some(keys)
+        }
+    };
+    let quick = match object.get("quick") {
+        None => None,
+        Some(value) => {
+            let quick = value.as_object()?;
+            let flag = |key: &str| quick.get(key).and_then(Value::as_bool);
+            Some(QuickState {
+                english: flag("english")?,
+                full_width: flag("fullWidth")?,
+                simplified: flag("simplified")?,
+                learning_paused: flag("learningPaused")?,
+                symbols: match quick.get("symbols") {
+                    None => false,
+                    Some(value) => value.as_bool()?,
+                },
+            })
+        }
+    };
     Some(Reply {
         handled: boolean("handled")?,
         candidates,
@@ -166,6 +213,11 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         panel,
         toast,
         boundary,
+        simplified: optional("simplified")?,
+        learning_paused: optional("learningPaused")?,
+        quick,
+        quick_panel: optional("quickPanel")?,
+        hotkeys,
     })
 }
 
@@ -361,6 +413,54 @@ mod tests {
         old["preedit"] = json!("");
         old["cursor"] = json!(0);
         assert!(!parse_reply(&line(old), 7, "{A}").unwrap().composing);
+    }
+
+    #[test]
+    fn quick_settings() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!(
+            (reply.simplified, reply.learning_paused, reply.quick, reply.quick_panel),
+            (false, false, None, false)
+        );
+        let mut quick = good();
+        quick["simplified"] = json!(true);
+        quick["learningPaused"] = json!(true);
+        quick["quickPanel"] = json!(true);
+        quick["quick"] =
+            json!({"english": false, "fullWidth": true, "simplified": true, "learningPaused": true, "symbols": false});
+        let reply = parse_reply(&line(quick.clone()), 7, "{A}").unwrap();
+        assert!(reply.simplified && reply.learning_paused && reply.quick_panel);
+        assert_eq!(
+            reply.quick,
+            Some(QuickState {
+                english: false,
+                full_width: true,
+                simplified: true,
+                learning_paused: true,
+                symbols: false
+            })
+        );
+        assert_eq!(reply.hotkeys, None);
+        let mut hotkeys = quick.clone();
+        hotkeys["hotkeys"] = json!([{"key": 81, "modifiers": 0x0C00_0000}]);
+        assert_eq!(parse_reply(&line(hotkeys.clone()), 7, "{A}").unwrap().hotkeys, Some(vec![(81, 0x0C00_0000)]));
+        hotkeys["hotkeys"] = json!([{"key": "Q", "modifiers": 0}]);
+        assert!(parse_reply(&line(hotkeys), 7, "{A}").is_none());
+        let mut no_symbols = quick.clone();
+        no_symbols["quick"].as_object_mut().unwrap().remove("symbols");
+        assert!(!parse_reply(&line(no_symbols), 7, "{A}").unwrap().quick.unwrap().symbols);
+        for (key, value) in [
+            ("simplified", json!(1)),
+            ("learningPaused", json!("yes")),
+            ("quickPanel", json!(null)),
+            ("quick", json!(true)),
+            ("quick", json!({"english": false})),
+            ("quick", json!({"english": false, "fullWidth": 1, "simplified": true, "learningPaused": true})),
+        ] {
+            let mut bad = quick.clone();
+            bad[key] = value;
+            assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
+        }
     }
 
     #[test]

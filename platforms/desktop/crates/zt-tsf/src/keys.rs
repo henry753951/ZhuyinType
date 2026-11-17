@@ -77,6 +77,19 @@ pub(crate) fn host_wants_key(key: &Key, composing: bool, english: bool) -> bool 
     !letter && chord != (CONTROL | ALT)
 }
 
+/// A key the user bound to one of the host's commands (`hotkeys` in a reply, e.g. 「開啟快速設定」): claimed in any
+/// mode, since the local rules above would give a chord such as Ctrl+Alt+Q to the application.  Only the press; a
+/// letter matches in either case.
+pub(crate) fn is_hotkey(key: &Key, hotkeys: &[(i32, i32)]) -> bool {
+    let upper = |code: i32| if (i32::from(b'a')..=i32::from(b'z')).contains(&code) { code - 32 } else { code };
+    let modifiers = key.modifiers & (SHIFT | CONTROL | ALT | META);
+    !key.release
+        && key.key != 0
+        && hotkeys
+            .iter()
+            .any(|&(code, mods)| upper(code) == upper(key.key) && mods & (SHIFT | CONTROL | ALT | META) == modifiers)
+}
+
 /// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
 /// (送出後刪掉重打), Space and Return (they extend 前文).  The application still gets them; the text service only tells
 /// the host.
@@ -135,6 +148,19 @@ mod tests {
         assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), false, true));
         assert!(!host_observes_key(&key(KEY_BACKSPACE, CONTROL), false, false));
         assert!(!host_observes_key(&key(KEY_LEFT, 0), false, false));
+    }
+
+    #[test]
+    fn bound_hotkeys_are_claimed() {
+        let hotkeys = [('Q' as i32, CONTROL | ALT)];
+        assert!(is_hotkey(&key('Q' as i32, CONTROL | ALT), &hotkeys));
+        assert!(is_hotkey(&key('q' as i32, CONTROL | ALT | KEYPAD), &hotkeys));
+        assert!(!is_hotkey(&key('Q' as i32, CONTROL), &hotkeys));
+        assert!(!is_hotkey(&key('W' as i32, CONTROL | ALT), &hotkeys));
+        let mut release = key('Q' as i32, CONTROL | ALT);
+        release.release = true;
+        assert!(!is_hotkey(&release, &hotkeys));
+        assert!(!is_hotkey(&key('Q' as i32, CONTROL | ALT), &[]));
     }
 
     #[test]

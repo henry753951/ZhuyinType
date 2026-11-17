@@ -66,6 +66,8 @@ pub fn commands() -> &'static [CommandInfo] {
             c("nextCharacter", "改後一個字", None, true, vec![b(RIGHT, ALT)]),
             c("togglePunctuationWidth", "標點全半形", None, false, vec![b(SPACE, SHIFT)]),
             c("insertSpace", "插入空白", None, false, vec![b(SPACE, ALT)]),
+            // No default key: the user chooses one.
+            c("quickSettings", "快速設定", None, false, vec![]),
         ]
     })
 }

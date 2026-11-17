@@ -204,6 +204,30 @@
     "detail": "顯示與送出的寫法"
   },
   {
+    "key": "outputScript",
+    "title": "繁／簡",
+    "page": "choosing",
+    "group": "轉換",
+    "kind": "choice",
+    "default": "traditional",
+    "options": [
+      {
+        "value": "traditional",
+        "label": "繁體"
+      },
+      {
+        "value": "simplified",
+        "label": "簡體"
+      }
+    ],
+    "control": "segments",
+    "detail": "組字、候選字與送出的字",
+    "details": {
+      "traditional": "組字、候選字與送出的字",
+      "simplified": "組字、候選字與送出的字換成簡體字；詞庫與學習仍用繁體。"
+    }
+  },
+  {
     "key": "typoTolerance",
     "title": "按錯鍵修正",
     "page": "choosing",

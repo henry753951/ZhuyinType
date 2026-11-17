@@ -14,6 +14,7 @@ mod coordinates;
 mod keys;
 mod marks;
 mod protocol;
+mod quick_menu;
 mod system_look;
 
 #[cfg(windows)]

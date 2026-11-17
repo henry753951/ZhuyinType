@@ -356,6 +356,8 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
         ],
         KeySection::Other => vec![
             KeyItem::new("insertSpace", "在組字中放一個空白", Keys::Command("insertSpace")),
+            KeyItem::new("quickSettings", "開啟快速設定", Keys::Command("quickSettings"))
+                .sub("英文、半形標點、簡體與暫停學習；預設沒有按鍵"),
             KeyItem::new("forwardDelete", "刪掉游標後的字", fixed(&["Del"])).sub("固定"),
         ],
     }

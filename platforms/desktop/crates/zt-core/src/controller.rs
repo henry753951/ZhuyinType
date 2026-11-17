@@ -5,6 +5,7 @@
 //!
 //! Hosts own focus, secure-input detection and inserting [`ControllerEvent::Commit`] into the app.
 
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
@@ -40,6 +41,8 @@ pub enum ControllerEvent {
     CandidateChosen { elapsed_ms: f64 },
     /// A list opened with the word actions' tip: the host counts it in [`WORD_ACTION_TIP_KEY`] (outside the lock).
     WordActionTip,
+    /// The 開啟快速設定 shortcut: the host shows the 快速設定 panel at the caret.
+    QuickPanel,
 }
 
 /// The settings key counting the lists that showed the word actions' tip (macOS uses the same name).
@@ -126,6 +129,8 @@ pub struct InputController {
     secure: bool,
     /// A private field (a browser's private window): typing works, nothing is learned, read or remembered.
     private: bool,
+    /// 暫停學習 (快速設定): every field behaves as a private one.  Never stored: a new controller starts unpaused.
+    learning_paused: bool,
     held_shifts: BTreeSet<ShiftSide>,
     shift_tap: Option<(ShiftSide, f64)>,
     recent_text: String,
@@ -164,6 +169,7 @@ impl InputController {
             caps_lock: false,
             secure: false,
             private: false,
+            learning_paused: false,
             held_shifts: BTreeSet::new(),
             shift_tap: None,
             recent_text: String::new(),
@@ -278,8 +284,8 @@ impl InputController {
         if text.is_empty() {
             return;
         }
-        self.events.push(ControllerEvent::Commit(text.to_owned()));
-        if self.secure || self.private {
+        self.events.push(ControllerEvent::Commit(self.output(text).into_owned()));
+        if self.secure || self.unlearned() {
             return;
         }
         self.recent_text.push_str(text);
@@ -287,7 +293,7 @@ impl InputController {
     }
 
     fn remember(&mut self) {
-        if self.secure || self.private || !self.settings.bool("usesPrecedingText") {
+        if self.secure || self.unlearned() || !self.settings.bool("usesPrecedingText") {
             self.recent_text.clear();
             self.app_context.remove(&self.app);
             return;
@@ -302,9 +308,9 @@ impl InputController {
     fn prepare_context(&mut self) {
         // Secure input and private fields: no text is read or remembered, and nothing is learned from this
         // composition.
-        if self.secure || self.private {
+        if self.secure || self.unlearned() {
             self.recent_text.clear();
-            if self.private && self.session.ready() {
+            if self.unlearned() && self.session.ready() {
                 let _ = self.session.set_preceding_text("");
             }
             return;
@@ -355,7 +361,7 @@ impl InputController {
 
     fn candidate_details(&self, input: &ObservedInput, before: &Presentation) -> Option<CandidateDetails> {
         let recorder = self.recorder.as_ref()?;
-        if self.secure || self.private || !self.settings.bool("recordsCorrections") {
+        if self.secure || self.unlearned() || !self.settings.bool("recordsCorrections") {
             return None;
         }
         let index = recorder.candidate_index(input, before)?;
@@ -391,7 +397,7 @@ impl InputController {
         let commit = self.preserving_visible(outcome.commit, &before);
         self.committed(&commit);
         self.observe(observed, &before, &commit, outcome.handled, outcome.elapsed_ms, candidate, time);
-        if !outcome.handled && !self.secure && !self.private {
+        if !outcome.handled && !self.secure && !self.unlearned() {
             // Keys the app receives extend or trim the text before the insertion point.
             match input {
                 KeyInput::Backspace => {
@@ -441,6 +447,14 @@ impl InputController {
         if self.secure || !self.session.ready() {
             return false;
         }
+        let command = self.shortcuts.resolve(key.code, key.modifiers);
+        // 快速設定 opens in English too: it is how to switch back.
+        if command
+            .is_some_and(|c| c.action == Action::QuickSettings && self.english() && self.shortcuts.is_enabled(c.id))
+        {
+            self.events.push(ControllerEvent::QuickPanel);
+            return true;
+        }
         if self.english() {
             return self.pass_through();
         }
@@ -451,7 +465,7 @@ impl InputController {
         {
             return self.undo_word_action();
         }
-        if let Some(command) = self.shortcuts.resolve(key.code, key.modifiers) {
+        if let Some(command) = command {
             if !self.shortcuts.is_enabled(command.id) {
                 return self.pass_through();
             }
@@ -507,14 +521,9 @@ impl InputController {
                 }
                 true
             }
-            Action::TogglePunctuationWidth => {
-                let Ok(width) = self.session.toggle_punctuation_width() else { return false };
-                self.events.push(ControllerEvent::WidthSwitched { full: width != PunctuationWidth::Half });
-                let after = self.session.presentation().clone();
-                let secure = self.secure;
-                if let Some(recorder) = &mut self.recorder {
-                    recorder.punctuation_width_changed(width, &after, secure, time);
-                }
+            Action::TogglePunctuationWidth => self.toggle_punctuation_width(time),
+            Action::QuickSettings => {
+                self.events.push(ControllerEvent::QuickPanel);
                 true
             }
             Action::Input(input) => {
@@ -749,7 +758,7 @@ impl InputController {
             }
         }
         if self.session.ready() {
-            let _ = self.session.set_learning_suspended(secure || self.private);
+            let _ = self.session.set_learning_suspended(secure || self.unlearned());
         }
     }
 
@@ -772,13 +781,88 @@ impl InputController {
             return;
         }
         self.private = private;
-        if private {
+        self.unlearned_changed();
+    }
+
+    /// 暫停學習 on or off (快速設定): while on every field behaves as a private one ([`Self::set_private`]).  Kept only
+    /// in memory, so every new process starts learning again.
+    pub fn set_learning_paused(&mut self, paused: bool) {
+        if paused == self.learning_paused {
+            return;
+        }
+        self.learning_paused = paused;
+        self.unlearned_changed();
+    }
+
+    /// 暫停學習 is on.
+    #[must_use]
+    pub fn learning_paused(&self) -> bool {
+        self.learning_paused
+    }
+
+    /// Nothing is learned, read or remembered: a private field, or 暫停學習.
+    #[must_use]
+    pub fn unlearned(&self) -> bool {
+        self.private || self.learning_paused
+    }
+
+    fn unlearned_changed(&mut self) {
+        let unlearned = self.unlearned();
+        if unlearned {
             self.recent_text.clear();
             self.app_context.remove(&self.app);
         }
         if self.session.ready() {
-            let _ = self.session.set_learning_suspended(self.secure || private);
+            let _ = self.session.set_learning_suspended(self.secure || unlearned);
         }
+    }
+
+    /// 繁／簡 is 簡體 (`outputScript`): the composition, the candidates and what is sent are converted as they leave.
+    #[must_use]
+    pub fn simplified(&self) -> bool {
+        self.settings.string("outputScript") == "simplified"
+    }
+
+    /// `text` as it leaves for the app or a view: converted to 簡體 when 繁／簡 says so (length-preserving, so offsets
+    /// computed on the traditional text stay valid).
+    #[must_use]
+    pub fn output<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        if self.simplified() { Cow::Owned(zhuyin_core::simplified::to_simplified(text)) } else { Cow::Borrowed(text) }
+    }
+
+    /// What the views draw and the app shows: [`Self::presentation`] with its texts converted by [`Self::output`].
+    #[must_use]
+    pub fn output_presentation(&self) -> Cow<'_, Presentation> {
+        let p = self.session.presentation();
+        if self.simplified() { Cow::Owned(p.simplified()) } else { Cow::Borrowed(p) }
+    }
+
+    /// 中文標點 at full (true) or half width, as the 切換標點全半形 shortcut sets it (with its 全／半 badge).
+    pub fn set_full_width(&mut self, full: bool) {
+        self.sync_settings();
+        if self.secure || !self.session.ready() || full == (self.session.punctuation_width() != PunctuationWidth::Half)
+        {
+            return;
+        }
+        let time = self.clock();
+        self.toggle_punctuation_width(time);
+    }
+
+    /// 中文標點 is at full width.
+    #[must_use]
+    pub fn full_width(&self) -> bool {
+        self.session.punctuation_width() != PunctuationWidth::Half
+    }
+
+    fn toggle_punctuation_width(&mut self, time: f64) -> bool {
+        let Ok(width) = self.session.toggle_punctuation_width() else { return false };
+        self.events.push(ControllerEvent::WidthSwitched { full: width != PunctuationWidth::Half });
+        let after = self.session.presentation().clone();
+        let secure = self.secure;
+        if let Some(recorder) = &mut self.recorder {
+            recorder.punctuation_width_changed(width, &after, secure, time);
+        }
+        true
     }
 
     #[must_use]
@@ -898,7 +982,8 @@ impl InputController {
         }
         let after = self.session.presentation().clone();
         if recording {
-            let secure = self.secure;
+            // Private fields and 暫停學習 keep no correction log, as secure input.
+            let secure = self.secure || self.unlearned();
             let context = self.recent_text.clone();
             if let Some(recorder) = &mut self.recorder {
                 recorder.observe(&input, before, &after, commit, handled, secure, candidate, time, &move || {
