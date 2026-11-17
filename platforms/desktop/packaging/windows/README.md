@@ -1,6 +1,6 @@
 # Windows 安裝程式
 
-`ZhuyinType-<版本>-windows-x64-setup.exe` 是 NSIS 安裝程式（Modern UI 2、繁體中文介面）。使用者按兩下、在 UAC 視窗按一次「是」，其餘自動完成；從「設定 › 應用程式」可以移除。支援 64 位元的 Windows 10 與 Windows 11。
+`ZhuyinType-<版本>-windows-x64-setup.exe` 是 NSIS 安裝程式（Modern UI 2、繁體中文介面）。使用者按兩下、在 UAC 視窗按一次「是」（一般使用者帳號則輸入系統管理員的帳號密碼），其餘自動完成；從「設定 › 應用程式」可以移除。支援 64 位元的 Windows 10 與 Windows 11；ARM 版 Windows 的程式無法載入 x64 的文字服務，安裝程式會拒絕安裝。
 
 所有建置都在 GPU 主機（Linux）上交叉編譯，不在 Mac 上執行。
 
@@ -25,18 +25,19 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout �
 
 ### 安裝的檔案
 
-安裝到 `C:\Program Files\ZhuyinType`：
+預設安裝到 `C:\Program Files\ZhuyinType`。安裝位置必須是新的或空的資料夾，或先前的安裝位置：安裝程式會把資料夾交給系統管理員，解除安裝時刪除它，所以不能是 `C:\`、Program Files 或使用者自己的資料夾。
 
 | 檔案 | 內容 |
 |---|---|
 | `zhuyintype.exe` | App：設定、候選字視窗、設定精靈與輸入法服務（broker） |
 | `zhuyintype-tsf-x64.dll`、`zhuyintype-tsf-x86.dll` | TSF 文字服務，64 位元與 32 位元程式各自載入（`crates/zt-tsf`） |
+| `onnxruntime.dll` | ONNX Runtime，App 執行神經模型時載入 |
 | `logo.ico` | 語言清單與工作列輸入指示器裡的輸入法圖示 |
 | `zhuyintype.ico` | 開始功能表、「設定 › 應用程式」的圖示 |
-| `background.lnk` | 以 `--background` 啟動 App 的捷徑（安靜更新後重新啟動用） |
-| `data\lexicon.bin`、`data\lexicon.json` | 詞庫（mmap 二進位格式）與它的來源雜湊 |
-| `data\lm\lm.bin`、`data\lm\lm.json` | 語言模型與它的來源雜湊 |
-| `data\lm\NOTICE.md`、`data\lm\articles.tsv.gz` | 語言模型的授權說明與訓練文字的出處清單 |
+| `background.lnk` | 以 `--background` 啟動 App 的捷徑（更新服務無法使用時，在安裝者的工作階段重新啟動用） |
+| `data\` | 引擎資料：詞庫、讀音通道、兩個語言模型與神經模型，以及它們的授權說明（`build.sh`〈引擎資料〉） |
+| `fonts\` | 候選字視窗的字型，文字服務在各程式內讀取 |
+| `updates\` | 更新服務下載的安裝程式（下一次更新或重新開機時刪除） |
 | `licenses\` | AGPL-3.0、NOTICE、資料來源（`SOURCES.md`、`sources.json`）、資料授權、Rust 套件清單 |
 | `uninstall.exe` | 解除安裝程式 |
 
@@ -44,18 +45,20 @@ App 在 `<執行檔目錄>\data` 找引擎資料。
 
 ## 安裝程式做的事
 
-1. 結束執行中的 ZhuyinType（先以 `taskkill` 要求結束，1.5 秒後強制結束），並記下它是否在目前的工作階段執行。
-2. 複製檔案。應用程式正在使用的舊 DLL 無法覆寫，但可以改名：先改名為 `*.old`，再排定下次開機刪除；正在使用它的程式繼續使用舊版，重新開啟後載入新版。不需要重新開機，完成頁也不詢問。
-3. 以 `regsvr32` 登記兩個 DLL（64 位元用 `System32\regsvr32.exe`，32 位元用 `SysWOW64\regsvr32.exe`）。`DllRegisterServer` 登記本機的 COM 類別（`InprocServer32`、`ThreadingModel=Apartment`）、zh-TW（0x0404）語言設定檔與類別：鍵盤、顯示屬性提供者（組字的底線與反白）、Store／沉浸式 App、工作列輸入指示器、UI-less。CLSID 與設定檔 GUID 和先前的 C++ 版相同。
-4. 把「ZhuyinType 注音」加入安裝者的輸入法清單（`regsvr32 /n /i:user`，在 DLL 內呼叫 `InstallLayoutOrTip`）。原有的語言、輸入法與預設輸入法不變。
-5. 登記 Active Setup：這台電腦的其他使用者下次登入時，各自的清單也加入一次。版本固定為 1，之後更新不會替已經自行移除的人再加回去。
-6. 登入時啟動：`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\ZhuyinType` = `"…\zhuyintype.exe" --background`。
-7. 開始功能表捷徑「ZhuyinType 設定」（所有使用者）。
-8. 「設定 › 應用程式」的項目：名稱、圖示、發行者、版本、大小、解除安裝與安靜解除安裝指令。
-9. 更新服務「ZhuyinType 更新」（`ZhuyinTypeUpdate`）：手動啟動、LocalSystem，執行 `zhuyintype.exe --update-service`。安全性描述元 `D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;LCRP;;;AU)` 讓登入的使用者只能查詢與啟動它。它自己取得並驗證簽章過的更新清單與安裝程式（[DESKTOP.md](../../../../docs/product/DESKTOP.md)〈更新〉），放進 `updates\` 後以 `/S /UPDATE` 執行；帶 `/UPDATE` 的安裝最後以 `--relaunch-sessions` 在每個登入的工作階段重新啟動 App。
-10. 完成頁預設勾選「開啟 ZhuyinType」。安靜安裝（`/S`）時，只有安裝前 App 在同一個工作階段執行（例如更新）才在背景重新啟動；其他情況等下次登入。
+1. 設定安裝資料夾的權限：擁有者為 Administrators，只有 SYSTEM 與 Administrators 可以修改，其他使用者與 Store App（`ALL APPLICATION PACKAGES`）只能讀取與執行，資料夾內的檔案改為繼承這些權限。更新服務以 SYSTEM 執行這裡的程式，文字服務在每個程式內執行，所以不能讓其他帳號修改；在 Program Files 外另選的資料夾原本會繼承 `C:\` 讓所有登入的使用者修改的權限。
+2. 記下 App 在哪些工作階段執行（PowerShell 的 `Get-Process`；無法取得時記為全部），再結束它（先以 `taskkill` 要求結束，1.5 秒後強制結束，最多再等 10 秒到它真的結束）。
+3. 複製檔案。應用程式正在使用的舊 DLL 無法覆寫，但可以改名：先改名為 `*.old`，再排定下次開機刪除；正在使用它的程式繼續使用舊版，重新開啟後載入新版。不需要重新開機，完成頁也不詢問。
+4. 以 `regsvr32` 登記兩個 DLL（64 位元用 `System32\regsvr32.exe`，32 位元用 `SysWOW64\regsvr32.exe`）。`DllRegisterServer` 登記本機的 COM 類別（`InprocServer32`、`ThreadingModel=Apartment`）、zh-TW（0x0404）語言設定檔與類別：鍵盤、顯示屬性提供者（組字的底線與反白）、Store／沉浸式 App、工作列輸入指示器、UI-less。CLSID 與設定檔 GUID 和先前的 C++ 版相同。
+5. 把「ZhuyinType 注音」加入安裝者的輸入法清單（`regsvr32 /n /i:user`，在 DLL 內呼叫 `InstallLayoutOrTip`）。原有的語言、輸入法與預設輸入法不變。
+6. 登記 Active Setup：這台電腦的其他使用者下次登入時，各自的清單也加入一次。版本固定為 1，之後更新不會替已經自行移除的人再加回去。App 啟動時也做同樣的檢查（`enable_input_method_for_user`）：使用者的 HKCU 沒有 Active Setup 的版本時，以該使用者身分執行同一個 `regsvr32 /n /i:user` 並寫下版本。一般使用者輸入系統管理員密碼安裝時，安裝程式以那位系統管理員的身分執行，第 5 步只加到系統管理員的清單；App 在使用者的工作階段啟動後，使用者自己的清單立即加入，不必等下次登入。
+7. 登入時啟動：`HKLM\Software\Microsoft\Windows\CurrentVersion\Run\ZhuyinType` = `"…\zhuyintype.exe" --background`。
+8. 開始功能表捷徑「ZhuyinType 設定」（所有使用者）。
+9. 「設定 › 應用程式」的項目：名稱、圖示、發行者、版本、大小、解除安裝與安靜解除安裝指令。
+10. 更新服務「ZhuyinType 更新」（`ZhuyinTypeUpdate`）：手動啟動、LocalSystem，執行 `zhuyintype.exe --update-service`。安全性描述元 `D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)(A;;LCRP;;;AU)` 讓登入的使用者只能查詢與啟動它。它自己取得並驗證簽章過的更新清單與安裝程式（[DESKTOP.md](../../../../docs/product/DESKTOP.md)〈更新〉），放進 `updates\` 後以 `/S /UPDATE` 執行。服務先確認安裝資料夾與 `zhuyintype.exe` 只有 SYSTEM、Administrators 與 TrustedInstaller 能擁有與修改，否則不安裝；執行前以不允許他人寫入或刪除的方式開啟下載的安裝程式，從這個 handle 重新驗證簽章，直到程序啟動後才關閉。以 `relaunch` 參數啟動服務時（`sc start ZhuyinTypeUpdate relaunch`）不更新，只依安裝程式寫在 `HKLM\Software\ZhuyinType` 的要求重新啟動 App（見下一步），不採用呼叫者的任何輸入。
+11. 重新啟動 App：在第 2 步記下的每個工作階段，以該工作階段的使用者身分在背景啟動 App（`--background`）。只有 SYSTEM 能替每個登入的使用者啟動程式，所以安裝程式把工作階段寫進 `HKLM\Software\ZhuyinType` 的 `RelaunchSessions`，再以 `relaunch` 參數啟動更新服務；帶 `/UPDATE` 的安裝本身就是 SYSTEM，直接執行 `zhuyintype.exe --relaunch-sessions`。第一次安靜安裝時（之前沒有安裝、App 也沒有執行）在每個登入中的工作階段啟動，讓安裝的人立即可以打字。安裝失敗（例如登記失敗而中止）時也重新啟動。
+12. 完成頁預設勾選「開啟 ZhuyinType」，開啟設定。安裝程式的身分就是螢幕前的使用者時（系統管理員按「是」）透過 Explorer 開啟，視窗會在前景；一般使用者輸入系統管理員密碼時，安裝程式是那位系統管理員，改由更新服務以 `OpenSession` 在這個工作階段、以螢幕前的使用者身分開啟。
 
-App 一律以登入的使用者身分啟動、不提升權限：安裝程式本身以系統管理員權限執行，所以透過 Explorer 開啟執行檔或捷徑。broker 的 named pipe 屬於該使用者。
+App 一律以登入的使用者身分啟動、不提升權限：broker 的 named pipe 以使用者的 SID 命名、屬於該使用者，以其他帳號啟動的 App 服務不到這位使用者的輸入法。
 
 ### 為什麼用 HKLM Run
 
@@ -69,7 +72,7 @@ App 一律以登入的使用者身分啟動、不提升權限：安裝程式本�
 2. `regsvr32 /u` 兩個 DLL：移除語言設定檔、類別、TSF 登錄機碼與 COM 類別。
 3. 移除 Active Setup、登入啟動、開始功能表捷徑、「設定 › 應用程式」項目與 `HKLM\Software\ZhuyinType`。
 4. 刪除程式檔案。仍被應用程式載入的 DLL 改名後排定下次開機刪除，安裝資料夾也在那時刪除。
-5. 個人資料（`%APPDATA%\ZhuyinType` 的設定、`%LOCALAPPDATA%\ZhuyinType` 的自訂詞、學習記錄、使用統計與改字記錄）預設保留；在「選取元件」頁勾選「同時刪除我的自訂詞、學習記錄與設定」才刪除。
+5. 個人資料（`%APPDATA%\ZhuyinType` 的設定、`%LOCALAPPDATA%\ZhuyinType` 的自訂詞、學習記錄、使用統計與改字記錄）預設保留；在「選取元件」頁勾選「同時刪除我的自訂詞、學習記錄與設定」才刪除。刪除的是執行解除安裝程式的帳號的資料：一般使用者輸入系統管理員密碼解除安裝時，刪除的是那位系統管理員的資料，使用者自己的資料要手動刪除。從輸入法清單移除（第 1 步）也只對這個帳號；其他使用者清單裡的項目在文字服務取消登記後不再出現。
 
 ## 發布
 
@@ -79,10 +82,13 @@ App 一律以登入的使用者身分啟動、不提升權限：安裝程式本�
 
 ```bat
 ZhuyinType-Windows-x64-setup.exe /S
+ZhuyinType-Windows-x64-setup.exe /S /D=D:\Apps\ZhuyinType
 "C:\Program Files\ZhuyinType\uninstall.exe" /S
 ```
 
-結束代碼 0 表示成功；登記 64 位元文字服務失敗時為 2。
+`/D=` 必須放在最後、不加引號。結束代碼 0 表示成功；登記 64 位元文字服務失敗時為 2；不支援的系統（32 位元、Windows 10 之前、ARM）或不能使用的安裝位置為 3。安靜執行時不顯示任何對話框（更新服務在工作階段 0 執行安裝程式，那裡的對話框沒有人看得到，會讓安裝停住）。
+
+更新服務執行的安裝程式自己替換掉服務的執行檔，服務不等它結束，所以安裝程式的結束代碼不會回報給 App；失敗時 App 照常重新啟動，下次檢查時再試。
 
 ## 程式碼簽章（尚未設定）
 

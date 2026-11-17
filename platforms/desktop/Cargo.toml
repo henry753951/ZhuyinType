@@ -47,6 +47,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_System_Services",
   "Win32_System_RemoteDesktop",
   "Win32_System_Environment",
+  "Win32_System_Registry",
 ] }
 
 # GPUI's Windows backend compiles its shaders only on a Windows build host; the vendored copy also takes them

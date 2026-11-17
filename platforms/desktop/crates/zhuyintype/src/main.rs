@@ -132,6 +132,16 @@ fn main() {
     if service.is_some() && !args.no_broker {
         std::thread::spawn(linux_enable_fcitx);
     }
+    // A standard user who installed with an administrator's password got ZhuyinType in that administrator's input
+    // method list, not their own; Active Setup adds it at their next sign-in, this at once.
+    #[cfg(windows)]
+    if service.is_some() && !args.no_broker {
+        std::thread::spawn(|| {
+            if let Err(error) = zt_core::update::windows::enable_input_method_for_user() {
+                log::warn!("input method list: {error:#}");
+            }
+        });
+    }
     // GPUI connects to the input method (XIM, the Wayland text-input) once, when it starts; at login autostart may
     // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.
     #[cfg(target_os = "linux")]
