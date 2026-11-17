@@ -64,7 +64,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 ## 使用統計
 
-「記錄使用統計」開啟時，`InputController` 把 macOS `UsageStatsObserver` 的每一次計數送成一個 `zt_core::stats::UsageEvent`，內容只有數字；`UsageStats::record` 收下並寫入使用者資料夾的 `stats.json`（格式與 macOS 相同，最多每 10 分鐘寫入一次，設定視窗開啟與 App 結束時也會寫入）：
+「記錄使用統計」開啟時，`InputController` 把 macOS `UsageStatsObserver` 的每一次計數送成一個 `zt_core::stats::UsageEvent`，內容只有數字；`UsageStats::record` 收下並寫入使用者資料夾的 `stats.json`（格式與 macOS 相同；打字時最多每 10 分鐘寫入一次，停止打字一分鐘後也會寫入，因為登出或更新時程式會直接被結束，沒有機會再寫）：
 
 | UsageEvent | 內容 | macOS 計數 |
 |---|---|---|

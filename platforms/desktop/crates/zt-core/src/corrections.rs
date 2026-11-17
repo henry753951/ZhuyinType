@@ -1146,21 +1146,35 @@ impl CorrectionLog {
             return Ok(());
         };
         let line = encode(record) + "\n";
-        let written = (|| -> std::io::Result<()> {
+        let written = (|| -> std::io::Result<bool> {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             let mut options = OpenOptions::new();
-            options.create(true).append(true);
+            options.create(true).append(true).read(true);
             #[cfg(unix)]
             std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-            options.open(&path)?.write_all(line.as_bytes())
+            let mut file = options.open(&path)?;
+            // A record cut short (the process ended while writing it) is ended here, so this one is a line of its
+            // own and stays readable.
+            let mut last = [0u8; 1];
+            let length = file.metadata()?.len();
+            let torn = length > 0 && {
+                use std::io::Seek as _;
+                file.seek(std::io::SeekFrom::Start(length - 1))?;
+                file.read_exact(&mut last)?;
+                last[0] != b'\n'
+            };
+            let line = if torn { format!("\n{line}") } else { line };
+            file.write_all(line.as_bytes())?;
+            Ok(torn)
         })();
-        if written.is_err() {
+        let Ok(torn) = written else {
             log.error = Some("無法寫入改字記錄。".to_owned());
             return Err(anyhow!("無法寫入改字記錄。"));
-        }
-        log.count += 1;
+        };
+        // The cut-short record is a line now too.
+        log.count += 1 + usize::from(torn);
         log.error = None;
         Ok(())
     }
@@ -1234,5 +1248,22 @@ mod tests {
         assert_eq!(Shape::of("你好ㄇㄚ"), Shape { converted: 2, pending: "ㄇㄚ".into() });
         let record = json!({"z": 1, "a": {"y": "a/b", "b": [true, null]}});
         assert_eq!(encode(&record), r#"{"a":{"b":[true,null],"y":"a/b"},"z":1}"#);
+    }
+
+    #[test]
+    fn a_record_cut_short_by_a_crash_does_not_swallow_the_next() {
+        let dir = std::env::temp_dir().join(format!("zt-corrections-torn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // The process ended (power loss) halfway through writing a record.
+        std::fs::write(dir.join(FILE_NAME), "{\"schema\":1}\n{\"schema\":1,\"comm").unwrap();
+        let log = CorrectionLog::open(Some(&dir));
+        log.append(&json!({"schema": 1, "committed": "你好"})).unwrap();
+        let text = std::fs::read_to_string(dir.join(FILE_NAME)).unwrap();
+        let last = text.lines().last().unwrap();
+        assert_eq!(serde_json::from_str::<Value>(last).unwrap()["committed"], "你好");
+        assert!(text.ends_with('\n'));
+        assert_eq!(log.count(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
