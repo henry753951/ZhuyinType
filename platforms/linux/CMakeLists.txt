@@ -81,6 +81,11 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/delivery.sh" "${CMAKE_CURRENT_BINARY_DIR}" "${ZT_IME_HOST}")
             set_tests_properties(fcitx-self-host-settings PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77
                 ENVIRONMENT "ZT_DELIVERY_SELF_HOST=1")
+            # A HiDPI X11 desktop (Xft.dpi 192): Fcitx's caret is in X pixels, the app's window in its own.
+            add_test(NAME fcitx-application-delivery-hidpi COMMAND bash
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/delivery.sh" "${CMAKE_CURRENT_BINARY_DIR}" "${ZT_IME_HOST}")
+            set_tests_properties(fcitx-application-delivery-hidpi PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77
+                ENVIRONMENT "GPUI_X11_SCALE_FACTOR=2")
             add_executable(fcitx-focus-probe tests/FocusProbe.cpp)
             target_link_libraries(fcitx-focus-probe PRIVATE Qt6::Widgets)
             target_compile_options(fcitx-focus-probe PRIVATE -Wall -Wextra -Wpedantic -Werror)

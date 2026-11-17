@@ -55,10 +55,38 @@ fn popups(cx: &mut App) -> &mut Popups {
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
     cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
-            cx.update(|cx| handle(event, cx));
+            cx.update(|cx| {
+                let event = in_logical_pixels(event, cx);
+                handle(event, cx);
+            });
         }
     })
     .detach();
+}
+
+/// The service's caret comes from the Fcitx5 addon in the X server's pixels (Fcitx knows no other), which are GPUI's
+/// logical pixels times its scale (Xft.dpi, GPUI_X11_SCALE_FACTOR): on a HiDPI X11 desktop the window would land at
+/// twice the caret's place.  The Windows text service sends logical pixels already.
+fn in_logical_pixels(event: UiEvent, cx: &mut App) -> UiEvent {
+    let caret = match &event {
+        UiEvent::Popup(Some(state)) => state.caret,
+        UiEvent::Toast { anchor, .. } => *anchor,
+        _ => return event,
+    };
+    // GPUI's X11 scale is one for every window: the candidate window's (opened once and kept anyway).
+    let scale = candidate_window(cx)
+        .and_then(|handle| {
+            handle.update(cx, |_, window, _| platform::x11_pixels(window).then(|| window.scale_factor())).ok()
+        })
+        .flatten();
+    let Some(scale) = scale.filter(|scale| *scale > 0. && (*scale - 1.).abs() > f32::EPSILON) else { return event };
+    let scale = f64::from(scale);
+    let logical = Rect::new(caret.x / scale, caret.y / scale, caret.width / scale, caret.height / scale);
+    match event {
+        UiEvent::Popup(Some(state)) => UiEvent::Popup(Some(PopupState { caret: logical, ..state })),
+        UiEvent::Toast { text, .. } => UiEvent::Toast { text, anchor: logical },
+        other => other,
+    }
 }
 
 /// Sends clicks somewhere else than the service (demos and screenshots).
