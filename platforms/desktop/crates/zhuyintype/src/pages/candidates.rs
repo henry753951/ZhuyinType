@@ -1,5 +1,6 @@
 //! 「視窗與提示」 page (macOS `CandidatesPane`): one preview at the top drawn with the real candidate window, then the
-//! list's settings, its content, 位置, 外觀, 動畫 and 提示, with the keys of the commands they govern.  The page has no
+//! list's settings, its content, 位置, 外觀 (主題 and 透明效果 for the whole app, then the candidate window's own), 動畫
+//! and 提示, with the keys of the commands they govern.  The page has no
 //! sub-pages.
 //!
 //! Keys rows show each command's keys as caps and lead to the command's row on the 快捷鍵 page, where they are
@@ -131,6 +132,15 @@ fn registry_row(key: &'static str, subtitle: Option<String>, cx: &App) -> ui::Ro
     match subtitle {
         Some(subtitle) => row.subtitle(subtitle),
         None => row,
+    }
+}
+
+/// 「透明效果」, or why this system has no backdrop (the row then stays off and cannot be changed).
+fn transparency_row(cx: &App) -> ui::Row {
+    let row = registry_row("transparency", None, cx);
+    match zt_core::appearance::backdrop_support() {
+        Ok(()) => row,
+        Err(reason) => row.subtitle(reason).dimmed(true).trailing(ui::value_text("關閉", cx)),
     }
 }
 
@@ -313,7 +323,11 @@ impl Render for CandidatesPage {
             .child(section("候選字清單").rows(list_rows))
             .child(section("清單的內容").rows(content_rows))
             .child(section("位置").row(registry_row("candidatePlacement", None, cx)))
-            .child(section("外觀").row(registry_row("panelAppearance", None, cx)))
+            .child(section("外觀").row(registry_row("theme", None, cx)).row(transparency_row(cx)).row(registry_row(
+                "panelAppearance",
+                None,
+                cx,
+            )))
             .child(section("動畫").row(registry_row("panelAnimation", None, cx)))
             .child(section("提示").row(registry_row("showModeToast", Some(toast_subtitle), cx)).footer(ui::text_link(
                 "keys-overview",

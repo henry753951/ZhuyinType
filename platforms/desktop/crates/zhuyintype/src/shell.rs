@@ -49,7 +49,7 @@ impl SettingsWindow {
             .w(sz::SIDEBAR)
             .h_full()
             .flex_shrink_0()
-            .bg(p.sidebar)
+            // The window's frame colour shows through: one continuous frame, also over a backdrop.
             .px(space::S12)
             .pt(space::S4)
             .pb(space::S12)
@@ -98,7 +98,7 @@ impl SettingsWindow {
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         // The app's name small and quiet, as Discord's and Claude's bars carry it: the page has the large title.
-        title_bar(sz::TITLE_BAR, p.window).child(
+        title_bar(sz::TITLE_BAR, gpui_kit::transparent_black()).child(
             h().h_full()
                 .px(space::S24)
                 .gap(space::S8)
@@ -157,6 +157,7 @@ impl Render for SettingsWindow {
             Some(forced) => theme::force(forced, window, cx),
             None => theme::sync(window, cx),
         }
+        crate::platform::backdrop::apply(window, cx);
         let p = theme::palette(cx);
         let nav = app::nav(cx);
         let (page, generation, direction, scroll) = (nav.page, nav.generation, nav.direction, nav.scroll.clone());
@@ -202,7 +203,7 @@ impl Render for SettingsWindow {
             );
         window_border().child(
             v().size_full()
-                .bg(p.window)
+                .bg(p.frame)
                 .text_color(p.text)
                 .font(theme::font())
                 // CJK text needs room between lines.
@@ -216,11 +217,12 @@ impl Render for SettingsWindow {
                                 .size_full()
                                 // Without this the page grows to its rows' unwrapped width in a narrow window.
                                 .min_w(px(0.))
-                                .bg(p.surface)
+                                .bg(p.page)
                                 .rounded(sz::R_XL)
                                 .border_1()
                                 .border_color(p.surface_border)
-                                .shadow_xs()
+                                // A shadow would show through a page tinted over a backdrop.
+                                .when(p.material == theme::Material::Opaque, |this| this.shadow_xs())
                                 .overflow_y_scroll()
                                 .track_scroll(&scroll)
                                 .child(content),

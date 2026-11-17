@@ -250,6 +250,7 @@ mod tests {
             model: zt_panel::model::PanelModel::default(),
             style: zt_panel::style::PanelStyle::default(),
             appearance: zt_panel::style::Appearance::Dark,
+            translucent: true,
             animates: true,
             above: false,
         };

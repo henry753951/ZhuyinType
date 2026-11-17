@@ -12,7 +12,8 @@ pub fn style_from_settings(settings: &Settings, keys: &CurrentKeys) -> PanelStyl
     zt_core::panel::style(settings, |command| keys.text(command))
 }
 
-/// 「外觀」: the candidate window, the phrase notice and the 中/英 badge follow the system or are forced.
+/// 「候選字視窗」: the candidate window, the phrase notice and the 中/英 badge follow the 主題 (and so perhaps the
+/// system) or are forced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PanelAppearance {
     System,
@@ -22,10 +23,10 @@ pub enum PanelAppearance {
 
 impl PanelAppearance {
     pub fn from_settings(settings: &Settings) -> Self {
-        match settings.string("panelAppearance").as_str() {
-            "light" => Self::Light,
-            "dark" => Self::Dark,
-            _ => Self::System,
+        match zt_core::appearance::panel_theme(settings) {
+            zt_core::appearance::Choice::Light => Self::Light,
+            zt_core::appearance::Choice::Dark => Self::Dark,
+            zt_core::appearance::Choice::System => Self::System,
         }
     }
 

@@ -414,6 +414,7 @@ impl Render for WizardWindow {
             Some(forced) => theme::force(forced, window, cx),
             None => theme::sync(window, cx),
         }
+        crate::platform::backdrop::apply(window, cx);
         let p = theme::palette(cx);
         let reduced = cx.reduce_motion();
         let step = self.step();
@@ -465,7 +466,7 @@ impl Render for WizardWindow {
             v().id("wizard")
                 .size_full()
                 .relative()
-                .bg(p.surface)
+                .bg(p.page)
                 .text_color(p.text)
                 .font(theme::font())
                 .track_focus(&self.focus)

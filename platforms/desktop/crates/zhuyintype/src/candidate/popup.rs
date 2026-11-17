@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, Global, IntoElement, ParentElement, Pixels, Render, Styled, Window,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowKind,
-    WindowOptions, div, point, px, size,
+    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowKind, WindowOptions, div, point,
+    px, size,
 };
 use zt_core::presentation::{Rect, popup_position};
 use zt_core::service::{PopupAction, PopupState, UiEvent};
@@ -232,7 +232,7 @@ impl CandidateWindow {
 
 impl Render for CandidateWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+        let system_dark = crate::theme::system_dark(window);
         let palette = self.appearance.palette(system_dark);
         // After the event: the answer may update this window again, which cannot happen inside its own update.
         let actions: ActionHandler = Rc::new(|action, _, cx| {
@@ -411,7 +411,7 @@ pub struct ToastWindow {
 
 impl Render for ToastWindow {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+        let system_dark = crate::theme::system_dark(window);
         let palette = self.appearance.palette(system_dark);
         let mut alpha = 1.;
         if let Some(shown) = self.shown_at

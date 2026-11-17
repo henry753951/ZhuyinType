@@ -3,18 +3,39 @@
 //! ZhuyinType's own design language for Linux and Windows: not a copy of macOS nor of Windows.  Warm neutral
 //! surfaces, monochrome line icons, hairline dividers between rows instead of filled cards, one calm indigo accent
 //! used sparingly, Inter for Latin text and digits over the system's CJK font.  The window is the sidebar's colour;
-//! the page sits on an inset rounded surface.  Light and dark are complete sets; the system appearance picks one and
-//! switching is live.
+//! the page sits on an inset rounded surface.  Light and dark are complete sets; 「主題」 (or the system appearance)
+//! picks one and switching is live.  With 「透明效果」 the window frame and the page let the system's backdrop through
+//! (`Material`): Windows 11's Mica, KDE Plasma's blur; `platform::backdrop` asks the window system for it.
 
 use std::time::Duration;
 
 use gpui_kit::component::{Theme, ThemeMode, ThemeTokens};
 use gpui_kit::{App, Global, Hsla, Pixels, Window, WindowAppearance, px, rgb, rgba};
 
+/// What is behind a window's content: nothing (an opaque window), or a system backdrop that shows through the frame
+/// and, fainter, through the page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Material {
+    Opaque,
+    /// Windows 11 22H2 on: Mica (`DWMSBT_MAINWINDOW`), the desktop's colour, blurred and tinted by the system.
+    #[cfg_attr(not(windows), allow(dead_code, reason = "Windows only"))]
+    Mica,
+    /// KDE Plasma: what is behind the window, blurred by KWin.  The window itself must keep the text readable, so its
+    /// fills stay mostly opaque.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code, reason = "Linux only"))]
+    Blur,
+}
+
 /// The colours of one appearance.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub dark: bool,
+    /// The settings and wizard windows' backdrop.
+    pub material: Material,
+    /// The window frame as drawn (title bar, sidebar): `window`, or a tint over the backdrop.
+    pub frame: Hsla,
+    /// The page surface as drawn: `surface`, or a stronger tint over the backdrop.
+    pub page: Hsla,
     /// The window: title bar and the frame around the page surface.
     pub window: Hsla,
     /// The sidebar (the same as the window: one continuous frame).
@@ -82,6 +103,9 @@ impl Palette {
     pub fn light() -> Self {
         Self {
             dark: false,
+            material: Material::Opaque,
+            frame: c(0xefede6),
+            page: c(0xfbfaf7),
             window: c(0xefede6),
             sidebar: c(0xefede6),
             surface: c(0xfbfaf7),
@@ -114,6 +138,9 @@ impl Palette {
     pub fn dark() -> Self {
         Self {
             dark: true,
+            material: Material::Opaque,
+            frame: c(0x1b1a18),
+            page: c(0x232220),
             window: c(0x1b1a18),
             sidebar: c(0x1b1a18),
             surface: c(0x232220),
@@ -141,6 +168,25 @@ impl Palette {
             panel: c(0x2a2927),
             panel_border: ca(0xfffcf024),
         }
+    }
+
+    /// The palette for `dark` over `material`.
+    pub fn new(dark: bool, material: Material) -> Self {
+        let mut p = if dark { Self::dark() } else { Self::light() };
+        p.material = material;
+        // Mica is already an opaque, quiet colour (a still sample of the wallpaper): the frame is mostly Mica with a
+        // little of the warm window colour, and the page a light veil so rows read as one surface.  A blur shows what
+        // is behind the window, moving, so both stay close to opaque for the text's contrast.
+        let (frame, page) = match (material, dark) {
+            (Material::Opaque, _) => return p,
+            (Material::Mica, false) => (0.35, 0.72),
+            (Material::Mica, true) => (0.3, 0.55),
+            (Material::Blur, false) => (0.78, 0.9),
+            (Material::Blur, true) => (0.8, 0.88),
+        };
+        p.frame = p.window.opacity(frame);
+        p.page = p.surface.opacity(page);
+        p
     }
 }
 
@@ -389,29 +435,47 @@ pub fn palette(cx: &App) -> Palette {
 
 /// Installs the tokens for the system appearance and themes the component library to match.
 pub fn init(window_appearance: WindowAppearance, cx: &mut App) {
-    let dark = matches!(window_appearance, WindowAppearance::Dark | WindowAppearance::VibrantDark);
-    cx.set_global(Tokens { palette: if dark { Palette::dark() } else { Palette::light() }, forced: None });
+    let dark = zt_core::appearance::system_dark_fallback()
+        .unwrap_or(matches!(window_appearance, WindowAppearance::Dark | WindowAppearance::VibrantDark));
+    cx.set_global(Tokens { palette: Palette::new(dark, Material::Opaque), forced: None });
     apply_component_theme(None, cx);
 }
 
-/// Follows the system appearance unless the user forced one.
+/// Whether the system is dark: the window system's appearance (GPUI follows Windows' setting and the XDG desktop
+/// portal), or on Linux without the portal the desktop's own setting.
+pub fn system_dark(window: &Window) -> bool {
+    zt_core::appearance::system_dark_fallback()
+        .unwrap_or_else(|| matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark))
+}
+
+/// Light or dark and the backdrop that 「主題」 and 「透明效果」 (or a forced appearance) ask for now.
+fn wanted(window: &Window, cx: &App) -> (bool, Material) {
+    let settings = cx.try_global::<crate::app::AppState>().map(|state| state.settings.clone());
+    let dark = cx.global::<Tokens>().forced.unwrap_or_else(|| {
+        let choice = settings.as_ref().map_or(zt_core::appearance::Choice::System, zt_core::appearance::theme);
+        choice.dark(system_dark(window))
+    });
+    let material = settings.as_ref().map_or(Material::Opaque, crate::platform::backdrop::material);
+    (dark, material)
+}
+
+/// Follows 「主題」 (or the system appearance) and 「透明效果」, unless an appearance was forced.  Every window that
+/// draws with the palette calls this first in `render`.
 pub fn sync(window: &mut Window, cx: &mut App) {
-    let forced = cx.global::<Tokens>().forced;
-    let dark =
-        forced.unwrap_or_else(|| matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark));
-    if cx.global::<Tokens>().palette.dark != dark {
-        cx.global_mut::<Tokens>().palette = if dark { Palette::dark() } else { Palette::light() };
+    let (dark, material) = wanted(window, cx);
+    let current = cx.global::<Tokens>().palette;
+    if current.dark != dark || current.material != material {
+        cx.global_mut::<Tokens>().palette = Palette::new(dark, material);
         apply_component_theme(Some(window), cx);
         cx.refresh_windows();
     }
 }
 
-/// Forces light or dark (`None`: follow the system); renders and the screenshot mode use this.
+/// Forces light or dark (`None`: follow 「主題」); renders and the screenshot mode use this.
 pub fn force(dark: Option<bool>, window: &mut Window, cx: &mut App) {
     cx.global_mut::<Tokens>().forced = dark;
-    let target =
-        dark.unwrap_or_else(|| matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark));
-    cx.global_mut::<Tokens>().palette = if target { Palette::dark() } else { Palette::light() };
+    let (dark, material) = wanted(window, cx);
+    cx.global_mut::<Tokens>().palette = Palette::new(dark, material);
     apply_component_theme(Some(window), cx);
     cx.refresh_windows();
 }
@@ -484,6 +548,10 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
     colors.scrollbar_thumb = if p.dark { ca(0xffffff33) } else { ca(0x00000033) };
     colors.switch_thumb = p.knob;
     theme.tokens = ThemeTokens::from(&theme.colors);
+    // Over a backdrop the window's root paints nothing: the frame and the page draw their own tints.
+    if p.material != Material::Opaque {
+        theme.tokens.background = Hsla::transparent_black().into();
+    }
     // The base layer (scrollbars, text views) keeps its own copy of the theme, made by `Theme::change` above, before
     // the font and colours were set: without this it reads the platform's ".SystemUIFont" (no CJK fallbacks; on Linux
     // possibly no font at all) and the library's default colours.

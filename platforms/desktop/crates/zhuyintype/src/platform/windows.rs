@@ -17,12 +17,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 
-use gpui_kit::Window;
+use gpui_kit::{Window, WindowBackgroundAppearance};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
-    DWMNCRP_ENABLED, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
-    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+    DWMNCRP_ENABLED, DWMSBT_NONE, DWMWA_NCRENDERING_POLICY, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_IMMERSIVE_DARK_MODE,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWCP_ROUNDSMALL, DwmExtendFrameIntoClientArea,
+    DwmSetWindowAttribute,
 };
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
@@ -33,6 +34,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_NCDESTROY, WM_NCHITTEST, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT,
 };
+
+use windows::core::BOOL;
 
 use crate::candidate::platform::DeviceRect;
 
@@ -133,6 +136,44 @@ pub fn native_frame(window: &Window) -> bool {
         );
         let margins = MARGINS { cxLeftWidth: 0, cxRightWidth: 0, cyTopHeight: 1, cyBottomHeight: 0 };
         let _ = DwmExtendFrameIntoClientArea(window, &raw const margins);
+    }
+    true
+}
+
+/// The settings and wizard windows' light or dark frame and their backdrop (`platform::backdrop`).
+///
+/// `dark` sets `DWMWA_USE_IMMERSIVE_DARK_MODE`: the border DWM draws, and the tint of Mica, follow the 主題 rather
+/// than the system.  With `mica` GPUI asks for `DWMSBT_MAINWINDOW` (Windows 11 22H2 on) and clears to transparent;
+/// the window has no redirection surface (GPUI draws with DirectComposition), so the backdrop shows behind the whole
+/// client area with `native_frame`'s one-pixel frame.  Extending the frame over the whole client area is not needed
+/// and would make DWM draw its own caption buttons over the app's.  Without `mica` the backdrop is removed (GPUI
+/// leaves the last one set).
+pub fn set_backdrop(window: &mut Window, dark: bool, mica: bool) -> bool {
+    window.set_background_appearance(if mica {
+        WindowBackgroundAppearance::MicaBackdrop
+    } else {
+        WindowBackgroundAppearance::Opaque
+    });
+    let Some(window) = hwnd(window) else { return false };
+    // SAFETY: the window's own HWND, on its thread; 4-byte values as DWM expects (each fails harmlessly where the
+    // attribute does not exist).
+    unsafe {
+        let value = BOOL::from(dark);
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            (&raw const value).cast(),
+            size_of::<BOOL>() as u32,
+        );
+        if !mica {
+            let none = DWMSBT_NONE.0 as u32;
+            let _ = DwmSetWindowAttribute(
+                window,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                (&raw const none).cast(),
+                size_of::<u32>() as u32,
+            );
+        }
     }
     true
 }

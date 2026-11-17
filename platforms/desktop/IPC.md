@@ -41,7 +41,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 - **App 畫（預設，X11 上的 Fcitx5 外掛）**：服務送 `UiEvent::Popup` 給 GPUI，App 開自己的浮動視窗（見〈視窗與設定〉）。
 - **原生端畫（`panel: true`，Windows TSF DLL；Wayland 工作階段的 Fcitx5 外掛）**：App 不開視窗；每個回應多一個 `panel` 欄位，原生端自己顯示。TSF DLL 在打字的應用程式行程裡畫：視窗由輸入法在應用程式內建立、以該應用程式的視窗為擁有者，所以會出現在開始功能表的搜尋框與沉浸式 App 之上（任何其他行程的視窗都做不到）。Fcitx5 外掛把它換成 Fcitx 自己的候選字清單，由 Fcitx 畫在游標旁（Wayland 上一般程式不能擺放自己的視窗）。
 
-`panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview`）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中` 或 `英`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
+`panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview`）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`；`system` 表示跟隨系統，「候選字視窗」與「主題」都跟隨時才是 `system`）、`translucent`（「透明效果」：有系統的背景材質時讓它透出來；沒有這個欄位時當成 `true`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中` 或 `英`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
 
 原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。
 

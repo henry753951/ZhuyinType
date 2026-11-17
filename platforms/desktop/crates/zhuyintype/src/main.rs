@@ -175,6 +175,7 @@ fn main() {
             relaunch_after_panic();
         }
         cx.set_global(app::AppState { settings, service, service_error });
+        follow_system_appearance(cx);
         if let Some(events) = events {
             candidate::popup::run(events, cx);
         }
@@ -272,6 +273,22 @@ fn relaunch_after_panic() {
             Err(error) => log::error!("the UI thread panicked; could not start a new copy: {error}"),
         }
     }));
+}
+
+/// Draws every window again when a system setting behind 「主題」 or 「透明效果」 changes (Windows' 透明效果 and
+/// light or dark, or the desktop's own setting on Linux without the portal); GPUI itself follows the system's light or
+/// dark where it can.
+fn follow_system_appearance(cx: &mut gpui_kit::App) {
+    let (changed, changes) = async_channel::bounded::<()>(1);
+    zt_core::appearance::watch(move || {
+        let _ = changed.try_send(());
+    });
+    cx.spawn(async move |cx| {
+        while changes.recv().await.is_ok() {
+            cx.update(|cx| cx.refresh_windows());
+        }
+    })
+    .detach();
 }
 
 /// The system's updater (`zt_core::update`), run as the administrator or root, never with a window:
