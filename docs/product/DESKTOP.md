@@ -27,6 +27,23 @@
 - **KDE Plasma**：設定視窗與設定嚮導用 KWin 的模糊：Wayland 由 GPUI 使用 `ext-background-effect` 或 KDE 的 blur 協定，範圍是圓角的視窗本身；X11 在有合成器時設定 `_KDE_NET_WM_BLUR_BEHIND_REGION`，範圍同樣不含陰影。模糊會透出後面移動的內容，所以框架與頁面的顏色保留得較多。Linux 的候選字視窗維持不透明。
 - **其他 Linux 桌面**：不透明，「透明效果」變暗並寫「只在 KDE Plasma 上提供」。
 
+## 無障礙
+
+候選字視窗的顏色由 `zt_panel::a11y::resolve` 決定，Linux 的 GPUI 視窗、設定的預覽與 Windows 的 TSF DLL 共用。順序是：高對比，其次強調色，最後 ZhuyinType 自己的配色。
+
+| 系統設定 | Linux | Windows | 候選字視窗 |
+|---|---|---|---|
+| 高對比 | XDG desktop portal `org.freedesktop.appearance` 的 `contrast`，或 GNOME 的 `org.gnome.desktop.a11y.interface high-contrast` | `SPI_GETHIGHCONTRAST`（`HCF_HIGHCONTRASTON`），顏色取自 `GetSysColor`（視窗、文字、醒目提示、醒目提示文字、灰色文字） | 系統的顏色（GNOME：白底黑字或黑底白字、藍色反白），不透明，不論透明效果與強調色；邊框與反白外框 2 px，所有字用文字色 |
+| 強調色 | portal 的 `accent-color`，或 GNOME 47 起的 `accent-color`（名稱對應 libadwaita 的顏色），或 KDE `kdeglobals` 的 `[General] AccentColor`（沒有時用配色的 `[Colors:Selection] BackgroundNormal`） | `HKCU\Software\Microsoft\Windows\DWM` 的 `AccentColor`，沒有時用 `DwmGetColorizationColor` | 「強調色」為「跟隨系統」時，反白是強調色的實心圓角矩形，上面的字用白色或黑色中對比較高的一個 |
+
+- **強調色的對比**：反白和視窗背景至少 3:1，反白上的字至少 4.5:1（WCAG 2 的相對亮度）。不夠時淺色視窗逐步加深、深色視窗逐步變淺（每步 8%，最多 8 步），仍不夠就改用 ZhuyinType 藍（淺色 #4257D8、深色 #5F72E6）。深色視窗的反白上因此是黑字。下方開著的開關底色是淡淡的強調色。
+- **「ZhuyinType 藍」**或系統沒有強調色時，候選字視窗維持原本的中性灰反白；設定視窗的開關、外框與連結仍是 ZhuyinType 藍。
+- **跟著系統改變**：TSF DLL 在候選字視窗收到 `WM_SETTINGCHANGE`、`WM_SYSCOLORCHANGE`、`WM_THEMECHANGED` 或 `WM_DWMCOLORIZATIONCOLORCHANGED` 時重新讀取並重畫，所以改 Windows 的強調色或高對比時，開著的清單立即換色。Linux 每 3 秒讀一次（`zt_core::system_look`），改變時重畫所有視窗。設定視窗在 Windows 上讀登錄檔的 `AccentColor` 與 `Control Panel\Accessibility\HighContrast`（設定預覽用）。
+- **螢幕報讀**：
+  - Windows：候選字視窗與中英提示各有一個 UI Automation provider（`WM_GETOBJECT`），清單的類型是 List、名稱是反白的候選字，提示是 Text。有用戶端在聽時（`UiaClientsAreListening`）發出通知事件：開啟清單「ㄋㄧˇ，候選字清單，共 21 個，3 頁，候選字 1，你」、翻頁「第 2 頁，共 3 頁，候選字 1，……」、移動反白「候選字 2，妳」、新的提示，以及中英切換「中文」「英文」與「全形標點」「半形標點」。UI Automation 的程式庫只在有用戶端要求或螢幕報讀程式執行時才載入，沒有螢幕報讀時每次更新只多一次檢查。
+  - Linux：GPUI 沒有 AT-SPI 介面，所以 ZhuyinType 自己的候選字視窗不能被報讀。偵測到螢幕報讀程式（AT-SPI 的 `org.a11y.Status` `ScreenReaderEnabled`，或 GNOME 的 `screen-reader-enabled`）時，改由 Fcitx 5 顯示清單（和 Wayland 工作階段相同），它的清單可以被 Orca 讀出。
+- **字級**：13–36 pt（三個平台相同），沒有另外的「大字」設定。
+
 ## 安裝
 
 | 平台 | 安裝檔 | 內容 |
@@ -88,6 +105,8 @@ Linux（X11）的選單畫在候選字視窗裡，視窗不取得焦點；Window
 ## 尚未完成
 
 - Wayland 工作階段裡「開啟快速設定」快捷鍵還沒有游標旁的清單（App 不能在 Wayland 上擺放自己的視窗）；請用 Fcitx 5 輸入法選單裡的四個勾選項目。X11 上點小視窗以外的地方不會關閉它，要按下一個鍵或換欄位。
+- Windows 的 TSF 候選字清單介面（`ITfCandidateListUIElement`）：自己畫候選字清單的 App（UI-less 模式）拿不到清單。UI Automation 也還沒有每個候選字一個項目的樹狀結構，只有清單本身與通知事件。
+- 設定視窗的開關、焦點外框與連結還不跟著系統強調色，高對比時也只有候選字視窗與中英提示改用系統顏色。
 
 - Wayland 上 ZhuyinType 自己的候選字視窗（需要合成器的輸入法 popup 介面）。Wayland 工作階段中候選字清單、注音、提示與中／英提示改由 Fcitx 5 顯示（它的 classicui，或 KDE、GNOME 的輸入法面板），樣式是 Fcitx 的。
 - 程式碼簽章。

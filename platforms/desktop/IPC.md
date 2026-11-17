@@ -42,7 +42,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 - **App 畫（預設，X11 上的 Fcitx5 外掛）**：服務送 `UiEvent::Popup` 給 GPUI，App 開自己的浮動視窗（見〈視窗與設定〉）。
 - **原生端畫（`panel: true`，Windows TSF DLL；Wayland 工作階段的 Fcitx5 外掛）**：App 不開視窗；每個回應多一個 `panel` 欄位，原生端自己顯示。TSF DLL 在打字的應用程式行程裡畫：視窗由輸入法在應用程式內建立、以該應用程式的視窗為擁有者，所以會出現在開始功能表的搜尋框與沉浸式 App 之上（任何其他行程的視窗都做不到）。Fcitx5 外掛把它換成 Fcitx 自己的候選字清單，由 Fcitx 畫在游標旁（Wayland 上一般程式不能擺放自己的視窗）。
 
-`panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview` 與其中自動修正的字 `preview_corrected`、視窗開在修正過的詞上時的頁尾 `typed`：「你打的是 ㄊㄜˇ · ⌫ 還原」）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`；`system` 表示跟隨系統，「候選字視窗」與「主題」都跟隨時才是 `system`）、`translucent`（「透明效果」：有系統的背景材質時讓它透出來；沒有這個欄位時當成 `true`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中`、簡體輸出時的 `简` 或 `英`，以及 `全`／`半`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
+`panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview` 與其中自動修正的字 `preview_corrected`、視窗開在修正過的詞上時的頁尾 `typed`：「你打的是 ㄊㄜˇ · ⌫ 還原」）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`；`system` 表示跟隨系統，「候選字視窗」與「主題」都跟隨時才是 `system`）、`translucent`（「透明效果」：有系統的背景材質時讓它透出來；沒有這個欄位時當成 `true`）、`animates`、`above` 與 `accent`（「強調色」：`system` 或 `zhuyintype`；沒有這個欄位時當成 `system`）。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中`、簡體輸出時的 `简` 或 `英`，以及 `全`／`半`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
 
 原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。所以原生端只在顯示候選字清單時 `poll`（讓剛改的設定立刻反映到開著的清單），閒置的欄位不會定時喚醒應用程式與服務。服務從不主動送封包，原生端在送出按鍵前檢查閒置的管道（`PeekNamedPipe`）：App 結束或重新啟動後，第一個按鍵就重新連線，不會送進已斷的管道而被當成英文字母交給程式。
 
@@ -102,6 +102,8 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 ## 視窗與設定
 
 候選字視窗不取得鍵盤焦點。游標矩形經 `scale` 換成邏輯座標，服務以 `UiEvent::Popup(Some(PopupState))` 送出組字、目前這一頁的候選字與游標矩形；介面以 `zt_core::presentation::popup_position` 依「位置」把視窗放在游標下方或上方（間隔 4），候選字與組字對齊；空間不足改放另一邊並限制在螢幕可用範圍內。清單、引擎提示（例如 ↩ 加入自訂詞）或無法內嵌的組字出現時才顯示，否則送出 `UiEvent::Popup(None)`。切換中英時（單按 Shift 或 Caps Lock），「中英提示」開啟就送出 `UiEvent::ModeToast`，介面在游標旁顯示「中」或「英」0.8 秒，再淡出 0.2 秒。Windows adapter 先依所在螢幕的原點換算座標，再以 `scale: 1` 傳入，避免混合 DPI 桌面把螢幕原點也縮放。Fcitx5 adapter 傳 X 伺服器的像素（`scale: 1`，Fcitx 只知道這個）；App 在 X11 上放視窗前再除以 GPUI 的縮放（Xft.dpi），所以 HiDPI 的 X11 桌面上視窗仍在游標旁（`candidate::popup::in_logical_pixels`）。無法在應用程式內呈現組字時，`inlinePreedit: false` 會把組字放在同一個候選字視窗，不另顯示 Fcitx 原生面板；「在候選字視窗顯示組字的 App」清單中的程式也是如此。滑鼠操作以 `Service::popup_action` 透過同一個 `InputController` 選字，再由原生介面以 `poll` 取得並送出結果。
+
+螢幕報讀程式執行時（Linux，`zt_core::system_look::screen_reader`），沒有要求 `panel` 的 Fcitx5 外掛在 `focus` 的回應中收到 `fcitxPanel: true`，之後就像 `panel: true` 一樣由 Fcitx 顯示清單：GPUI 的視窗沒有 AT-SPI 介面，Fcitx 的清單可以被讀出。
 
 X11 與 Windows 可以由 App 指定視窗位置。Wayland 的輸入法 popup surface 需要合成器與 Fcitx 的協定支援，所以 Wayland 工作階段由 Fcitx 顯示清單（`panel: true`）。
 

@@ -301,7 +301,7 @@ impl CandidatePanel {
         let colors = tokens::colors(p);
         let c = &colors;
         let mut surface =
-            shell(self.chrome, c, layout.radius).relative().w(px(layout.width)).h(px(layout.height)).text_color(p.text);
+            shell(self.chrome, c, layout.radius).relative().w(px(layout.width)).h(px(layout.height)).text_color(c.text);
         if let Some(notice) = &layout.notice {
             surface = surface.child(notice_element(notice, p, c));
             if let Some(frame) = notice.undo {
@@ -329,11 +329,11 @@ impl CandidatePanel {
                             .bottom(px(((frame.h - fs * 1.3) / 2.).max(0.) + 1.))
                             .w(px(text_w.min(frame.w)))
                             .h(px(1.))
-                            .bg(p.text),
+                            .bg(c.text),
                     )
                     .children(layout.preview_marks.iter().map(|&(x, w)| {
                         // 「標示自動修正」: a dotted line in the accent colour just under the composition's underline.
-                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, p.accent)
+                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, c.accent)
                     })),
             );
         }
@@ -372,7 +372,8 @@ impl CandidatePanel {
                         .w(px(selected.w))
                         .h(px(selected.h - 2.))
                         .rounded(px(layout.row_radius))
-                        .bg(c.selection),
+                        .bg(c.selection)
+                        .when_some(c.selection_outline, |this, outline| this.border_2().border_color(outline)),
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
@@ -408,7 +409,7 @@ impl CandidatePanel {
                     .text_size(px(SMALL_FONT))
                     .line_height(px(16.))
                     .font_features(tokens::tabular())
-                    .text_color(p.text_secondary)
+                    .text_color(c.text_secondary)
                     .opacity(alpha)
                     .child(SharedString::from(text.to_owned()))
             };
@@ -430,9 +431,9 @@ impl CandidatePanel {
                         .items_center()
                         .justify_center()
                         .rounded(px(tokens::KEYCAP_RADIUS))
-                        .text_color(if enabled { p.text_tertiary } else { p.text_tertiary.opacity(0.3) })
+                        .text_color(if enabled { c.text_tertiary } else { c.text_tertiary.opacity(0.3) })
                         .when(actions.is_some(), |this| {
-                            this.cursor_pointer().hover(|style| style.bg(c.hover).text_color(p.text))
+                            this.cursor_pointer().hover(|style| style.bg(c.hover).text_color(c.text))
                         })
                         .when_some(actions, |this, actions| {
                             this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -552,7 +553,7 @@ pub fn edge(chrome: Chrome, c: &Colors, radius: f32) -> Option<Div> {
             .top_0()
             .left_0()
             .size_full()
-            .border_1()
+            .map(|this| if c.stroke > 1. { this.border_2() } else { this.border_1() })
             .border_color(c.border)
             .when(chrome == Chrome::Floating, |this| this.rounded(px(radius)))
     })
@@ -581,10 +582,11 @@ fn page_element(
         let index = row.index;
         let small = layout::annotation_font(fs);
         let number = layout.number_font;
-        // The selection is a neutral fill (drawn under the pages); its number and reading come forward.
-        let text_color = p.text;
-        let key_color = if selected { p.text_secondary } else { p.text_tertiary };
-        let annotation_color = if selected { p.text_secondary } else { p.text_tertiary };
+        // The selection is a fill drawn under the pages (neutral, or the accent with its own ink); its number and
+        // reading come forward.
+        let text_color = if selected { c.selection_text } else { c.text };
+        let key_color = if selected { c.selection_secondary } else { c.text_tertiary };
+        let annotation_color = if selected { c.selection_secondary } else { c.text_tertiary };
         let hover_fill = c.hover;
         let actions = actions.clone();
         let on_menu = on_menu.clone();
@@ -643,9 +645,9 @@ fn page_element(
 /// A key cap of the reading row, the footer or a notice: borderless on a faint fill (stronger, with the label in the
 /// text colour, while its switch is on), vertically centred in a control box `box_h` tall.
 fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) -> Div {
-    let color = if on { p.text } else { p.text_secondary };
+    let color = if on { c.text } else { c.text_secondary };
     // A lone punctuation key is drawn larger by `key_glyphs`, in the text colour so the mark is clearly there.
-    let glyphs = key_glyphs(key, tokens::KEYCAP_FONT, if crate::ui::keycap::is_speck(key) { p.text } else { color });
+    let glyphs = key_glyphs(key, tokens::KEYCAP_FONT, if crate::ui::keycap::is_speck(key) { c.text } else { color });
     div()
         .absolute()
         .left_0()
@@ -699,7 +701,7 @@ fn hint_element(
                 .font(theme::zhuyin_font())
                 .text_size(px(SMALL_FONT))
                 .line_height(px(SMALL_FONT * 1.3))
-                .text_color(p.text_secondary)
+                .text_color(c.text_secondary)
                 .child(div().truncate().child(SharedString::from(hint.hint.clone()))),
         )
         .when(hint.keycap_w > 0., |this| {
@@ -721,7 +723,7 @@ fn hint_element(
                             .items_center()
                             .text_size(px(SMALL_FONT))
                             .line_height(px(SMALL_FONT * 1.3))
-                            .text_color(p.text_tertiary)
+                            .text_color(c.text_tertiary)
                             .whitespace_nowrap()
                             .child(hint.key_label),
                     ),
@@ -741,8 +743,8 @@ fn toggle_element(
     action: PopupAction,
     actions: Option<ActionHandler>,
 ) -> impl IntoElement {
-    let color = if toggle.on { p.text } else { p.text_secondary };
-    let hover_color = p.text;
+    let color = if toggle.on { c.text } else { c.text_secondary };
+    let hover_color = c.text;
     at(toggle.frame)
         .id(toggle.label)
         .text_color(color)
@@ -785,7 +787,7 @@ fn notice_element(notice: &NoticeLayout, p: &Palette, c: &Colors) -> impl IntoEl
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(Icon::new(IconName::Check).size(px(icon)).text_color(p.success)),
+                    .child(Icon::new(IconName::Check).size(px(icon)).text_color(c.success)),
             )
         })
         .child(
@@ -802,10 +804,10 @@ fn notice_element(notice: &NoticeLayout, p: &Palette, c: &Colors) -> impl IntoEl
                 .text_size(px(fs))
                 .line_height(line)
                 .child(
-                    div().flex_shrink_0().text_color(p.text_secondary).child(SharedString::from(notice.label.clone())),
+                    div().flex_shrink_0().text_color(c.text_secondary).child(SharedString::from(notice.label.clone())),
                 )
                 .child(
-                    div().min_w(px(0.)).truncate().text_color(p.text).child(SharedString::from(notice.value.clone())),
+                    div().min_w(px(0.)).truncate().text_color(c.text).child(SharedString::from(notice.value.clone())),
                 ),
         )
 }
@@ -827,7 +829,7 @@ pub fn mode_badge_in(text: &str, p: &Palette, chrome: Chrome) -> AnyElement {
         .text_size(px(BADGE_FONT))
         .line_height(px(BADGE_FONT * 1.3))
         .font_weight(FontWeight::MEDIUM)
-        .text_color(p.text)
+        .text_color(c.text)
         .child(SharedString::from(text.to_owned()))
         .children(edge(chrome, &c, tokens::RADIUS))
         .into_any_element()

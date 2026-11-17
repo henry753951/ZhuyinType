@@ -10,7 +10,7 @@ use crate::settings::Settings;
 pub fn style(settings: &Settings, key: impl Fn(&str) -> String) -> PanelStyle {
     PanelStyle {
         layout: if settings.string("candidateLayout") == "horizontal" { Layout::Horizontal } else { Layout::Vertical },
-        font_size: settings.number("candidateFontSize").clamp(13., 28.) as f32,
+        font_size: settings.number("candidateFontSize").clamp(13., 36.) as f32,
         compact: settings.string("candidateDensity") == "compact",
         shows_zhuyin_hint: settings.bool("showsZhuyinHint"),
         shows_annotations: settings.bool("showsAnnotations"),
@@ -42,5 +42,6 @@ pub fn panel(settings: &Settings, key: impl Fn(&str) -> String, p: &Presentation
         translucent: crate::appearance::transparency(settings),
         animates: settings.bool("panelAnimation"),
         above: settings.string("candidatePlacement") == "above",
+        accent: crate::system_look::accent(settings),
     }
 }

@@ -219,6 +219,9 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     // Synchronous exchange and tracked focus bind every result to its originating context.
     if (active_.get() != &ic || state.secure) { state.polls = false; clear(ic); return false; }
     // Only a click in the host's own window changes anything between keys (IPC `poll`): no wake-ups otherwise.
+    // A screen reader runs: the host asks Fcitx to show the list, which screen readers read (IPC `fcitxPanel`).
+    if (const auto it = response->find("fcitxPanel"); it != response->end() && it->is_boolean() && it->get<bool>())
+        state.drawsPanel = true;
     state.polls = (*response)["candidates"].get<bool>() && !state.drawsPanel;
     if (state.polls && !timer_->isEnabled()) {
         timer_->setNextInterval(20000);

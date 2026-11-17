@@ -158,7 +158,7 @@ mod tests {
     use super::*;
 
     fn row(key: char, text: &str) -> Row {
-        Row { key: Some(key), text: text.into(), annotation: None, ..Row::default() }
+        Row { key: Some(key), text: text.into(), ..Row::default() }
     }
 
     fn list(page: usize, selected: usize) -> PanelModel {
