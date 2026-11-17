@@ -108,10 +108,20 @@ public struct Presentation: Equatable, Sendable {
     public var notice: String?
     /// Standard plain Zhuyin for the highlighted span; the backtick action in the window footer.
     public var zhuyinHint: String?
+    /// UTF-16 ranges of `text` whose words were shown through an automatic typing correction or a fuzzy sound, not
+    /// the keys as typed.  Picked words are never listed.
+    public var corrections: [Range<Int>] = []
+    /// While the candidate window is open on a span containing a correction: the plain Zhuyin as typed ("ㄊㄜˇ").
+    public var typedReading: String?
+    /// The next ⌫ converts the correction the last key made appear as typed instead of deleting.
+    public var backspaceReverts = false
+    /// The last key (or `Composer.revertCorrection()`) converted a correction as typed.
+    public var reverted = false
 
     public init(text: String = "", cursor: Int = 0, clauses: [Range<Int>] = [], focusedClause: Int? = nil,
                 targetClause: Int? = nil, candidates: CandidateList? = nil, notice: String? = nil,
-                zhuyinHint: String? = nil) {
+                zhuyinHint: String? = nil, corrections: [Range<Int>] = [], typedReading: String? = nil,
+                backspaceReverts: Bool = false, reverted: Bool = false) {
         self.text = text
         self.cursor = cursor
         self.clauses = clauses
@@ -120,6 +130,10 @@ public struct Presentation: Equatable, Sendable {
         self.candidates = candidates
         self.notice = notice
         self.zhuyinHint = zhuyinHint
+        self.corrections = corrections
+        self.typedReading = typedReading
+        self.backspaceReverts = backspaceReverts
+        self.reverted = reverted
     }
 
     public static let empty = Presentation()
@@ -234,6 +248,9 @@ public struct ComposerOptions: Equatable, Sendable {
     /// the list without wrapping (←→ in a horizontal list).  Off, the highlight stays at the edge of its page; the
     /// page keys still turn pages.
     public var pageAtListEdge: Bool = true
+    /// The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting; ⌫ in a
+    /// candidate window open on a correction does the same.  Off in the engine; the app's default is on.
+    public var undoCorrectionWithBackspace: Bool = false
 
     public init() {}
 }

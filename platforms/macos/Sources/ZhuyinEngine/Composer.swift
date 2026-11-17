@@ -162,6 +162,7 @@ public final class Composer {
         o.key_decoder = UInt32(decoders[options.keyDecoder]!)
         o.vertical_list = options.verticalList
         o.page_at_list_edge = options.pageAtListEdge
+        o.undo_correction_with_backspace = options.undoCorrectionWithBackspace
         o.character_forms = UInt32(options.characterForms == .common ? ZT_FORMS_COMMON : ZT_FORMS_STANDARD)
         o.punctuation_keys = UInt32(options.punctuationKeys == .windows ? ZT_PUNCTUATION_WINDOWS : ZT_PUNCTUATION_MAC)
         return String(options.selectionKeys).withCString { keys in
@@ -210,6 +211,13 @@ public final class Composer {
     public func breakContext() { zt_composer_break_context(handle); cached = nil }
     public func reset() { zt_composer_reset(handle); cached = nil }
     public func toggleCorrections() { zt_composer_toggle_corrections(handle); cached = nil }
+    /// Converts the automatic correction at the cursor as typed: the open window's span, the correction the last key
+    /// made, or the character ↓ would change.  False when there is none; true leaves `presentation.reverted` set.
+    @discardableResult
+    public func revertCorrection() -> Bool {
+        defer { cached = nil }
+        return zt_composer_revert_correction(handle)
+    }
 
     public var learningSuspended: Bool {
         get { zt_composer_learning_suspended(handle) }
@@ -234,6 +242,7 @@ public final class Composer {
         defer { zt_presentation_free(pointer) }
         let p = pointer.pointee
         let clauses = (0..<p.clause_count).map { p.clauses[$0].start..<p.clauses[$0].end }
+        let corrections = (0..<p.correction_count).map { p.corrections[$0].start..<p.corrections[$0].end }
         let candidates = p.candidates.map { list -> CandidateList in
             let l = list.pointee
             let items = (0..<l.count).map { i in
@@ -245,7 +254,9 @@ public final class Composer {
         return Presentation(text: String(cString: p.text), cursor: p.cursor, clauses: clauses,
                             focusedClause: p.focused_clause < 0 ? nil : p.focused_clause,
                             targetClause: p.target_clause < 0 ? nil : p.target_clause, candidates: candidates,
-                            notice: p.notice.map { String(cString: $0) }, zhuyinHint: p.zhuyin_hint.map { String(cString: $0) })
+                            notice: p.notice.map { String(cString: $0) }, zhuyinHint: p.zhuyin_hint.map { String(cString: $0) },
+                            corrections: corrections, typedReading: p.typed_reading.map { String(cString: $0) },
+                            backspaceReverts: p.backspace_reverts, reverted: p.reverted)
     }
 
     // MARK: - Models
