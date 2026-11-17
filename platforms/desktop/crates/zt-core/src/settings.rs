@@ -170,6 +170,16 @@ impl Settings {
         }
     }
 
+    /// The file is there but could not be read, so the defaults are in use (until the first change sets it aside).
+    pub fn unreadable(&self) -> bool {
+        self.inner.unreadable.load(Ordering::Acquire)
+    }
+
+    /// The file the settings are kept in (None: in memory only).
+    pub fn path(&self) -> Option<&Path> {
+        self.inner.path.as_deref()
+    }
+
     /// The value of `key`: the stored one when valid, else the default.
     pub fn get(&self, key: &str) -> Value {
         let stored = self.inner.values.read().get(key).cloned();

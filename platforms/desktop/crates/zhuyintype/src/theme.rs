@@ -283,6 +283,9 @@ pub mod size {
     pub const NARROW_W: Pixels = px(760.);
     pub const WINDOW_MIN_H: Pixels = px(440.);
     pub const WINDOW_W: Pixels = px(900.);
+    /// 回報問題's dialog and the height of its text (檢查輸入法).
+    pub const REPORT_W: Pixels = px(640.);
+    pub const REPORT_TEXT_H: Pixels = px(320.);
     pub const WINDOW_H: Pixels = px(640.);
 }
 

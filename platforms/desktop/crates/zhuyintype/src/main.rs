@@ -10,6 +10,7 @@ mod app;
 mod assets;
 mod candidate;
 mod card_window;
+mod health;
 mod motion;
 mod pages;
 mod platform;
@@ -114,6 +115,11 @@ fn main() {
     env_logger_init();
     if let Some(code) = updater_mode() {
         std::process::exit(code);
+    }
+    let mut arguments = std::env::args().skip(1);
+    if arguments.next().as_deref() == Some("--health") {
+        let fix = (arguments.next().as_deref() == Some("--fix")).then(|| arguments.next()).flatten();
+        std::process::exit(health::command_line(fix.as_deref()));
     }
     let args = parse_args();
     let config = ServiceConfig {
@@ -412,6 +418,10 @@ fn env_logger_init() {
         }
         fn log(&self, record: &log::Record<'_>) {
             eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+            // 回報問題 lists the recent warnings and errors (zt_core::health::recent; never typed text).
+            if record.level() <= log::Level::Warn {
+                zt_core::health::recent::record(&format!("{} {}: {}", record.level(), record.target(), record.args()));
+            }
         }
         fn flush(&self) {}
     }
