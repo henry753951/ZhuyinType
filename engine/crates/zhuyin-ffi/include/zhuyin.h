@@ -283,6 +283,8 @@ typedef struct {
   int8_t tolerant;
   // Only the one character at the target.
   bool single_character;
+  // Next-word suggestions after a commit (聯想詞), not conversions: the window marks them.
+  bool associated;
 } ZtCandidateList;
 
 // What to draw (Swift's `Presentation`).  Offsets are UTF-16 units.
@@ -674,6 +676,12 @@ void zt_composer_set_character_scores_in_list(ZtComposer *composer, bool in_list
 // # Safety
 // `composer` is a live handle.
 void zt_composer_set_freezes_on_pick(ZtComposer *composer, bool freezes);
+
+// Next-word suggestions (聯想詞) after each commit: on or off (the default).
+//
+// # Safety
+// `composer` is a live handle.
+void zt_composer_set_associated_phrases(ZtComposer *composer, bool on);
 
 // The current presentation (free with [`zt_presentation_free`]).
 //

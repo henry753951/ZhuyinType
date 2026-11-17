@@ -296,6 +296,39 @@ impl PersonalLanguageModel {
         if changed { swift_max(p, 5e-324).ln() } else { base }
     }
 
+    /// The words the user wrote right after `history` (its previous word, or its last two words), with their
+    /// texts and how strongly each is remembered there, strongest first, at most `limit` (聯想詞).
+    #[must_use]
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String, f64)> {
+        let usable = |id: u32| id > 2 && id != NO_CONTEXT;
+        if !usable(history.previous) {
+            return vec![];
+        }
+        let state = self.lock();
+        let now = (state.clock)();
+        let older = history.older.filter(|&o| usable(o));
+        let mut found: HashMap<u32, (String, f64)> = HashMap::new();
+        for (key, entry) in &state.entries {
+            let follows = match key.as_slice() {
+                [previous, _] => *previous == history.previous,
+                [first, previous, _] => Some(*first) == older && *previous == history.previous,
+                _ => false,
+            };
+            let (Some(&word), Some(text)) = (key.last(), entry.texts.last()) else { continue };
+            if !follows || word <= 2 {
+                continue;
+            }
+            let strength = value(&state.options, entry, now);
+            let slot = found.entry(word).or_insert_with(|| (text.clone(), 0.0));
+            slot.1 = swift_max(slot.1, strength);
+        }
+        let mut followers: Vec<(u32, String, f64)> =
+            found.into_iter().map(|(word, (text, strength))| (word, text, strength)).collect();
+        followers.sort_by(|a, b| b.2.total_cmp(&a.2).then(a.0.cmp(&b.0)));
+        followers.truncate(limit);
+        followers
+    }
+
     /// Learns one committed stretch of words (no literals inside).  The first `context` words were committed
     /// earlier: they are history only, so n-grams ending in them are not counted again.
     pub fn learn(&self, words: &[Word], context: usize) {

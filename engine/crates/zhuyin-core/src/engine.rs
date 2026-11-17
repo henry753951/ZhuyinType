@@ -13,7 +13,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 #[path = "personal_writer.rs"]
 mod personal_writer;
+#[path = "prediction.rs"]
+mod prediction;
 use personal_writer::{Snapshot, Writer};
+pub use prediction::Prediction;
 
 use crate::api::{FuzzySounds, TypoTolerance};
 use crate::binary::{DataError, MappedLexicon};
@@ -21,7 +24,8 @@ use crate::conversion::{CompositionToken, ConvertedWord};
 use crate::key_channel::{self, ReadingAlternative};
 use crate::keyboard;
 use crate::language_model::{
-    LanguageModel, LanguageModelHistory, MixtureLanguageModel, NO_CONTEXT, UnigramLanguageModel, VocabularyModel,
+    LanguageModel, LanguageModelHistory, MixtureLanguageModel, NO_CONTEXT, UnigramLanguageModel,
+    VocabularyLanguageModel, VocabularyModel,
 };
 use crate::lexicon::{TextLexicon, WordEntry, swift_max, swift_min};
 use crate::personal::{DecayingCount, PersonalLanguageModel, Word};
@@ -270,6 +274,29 @@ impl EngineModel {
     #[must_use]
     pub fn end(&self, history: LanguageModelHistory) -> f64 {
         self.end_score(history, self.end_share)
+    }
+
+    /// The words the base model stores after `history`, with their spellings, best first, at most `limit`
+    /// (聯想詞; [`VocabularyLanguageModel::followers`]).
+    #[must_use]
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String)> {
+        match &self.base {
+            BaseModel::Unigram(_) => vec![],
+            BaseModel::Vocabulary(m) => {
+                m.followers(history, limit).into_iter().map(|(id, _)| (id, m.word(id).into_owned())).collect()
+            }
+            BaseModel::Mixture(m) => m
+                .followers(history, limit)
+                .into_iter()
+                .filter_map(|(id, _)| Some((id, m.word(id)?.into_owned())))
+                .collect(),
+        }
+    }
+
+    /// log P(word | history) under the base model alone, without the user's statistics.
+    #[must_use]
+    pub fn base_score(&self, word_id: Option<u32>, history: LanguageModelHistory, unigram: f64) -> f64 {
+        self.base.score(word_id, history, unigram)
     }
 }
 

@@ -93,6 +93,26 @@ pub trait VocabularyLanguageModel: LanguageModel {
 
     /// The spelling of word `id`.
     fn word(&self, id: u32) -> Cow<'_, str>;
+
+    /// The words the model stores right after `history` (not those it reaches only by backing off), with their
+    /// stored log probabilities, best first, at most `limit`.  For next-word suggestions (聯想詞); decoding never
+    /// calls it.
+    fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+        let _ = (history, limit);
+        vec![]
+    }
+}
+
+/// The `limit` best of `items` by score, best first (ties by ID, so the order is stable).
+pub(crate) fn best_by_score(mut items: Vec<(u32, f64)>, limit: usize) -> Vec<(u32, f64)> {
+    let order = |a: &(u32, f64), b: &(u32, f64)| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0));
+    if items.len() > limit && limit > 0 {
+        items.select_nth_unstable_by(limit - 1, order);
+        items.truncate(limit);
+    }
+    items.sort_unstable_by(order);
+    items.truncate(limit);
+    items
 }
 
 /// No language model: every word scores its lexicon probability.
@@ -215,6 +235,10 @@ impl VocabularyLanguageModel for BigramLanguageModel {
     fn word(&self, id: u32) -> Cow<'_, str> {
         Cow::Borrowed(&self.words[id as usize])
     }
+    fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+        let Some(next) = self.bigrams.get(&history.previous) else { return vec![] };
+        best_by_score(next.iter().map(|(&id, &score)| (id, score)).collect(), limit)
+    }
 }
 
 /// One loaded model directory: the memory-mapped binary when it loads, else the TSV files.  An enum rather than a
@@ -271,6 +295,9 @@ impl VocabularyLanguageModel for VocabularyModel {
     fn word(&self, id: u32) -> Cow<'_, str> {
         dispatch!(self, m => m.word(id))
     }
+    fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+        dispatch!(self, m => m.followers(history, limit))
+    }
 }
 
 /// Two bigram models of different domains, mixed: P = λ·P(chat) + (1 − λ)·P(encyclopedia).  λ follows what the
@@ -323,6 +350,35 @@ impl<C: VocabularyLanguageModel, E: VocabularyLanguageModel> MixtureLanguageMode
     fn encyclopedia_id(&self, id: Option<u32>) -> Option<u32> {
         let id = id?;
         (id < self.encyclopedia_count || id == NO_CONTEXT).then_some(id)
+    }
+
+    /// The spelling of mixture ID `id`, if it is one.
+    pub fn word(&self, id: u32) -> Option<Cow<'_, str>> {
+        if id < self.encyclopedia_count {
+            return Some(self.encyclopedia.word(id));
+        }
+        let chat_id = id - self.encyclopedia_count;
+        ((chat_id as usize) < self.chat.vocabulary_count()).then(|| self.chat.word(chat_id))
+    }
+
+    /// The words either model stores after `history`'s previous word, as mixture IDs, scored by the mixture, best
+    /// first, at most `limit` (see [`VocabularyLanguageModel::followers`]).
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+        let mut ids: Vec<u32> = Vec::new();
+        if let Some(previous) = self.encyclopedia_id(Some(history.previous)) {
+            let followers = self.encyclopedia.followers(LanguageModelHistory::new(None, previous), limit);
+            ids.extend(followers.into_iter().map(|(id, _)| id));
+        }
+        if let Some(previous) = self.chat_id(Some(history.previous)) {
+            let followers = self.chat.followers(LanguageModelHistory::new(None, previous), limit);
+            ids.extend(followers.into_iter().map(|(chat_id, _)| {
+                self.encyclopedia.word_id(&self.chat.word(chat_id)).unwrap_or(self.encyclopedia_count + chat_id)
+            }));
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        let history = LanguageModelHistory::new(None, history.previous);
+        best_by_score(ids.into_iter().map(|id| (id, self.score(Some(id), history, -30.0))).collect(), limit)
     }
 
     /// log P under each model (chat, encyclopedia), for the domain posterior.

@@ -113,6 +113,8 @@ pub struct CandidateList {
     tolerant: Option<bool>,
     /// Only the one character at the target (Shift-↓), not every span from it.
     single_character: bool,
+    /// Next-word suggestions after a commit (聯想詞), not conversions of the composition.
+    associated: bool,
 }
 
 impl CandidateList {
@@ -131,7 +133,15 @@ impl CandidateList {
             page_size: page_size.max(1),
             tolerant,
             single_character,
+            associated: false,
         }
+    }
+
+    /// The same list marked as next-word suggestions (聯想詞).
+    #[must_use]
+    pub fn as_associated(mut self) -> Self {
+        self.associated = true;
+        self
     }
 
     /// Every candidate.
@@ -158,6 +168,12 @@ impl CandidateList {
     #[must_use]
     pub fn single_character(&self) -> bool {
         self.single_character
+    }
+
+    /// Next-word suggestions after a commit (聯想詞): the window marks them, and ⇧ with a selection key picks one.
+    #[must_use]
+    pub fn associated(&self) -> bool {
+        self.associated
     }
 
     /// The page of the highlighted candidate.
