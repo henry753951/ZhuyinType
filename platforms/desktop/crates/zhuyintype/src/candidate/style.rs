@@ -23,6 +23,7 @@ pub enum PanelAppearance {
 
 impl PanelAppearance {
     pub fn from_settings(settings: &Settings) -> Self {
+        crate::theme::candidate::set_accent(zt_core::system_look::accent(settings));
         match zt_core::appearance::panel_theme(settings) {
             zt_core::appearance::Choice::Light => Self::Light,
             zt_core::appearance::Choice::Dark => Self::Dark,

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::a11y::AccentChoice;
 use crate::model::PanelModel;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,4 +95,7 @@ pub struct Panel {
     pub animates: bool,
     /// 「位置」: above the caret's line rather than below.
     pub above: bool,
+    /// 「強調色」: the selection follows the system's accent colour, or keeps ZhuyinType's own look.
+    #[serde(default)]
+    pub accent: AccentChoice,
 }

@@ -337,6 +337,9 @@ impl Service {
                     Value::Null
                 };
                 let focus = request.get("op").and_then(Value::as_str) == Some("focus");
+                if focus && core.host.panel_for_screen_reader() {
+                    reply.insert("fcitxPanel".into(), Value::Bool(true));
+                }
                 if focus || core.sent_panel.as_ref() != Some(&panel) {
                     reply.insert("panel".into(), panel.clone());
                     core.sent_panel = Some(panel);

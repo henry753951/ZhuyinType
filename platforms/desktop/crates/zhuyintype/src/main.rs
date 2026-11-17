@@ -286,8 +286,13 @@ fn relaunch_after_panic() {
 /// dark where it can.
 fn follow_system_appearance(cx: &mut gpui_kit::App) {
     let (changed, changes) = async_channel::bounded::<()>(1);
+    let look_changed = changed.clone();
     zt_core::appearance::watch(move || {
         let _ = changed.try_send(());
+    });
+    // The accent colour, high contrast and the screen reader (`zt_core::system_look`).
+    zt_core::system_look::watch(move || {
+        let _ = look_changed.try_send(());
     });
     cx.spawn(async move |cx| {
         while changes.recv().await.is_ok() {

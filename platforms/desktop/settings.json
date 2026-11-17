@@ -383,7 +383,7 @@
     "kind": "number",
     "default": 18,
     "min": 13,
-    "max": 28,
+    "max": 36,
     "unit": " pt",
     "control": "slider"
   },
@@ -610,6 +610,30 @@
     ],
     "detail": "也套用到加入自訂詞的提示與「中」「英」提示",
     "anchor": "appearance"
+  },
+  {
+    "key": "accentColor",
+    "title": "強調色",
+    "page": "appearance",
+    "group": "外觀",
+    "kind": "choice",
+    "default": "system",
+    "options": [
+      {
+        "value": "system",
+        "label": "跟隨系統"
+      },
+      {
+        "value": "zhuyintype",
+        "label": "ZhuyinType 藍"
+      }
+    ],
+    "detail": "候選字的反白與開關的顏色",
+    "details": {
+      "system": "候選字的反白使用系統的強調色，顏色太淺或太深時自動調整到看得清楚",
+      "zhuyintype": "使用 ZhuyinType 自己的配色"
+    },
+    "anchor": "accentColor"
   },
   {
     "key": "panelAnimation",

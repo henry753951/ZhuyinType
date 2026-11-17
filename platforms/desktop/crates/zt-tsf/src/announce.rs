@@ -158,7 +158,7 @@ mod tests {
     use super::*;
 
     fn row(key: char, text: &str) -> Row {
-        Row { key: Some(key), text: text.into(), annotation: None }
+        Row { key: Some(key), text: text.into(), ..Row::default() }
     }
 
     fn list(page: usize, selected: usize) -> PanelModel {
@@ -199,7 +199,8 @@ mod tests {
         corrections.tolerant = Some(true);
         corrections.page_count = 1;
         corrections.count = 1;
-        corrections.rows = vec![Row { key: Some('1'), text: "再".into(), annotation: Some("ㄗㄞˋ".into()) }];
+        corrections.rows =
+            vec![Row { key: Some('1'), text: "再".into(), annotation: Some("ㄗㄞˋ".into()), ..Row::default() }];
         corrections.reading = None;
         let said = announcement(&corrections, &Shown::of(&list(0, 0)));
         assert_eq!(said.as_deref(), Some("修正的字，共 1 個，候選字 1，再，ㄗㄞˋ"));

@@ -565,7 +565,10 @@ fn apply_component_theme(window: Option<&mut Window>, cx: &mut App) {
 /// shadows (an elevation-2 surface: panel colour, hairline border, two shadows).  Every place that draws the window
 /// (the floating window, the 「視窗與提示」 preview, the 介紹 stage, the demos' mini lists) uses these.
 pub mod candidate {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use gpui_kit::{BoxShadow, Hsla, point, px};
+    use zt_panel::a11y::AccentChoice;
 
     use super::Palette;
 
@@ -586,17 +589,41 @@ pub mod candidate {
         /// A footer switch that is on.
         pub keycap_on: Hsla,
         pub shadows: [BoxShadow; 2],
+        pub text: Hsla,
+        pub text_secondary: Hsla,
+        pub text_tertiary: Hsla,
+        pub success: Hsla,
+        /// The selected row's candidate, and its number and annotation (`zt_panel::tokens::Colors`).
+        pub selection_text: Hsla,
+        pub selection_secondary: Hsla,
+        /// The window's border width: 1, or 2 in high contrast.
+        pub stroke: f32,
+        /// High contrast: an outline around the selected row.
+        pub selection_outline: Option<Hsla>,
+    }
+
+    /// 「強調色」 as the settings last said it (`set_accent`): the candidate window is drawn from a palette alone, in
+    /// many places (the floating window, previews, the wizard), and each of them reads the settings just before.
+    static ACCENT: AtomicBool = AtomicBool::new(false);
+
+    /// Records 「強調色」 for [`colors`]: true is ZhuyinType's own look.
+    pub fn set_accent(choice: AccentChoice) {
+        ACCENT.store(choice == AccentChoice::Zhuyintype, Ordering::Relaxed);
+    }
+
+    fn accent() -> AccentChoice {
+        if ACCENT.load(Ordering::Relaxed) { AccentChoice::Zhuyintype } else { AccentChoice::System }
     }
 
     fn hsla(color: zt_panel::tokens::Rgba) -> Hsla {
         gpui_kit::Rgba { r: color.r, g: color.g, b: color.b, a: color.a }.into()
     }
 
-    /// The window's colours for `p`'s appearance (`zt_panel::tokens`, shared with the Windows text service), with
-    /// the shadows this app draws itself.
+    /// The window's colours for `p`'s appearance (`zt_panel::tokens`, shared with the Windows text service) with the
+    /// system's accent or high contrast (`zt_panel::a11y::resolve`), and the shadows this app draws itself.
     pub fn colors(p: &Palette) -> Colors {
         let dark = p.dark;
-        let shared = zt_panel::tokens::colors(dark);
+        let shared = zt_panel::a11y::resolve(dark, accent(), &zt_core::system_look::look(dark));
         let pick = |light: f32, dark_value: f32| if dark { dark_value } else { light };
         let shadow = |alpha: f32, y: f32, blur: f32| BoxShadow {
             color: hsla(shared.shadow.fade(alpha)),
@@ -614,6 +641,14 @@ pub mod candidate {
             hairline: hsla(shared.hairline),
             keycap: hsla(shared.keycap),
             keycap_on: hsla(shared.keycap_on),
+            text: hsla(shared.text),
+            text_secondary: hsla(shared.text_secondary),
+            text_tertiary: hsla(shared.text_tertiary),
+            success: hsla(shared.success),
+            selection_text: hsla(shared.selection_text),
+            selection_secondary: hsla(shared.selection_secondary),
+            stroke: shared.stroke,
+            selection_outline: shared.selection_outline.map(hsla),
             shadows: [shadow(pick(0.06, 0.3), 1., 2.), if dark { shadow(0.5, 8., 24.) } else { shadow(0.16, 6., 20.) }],
         }
     }

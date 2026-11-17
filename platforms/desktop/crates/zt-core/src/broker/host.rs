@@ -63,6 +63,9 @@ pub struct Host {
     inline_preedit: bool,
     /// The focused field's adapter draws the candidate window itself (`IPC.md` §候選字視窗).
     draws_panel: bool,
+    /// Linux with a screen reader: the Fcitx5 addon did not ask to show the list, but this app tells it to
+    /// (`fcitxPanel` in the focus reply), since Fcitx's list is read by screen readers and GPUI's windows are not.
+    panel_for_screen_reader: bool,
     client_app: String,
     anchor: Rect,
     /// 在候選字視窗顯示組字的 App (executable names, compared without case).
@@ -78,6 +81,7 @@ impl Default for Host {
             secure: false,
             inline_preedit: true,
             draws_panel: false,
+            panel_for_screen_reader: false,
             client_app: String::new(),
             anchor: Rect::default(),
             popup_apps: Vec::new(),
@@ -103,6 +107,12 @@ impl Host {
     #[must_use]
     pub fn draws_panel(&self) -> bool {
         self.focused() && self.draws_panel
+    }
+
+    /// The focused field's adapter shows the list because a screen reader runs (see `panel_for_screen_reader`).
+    #[must_use]
+    pub fn panel_for_screen_reader(&self) -> bool {
+        self.focused() && self.panel_for_screen_reader
     }
 
     fn popup_app(&self) -> bool {
@@ -342,7 +352,9 @@ impl Host {
                 controller.activated();
             }
             self.inline_preedit = flag("inlinePreedit").unwrap_or(true);
-            self.draws_panel = flag("panel").unwrap_or(false);
+            let asked = flag("panel").unwrap_or(false);
+            self.panel_for_screen_reader = !asked && cfg!(target_os = "linux") && crate::system_look::screen_reader();
+            self.draws_panel = asked || self.panel_for_screen_reader;
         }
         if let Some(secure) = flag("secure") {
             self.set_secure(controller, secure);

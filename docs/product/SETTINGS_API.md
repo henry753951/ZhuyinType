@@ -111,4 +111,6 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 | `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
 | `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
 
+三個平台都有的 `accentColor`（強調色）：`system`（跟隨系統，預設）或 `zhuyintype`（ZhuyinType 藍）。macOS 在 `Preferences`，Linux／Windows 在 `settings.json`；顏色的計算在 `zt_panel::a11y`（Linux／Windows）與 `UI/Accessibility/ContrastMath.swift`（macOS），見 [DESKTOP.md](DESKTOP.md)「無障礙」。`candidateFontSize`（字級）三個平台都是 13–36 pt。
+
 `panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
