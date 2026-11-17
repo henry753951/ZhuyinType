@@ -97,6 +97,24 @@ int main() {
         const auto start=std::chrono::steady_clock::now();
         exchange([](Json){ std::this_thread::sleep_for(std::chrono::milliseconds(160)); return ""; },false);
         CHECK(std::chrono::steady_clock::now()-start < std::chrono::milliseconds(500));
+        {
+            // A program name in another encoding (an XIM client's file name, cut at 256 bytes): sent with U+FFFD,
+            // never an exception out of Fcitx's key handler.
+            Server server;
+            auto worker = std::async(std::launch::async, [&] {
+                int peer = accept(server.fd, nullptr, nullptr);
+                CHECK(peer >= 0);
+                const auto request = server.read(peer);
+                CHECK(request["app"] == "caf\xEF\xBF\xBD");
+                const auto wire = response(request).dump() + '\n';
+                CHECK(send(peer, wire.data(), wire.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(wire.size()));
+                close(peer);
+            });
+            Broker broker;
+            CHECK(broker.connect());
+            CHECK(broker.request("a", "focus", {{"secure", false}, {"app", "caf\xE9"}}));
+            worker.get();
+        }
         Broker unavailable;
         CHECK(!unavailable.connect());
         std::cout << "PASS framing, fragmented UTF-8, identity, cursor, size, timeout, disconnect and Qt keys\n";
