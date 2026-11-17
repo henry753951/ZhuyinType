@@ -78,6 +78,8 @@ enum ControllerCoreSelfTest {
             _ = core.flagsChanged(keyCode: key, modifiers: [], physicallyDown: false, timestamp: start + 0.1)
         }
 
+        SymbolPickerSelfTest.run(engine: engine, test: test)
+
         test("secure input: nothing is read, remembered or learned") {
             let (core, _) = session()
             core.secureInput = { true }
