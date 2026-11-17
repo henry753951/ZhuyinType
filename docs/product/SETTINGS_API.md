@@ -111,4 +111,6 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 | `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
 | `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
 
+符號與 Emoji 面板在兩邊用同樣的名稱：快捷鍵功能 `symbolPicker`（`keyBindings`／`shortcuts` 中的 id，預設 macOS ⌃⌥,、Linux／Windows Ctrl+Alt+,）與按鍵功能的開關 `symbolPicker`（macOS `KeyFeature.symbolPicker`，Linux／Windows `feature.symbolPicker`，預設開啟）。最近使用的符號不是設定，存在資料夾的 `recent-symbols.txt`。
+
 `panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
