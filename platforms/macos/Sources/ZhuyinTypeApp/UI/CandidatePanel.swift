@@ -992,8 +992,16 @@ final class CandidatePanelController {
 final class ModeBadgeView: InputMaterialView {
     static let size = NSSize(width: 52, height: 48)
     let label = NSTextField(labelWithString: "中")
+    /// 暫停學習: a small dot in the top-right corner, nothing more (DESIGN.md §4.4).
+    let pausedDot = NSView()
     override init(frame: NSRect) {
         super.init(frame: frame)
+        pausedDot.wantsLayer = true
+        pausedDot.layer?.cornerRadius = 2.5
+        pausedDot.layer?.backgroundColor = NSColor.secondaryLabelColor.cgColor
+        pausedDot.isHidden = true
+        pausedDot.frame = NSRect(x: 41, y: 7, width: 5, height: 5)
+        addSubview(pausedDot)
         label.font = .systemFont(ofSize: 23, weight: .medium)
         label.alignment = .center
         label.textColor = .labelColor
@@ -1040,6 +1048,8 @@ final class ModeToast {
         generation += 1
         let current = generation
         badge.label.stringValue = text
+        badge.pausedDot.isHidden = !QuickSettings.learningPaused
+        badge.pausedDot.layer?.backgroundColor = NSColor.secondaryLabelColor.cgColor
         // The glass backdrop (macOS 26 and later) sizes its content to itself when it adopts it, which leaves the badge
         // at zero size: set the size every time, as the candidate window does.
         _ = panel

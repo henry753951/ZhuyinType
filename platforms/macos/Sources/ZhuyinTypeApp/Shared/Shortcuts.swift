@@ -141,6 +141,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
     case togglePunctuationWidth, insertSpace
+    /// Opens 快速設定 by the caret (中／英, 全形／半形, 繁／簡, 暫停學習).  No key by default.
+    case quickSettings
 
     var id: String { rawValue }
 
@@ -159,10 +161,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "清單開著時改後一個字"
         case .togglePunctuationWidth: return "切換標點全半形"
         case .insertSpace: return "在組字中放一個空白"
+        case .quickSettings: return "開啟快速設定"
         }
     }
 
-    var defaultShortcut: Shortcut {
+    /// The default key; nil for a command that has none until the user assigns one.
+    var defaultShortcut: Shortcut? {
         switch self {
         case .singleCharacterList: return Shortcut("↓", shift: true)
         case .correctionsList: return Shortcut("↑", shift: true)
@@ -177,13 +181,14 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return Shortcut("→", option: true)
         case .togglePunctuationWidth: return Shortcut("Space", shift: true)
         case .insertSpace: return Shortcut("Space", option: true)
+        case .quickSettings: return nil
         }
     }
 
     /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
     var input: KeyInput? {
         switch self {
-        case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
+        case .previousCharacter, .nextCharacter, .togglePunctuationWidth, .quickSettings: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
@@ -213,6 +218,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "改後一個字"
         case .togglePunctuationWidth: return "標點全半形"
         case .insertSpace: return "插入空白"
+        case .quickSettings: return "快速設定"
         }
     }
 
@@ -233,12 +239,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .nextPage: return [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)]
         case .previousPage: return [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
-        default: return [defaultShortcut]
+        default: return defaultShortcut.map { [$0] } ?? []
         }
     }
     /// The defaults of earlier versions, which stored every command's keys once any was changed: a stored list equal
     /// to these is read as the current default.
-    var legacyDefaultBindings: [Shortcut] { [defaultShortcut] }
+    var legacyDefaultBindings: [Shortcut] { defaultShortcut.map { [$0] } ?? [] }
     static var defaultBindings: [ShortcutCommand: [Shortcut]] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
     }
@@ -252,7 +258,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
-        case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
+        case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace, .quickSettings:
+            return nil
         }
     }
 
@@ -268,6 +275,6 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     static let commandInputs = Set(allCases.compactMap(\.input))
 
     static var defaults: [ShortcutCommand: Shortcut] {
-        Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultShortcut) })
+        Dictionary(uniqueKeysWithValues: allCases.compactMap { command in command.defaultShortcut.map { (command, $0) } })
     }
 }

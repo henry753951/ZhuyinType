@@ -448,7 +448,7 @@ extension ShortcutCommand {
         case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
         case .typeZhuyin, .selectLeft, .selectRight: return .editing
         case .togglePunctuationWidth: return .punctuation
-        case .insertSpace: return .other
+        case .insertSpace, .quickSettings: return .other
         }
     }
 }

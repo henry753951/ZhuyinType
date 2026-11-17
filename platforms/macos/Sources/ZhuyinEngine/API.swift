@@ -248,6 +248,13 @@ public enum CharacterForms: String, Sendable, CaseIterable {
 
 }
 
+/// Which script the text shown and committed is written in.  The engine always converts, learns and matches in
+/// traditional characters; 簡體 converts only what reaches the screen (`simplified(_:)`).
+public enum OutputScript: String, Sendable, CaseIterable {
+    case traditional
+    case simplified
+}
+
 /// How a run of typed keys is split into syllables and whether key order mistakes are repaired.
 public enum KeyDecoderMethod: String, Sendable, CaseIterable {
     /// Every key goes into the current syllable's slots; only a tone key or Space ends it (the original behaviour).

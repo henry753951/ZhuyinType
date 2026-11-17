@@ -1033,6 +1033,88 @@ enum ControllerCoreSelfTest {
             try expect(core.recentText.isEmpty && core.composer.learningSuspended && records.all.isEmpty,
                        "secure input kept context, learned or recorded")
         }
+        test("暫停學習: nothing is learned, kept or recorded until it is turned off; never stored") {
+            try expect(!QuickSettings.learningPaused, "a new process started with learning paused")
+            try expect(!Preferences.Key.all.contains { $0.lowercased().contains("pause") }, "暫停學習 is a stored setting")
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeTest-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let learning = try Engine(lexiconURL: lexiconURL, userDataDirectory: directory)
+            let client = FakeTextClient()
+            let core = ControllerCore(engine: learning, client: client, options: ComposerOptions(), isEnglish: false)
+            core.secureInput = { false }
+            var paused = true
+            core.learningPaused = { paused }
+            let records = recording(core)
+            func files() -> [String: Data] {
+                learning.flushPersonalData()
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+                return Dictionary(uniqueKeysWithValues: names.compactMap { name in
+                    (try? Data(contentsOf: directory.appendingPathComponent(name))).map { (name, $0) }
+                })
+            }
+            func typeAndPick() {
+                press("su31j6<bs>1j4<enter>", into: core)
+                type("su3", into: core)
+                _ = core.keyDown(keyCode: 125, modifiers: [])
+                core.selectCandidate(at: 2)
+                core.commit()
+            }
+            let before = files()
+            client.documentText = "前文"
+            typeAndPick()
+            try expect(files() == before, "personal data written while paused: \(files().keys.sorted())")
+            try expect(learning.learnedEntries().isEmpty, "learned while paused: \(learning.learnedEntries().map(\.word))")
+            try expect(records.all.isEmpty && core.recentText.isEmpty, "recorded or kept text while paused")
+            paused = false
+            typeAndPick()
+            try expect(files() != before, "turned off, learning did not resume")
+            try expect(!records.all.isEmpty, "turned off, corrections were not recorded")
+            // Pausing in the middle of a composition stops learning from it at once.
+            let (other, _) = session()
+            var pausedLater = false
+            other.learningPaused = { pausedLater }
+            type("su3", into: other)
+            try expect(!other.composer.learningSuspended, "learning suspended before pausing")
+            pausedLater = true
+            other.learningPauseChanged()
+            try expect(other.composer.learningSuspended, "pausing did not stop the composition's learning")
+        }
+        test("簡體 output: inline text, candidates and commits are simplified; the engine stays traditional") {
+            let (core, client) = session()
+            core.outputScript = .simplified
+            var shownList: CandidateList?
+            core.showPanel = { list, _, _, _, _ in shownList = list }
+            type("c.4x96", into: core)
+            let traditional = core.composer.presentation.text
+            try expect(client.marks.last?.string == simplified(traditional), "marked \(client.marks.last?.string ?? "")")
+            try expect(client.marks.last?.length == (traditional as NSString).length, "the length changed")
+            _ = core.keyDown(keyCode: 125, modifiers: [])
+            try expect(shownList?.items.first?.text == simplified(core.composer.presentation.candidates?.items.first?.text ?? ""),
+                       "candidates were not simplified")
+            _ = core.keyDown(keyCode: 53, modifiers: [])
+            _ = core.keyDown(keyCode: 36, modifiers: [])
+            try expect(client.inserts.last == simplified(traditional), "committed \(client.inserts.last ?? "")")
+            try expect(simplified("頭髮發財，臺灣") == "头发发财，台湾", simplified("頭髮發財，臺灣"))
+            core.outputScript = .traditional
+            type("c.4x96", into: core)
+            try expect(client.marks.last?.string == core.composer.presentation.text, "traditional again")
+        }
+        test("快速設定: no key by default; once bound it opens in English mode too") {
+            try expect(ShortcutCommand.quickSettings.defaultBindings.isEmpty, "快速設定 has a default key")
+            try expect(QuickSettings.modeLabel(english: false, script: .simplified) == "简"
+                       && QuickSettings.modeLabel(english: false, script: .traditional) == "中"
+                       && QuickSettings.modeLabel(english: true, script: .simplified) == "英", "badge labels")
+            let (core, _) = session(english: true)
+            var opened = 0
+            core.quickSettingsRequested = { _ in opened += 1 }
+            try expect(!core.keyDown(keyCode: 12, modifiers: [.control, .option]), "an unbound key was taken")
+            core.shortcuts[Shortcut("q", control: true, option: true)] = .quickSettings
+            try expect(core.keyDown(keyCode: 12, modifiers: [.control, .option]) && opened == 1, "the bound key did not open it")
+            core.setEnglish(false)
+            try expect(!core.isEnglish, "setEnglish did not switch to Chinese")
+            core.setPunctuationWidth(.half)
+            try expect(core.composer.punctuationWidth == .half, "setPunctuationWidth did not switch")
+        }
         test("correction log file: appended, exported and cleared") {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ZhuyinTypeTest-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: directory) }

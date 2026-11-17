@@ -88,7 +88,7 @@ extension ShortcutCommand {
         var place: SettingsPlace = {
             switch self {
             case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
-            case .togglePunctuationWidth, .insertSpace: return SettingsPlace(.typing)
+            case .togglePunctuationWidth, .insertSpace, .quickSettings: return SettingsPlace(.typing)
             default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
             }
         }()
@@ -382,6 +382,7 @@ private struct TypingPane: View {
                     SettingsWindowController.shared.open(SettingsPlace(.candidates, row: SettingsRow.modeToast))
                 }
                 RegistryRow("startInEnglish", preferences)
+                RegistryRow("keys.quickSettings", preferences)
             }
             SettingsSection("編輯組字") {
                 FeatureRow(preferences: preferences, title: "送出並換行", subtitle: "送出組字，App 再換行",
@@ -483,6 +484,7 @@ private struct ChoosingPane: View {
             SettingsSection("轉換") {
                 RegistryRow("candidateAnchor", preferences, accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor))))
                 RegistryRow("characterForms", preferences, segmented: true)
+                RegistryRow("outputScript", preferences, segmented: true)
             }
             SettingsSection("按錯鍵") {
                 RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
