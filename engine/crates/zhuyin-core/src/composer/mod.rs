@@ -7,6 +7,8 @@
 mod association;
 mod candidates;
 mod scoring;
+mod word_actions;
+pub use word_actions::CandidateAction;
 #[cfg(test)]
 mod tests;
 
@@ -240,6 +242,8 @@ pub struct Composer {
     associated_phrases: bool,
     /// The next-word suggestions shown after a commit; empty when none are shown.  Never non-empty while composing.
     predictions: Vec<Prediction>,
+    /// The last word action from the candidate window, until undone or replaced by the next.
+    word_undo: Option<crate::engine::WordUndo>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -328,6 +332,7 @@ impl Composer {
             freezes_on_pick: true,
             learning_suspended: false,
             character_scores: None,
+            word_undo: None,
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,

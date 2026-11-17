@@ -17,6 +17,9 @@ mod personal_writer;
 mod prediction;
 use personal_writer::{Snapshot, Writer};
 pub use prediction::Prediction;
+#[path = "word_actions.rs"]
+mod word_actions;
+pub use word_actions::{BLOCKED_COST, WordUndo};
 
 use crate::api::{FuzzySounds, TypoTolerance};
 use crate::binary::{DataError, MappedLexicon};
@@ -346,6 +349,8 @@ struct State {
     entry_cache: HashMap<String, Arc<Vec<WordEntry>>>,
     learned: HashMap<PhraseKey, RecallValue>,
     excluded: HashSet<PhraseKey>,
+    /// Words never to suggest for a reading (「不要再推薦」): they score [`BLOCKED_COST`] lower.
+    blocked: HashSet<PhraseKey>,
     typo_counts: HashMap<String, f64>,
     next_personal_id: u32,
     cache_day: i64,
@@ -494,6 +499,7 @@ impl Engine {
             entry_cache: HashMap::new(),
             learned: HashMap::new(),
             excluded: HashSet::new(),
+            blocked: HashSet::new(),
             typo_counts: HashMap::new(),
             next_personal_id: FIRST_PERSONAL_ID,
             cache_day: i64::MIN,
@@ -1183,7 +1189,9 @@ impl Engine {
                 self.lexical_entries(&mut state, source).iter().find(|e| e.word == entry.word).map_or(-7.0, |e| e.logp)
             }
         };
-        (original, (phrase.map_or(0.0, |p| p - original) - entry.penalty) + entry.reading_prior)
+        let blocked =
+            if state.blocked.is_empty() { 0.0 } else { Self::blocked_cost(&state, &entry.word, source, reading) };
+        (original, (phrase.map_or(0.0, |p| p - original) - entry.penalty - blocked) + entry.reading_prior)
     }
 
     /// An entry's score after `history`.
@@ -1458,6 +1466,10 @@ impl Engine {
         text += &phrase_text(state.excluded.iter());
         text += "[typos]\n";
         text += &typo_text(&state.typo_counts);
+        if !state.blocked.is_empty() {
+            text += "[blocked]\n";
+            text += &phrase_text(state.blocked.iter());
+        }
         text
     }
 
@@ -1526,6 +1538,13 @@ impl Engine {
         scan_tsv(excluded.as_bytes(), false, |fields| {
             if fields.len() == 2 {
                 state.excluded.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
+                rows += 1;
+            }
+        });
+        let blocked = section("blocked");
+        scan_tsv(blocked.as_bytes(), false, |fields| {
+            if fields.len() == 2 && valid_phrase(&fields[1], &fields[0]) {
+                state.blocked.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
                 rows += 1;
             }
         });
@@ -1727,6 +1746,13 @@ impl Engine {
                 }
             });
         }
+        if let Ok(data) = std::fs::read(directory.join("blocked.tsv")) {
+            scan_tsv(&data, false, |fields| {
+                if fields.len() == 2 && valid_phrase(&fields[1], &fields[0]) {
+                    state.blocked.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
+                }
+            });
+        }
         if let Ok(data) = std::fs::read(directory.join("learned.tsv")) {
             scan_tsv(&data, false, |fields| {
                 if fields.len() == 4 {
@@ -1777,6 +1803,7 @@ impl Engine {
             phrases: phrase_text(state.phrases.keys()),
             learned: learned_text(&state.learned),
             excluded: phrase_text(state.excluded.iter()),
+            blocked: phrase_text(state.blocked.iter()),
             typos: typo_text(&state.typo_counts),
             personal: self.personal.serialized(),
         };
