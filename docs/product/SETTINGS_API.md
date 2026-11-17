@@ -90,6 +90,9 @@ changes.revert(in: other) // 改回原本的值
 | 按錯鍵 | 關閉；標準；積極 | 擇一 | 「選字 › 按錯鍵修正」 |
 | 常見的其他讀法（有邊讀邊、輕聲照本調打、台灣讀音） | 接受；不接受 | 可以關閉 | 「選字 › 按錯鍵 › 接受常見的其他讀法」，預設接受 |
 | 模糊音 | ㄗ／ㄓ、ㄘ／ㄔ、ㄙ／ㄕ、ㄣ／ㄥ、ㄢ／ㄤ | 同時 | 「選字 › 模糊音」 |
+| 還原自動修正 | 修正剛出現時按 ⌫；候選字視窗開在修正過的字上時按 ⌫ | 可以關閉 | 「選字 › 按錯鍵 › ⌫ 還原自動修正」（`undoCorrectionWithBackspace`，預設開啟） |
+
+「選字 › 按錯鍵」的「標示自動修正」是 `showCorrections`（開關，預設開啟），只改顯示：組字中修正過的字加點線、候選字視窗顯示你打的注音。`undoCorrectionWithBackspace` 接到引擎的 `ComposerOptions::undo_correction_with_backspace`；引擎本身預設關閉，所以比對與評測的結果不變，App 依設定開啟。兩個鍵在 macOS（`Preferences`）與 Linux／Windows（`settings.json`）同名同值。
 
 ## 7. 習慣組合的出處
 

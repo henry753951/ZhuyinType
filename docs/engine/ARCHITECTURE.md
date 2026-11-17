@@ -252,12 +252,14 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 | 清單 | 空白、Tab、⇧Tab | 換頁 |
 | 清單 | ⇧↓、⇧↑ | 切換只列單字、修正優先 |
 | 清單 | \` | 這段改成注音符號本身 |
-| 清單 | Esc、Backspace | 關閉清單 |
+| 清單 | Esc、Backspace | 關閉清單（開啟 `undo_correction_with_backspace` 且清單的範圍有自動修正時，Backspace 先把修正改回照按鍵打的字） |
 | 清單 | 其他鍵 | 關閉清單，再照組字中處理 |
 | 組字中 | Return | 送出 |
 | 組字中 | Esc | 清空組字（設定可改成只清除注音） |
 
 橫式清單的方向鍵相反：←→ 移動反白，↑↓ 換頁。
+
+自動修正的標示與還原：`Presentation.corrections` 是畫面上經由修正或模糊音轉出的詞（`ConvertedWord.corrected`；整句重排挑選後也保留）在 `text` 中的 UTF-16 範圍，選過的字不列；清單開在其中時 `typed_reading` 是這段照按鍵的注音。`Composer::revert_correction`（C 介面 `zt_composer_revert_correction`）與開啟 `undo_correction_with_backspace` 時緊接在讓修正出現的鍵之後的 ⌫（`Presentation.backspace_reverts`），以 `Request::literal` 涵蓋那段音節重新轉換：詞圖在這段不收有註記（修正、模糊音）的詞，轉出的詞以凍結的固定詞留下（不是選字，不學習），`Presentation.reverted` 讓 App 計數。選項關閉時（引擎預設）轉換與按鍵行為不變。
 
 ### 8.2 清單內容
 
