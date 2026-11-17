@@ -3,7 +3,8 @@
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
 //! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
-//! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage).
+//! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage),
+//! and the word actions: `word-menu` (a row's right-click menu and the tip) and `word-undo` (the notice with 復原).
 
 use std::rc::Rc;
 
@@ -30,6 +31,7 @@ struct Showcase {
     panel: CandidatePanel,
     dark: bool,
     sized: bool,
+    menu: Option<usize>,
 }
 
 /// The settings every variant sets (so one variant's choices never leak into the next: screenshots share one
@@ -112,6 +114,16 @@ impl Showcase {
         if variant == "minimal" {
             presentation.reading = None;
         }
+        let mut menu = None;
+        if variant == "word-menu" {
+            presentation.row_actions = vec![0b101; presentation.rows.len()];
+            presentation.row_actions[1] = 0b101;
+            presentation.tip = Some("Ctrl+Del 不要再推薦・右鍵看更多".to_owned());
+            menu = Some(1);
+        } else if variant == "word-undo" {
+            presentation.notice = Some("不再推薦「小明」".to_owned());
+            presentation.undo = true;
+        }
         let mut panel = CandidatePanel::new();
         panel.reduced = crate::motion::reduced(cx);
         panel.hover = false;
@@ -136,7 +148,7 @@ impl Showcase {
             panel.update(&presentation, Extras::default(), &style, 4000., true, &mut WindowMeasure(window));
             panel.pinned = Some(pinned);
         }
-        Self { presentation, preview, badge, panel, dark, sized: false }
+        Self { presentation, preview, badge, panel, dark, sized: false, menu }
     }
 }
 
@@ -150,7 +162,7 @@ impl Render for Showcase {
             None if self.panel.pinned.is_some() => self.panel.layout().map_or((0., 0.), |l| (l.width, l.height)),
             None => self.panel.update(
                 &self.presentation,
-                Extras { preview: self.preview.as_deref() },
+                Extras { preview: self.preview.as_deref(), menu: self.menu },
                 &style,
                 4000.,
                 true,
@@ -245,7 +257,10 @@ pub fn popup_demo(cx: &mut App) {
                         list.toggle_single();
                         None
                     }
-                    PopupAction::Pick(_) | PopupAction::TypeReading => None,
+                    PopupAction::Pick(_)
+                    | PopupAction::TypeReading
+                    | PopupAction::Word(..)
+                    | PopupAction::UndoWordAction => None,
                 }
             };
             match boundary {

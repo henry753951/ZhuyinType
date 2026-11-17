@@ -571,14 +571,16 @@ fn compute_fitted(
     if has_footer && vertical {
         y += footer_height;
     }
-    let mut height = (y + padding).max(if list_open { steady.1 } else { 0. });
-    let mut below = height - padding;
+    let steady_height = if list_open { steady.1 } else { 0. };
+    // The tip at the bottom of the list's steady size (which includes it), so it stays put as pages turn.
+    const TIP_H: f32 = 18.;
     let tip = tip.map(|text| {
-        let frame = Frame::new(padding + key_inset, below, (width - padding * 2. - key_inset * 2.).max(0.), 18.);
-        below += frame.h;
-        height = height.max(below + padding);
-        (frame, text, tip_font)
+        let tip_y = y.max(steady_height - padding - TIP_H);
+        y = tip_y + TIP_H;
+        (Frame::new(padding + key_inset, tip_y, (width - padding * 2. - key_inset * 2.).max(0.), TIP_H), text, tip_font)
     });
+    let mut height = (y + padding).max(steady_height);
+    let mut below = height - padding;
     let base_height = height;
     let menu = menu_row.map(|row| {
         let rule = Frame::new(0., below + 3., width, 1.);
@@ -873,5 +875,30 @@ mod tests {
         assert!(narrow.rows.iter().all(|row| row.main_width >= Fixed.width(&row.text, 18., false)));
         // The rows keep their page indices (what a click picks).
         assert_eq!(narrow.rows[0].index, 0);
+    }
+
+    #[test]
+    fn word_actions_tip_menu_and_undo() {
+        let style = PanelStyle::default();
+        let plain = compute(&list(5), &style, 4000., (0., 0.), &mut Fixed);
+        let mut p = list(5);
+        p.tip = Some("Ctrl+Del 不要再推薦・右鍵看更多".into());
+        let tipped = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        let (frame, ..) = tipped.tip.clone().expect("a tip under the list");
+        assert!(frame.y >= plain.height - plain.padding - 0.5, "under everything else");
+        assert_eq!(tipped.transient_height, 0., "the tip is part of the list's size");
+        p.rows[1].actions = 0b011;
+        p.menu = Some(1);
+        let menu = compute(&p, &style, 4000., (tipped.width, tipped.height), &mut Fixed);
+        let items = &menu.menu.as_ref().expect("the menu").items;
+        assert_eq!(items.iter().map(|item| item.enabled).collect::<Vec<_>>(), [true, true, false]);
+        assert!(menu.transient_height > 0.);
+        assert!((menu.height - menu.transient_height - tipped.height).abs() < 0.5, "shrinks back when it closes");
+        let mut notice = list(5);
+        notice.notice = Some("不再推薦「小明」".into());
+        notice.undo = true;
+        let undo = compute(&notice, &style, 4000., (0., 0.), &mut Fixed).notice.expect("a notice");
+        let link = undo.undo.expect("復原");
+        assert!(link.x >= undo.frame.x + undo.frame.w, "after the notice's text");
     }
 }

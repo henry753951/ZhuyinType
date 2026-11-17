@@ -30,6 +30,7 @@ use crate::ui::{self, v};
 const LEARNED: &str = "learnedWords";
 const PHRASES: &str = "phrases";
 const EXCLUDED_PREFIX: &str = "excluded\t";
+const BLOCKED_PREFIX: &str = "blocked\t";
 
 /// The add or edit sheet of 自訂詞 while it is open.
 struct PhraseSheet {
@@ -102,9 +103,11 @@ impl WordsPage {
     ) {
         let learned = data::learned_entries(cx);
         let excluded = data::excluded_entries(cx);
+        let blocked = data::blocked_entries(cx);
         let phrases = data::user_phrases(cx);
         self.counts = data::available(cx).then_some((learned.len(), phrases.len()));
-        let rows = learned_rows(&learned, &excluded);
+        let mut rows = learned_rows(&learned, &excluded);
+        rows.extend(blocked_rows(&blocked));
         let available = data::available(cx);
         self.learned.update(cx, |list, cx| list.set_items(rows, select_learned, cx));
         let rows = phrases.iter().map(phrase_row).collect();
@@ -115,7 +118,7 @@ impl WordsPage {
             list.set_items(rows, select_phrase.map(|id| BTreeSet::from([id])), cx);
         });
         self.learned.update(cx, |list, _| {
-            list.set_footer(Some("選過的字詞下次排在前面；設為「不記住」的字詞之後不再學。".into()));
+            list.set_footer(Some("選過的字詞下次排在前面；「不記住」的之後不再學，「不推薦」的不再列出。".into()));
         });
     }
 
@@ -263,6 +266,20 @@ fn learned_rows(learned: &[Phrase], excluded: &[Phrase]) -> Vec<ListItem> {
     rows
 }
 
+/// The words set to 不要再推薦 in the candidate window, after the 不記住 ones; removing one suggests it again.
+fn blocked_rows(blocked: &[Phrase]) -> Vec<ListItem> {
+    blocked
+        .iter()
+        .map(|entry| {
+            ListItem::new(format!("{BLOCKED_PREFIX}{}\t{}", entry.reading, entry.word), entry.word.clone())
+                .detail(entry.reading.clone())
+                .meta("不推薦")
+                .count(-2.)
+                .marked(true)
+        })
+        .collect()
+}
+
 fn phrases_footer(cx: &App) -> SharedString {
     match (data::key_text("selectLeft", cx), data::key_text("selectRight", cx)) {
         (Some(left), Some(right)) => {
@@ -302,7 +319,9 @@ fn configure_learned(list: &mut ListView, page: WeakEntity<WordsPage>) {
     // Removing a learned word forgets it; removing a 不記住 one lets it be learned again.
     list.on_remove(move |rows, _, cx| {
         apply(&remove_page, &rows, cx, |row, cx| {
-            if row.marked {
+            if row.id.starts_with(BLOCKED_PREFIX) {
+                data::unblock(&row.title, &reading_of(row), cx)
+            } else if row.marked {
                 data::include_learned(&row.title, &reading_of(row), cx)
             } else {
                 data::forget_learned(&row.title, &reading_of(row), cx)

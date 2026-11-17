@@ -30,6 +30,8 @@ pub struct Sample {
     pub phrases: Vec<Phrase>,
     pub learned: Vec<Phrase>,
     pub excluded: Vec<Phrase>,
+    /// Words set to 不要再推薦.
+    pub blocked: Vec<Phrase>,
     pub apps: Vec<String>,
     pub corrections: usize,
     pub revision: u64,
@@ -94,6 +96,7 @@ pub fn install_sample(cx: &mut App) {
         ],
         learned,
         excluded: vec![phrase("的話", "ㄉㄜ˙ ㄏㄨㄚˋ", 0.)],
+        blocked: vec![phrase("八", "ㄅㄚ", 0.)],
         apps: vec!["wezterm".to_owned(), "Code.exe".to_owned()],
         corrections: 3,
         revision: 1,
@@ -153,6 +156,26 @@ pub fn excluded_entries(cx: &App) -> Vec<Phrase> {
         Source::Sample(sample) => sample.borrow().excluded.clone(),
         Source::None => Vec::new(),
     }
+}
+
+/// Words set to 不要再推薦 (from the candidate window).
+pub fn blocked_entries(cx: &App) -> Vec<Phrase> {
+    match source(cx) {
+        Source::Service(service) => service.blocked_entries(),
+        Source::Sample(sample) => sample.borrow().blocked.clone(),
+        Source::None => Vec::new(),
+    }
+}
+
+/// Suggests a blocked word again.
+pub fn unblock(word: &str, reading: &str, cx: &mut App) -> Result<()> {
+    if let Some(service) = app::service(cx) {
+        return service.unblock(word, reading);
+    }
+    with_sample(cx, |sample| {
+        sample.blocked.retain(|entry| !same(entry, word, reading));
+        Ok(())
+    })
 }
 
 /// The readings of `word` the lexicon knows (the add sheet's suggestions).
