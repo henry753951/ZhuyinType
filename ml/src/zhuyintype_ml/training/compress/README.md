@@ -30,7 +30,7 @@ zt --remote train compress --option v3=v3_new             # 新的 v3 檢查點�
 | `quantize` | 每種方法的假量化檢查點（fp16 儲存）與 `compression.json`；已有同一來源的紀錄時，每個矩陣的 SHA-256 必須相同 | 任一 |
 | `onnx` | 每種方法的 ONNX、ONNX Runtime 的 int8 模型、主機上的參考輸出與單執行緒耗時 | GPU 主機 |
 | `coreml` | 匯出、壓縮、編譯 Core ML，紀錄大小與載入時間 | 只限 macOS |
-| `parity` | 壓縮後的 Core ML 對主機的參考輸出、對未壓縮的匯出；寫入該方法的 `v3/test_vectors.json` | 只限 macOS |
+| `parity` | 壓縮後的 Core ML 對主機的參考輸出、對未壓縮的匯出；前綴樹在 CPU 上對 PyTorch 跑 600 棵和引擎呼叫同形狀的樹，超過 0.5 nats 就失敗；寫入該方法的 `v3/test_vectors.json` | 只限 macOS |
 | `measure` | App 的引擎路徑（EngineBench）每鍵延遲、CPU 時間、能耗，和目前的模型交錯量 | 只限 macOS |
 
 選項：`reranker=DIR`、`v3=DIR`（資料目錄裡的來源，預設 `reranker`、`v3`），`methods=a,b`（預設全部；Mac 的步驟需要指定），`rounds=N`、`base=DIR`（`measure`）。

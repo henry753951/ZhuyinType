@@ -27,7 +27,7 @@ python -m zhuyintype_ml.training.reranker.train --data data/build/reranker_v2c -
 | `prepare` | 詞彙表與 token 串流，排除和開發、測試集有 8 字重疊的句子 | GPU 主機 |
 | `train` | v2b，90,000 步，每 5,000 步存檔並量測開發集困惑度 | GPU 主機（CUDA） |
 | `export` | `Reranker.mlpackage`（fp16、macOS 14）與 `config.json` | 任一（需要 coremltools） |
-| `tree` | `RerankerTree.mlpackage`：深度 RoPE、只看祖先的注意力；匯出前先和批次模型比對 | 任一（需要 coremltools） |
+| `tree` | `RerankerTree.mlpackage`：深度 RoPE、只看祖先的注意力，以 fp32 計算（fp16 時 Core ML 在 CPU 上某些節點數會算錯）；匯出前先和批次模型比對 | 任一（需要 coremltools） |
 | `compile` | 以 `xcrun coremlcompiler` 編譯兩個套件 | 只限 macOS |
 
 ## 輸入與輸出
