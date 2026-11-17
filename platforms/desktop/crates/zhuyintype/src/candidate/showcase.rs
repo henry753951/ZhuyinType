@@ -2,7 +2,8 @@
 //! UI renderer's `panels/` show it, for screenshots.  `--popup demo` drives the real floating windows instead.
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
-//! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
+//! `minimal`, `composing`, `corrected` (a window on a corrected word: the typed reading under the list, the
+//! composition dotted under it), `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
 //! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage).
 
 use std::rc::Rc;
@@ -81,6 +82,21 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
         "notice-invalid" => (notice("自訂詞需為 1 到 6 個字"), None, None, None),
         "mode-toast" => (Presentation::default(), None, Some("中"), None),
         "composing" => (Presentation::default(), Some("王小ㄇㄧㄥ".to_owned()), None, None),
+        "corrected" => {
+            // ㄊㄜˇ typed, 特 (ㄊㄜˋ) shown through the tone correction; the window open on it.
+            let mut list = PreviewList::default();
+            let entries = ["特", "忒", "慝", "忑"]
+                .map(|text| zhuyin_core::api::Candidate { text: text.to_owned(), annotation: None });
+            list.present(entries.to_vec(), Some("ㄊㄜˋ".to_owned()), 0);
+            let composition = "我特別想你";
+            let presentation = Presentation {
+                corrected: std::iter::once(1..2).collect(),
+                typed_reading: Some("ㄊㄜˇ".to_owned()),
+                ..list.presentation(composition, &keys)
+            }
+            .with_correction_marks(true, true);
+            (presentation, Some(composition.to_owned()), None, None)
+        }
         "minimal" => {
             let list = sample::list(sample::WORDS, sample::PANEL_CORRECTIONS, true, per_page, 0);
             (list.presentation("", &keys), None, None, None)

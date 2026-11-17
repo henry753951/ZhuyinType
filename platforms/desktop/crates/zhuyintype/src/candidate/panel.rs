@@ -324,7 +324,7 @@ impl CandidatePanel {
                     )
                     .children(layout.preview_marks.iter().map(|&(x, w)| {
                         // 「標示自動修正」: a dotted line in the accent colour just under the composition's underline.
-                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2., p.accent)
+                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, p.accent)
                     })),
             );
         }
@@ -563,13 +563,12 @@ fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) 
 /// The key glyphs live with the shared key cap (`ui::keycap`).
 pub use crate::ui::keycap::key_glyphs;
 
-/// A dotted line `width` long at `x`, `bottom` above the bottom of its parent: 1.5 px dots every 3 px.
+/// A dotted line `width` long at `x`, `bottom` above the bottom of its parent: 2 px dots every 4 px.
 fn dotted(x: f32, width: f32, bottom: f32, color: gpui_kit::Hsla) -> impl IntoElement {
-    let dots = ((width.max(0.) + 1.5) / 3.).floor() as usize;
-    div().absolute().left(px(x)).bottom(px(bottom.max(0.))).w(px(width.max(0.))).h(px(1.5)).children(
-        (0..dots).map(move |dot| {
-            div().absolute().left(px(dot as f32 * 3.)).top_0().size(px(1.5)).rounded(px(0.75)).bg(color)
-        }),
+    let dots = ((width.max(0.) + 2.) / 4.).floor() as usize;
+    div().absolute().left(px(x)).bottom(px(bottom.max(0.))).w(px(width.max(0.))).h(px(2.)).children(
+        (0..dots)
+            .map(move |dot| div().absolute().left(px(dot as f32 * 4.)).top_0().size(px(2.)).rounded(px(1.)).bg(color)),
     )
 }
 
