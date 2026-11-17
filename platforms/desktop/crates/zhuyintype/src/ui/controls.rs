@@ -166,7 +166,14 @@ impl gpui_kit::RenderOnce for Segmented {
                     .whitespace_nowrap()
                     .cursor_pointer()
                     .tab_index(0)
-                    .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface.blend(p.subtle)))
+                    // The selected segment's card covers a ring drawn inside it.
+                    .focus_visible(move |style| {
+                        if selected {
+                            crate::motion::focus_ring_on(style, &p, p.card)
+                        } else {
+                            crate::motion::focus_ring(style, &p, p.surface.blend(p.subtle))
+                        }
+                    })
                     .when(fill > 0., |this| {
                         this.child(div().absolute().inset_0().rounded(size::R_XS).bg(p.card).shadow_xs().opacity(fill))
                     })
