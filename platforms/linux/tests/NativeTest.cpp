@@ -3,6 +3,7 @@
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx/inputpanel.h>
+#include <fcitx/userinterfacemanager.h>
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -160,6 +161,30 @@ int main() {
         activate(a);
         CHECK(a.preedit().empty()); CHECK(a.commits.size()==deliveredBeforeDestroy);
         {
+            // 快速設定 in the input method's menu (IPC `quick`): check items that follow the host, and 简 for 簡體.
+            auto &ui = instance.userInterfaceManager();
+            const auto item = [&](const char *name) { auto *action = ui.lookupAction(name); CHECK(action); return action; };
+            CHECK(addon.subModeLabelImpl(entry,a) == "中");
+            CHECK(!item("zhuyintype-quick-simplified")->isChecked(&a));
+            item("zhuyintype-quick-simplified")->activate(&a);
+            CHECK(item("zhuyintype-quick-simplified")->isChecked(&a));
+            CHECK(addon.subModeLabelImpl(entry,a) == "简");
+            item("zhuyintype-quick-pause-learning")->activate(&a);
+            CHECK(item("zhuyintype-quick-pause-learning")->isChecked(&a));
+            CHECK(addon.subMode(entry,a) == "簡體中文（暫停學習）");
+            item("zhuyintype-quick-half-width")->activate(&a);
+            CHECK(item("zhuyintype-quick-half-width")->isChecked(&a));
+            item("zhuyintype-quick-english")->activate(&a);
+            CHECK(item("zhuyintype-quick-english")->isChecked(&a) && addon.subModeLabelImpl(entry,a) == "英");
+            for (const char *name : {"zhuyintype-quick-english", "zhuyintype-quick-half-width",
+                     "zhuyintype-quick-simplified", "zhuyintype-quick-pause-learning"}) {
+                item(name)->activate(&a);
+                CHECK(!item(name)->isChecked(&a));
+            }
+            CHECK(addon.subModeLabelImpl(entry,a) == "中" && addon.subMode(entry,a) == "中文");
+            CHECK(ui.lookupAction("zhuyintype-quick-separator")->isSeparator());
+        }
+        {
             // Fcitx draws the list (a Wayland session): the host's list becomes Fcitx's candidate list, and a click
             // in it picks through the host.
             setenv("ZT_FCITX_PANEL", "1", 1);
@@ -182,6 +207,6 @@ int main() {
             CHECK(!key(drawn,FcitxKey_Shift_L,true));
             unsetenv("ZT_FCITX_PANEL");
         }
-        std::cout << "PASS real host broker: Fcitx preedit/commit, reset, focus isolation, secure transition, Shift release, shortcuts\n";
+        std::cout << "PASS real host broker: Fcitx preedit/commit, reset, focus isolation, secure transition, Shift release, shortcuts, quick settings\n";
     } catch(const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }

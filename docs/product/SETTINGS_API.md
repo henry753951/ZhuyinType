@@ -112,3 +112,5 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 | `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
 
 `panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
+
+`outputScript`（「繁／簡」，`traditional`／`simplified`，預設 `traditional`，「選字」頁「轉換」群組，「台／臺」之後）三個平台相同。它不交給引擎：服務在文字離開時才換成簡體（`InputController::output`、`Presentation::simplified`：送出的字、組字與候選字），引擎、詞庫、學習與改字記錄都是繁體。快速設定的「簡體」改的就是這個設定；「暫停學習」不是設定，只存在服務的記憶體裡（[IPC.md](../../platforms/desktop/IPC.md)〈快速設定〉）。

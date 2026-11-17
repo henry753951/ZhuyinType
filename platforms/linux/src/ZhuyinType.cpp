@@ -125,6 +125,10 @@ struct ZhuyinType::State final : fcitx::InputContextProperty {
     bool capsSynced = false;
     bool inlinePreedit = true;
     bool english = false;
+    // 快速設定: 簡體 output, 暫停學習 and 中文標點 width, as every reply reports them.
+    bool simplified = false;
+    bool learningPaused = false;
+    bool fullWidth = true;
     // The user switched to ZhuyinType from another input method: the next focus says so (IPC `activated`).
     bool activated = false;
     // Fcitx draws the candidate list (fcitxDrawsPanel); `panel` is the host's last one (null: hidden).
@@ -170,6 +174,20 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
         actions_[i]->connect<fcitx::SimpleAction::Activated>([this, place](fcitx::InputContext *) { showSettings(place); });
         instance.userInterfaceManager().registerAction(menu[i].first, actions_[i].get());
     }
+    const std::array<std::pair<const char *, const char *>, 4> quickItems{{{"zhuyintype-quick-english", "英文"},
+        {"zhuyintype-quick-half-width", "半形標點"}, {"zhuyintype-quick-simplified", "簡體"},
+        {"zhuyintype-quick-pause-learning", "暫停學習"}}};
+    for (size_t i = 0; i < quickItems.size(); ++i) {
+        quick_[i] = std::make_unique<fcitx::SimpleAction>();
+        quick_[i]->setShortText(quickItems[i].second);
+        quick_[i]->setCheckable(true);
+        const char *item = quickItems[i].first;
+        quick_[i]->connect<fcitx::SimpleAction::Activated>([this, item](fcitx::InputContext *ic) { quick(ic, item); });
+        instance.userInterfaceManager().registerAction(item, quick_[i].get());
+    }
+    quickSeparator_ = std::make_unique<fcitx::SimpleAction>();
+    quickSeparator_->setSeparator(true);
+    instance.userInterfaceManager().registerAction("zhuyintype-quick-separator", quickSeparator_.get());
     timer_ = instance.eventLoop().addTimeEvent(CLOCK_MONOTONIC, 0, 1000,
         [this](fcitx::EventSourceTime *source, uint64_t) {
             poll();
@@ -207,8 +225,21 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     } else if (!state.polls) {
         timer_->setEnabled(false);
     }
-    if (const bool english = (*response)["english"].get<bool>(); english != state.english) {
+    // Older hosts leave the 快速設定 fields out.
+    const auto flag = [&](const char *key, bool fallback) {
+        const auto it = response->find(key);
+        return it != response->end() && it->is_boolean() ? it->get<bool>() : fallback;
+    };
+    const bool english = (*response)["english"].get<bool>();
+    const bool simplified = flag("simplified", false), paused = flag("learningPaused", false);
+    const bool fullWidth = flag("fullWidth", state.fullWidth);
+    if (english != state.english || simplified != state.simplified || paused != state.learningPaused ||
+        fullWidth != state.fullWidth) {
         state.english = english;
+        state.simplified = simplified;
+        state.learningPaused = paused;
+        state.fullWidth = fullWidth;
+        syncQuick(state);
         ic.updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
     }
     if (state.drawsPanel) {
@@ -321,14 +352,41 @@ void ZhuyinType::activate(const fcitx::InputMethodEntry &, fcitx::InputContextEv
     auto &state = *ic.propertyFor(&factory_);
     // Picked from another input method (not focus moving between fields): 中/英 starts as the setting says.
     if (event.type() == fcitx::EventType::InputContextSwitchInputMethod) state.activated = true;
+    for (auto &action : quick_) ic.statusArea().addAction(fcitx::StatusGroup::InputMethod, action.get());
+    ic.statusArea().addAction(fcitx::StatusGroup::InputMethod, quickSeparator_.get());
     for (auto &action : actions_) ic.statusArea().addAction(fcitx::StatusGroup::InputMethod, action.get());
+    syncQuick(state);
     focus(ic, state);
 }
 std::string ZhuyinType::subMode(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) {
-    return ic.propertyFor(&factory_)->english ? "英文" : "中文";
+    const auto &state = *ic.propertyFor(&factory_);
+    const std::string mode = state.english ? "英文" : state.simplified ? "簡體中文" : "中文";
+    return state.learningPaused ? mode + "（暫停學習）" : mode;
 }
 std::string ZhuyinType::subModeLabelImpl(const fcitx::InputMethodEntry &, fcitx::InputContext &ic) {
-    return ic.propertyFor(&factory_)->english ? "英" : "中";
+    const auto &state = *ic.propertyFor(&factory_);
+    return state.english ? "英" : state.simplified ? "简" : "中";
+}
+void ZhuyinType::syncQuick(const State &state) {
+    quick_[0]->setChecked(state.english);
+    quick_[1]->setChecked(!state.fullWidth);
+    quick_[2]->setChecked(state.simplified);
+    quick_[3]->setChecked(state.learningPaused);
+}
+void ZhuyinType::quick(fcitx::InputContext *ic, const char *item) {
+    if (!ic) ic = active_.get();
+    if (!ic || active_.get() != ic || !broker_.connected()) return;
+    auto &state = *ic->propertyFor(&factory_);
+    if (state.secure) return;
+    const std::string_view name(item);
+    nlohmann::json fields = nlohmann::json::object();
+    if (name == "zhuyintype-quick-english") fields["english"] = !state.english;
+    else if (name == "zhuyintype-quick-half-width") fields["fullWidth"] = !state.fullWidth;
+    else if (name == "zhuyintype-quick-simplified") fields["simplified"] = !state.simplified;
+    else fields["learningPaused"] = !state.learningPaused;
+    exchange(*ic, state, "quick", fields);
+    syncQuick(state);
+    ic->updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
 }
 void ZhuyinType::showSettings(const char *place) {
     nlohmann::json fields = nlohmann::json::object();
