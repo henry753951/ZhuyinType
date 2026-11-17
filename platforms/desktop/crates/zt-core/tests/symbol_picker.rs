@@ -138,7 +138,7 @@ fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
     use zt_core::broker::host::Host;
     let mut f = fixture();
     let mut host = Host::default();
-    let mut request = |host: &mut Host, f: &mut Fixture, fields: Value| {
+    let request = |host: &mut Host, f: &mut Fixture, fields: Value| {
         let mut object = json!({"v": 1, "context": "{A}", "secure": false});
         for (key, value) in fields.as_object().unwrap() {
             object[key] = value.clone();
