@@ -324,6 +324,7 @@ final class ZhuyinInputController: IMKInputController {
         let p = Preferences.shared
         showModeToast = p.showModeToast
         core?.usesPrecedingText = p.usesPrecedingText
+        core?.composer.associatedPhrases = p.associatedPhrases
         core?.shortcuts = Dictionary(p.activeBindings.flatMap { command, list in list.map { ($0, command) } },
                                      uniquingKeysWith: { first, _ in first })
         core?.disabledFeatures = p.disabledKeyFeatures

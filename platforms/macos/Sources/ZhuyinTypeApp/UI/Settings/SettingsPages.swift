@@ -58,6 +58,7 @@ enum SettingsRow {
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
     static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin", otherReadings = "otherReadings"
     static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
+    static let associatedPhrases = "associatedPhrases"
 }
 
 /// Where each feature with keys is set.
@@ -496,6 +497,9 @@ private struct ChoosingPane: View {
             SettingsSection("前文") {
                 DrillRow(model: model, title: "參考游標前的文字", subtitle: "依前文選字；只在記憶體中",
                          value: preferences.usesPrecedingText ? "開啟" : "關閉", subpage: .context)
+            }
+            SettingsSection("聯想詞") {
+                RegistryRow("associatedPhrases", preferences)
             }
             SettingsSection("改字") {
                 FeatureRow(preferences: preferences, title: "打出注音本身", subtitle: "緊接著再按一次或按 Esc 恢復",

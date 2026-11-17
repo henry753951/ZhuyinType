@@ -162,6 +162,13 @@ enum SettingsRegistry {
                           read: { .number(Double($0.fuzzySounds.rawValue)) },
                           write: { p, v in if case .number(let raw) = v { p.fuzzySounds = FuzzySounds(rawValue: Int(raw)) } }),
         toggle("usesPrecedingText", "參考游標前的文字", place(.choosing, nil, .context), \.usesPrecedingText, keywords: ["前文"]),
+        toggle("associatedPhrases", "送出後列出聯想詞", place(.choosing, SettingsRow.associatedPhrases), \.associatedPhrases,
+               detail: { p in
+                   let keys = p.pageSelectionKeys.map { "⇧" + String($0).uppercased() }
+                   let range = keys.count > 1 ? "\(keys[0])–\(keys[keys.count - 1])" : keys.first ?? "⇧1"
+                   return "送出後列出常接在後面的詞，按 \(range) 選用；其他鍵照常輸入"
+               },
+               keywords: ["聯想", "聯想詞", "下一個詞"]),
         feature(.typeZhuyin, "打出注音本身"),
         feature(.selectPhrase, "選取加入自訂詞"),
         feature(.deleteAfterCommit, "送出後刪掉重打"),
