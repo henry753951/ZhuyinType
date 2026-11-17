@@ -210,10 +210,10 @@ enum HealthChecks {
         }
         // ControllerCore: under secure input conversion goes on, but nothing before the caret is read and nothing is
         // learned, recorded or counted.  Password fields themselves take no input method (the system's doing).
-        let effect = "這段期間照常打字，但不參考游標前的文字，也不記住選過的字詞；關閉那個 App 的密碼欄位或安全輸入後恢復。"
-        let anonymous = "有 App 開啟了安全輸入（例如密碼欄位），\(effect)"
+        let effect = "照常打字，但不參考游標前的文字，也不記住選過的字詞，直到那個 App 關閉安全輸入。"
+        let anonymous = "有 App 開啟了安全輸入（例如密碼欄位）：\(effect)"
         return HealthCheck(kind: .secureInput, status: .warning, title: "安全輸入已開啟",
-                           explanation: owner.map { "「\($0)」開啟了安全輸入，\(effect)" } ?? anonymous,
+                           explanation: owner.map { "「\($0)」開啟了安全輸入：\(effect)" } ?? anonymous,
                            reportExplanation: anonymous)
     }
 

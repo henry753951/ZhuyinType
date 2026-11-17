@@ -35,6 +35,8 @@ enum UIPreviewRenderer {
         Preferences.shared = Preferences(defaults: defaults)
         UsageStatsStore.shared = sampleStats()
         SettingsWindowController.isPreview = true
+        // 檢查輸入法 shows made-up facts, never this Mac's.
+        HealthMonitor.shared.pinned = .sample()
         DemoPinning.still = true
         DemoPinning.context = 0
         DemoPinning.intro = 12
@@ -67,6 +69,10 @@ enum UIPreviewRenderer {
                                     to: directory.appendingPathComponent("storyboard/\(frame.rawValue)-\(name).png"), settle: 0.3)
                     }
                 }
+            }
+            if only == "health" {
+                // 關於 › 檢查輸入法 and 回報問題, with everything in place and with problems.
+                try renderHealth(settings, to: directory.appendingPathComponent("health"))
             }
             if only == "practice" {
                 // The setup wizard's practice field, driven by synthetic keys (UI/Wizard/Practice).
@@ -409,7 +415,7 @@ enum UIPreviewRenderer {
         (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
         (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
         (.words, .learnedWords, 620), (.words, .phrases, 620),
-        (.analytics, .performance, 760), (.advanced, .apps, 460),
+        (.analytics, .performance, 760), (.advanced, .apps, 460), (.about, .health, 900),
     ]
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
@@ -604,6 +610,48 @@ enum UIPreviewRenderer {
                 window.orderOut(nil)
                 window.contentView = nil
                 window.close()
+            }
+        }
+        settings.model.subpage = nil
+    }
+
+    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet: everything in place, then problems
+    /// (secure input on, the input source not added, a model missing, per-document input sources).
+    private static func renderHealth(_ settings: SettingsWindowController, to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let monitor = HealthMonitor.shared
+        let saved = monitor.pinned
+        defer { monitor.pinned = saved }
+        var problems = HealthFacts.sample()
+        problems.secureInput = .on(owner: "鑰匙圈存取")
+        problems.inputSource = .registered(enabled: false, selectable: false)
+        problems.perDocumentInputSource = true
+        problems.missingModels = [.reranker]
+        let errors = [HealthReport.LogLine(date: problems.now.addingTimeInterval(-600),
+                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened.")]
+        for (state, facts) in [("ok", HealthFacts.sample()), ("problems", problems)] {
+            monitor.pinned = facts
+            for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                NSApp.appearance = NSAppearance(named: appearanceName)
+                for subpage in [nil, SettingsSubpage.health] {
+                    settings.model.subpage = nil
+                    let window = settings.makeWindow(pane: .about)
+                    window.setContentSize(NSSize(width: 760, height: 600))
+                    window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                    window.alphaValue = 0
+                    window.orderFrontRegardless()
+                    settings.model.subpage = subpage
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+                    try capture(window: window, to: directory.appendingPathComponent(
+                        "\(subpage == nil ? "about" : "health")-\(state)-\(name).png"))
+                    retire(window)
+                }
+                try renderPages(settings, [(.about, .health, 900)], to: directory, label: "-\(state)", suffix: name)
+                let text = HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts),
+                                             errors: state == "ok" ? [] : errors)
+                try capture(swiftUI: HealthReportSheet(text: text).frame(width: 620, height: 520)
+                                .background(Color(nsColor: .windowBackgroundColor)), width: 620,
+                            to: directory.appendingPathComponent("report-\(state)-\(name).png"), settle: 0.3)
             }
         }
         settings.model.subpage = nil
