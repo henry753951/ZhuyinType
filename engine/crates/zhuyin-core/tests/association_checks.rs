@@ -65,7 +65,7 @@ fn items(composer: &Composer) -> Vec<String> {
 }
 
 fn associated(composer: &Composer) -> bool {
-    composer.presentation().candidates.as_ref().is_some_and(|l| l.associated())
+    composer.presentation().candidates.as_ref().is_some_and(zhuyin_core::api::CandidateList::associated)
 }
 
 /// 謝謝 typed and committed with Enter.

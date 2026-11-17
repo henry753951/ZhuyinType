@@ -16,8 +16,13 @@ use crate::swift_format::graphemes;
 
 /// How many followers each source contributes before filtering and ranking.
 const POOL: usize = 64;
-/// Least log P(word | history) for a single character (2%).
-const MIN_CHARACTER_SCORE: f64 = -3.912;
+/// Least log P(word | history) for a single character (5%).
+const MIN_CHARACTER_SCORE: f64 = -2.996;
+/// Least log P(word) with no context for a single character (0.01%): rare characters are not suggested even where a
+/// name made them likely (請問 → 芳).
+const MIN_CHARACTER_UNIGRAM: f64 = -9.210;
+/// Single characters that only join words to what follows (的、之、了…): likely, but never what the user wants next.
+const FUNCTION_CHARACTERS: &str = "的之了著地得於及與或等其";
 /// Least log P(word | history) for a word of two or more characters (0.1%).
 const MIN_WORD_SCORE: f64 = -6.908;
 /// Least personal strength (decaying counts; one pick is 1) for a word the user wrote there to come first.
@@ -73,17 +78,20 @@ impl Engine {
             }
         }
         let mut scored: Vec<(f64, u32, String)> = Vec::new();
-        for (id, text) in self.model.followers(history, POOL) {
+        for (id, text, base) in self.model.followers(history, POOL) {
             if seen.contains(&text) {
                 continue;
             }
-            let score = if personal {
-                self.model.score(Some(id), history, f64::NEG_INFINITY)
-            } else {
-                self.model.base_score(Some(id), history, f64::NEG_INFINITY)
-            };
-            let least = if graphemes(&text).len() == 1 { MIN_CHARACTER_SCORE } else { MIN_WORD_SCORE };
-            if score.is_finite() && score >= least {
+            let score = if personal { self.model.adapted(base, Some(id), history) } else { base };
+            let single = graphemes(&text).len() == 1;
+            if single && FUNCTION_CHARACTERS.contains(text.as_str()) {
+                continue;
+            }
+            let least = if single { MIN_CHARACTER_SCORE } else { MIN_WORD_SCORE };
+            let rare = single
+                && self.model.score(Some(id), LanguageModelHistory::new(None, NO_CONTEXT), f64::NEG_INFINITY)
+                    < MIN_CHARACTER_UNIGRAM;
+            if score.is_finite() && score >= least && !rare {
                 scored.push((score, id, text));
             }
         }
