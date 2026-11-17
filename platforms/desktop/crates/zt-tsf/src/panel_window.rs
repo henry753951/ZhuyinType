@@ -737,6 +737,12 @@ impl PanelWindow {
         }
     }
 
+    /// The candidate window is shown: the one thing the host can change between keys (a changed setting reaches
+    /// an open list at once).
+    pub(crate) fn shows_list(&self) -> bool {
+        self.state.try_borrow().is_ok_and(|state| state.panel.is_some()) && self.panel.visible()
+    }
+
     /// Whether `warm` has not run yet for the current owner.
     pub(crate) fn cold(&self) -> bool {
         self.warmed.get() != self.owner.get()

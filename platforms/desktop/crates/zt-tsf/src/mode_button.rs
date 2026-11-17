@@ -20,7 +20,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Ole::{CONNECT_E_ADVISELIMIT, CONNECT_E_CANNOTCONNECT, CONNECT_E_NOCONNECTION};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
+use windows::Win32::UI::HiDpi::{
+    DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, GetDpiForSystem, GetSystemMetricsForDpi, SetThreadDpiAwarenessContext,
+};
 use windows::Win32::UI::TextServices::{
     GUID_LBI_INPUTMODE, ITfLangBarItem_Impl, ITfLangBarItemButton, ITfLangBarItemButton_Impl, ITfLangBarItemSink,
     ITfMenu, ITfSource, ITfSource_Impl, TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STYLE_BTN_BUTTON,
@@ -231,12 +233,27 @@ fn taskbar_is_light() -> bool {
     status.is_ok() && value != 0
 }
 
+/// The DPI the taskbar draws at.  An application that is not DPI aware is told 96 whatever the scaling, and its
+/// 16-pixel icon would then sit small (and thin) in a 150 % or 200 % taskbar; the question is asked as a
+/// system-aware thread instead.
+fn system_dpi() -> u32 {
+    // SAFETY: the thread's DPI awareness is changed only around the query and restored at once.
+    unsafe {
+        let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+        let dpi = GetDpiForSystem();
+        if !previous.0.is_null() {
+            SetThreadDpiAwarenessContext(previous);
+        }
+        dpi
+    }
+}
+
 /// Draws one character as a small icon in the taskbar's text colour: coverage first (white on black, no ClearType,
 /// so every channel carries it), then that colour premultiplied by the coverage.
 fn glyph_icon(glyph: &str) -> Result<HICON> {
     // SAFETY: GDI objects are created, used and deleted here; the DIB's bits stay valid while the bitmap lives.
     unsafe {
-        let dpi = GetDpiForSystem();
+        let dpi = system_dpi();
         let size = GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(16);
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -271,8 +288,10 @@ fn glyph_icon(glyph: &str) -> Result<HICON> {
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), count);
         pixels.fill(0);
         let old_bitmap = SelectObject(dc, color.into());
+        // Microsoft Bopomofo's 中 at 100 %: 13 by 15 pixels in the 16-pixel icon, one-pixel strokes; Microsoft
+        // JhengHei UI at 17/16 of the icon matches it (15/16 gave 11 by 13).
         let font = CreateFontW(
-            -(size * 15 / 16),
+            -(size * 17 / 16),
             0,
             0,
             0,
