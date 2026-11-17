@@ -28,6 +28,12 @@ final class IMKTextClient: TextClient {
         return text
     }
 
+    func selectedText(maxLength: Int) -> String? {
+        let selection = input.selectedRange()
+        guard selection.location != NSNotFound, selection.length > 0, selection.length <= maxLength else { return nil }
+        return input.attributedSubstring(from: selection)?.string
+    }
+
     func setMarkedText(_ text: NSAttributedString, selectionRange: NSRange, replacementRange: NSRange) {
         input.setMarkedText(text, selectionRange: selectionRange, replacementRange: replacementRange)
     }
@@ -293,6 +299,7 @@ final class ZhuyinInputController: IMKInputController {
         }
         EngineHost.lastEnglishMode = core.isEnglish
         loggedNotReady = false
+        core.addPhraseForm = { text in AddPhrasePanel.shared.show(text: text) }
         core.showPanel = { [weak self] list, preview, caret, notice, zhuyinHint in
             guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
             CandidatePanelController.shared.show(list: list, preview: preview, caret: caret,

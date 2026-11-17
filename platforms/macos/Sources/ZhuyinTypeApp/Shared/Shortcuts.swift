@@ -143,6 +143,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     case togglePunctuationWidth, insertSpace
     /// Word actions on the highlighted candidate (adding also takes the whole composition with no list open).
     case blockCandidate, forgetCandidate, addCandidatePhrase
+    /// The text selected in the app, into the 加入自訂詞 form.  No key by default.
+    case addSelectedText
 
     var id: String { rawValue }
 
@@ -164,6 +166,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .blockCandidate: return "不要再推薦反白的字詞"
         case .forgetCandidate: return "忘記選過反白的字詞"
         case .addCandidatePhrase: return "把反白的字詞或整段組字加入自訂詞"
+        case .addSelectedText: return "把 App 裡選取的字加入自訂詞"
         }
     }
 
@@ -185,6 +188,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .blockCandidate: return Shortcut("⌫", control: true)
         case .forgetCandidate: return Shortcut("⌫", control: true, shift: true)
         case .addCandidatePhrase: return Shortcut("Return", control: true)
+        // Not bound by default (`defaultBindings` is empty); the key the settings would suggest first.
+        case .addSelectedText: return Shortcut("A", control: true, option: true)
         }
     }
 
@@ -192,7 +197,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     var input: KeyInput? {
         switch self {
         case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
-        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
@@ -225,6 +230,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .blockCandidate: return "不要再推薦"
         case .forgetCandidate: return "忘記這個選字"
         case .addCandidatePhrase: return "加入自訂詞"
+        case .addSelectedText: return "選取的字加入自訂詞"
         }
     }
 
@@ -245,12 +251,13 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .nextPage: return [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)]
         case .previousPage: return [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
+        case .addSelectedText: return []
         default: return [defaultShortcut]
         }
     }
     /// The defaults of earlier versions, which stored every command's keys once any was changed: a stored list equal
     /// to these is read as the current default.
-    var legacyDefaultBindings: [Shortcut] { [defaultShortcut] }
+    var legacyDefaultBindings: [Shortcut] { self == .addSelectedText ? [] : [defaultShortcut] }
     static var defaultBindings: [ShortcutCommand: [Shortcut]] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
     }
@@ -265,7 +272,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
         case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
-        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil
         }
     }
 

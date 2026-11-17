@@ -25,6 +25,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
 | `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`、`block`、`forget`、`addPhrase`、`undo`）與 `value`（`pick`、`block`、`forget`、`addPhrase` 的列，`page` 的 ±1）；原生端自己畫的候選字視窗上的點選：`block`「不要再推薦」、`forget`「忘記這個選字」、`addPhrase`「加入自訂詞」是某一列的右鍵選單，`undo` 是提示列的「復原」（見〈候選字視窗〉） |
+| `selection` | `text` 字串（最多 32 個 UTF-16 單位，沒選取時是空字串）；回應裡有 `selection: true` 時才送：欄位中選取的文字，服務以它開啟填好的「加入自訂詞」（見〈選取的字加入自訂詞〉）。安全或私人欄位不送，服務也不接受 |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
 | `quick` | 快速設定：可選的 `english`、`fullWidth`、`simplified`、`learningPaused` 布林，只套用有送的欄位，都沒有時只讀取（見〈快速設定〉） |
 | `show-settings` | 顯示既有設定視窗；可選 `place`：`words`（自訂詞與學到的詞）、`about`、`wizard`（設定嚮導）、`tour`（新功能導覽）。輸入法選單用 |
@@ -47,6 +48,8 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。所以原生端只在顯示候選字清單時 `poll`（讓剛改的設定立刻反映到開著的清單），閒置的欄位不會定時喚醒應用程式與服務。服務從不主動送封包，原生端在送出按鍵前檢查閒置的管道（`PeekNamedPipe`）：App 結束或重新啟動後，第一個按鍵就重新連線，不會送進已斷的管道而被當成英文字母交給程式。
 
 中英提示與翻頁到盡頭的彈一下只由原生端畫：最後取得焦點的欄位屬於自己畫視窗的原生端時，即使不在請求中（例如失焦之後），服務也不送 `UiEvent::Toast`、`UiEvent::Boundary`，App 不會再畫一個。
+
+選取的字加入自訂詞：沒在組字時按下 `addSelectedText` 的鍵，`key` 的回應多一個 `selection: true`，原生端接著送 `selection`（TSF 以 `ITfContext::GetSelection` 與 `ITfRange::GetText` 讀，Fcitx 5 以 surrounding text 的 `selectedText()`）。這個指令預設沒有按鍵；Windows 的文字服務沒在組字時不攔 Ctrl／Alt 加字母，所以 `focus` 的回應帶 `idleKeys: [[key, modifiers], …]`，原生端沒在組字時也攔這些鍵。
 
 字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「復原」，原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
 

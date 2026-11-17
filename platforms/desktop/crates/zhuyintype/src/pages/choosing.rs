@@ -100,6 +100,7 @@ fn choosing_page(cx: &App) -> AnyElement {
                 .rows(feature_row("feature.typeZhuyin").rows(cx))
                 .rows(feature_row("feature.selectPhrase").rows(cx))
                 .rows(feature_row("feature.deleteAfterCommit").rows(cx))
+                .row(command_row(Command::AddSelectedText, "在 App 裡選取 1 到 6 個字再按；預設沒有按鍵", cx))
                 .footer(keys_overview_link(cx)),
         )
         .child(

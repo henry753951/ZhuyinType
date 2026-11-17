@@ -45,6 +45,24 @@ void addContext(fcitx::InputContext &ic, nlohmann::json &fields) {
     while (start < offset && (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) ++start;
     fields["before"] = text.substr(start, offset - start);
 }
+// 選取的字加入自訂詞 (IPC `selection`): the field's selected text, at most 32 UTF-16 units; empty when nothing is
+// selected or the field does not report it.  Never asked for a protected or private field.
+std::string selectedText(fcitx::InputContext &ic) {
+    if (!ic.capabilityFlags().test(fcitx::CapabilityFlag::SurroundingText)) return {};
+    const auto &surrounding = ic.surroundingText();
+    if (!surrounding.isValid()) return {};
+    const std::string text = surrounding.selectedText();
+    size_t offset = 0, units = 0;
+    while (offset < text.size()) {
+        const auto lead = static_cast<unsigned char>(text[offset]);
+        const size_t length = lead < 0x80 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+        const size_t needed = length == 4 ? 2 : 1;
+        if (units + needed > 32 || offset + length > text.size()) break;
+        units += needed;
+        offset += length;
+    }
+    return text.substr(0, offset);
+}
 // UTF-16 ranges of the composition (IPC.md): its words (`clauses`), the words shown through an automatic correction
 // (`corrections`).  Left out by older hosts, ignored when malformed.
 std::vector<std::pair<size_t, size_t>> ranges(const nlohmann::json &response, const char *key) {
@@ -277,7 +295,13 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     if (state.drawsPanel) showPanel(ic, state);
     ic.updatePreedit();
     ic.updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
-    return (*response)["handled"].get<bool>();
+    const bool handled = (*response)["handled"].get<bool>();
+    // 選取的字加入自訂詞: the host asks for the selection after the command's key.
+    if (const auto it = response->find("selection"); it != response->end() && it->is_boolean() && it->get<bool>() &&
+        std::string_view(op) == "key" && !state.secure && !protectedField(ic.capabilityFlags()) &&
+        !privateField(ic.capabilityFlags()))
+        exchange(ic, state, "selection", {{"text", selectedText(ic)}});
+    return handled;
 }
 bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     if (auto *old = active_.get(); old && broker_.connected()) blur(*old, *old->propertyFor(&factory_));

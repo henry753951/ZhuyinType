@@ -15,6 +15,13 @@ protocol TextClient: AnyObject {
     /// Up to `maxLength` UTF-16 units of the document before the insertion point; "" at its start, nil when the app
     /// does not say.
     func textBeforeInsertion(maxLength: Int) -> String?
+    /// The selected text, when it is at most `maxLength` UTF-16 units; nil when nothing is selected or the app does
+    /// not say.
+    func selectedText(maxLength: Int) -> String?
+}
+
+extension TextClient {
+    func selectedText(maxLength: Int) -> String? { nil }
 }
 
 final class ControllerCore {
@@ -25,6 +32,8 @@ final class ControllerCore {
     var popupCompositionApps: [String] = []
     var showPanel: ((CandidateList?, String?, NSRect, String?, String?) -> Void)?
     var hidePanel: (() -> Void)?
+    /// Opens the 加入自訂詞 form with the app's selected text (nil: nothing usable was selected).
+    var addPhraseForm: ((String?) -> Void)?
     var modeChanged: ((Bool, NSRect) -> Void)?
     var punctuationWidthChanged: ((PunctuationWidth) -> Void)?
     /// 「記錄改字」 when it is on: observes keys, clicks and commits, never changes what happens.
@@ -155,6 +164,7 @@ final class ControllerCore {
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
             if let action = command.candidateAction { return wordAction(action) }
+            if command == .addSelectedText { return addSelectedText() }
             if let input = command.input { return handle(input, time: time) }
             if command == .togglePunctuationWidth { return togglePunctuationWidth() }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)

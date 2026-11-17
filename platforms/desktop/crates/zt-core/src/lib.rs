@@ -11,6 +11,7 @@ pub mod keys;
 pub mod models;
 pub mod panel;
 pub mod paths;
+pub mod phrase_draft;
 pub mod practice;
 pub mod presentation;
 pub mod service;

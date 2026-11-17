@@ -752,8 +752,10 @@ private struct WordListPage: View {
                         } else {
                             FooterText("自訂詞在選字時優先列出。")
                         }
+                        FooterText(wordActionsFooter(keys, phrases: true))
                     } else {
                         FooterText("選過的字詞下次排在前面；設為「不記住」的字詞之後不再學。")
+                        FooterText(wordActionsFooter(keys, phrases: false))
                     }
                 }
                 .padding(.horizontal, RowMetrics.cardInset)
@@ -761,6 +763,19 @@ private struct WordListPage: View {
             }
         }
     }
+}
+
+/// How the candidate window's word actions reach these lists, with the keys as they are bound now.
+private func wordActionsFooter(_ keys: CurrentKeys, phrases: Bool) -> String {
+    if phrases {
+        let selected = keys.text(.addSelectedText).map { "；在 App 裡選取文字再按 \($0)，也會打開加入自訂詞的視窗" } ?? ""
+        let add = keys.text(.addCandidatePhrase).map { "（\($0)）" } ?? ""
+        return "在候選字上按右鍵選「加入自訂詞」\(add)，把反白的字詞加入\(selected)。"
+    }
+    let block = keys.text(.blockCandidate).map { "（\($0)）" } ?? ""
+    let forget = keys.text(.forgetCandidate).map { "（\($0)）" } ?? ""
+    return "在候選字上按右鍵：「不要再推薦」\(block)之後不再自動選用這個字詞，列在這裡並標示「不推薦」，移除後恢復；"
+        + "「忘記這個選字」\(forget)忘記選過它。5 秒內按 ⌃Z 或點候選字視窗的提示可以復原。"
 }
 
 // MARK: - 進階

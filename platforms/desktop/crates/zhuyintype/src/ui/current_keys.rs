@@ -40,10 +40,11 @@ pub enum Command {
     ForgetCandidate,
     AddCandidatePhrase,
     QuickSettings,
+    AddSelectedText,
 }
 
 impl Command {
-    pub const ALL: [Command; 17] = [
+    pub const ALL: [Command; 18] = [
         Command::SingleCharacterList,
         Command::CorrectionsList,
         Command::TypeZhuyin,
@@ -61,6 +62,7 @@ impl Command {
         Command::ForgetCandidate,
         Command::AddCandidatePhrase,
         Command::QuickSettings,
+        Command::AddSelectedText,
     ];
 
     /// The id in settings, links and `settings.json` `commands`.
@@ -83,6 +85,7 @@ impl Command {
             Command::ForgetCandidate => "forgetCandidate",
             Command::AddCandidatePhrase => "addCandidatePhrase",
             Command::QuickSettings => "quickSettings",
+            Command::AddSelectedText => "addSelectedText",
         }
     }
 
@@ -110,6 +113,7 @@ impl Command {
             Command::ForgetCandidate => "忘記這個選字",
             Command::AddCandidatePhrase => "加入自訂詞",
             Command::QuickSettings => "快速設定",
+            Command::AddSelectedText => "選取的字加入自訂詞",
         }
     }
 

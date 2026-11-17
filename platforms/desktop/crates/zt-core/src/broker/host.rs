@@ -27,9 +27,14 @@ pub enum Effect {
     WordActionTip,
     /// The 開啟快速設定 shortcut: show the 快速設定 panel at the caret.
     QuickPanel,
+    /// 選取的字加入自訂詞: ask the adapter for the selected text (`selection: true` in the reply).
+    SelectionWanted,
+    /// The adapter's selected text (op `selection`): open the 加入自訂詞 form with it.
+    AddSelectedText(String),
 }
 
-const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action", "quick"];
+const OPS: &[&str] =
+    &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action", "quick", "selection"];
 
 /// The switches of `op: "quick"` (快速設定), in the reply's `quick` object too.
 const QUICK: &[&str] = &["english", "fullWidth", "simplified", "learningPaused"];
@@ -185,6 +190,7 @@ impl Host {
                 }
                 ControllerEvent::Boundary(direction) => effects.push(Effect::Boundary(direction)),
                 ControllerEvent::WordActionTip if self.focused() => effects.push(Effect::WordActionTip),
+                ControllerEvent::SelectionWanted if self.focused() => effects.push(Effect::SelectionWanted),
                 _ => {}
             }
         }
@@ -361,6 +367,16 @@ impl Host {
         } else {
             None
         };
+        let selection = if op == "selection" {
+            match r.get("text") {
+                Some(Value::String(text)) if utf16_len(text) <= crate::phrase_draft::MAX_SELECTION => {
+                    Some(text.clone())
+                }
+                _ => return Err("選取的文字格式無效。"),
+            }
+        } else {
+            None
+        };
         // 前文: the app and the text before the insertion point, when the platform reports them (IPC.md §前文).
         let text = |name: &str, limit: usize| match r.get(name) {
             None => Ok(None),
@@ -429,6 +445,7 @@ impl Host {
             controller.set_client(&self.client_app, before);
         }
         let mut handled = false;
+        let mut found = Vec::new();
         match op {
             "key" if !self.secure => {
                 let (key, release) = key.expect("validated");
@@ -440,6 +457,10 @@ impl Host {
             }
             "mode" if !self.secure => controller.set_english(flag("english") == Some(true)),
             "quick" => Self::quick(controller, &flag),
+            // Never from a secure or private field.
+            "selection" if !self.secure && !controller.private() => {
+                found.push(Effect::AddSelectedText(selection.expect("validated")));
+            }
             "action" if !self.secure => match action.expect("validated") {
                 Action::Pick(row) => self.pick(controller, row),
                 Action::Page(delta) => self.turn_page(controller, delta),
@@ -457,7 +478,8 @@ impl Host {
             "blur" => controller.deactivate(),
             _ => {}
         }
-        let effects = self.drain(controller);
+        let mut effects = self.drain(controller);
+        effects.extend(found);
         let mut reply = self.snapshot(controller, handled);
         if effects.contains(&Effect::QuickPanel) {
             reply.insert("quickPanel".into(), true.into());
