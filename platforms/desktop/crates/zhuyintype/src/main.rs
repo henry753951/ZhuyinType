@@ -137,6 +137,9 @@ fn main() {
     if service.is_some() && !args.no_broker {
         std::thread::spawn(linux_enable_fcitx);
     }
+    if let Some(service) = service.as_ref().filter(|_| !args.no_broker) {
+        save_statistics_when_quiet(service.stats().clone());
+    }
     // GPUI connects to the input method (XIM, the Wayland text-input) once, when it starts; at login autostart may
     // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.
     #[cfg(target_os = "linux")]
@@ -211,6 +214,24 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+/// 使用統計 are written at most every ten minutes of typing, and nothing writes them when the session ends (the
+/// process is ended at sign-out, or by the installer, without a chance to): also write them once typing has stopped
+/// for a minute.
+fn save_statistics_when_quiet(stats: zt_core::stats::UsageStats) {
+    const QUIET: std::time::Duration = std::time::Duration::from_secs(60);
+    let spawned = std::thread::Builder::new().name("zt-stats".into()).spawn(move || {
+        loop {
+            std::thread::sleep(QUIET);
+            if let Err(error) = stats.save_if_quiet(QUIET) {
+                log::warn!("{error:#}");
+            }
+        }
+    });
+    if let Err(error) = spawned {
+        log::warn!("{error}");
+    }
 }
 
 /// A panic on the UI thread ends the process (on Windows it cannot unwind out of the window procedure), and with it
