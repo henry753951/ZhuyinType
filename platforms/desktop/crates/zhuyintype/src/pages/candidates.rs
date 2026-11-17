@@ -34,7 +34,7 @@ impl CandidatesPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let preview = cx.new(UnifiedPreview::new);
         let current = app::settings(cx).number(FONT_KEY) as f32;
-        let font_size = cx.new(|_| SliderState::new().min(13.).max(28.).step(1.).default_value(current));
+        let font_size = cx.new(|_| SliderState::new().min(13.).max(36.).step(1.).default_value(current));
         let subscription = cx.subscribe(&font_size, |_, _, event: &SliderEvent, cx| {
             let (SliderEvent::Change(value) | SliderEvent::Release(value)) = event;
             let rounded = value.start().round();

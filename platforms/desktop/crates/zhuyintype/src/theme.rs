@@ -188,6 +188,26 @@ impl Palette {
         p.page = p.surface.opacity(page);
         p
     }
+
+    /// The palette with 「強調色」 applied: with 跟隨系統 and a system accent (and no high contrast), links, focus
+    /// rings, switches and highlights use the accent, adjusted for contrast as the candidate window's selection is
+    /// (`zt_panel::a11y::with_accent`).
+    #[must_use]
+    pub fn accented(mut self, choice: zt_panel::a11y::AccentChoice) -> Self {
+        let look = zt_core::system_look::look(self.dark);
+        let (zt_panel::a11y::AccentChoice::System, Some(accent), None) = (choice, look.accent, look.high_contrast)
+        else {
+            return self;
+        };
+        let c = zt_panel::a11y::with_accent(zt_panel::tokens::colors(self.dark), accent, self.dark);
+        let hsla = |color: zt_panel::tokens::Rgba| -> Hsla {
+            gpui_kit::Rgba { r: color.r, g: color.g, b: color.b, a: color.a }.into()
+        };
+        self.accent = hsla(c.accent);
+        self.accent_fill = hsla(c.selection);
+        self.accent_faint = hsla(c.selection.fade(if self.dark { 0.15 } else { 0.11 }));
+        self
+    }
 }
 
 /// The spacing scale: every gap, padding and margin is one of these.
@@ -450,23 +470,25 @@ pub fn system_dark(window: &Window) -> bool {
 }
 
 /// Light or dark and the backdrop that 「主題」 and 「透明效果」 (or a forced appearance) ask for now.
-fn wanted(window: &Window, cx: &App) -> (bool, Material) {
+fn wanted(window: &Window, cx: &App) -> (bool, Material, zt_panel::a11y::AccentChoice) {
     let settings = cx.try_global::<crate::app::AppState>().map(|state| state.settings.clone());
     let dark = cx.global::<Tokens>().forced.unwrap_or_else(|| {
         let choice = settings.as_ref().map_or(zt_core::appearance::Choice::System, zt_core::appearance::theme);
         choice.dark(system_dark(window))
     });
     let material = settings.as_ref().map_or(Material::Opaque, crate::platform::backdrop::material);
-    (dark, material)
+    let accent = settings.as_ref().map_or_else(Default::default, zt_core::system_look::accent);
+    (dark, material, accent)
 }
 
 /// Follows 「主題」 (or the system appearance) and 「透明效果」, unless an appearance was forced.  Every window that
 /// draws with the palette calls this first in `render`.
 pub fn sync(window: &mut Window, cx: &mut App) {
-    let (dark, material) = wanted(window, cx);
+    let (dark, material, accent) = wanted(window, cx);
     let current = cx.global::<Tokens>().palette;
-    if current.dark != dark || current.material != material {
-        cx.global_mut::<Tokens>().palette = Palette::new(dark, material);
+    let next = Palette::new(dark, material).accented(accent);
+    if current.dark != dark || current.material != material || current.accent != next.accent {
+        cx.global_mut::<Tokens>().palette = next;
         apply_component_theme(Some(window), cx);
         cx.refresh_windows();
     }
@@ -475,8 +497,8 @@ pub fn sync(window: &mut Window, cx: &mut App) {
 /// Forces light or dark (`None`: follow 「主題」); renders and the screenshot mode use this.
 pub fn force(dark: Option<bool>, window: &mut Window, cx: &mut App) {
     cx.global_mut::<Tokens>().forced = dark;
-    let (dark, material) = wanted(window, cx);
-    cx.global_mut::<Tokens>().palette = Palette::new(dark, material);
+    let (dark, material, accent) = wanted(window, cx);
+    cx.global_mut::<Tokens>().palette = Palette::new(dark, material).accented(accent);
     apply_component_theme(Some(window), cx);
     cx.refresh_windows();
 }
