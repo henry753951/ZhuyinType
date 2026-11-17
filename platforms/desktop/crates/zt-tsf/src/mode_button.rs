@@ -1,6 +1,11 @@
 //! The 中/英 indicator in the taskbar's input indicator (`GUID_LBI_INPUTMODE`), like the built-in Bopomofo IME: a
 //! monochrome 中 or 英 in the taskbar's text colour.  A left click asks the host to switch modes; a right click opens
 //! the input method's menu (switch, settings).  The button keeps no state but what the host last reported.
+//!
+//! Where ZhuyinType cannot type Chinese — no text field has the focus (the desktop, a window without one), a password
+//! or input-method-disabled field, no answer from the app — the button shows 英, as Microsoft Bopomofo does there:
+//! keys reach the application as they are typed.  It is not marked disabled: Windows 11 then draws a crossed circle
+//! in place of the icon.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -17,8 +22,8 @@ use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegG
 use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::TextServices::{
     GUID_LBI_INPUTMODE, ITfLangBarItem_Impl, ITfLangBarItemButton, ITfLangBarItemButton_Impl, ITfLangBarItemSink,
-    ITfMenu, ITfSource, ITfSource_Impl, TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STATUS,
-    TF_LBI_STATUS_DISABLED, TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
+    ITfMenu, ITfSource, ITfSource_Impl, TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STYLE_BTN_BUTTON,
+    TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
 };
 use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HICON, ICONINFO, SM_CXSMICON};
 use windows::core::{BOOL, BSTR, GUID, IUnknown, Interface, Ref, Result, implement, w};
@@ -35,7 +40,8 @@ pub(crate) struct ModeButton {
     action: RefCell<Option<Action>>,
     sink: RefCell<Option<ITfLangBarItemSink>>,
     english: Cell<bool>,
-    enabled: Cell<bool>,
+    /// A field that takes Chinese has the focus (`set_available`).
+    available: Cell<bool>,
     _count: ObjectCount,
 }
 
@@ -45,22 +51,23 @@ impl ModeButton {
             action: RefCell::new(Some(action)),
             sink: RefCell::new(None),
             english: Cell::new(false),
-            enabled: Cell::new(true),
+            // Until the text service has a field that takes Chinese.
+            available: Cell::new(false),
             _count: ObjectCount::new(),
         }
     }
 
     /// Shows the host's mode; repaints the taskbar only when it changed.
     pub(crate) fn set_english(&self, english: bool) {
-        if self.english.replace(english) != english {
+        if self.english.replace(english) != english && self.available.get() {
             self.notify(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
         }
     }
 
-    /// Greys the button out while the field cannot take Chinese input (secure, or no host).
-    pub(crate) fn set_enabled(&self, enabled: bool) {
-        if self.enabled.replace(enabled) != enabled {
-            self.notify(TF_LBI_STATUS);
+    /// Whether a field that takes Chinese has the focus; without one the button shows 英.
+    pub(crate) fn set_available(&self, available: bool) {
+        if self.available.replace(available) != available {
+            self.notify(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
         }
     }
 
@@ -78,8 +85,13 @@ impl ModeButton {
         }
     }
 
+    /// What typing gives here: 英 when the host is in English or cannot take the keys at all.
+    fn shows_english(&self) -> bool {
+        self.english.get() || !self.available.get()
+    }
+
     fn glyph(&self) -> &'static str {
-        if self.english.get() { "英" } else { "中" }
+        if self.shows_english() { "英" } else { "中" }
     }
 }
 
@@ -108,7 +120,7 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetStatus(&self) -> Result<u32> {
-        Ok(if self.enabled.get() { 0 } else { TF_LBI_STATUS_DISABLED })
+        Ok(0)
     }
 
     fn Show(&self, _show: BOOL) -> Result<()> {
@@ -116,7 +128,9 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetTooltipString(&self) -> Result<BSTR> {
-        Ok(BSTR::from(if self.english.get() {
+        Ok(BSTR::from(if !self.available.get() {
+            "英文"
+        } else if self.english.get() {
             "英文（按一下切換成中文）"
         } else {
             "中文（按一下切換成英文）"

@@ -20,7 +20,9 @@ use std::time::Instant;
 
 use std::sync::OnceLock;
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Foundation::{
+    COLORREF, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Direct2D::Common::{
     D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
 };
@@ -38,7 +40,7 @@ use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, CreateCompatibleDC,
     CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC, InvalidateRect,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject, UpdateWindow,
 };
 use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
@@ -288,12 +290,8 @@ impl Surface {
         });
     }
 
-    /// Draws with `paint` in logical pixels, inside WM_PAINT (`dc` is the paint DC).
-    ///
-    /// A hardware render target on the window first.  Some sandboxed applications (the Start menu's search) may not
-    /// create one at all (DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, software included); there Direct2D draws in software
-    /// into the paint DC instead, with alpha for the backdrop if it can, else opaque (the window then draws its own
-    /// surface).
+    /// Draws with `paint` in logical pixels, inside WM_PAINT (`dc` is the paint DC), on the window's render target
+    /// (`target`).
     fn render(&self, dc: HDC, paint: impl FnOnce(&ID2D1RenderTarget)) {
         if self.layered.get() {
             self.render_layered(paint);
@@ -304,56 +302,8 @@ impl Surface {
         if window.is_invalid() || width <= 0 || height <= 0 {
             return;
         }
-        let Some(g) = graphics() else { return };
+        let Some(target) = self.target() else { return };
         let pixels = D2D_SIZE_U { width: width as u32, height: height as u32 };
-        let properties = |kind, alpha| D2D1_RENDER_TARGET_PROPERTIES {
-            r#type: kind,
-            pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: alpha },
-            dpiX: 0.,
-            dpiY: 0.,
-            usage: D2D1_RENDER_TARGET_USAGE_NONE,
-            minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
-        };
-        let existing = self.target.borrow().clone();
-        let target = match existing {
-            Some(target) => target,
-            None => {
-                let hwnd_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-                    hwnd: window,
-                    pixelSize: pixels,
-                    presentOptions: D2D1_PRESENT_OPTIONS_NONE,
-                };
-                // SAFETY: a valid factory and window.
-                let made = unsafe {
-                    g.d2d
-                        .CreateHwndRenderTarget(
-                            &properties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_ALPHA_MODE_PREMULTIPLIED),
-                            &hwnd_properties,
-                        )
-                        .map(|target| (Target::Window(target), false))
-                        .or_else(|_| {
-                            g.d2d
-                                .CreateDCRenderTarget(&properties(
-                                    D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                                    D2D1_ALPHA_MODE_PREMULTIPLIED,
-                                ))
-                                .map(|target| (Target::Dc(target), false))
-                        })
-                        .or_else(|_| {
-                            g.d2d
-                                .CreateDCRenderTarget(&properties(
-                                    D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                                    D2D1_ALPHA_MODE_IGNORE,
-                                ))
-                                .map(|target| (Target::Dc(target), true))
-                        })
-                };
-                let Ok((target, opaque)) = made else { return };
-                self.opaque.set(opaque);
-                *self.target.borrow_mut() = Some(target.clone());
-                target
-            }
-        };
         let scale = self.scale.get();
         // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
         let result = unsafe {
@@ -381,6 +331,136 @@ impl Surface {
         }
     }
 
+    /// The window's render target, made on first use: for a framed window a hardware target on the window itself,
+    /// or (where the application cannot make one) a software target for its paint DC; for a layered window a
+    /// software target for a memory DC (`render_layered`).
+    ///
+    /// Some sandboxed applications (the Start menu's search) may not create a window target at all
+    /// (DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, software included); there Direct2D draws in software into the paint DC
+    /// instead, with alpha for the backdrop if it can, else opaque (the window then draws its own surface).
+    fn target(&self) -> Option<Target> {
+        let existing = self.target.borrow().clone();
+        if let Some(target) = existing {
+            return Some(target);
+        }
+        let window = self.window.get();
+        if window.is_invalid() {
+            return None;
+        }
+        let g = graphics()?;
+        let properties = |kind, alpha| D2D1_RENDER_TARGET_PROPERTIES {
+            r#type: kind,
+            pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: alpha },
+            dpiX: 0.,
+            dpiY: 0.,
+            usage: D2D1_RENDER_TARGET_USAGE_NONE,
+            minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+        };
+        let software = |alpha| {
+            // SAFETY: a valid factory.
+            unsafe { g.d2d.CreateDCRenderTarget(&properties(D2D1_RENDER_TARGET_TYPE_SOFTWARE, alpha)) }
+        };
+        let (target, opaque) = if self.layered.get() {
+            (Target::Dc(software(D2D1_ALPHA_MODE_PREMULTIPLIED).ok()?), false)
+        } else {
+            // Made at the window's size, or at a badge's before it was ever placed (`prime`); resized when drawn.
+            let (width, height) = self.size.get();
+            let hwnd_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
+                hwnd: window,
+                pixelSize: D2D_SIZE_U { width: width.max(64) as u32, height: height.max(64) as u32 },
+                presentOptions: D2D1_PRESENT_OPTIONS_NONE,
+            };
+            // SAFETY: a valid factory and window.
+            unsafe {
+                g.d2d
+                    .CreateHwndRenderTarget(
+                        &properties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                        &hwnd_properties,
+                    )
+                    .map(|target| (Target::Window(target), false))
+                    .or_else(|_| software(D2D1_ALPHA_MODE_PREMULTIPLIED).map(|target| (Target::Dc(target), false)))
+                    .or_else(|_| software(D2D1_ALPHA_MODE_IGNORE).map(|target| (Target::Dc(target), true)))
+                    .ok()?
+            }
+        };
+        self.opaque.set(opaque);
+        *self.target.borrow_mut() = Some(target.clone());
+        Some(target)
+    }
+
+    /// Makes the render target and draws `texts` once off screen, so the first time the window shows, Direct3D (for
+    /// a hardware target), the glyph rasteriser and the fonts are already loaded.  Nothing is shown.
+    fn prime(&self, texts: &[&str], dark: bool) {
+        if self.target.borrow().is_some() {
+            return;
+        }
+        let Some(g) = graphics() else { return };
+        let Some(target) = self.target() else { return };
+        let draw = |base: &ID2D1RenderTarget| {
+            // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
+            unsafe {
+                base.BeginDraw();
+                base.Clear(Some(&D2D1_COLOR_F { r: 0., g: 0., b: 0., a: 0. }));
+                if let Some(painter) = Painter::new(&g, base, tokens::colors(dark)) {
+                    for text in texts {
+                        panel_draw::badge(&painter, text, BADGE_W);
+                    }
+                }
+                base.EndDraw(None, None).is_ok()
+            }
+        };
+        let drawn = match &target {
+            Target::Window(window_target) => {
+                let base: ID2D1RenderTarget = window_target.clone().into();
+                // Then cleared again, so the window never shows these glyphs if it appears before its first paint.
+                // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
+                draw(&base)
+                    && unsafe {
+                        base.BeginDraw();
+                        base.Clear(Some(&D2D1_COLOR_F { r: 0., g: 0., b: 0., a: 0. }));
+                        base.EndDraw(None, None).is_ok()
+                    }
+            }
+            Target::Dc(dc_target) => {
+                // SAFETY: a memory DC with a small DIB section, drawn into and freed here.
+                unsafe {
+                    let memory = CreateCompatibleDC(None);
+                    let side = 64;
+                    let info = BITMAPINFO {
+                        bmiHeader: BITMAPINFOHEADER {
+                            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                            biWidth: side,
+                            biHeight: -side,
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: BI_RGB.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    let mut bits = std::ptr::null_mut();
+                    let drawn = match CreateDIBSection(Some(memory), &info, DIB_RGB_COLORS, &mut bits, None, 0) {
+                        Ok(bitmap) => {
+                            let previous = SelectObject(memory, bitmap.into());
+                            let drawn =
+                                dc_target.BindDC(memory, &RECT { left: 0, top: 0, right: side, bottom: side }).is_ok()
+                                    && draw(&dc_target.clone().into());
+                            SelectObject(memory, previous);
+                            let _ = DeleteObject(bitmap.into());
+                            drawn
+                        }
+                        Err(_) => false,
+                    };
+                    let _ = DeleteDC(memory);
+                    drawn
+                }
+            }
+        };
+        if !drawn {
+            self.target.borrow_mut().take();
+        }
+    }
+
     /// The shadow margin of a layered window, physical pixels (0 for a framed one).
     fn margin(&self) -> i32 {
         if self.layered.get() { (SHADOW_MARGIN * self.scale.get()).ceil() as i32 } else { 0 }
@@ -394,31 +474,10 @@ impl Surface {
         if window.is_invalid() || width <= 0 || height <= 0 {
             return;
         }
-        let Some(g) = graphics() else { return };
         let margin = self.margin();
         let (full_w, full_h) = (width + margin * 2, height + margin * 2);
         let scale = self.scale.get();
-        let existing = self.target.borrow().clone();
-        let target = match existing {
-            Some(Target::Dc(target)) => target,
-            _ => {
-                let properties = D2D1_RENDER_TARGET_PROPERTIES {
-                    r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                    pixelFormat: D2D1_PIXEL_FORMAT {
-                        format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
-                    },
-                    dpiX: 0.,
-                    dpiY: 0.,
-                    usage: D2D1_RENDER_TARGET_USAGE_NONE,
-                    minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
-                };
-                // SAFETY: a valid factory.
-                let Ok(target) = (unsafe { g.d2d.CreateDCRenderTarget(&properties) }) else { return };
-                *self.target.borrow_mut() = Some(Target::Dc(target.clone()));
-                target
-            }
-        };
+        let Some(Target::Dc(target)) = self.target() else { return };
         // SAFETY: a memory DC with a top-down 32-bit DIB section, drawn into, handed to UpdateLayeredWindow and freed.
         unsafe {
             let memory = CreateCompatibleDC(None);
@@ -587,6 +646,8 @@ pub(crate) struct PanelWindow {
     panel: Surface,
     badge: Surface,
     state: RefCell<State>,
+    /// The owner `warm` last ran for (it runs once per owner, whether or not it could make everything).
+    warmed: Cell<HWND>,
 }
 
 impl PanelWindow {
@@ -598,6 +659,7 @@ impl PanelWindow {
             panel: Surface::new(),
             badge: Surface::new(),
             state: RefCell::new(State::default()),
+            warmed: Cell::new(HWND::default()),
         }
     }
 
@@ -617,6 +679,28 @@ impl PanelWindow {
         }
     }
 
+    /// Whether `warm` has not run yet for the current owner.
+    pub(crate) fn cold(&self) -> bool {
+        self.warmed.get() != self.owner.get()
+    }
+
+    /// Makes ahead of time what the first 中/英 badge would otherwise make while the user waits for it: the
+    /// graphics (factories, the bundled fonts), the badge's window for the current owner (hidden) and its render
+    /// target, with both glyphs drawn once off screen.  On a hardware target that loads Direct3D and the display
+    /// driver, which takes a noticeable moment the first time in a process.  Called after a field got focus.
+    pub(crate) fn warm(&self) {
+        if !self.cold() {
+            return;
+        }
+        self.warmed.set(self.owner.get());
+        if graphics().is_none() || self.ensure(Kind::Badge).is_none() {
+            return;
+        }
+        let appearance = self.state.borrow().appearance;
+        self.badge.set_dark(appearance.dark(system_dark()));
+        self.badge.prime(&["中", "英"], appearance.dark(system_dark()));
+    }
+
     /// Hides both windows and forgets the list (focus left the field).
     pub(crate) fn hide(&self) {
         self.panel.hide();
@@ -630,6 +714,7 @@ impl PanelWindow {
     pub(crate) fn destroy(&self) {
         self.panel.destroy();
         self.badge.destroy();
+        self.warmed.set(HWND::default());
         let class = std::mem::take(&mut *self.class.borrow_mut());
         if !class.is_empty() {
             // SAFETY: the class registered by this instance.
@@ -650,8 +735,11 @@ impl PanelWindow {
                 lpszClassName: PCWSTR(name.as_ptr()),
                 ..Default::default()
             };
-            // SAFETY: the class name outlives the class (kept until unregistered).
-            if unsafe { RegisterClassW(&klass) } == 0 {
+            // SAFETY: the class name outlives the class (kept until unregistered).  A class of this name left by an
+            // earlier panel at the same address is this module's own, with this window procedure.
+            if unsafe { RegisterClassW(&klass) } == 0
+                && windows::core::Error::from_thread().code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult()
+            {
                 return None;
             }
             *class = name;
@@ -670,8 +758,12 @@ impl PanelWindow {
         } else {
             let window = surface.window.get();
             if !window.is_invalid() {
+                // Painted now rather than at the next WM_PAINT, so a window just shown never shows its old picture.
                 // SAFETY: our own window.
-                let _ = unsafe { InvalidateRect(Some(window), None, false) };
+                unsafe {
+                    let _ = InvalidateRect(Some(window), None, false);
+                    let _ = UpdateWindow(window);
+                }
             }
         }
     }
