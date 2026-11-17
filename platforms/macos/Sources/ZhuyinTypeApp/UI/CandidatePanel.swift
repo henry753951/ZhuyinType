@@ -514,6 +514,8 @@ final class CandidateContentView: InputMaterialView {
     enum PinnedMotion { case page, bounce }
     private var layoutIsVertical = true
     private let previewLabel = NSTextField(labelWithString: "")
+    /// 「聯想詞」 above a list of next-word suggestions, so they are not taken for conversions.
+    private let associationLabel = NSTextField(labelWithString: "")
     private let noticeView = NoticeView()
     private let zhuyinButton = ZhuyinHintButton()
     /// 「你打的是 ㄊㄜˇ · ⌫ 還原」 under the list, while it is open on an automatic correction (標示自動修正).
@@ -547,6 +549,10 @@ final class CandidateContentView: InputMaterialView {
         addSubview(rowClip)
         addSubview(previewLabel)
         addSubview(noticeView)
+        associationLabel.textColor = .secondaryLabelColor
+        associationLabel.lineBreakMode = .byTruncatingTail
+        associationLabel.setAccessibilityLabel("聯想詞，按 Shift 加選字鍵選用")
+        addSubview(associationLabel)
         zhuyinButton.isBordered = false
         zhuyinButton.target = self
         zhuyinButton.action = #selector(chooseZhuyin)
@@ -672,6 +678,15 @@ final class CandidateContentView: InputMaterialView {
         }
         let hintY = y
         if hasHint { y += hintHeight }
+        // 聯想詞 have no reading to show: the label takes the reading's place.
+        let hasAssociation = list?.associated == true && listOpen && !hasHint
+        associationLabel.isHidden = !hasAssociation
+        if hasAssociation {
+            associationLabel.font = .systemFont(ofSize: (fontSize * 0.72).rounded())
+            associationLabel.stringValue = "聯想詞・⇧ 加選字鍵"
+            width = max(width, ceil(associationLabel.intrinsicContentSize.width) + 28)
+            y += hintHeight
+        }
         for (offset, row) in rows.enumerated() {
             row.isHidden = offset >= indices.count
             guard offset < indices.count, let list else { row.action = nil; continue }
@@ -695,6 +710,9 @@ final class CandidateContentView: InputMaterialView {
         width = calculateWidth()
         func applyLayoutAndAnimation() -> NSSize {
             noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
+            let labelHeight = ceil(associationLabel.intrinsicContentSize.height)
+            associationLabel.frame = NSRect(x: padding + 8, y: hintY + (hintHeight - labelHeight) / 2,
+                                            width: max(0, width - padding * 2 - 16), height: labelHeight)
             previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
             var x: CGFloat = 0
             // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them, so

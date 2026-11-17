@@ -228,6 +228,15 @@ public final class Composer {
         didSet { zt_composer_set_freezes_on_pick(handle, freezesOnPick) }
     }
 
+    /// 聯想詞: after a commit, the words likely to come next are listed (⇧ + a selection key picks one).  Off by default.
+    public var associatedPhrases = false {
+        didSet {
+            guard associatedPhrases != oldValue else { return }
+            zt_composer_set_associated_phrases(handle, associatedPhrases)
+            cached = nil
+        }
+    }
+
     public var isComposing: Bool { !presentation.isEmpty }
 
     public var presentation: Presentation {
@@ -249,7 +258,8 @@ public final class Composer {
                 Candidate(text: String(cString: l.items[i].text), annotation: l.items[i].annotation.map { String(cString: $0) })
             }
             return CandidateList(items: items, selection: l.selection, pageSize: l.page_size,
-                                 tolerant: l.tolerant < 0 ? nil : l.tolerant == 1, singleCharacter: l.single_character)
+                                 tolerant: l.tolerant < 0 ? nil : l.tolerant == 1, singleCharacter: l.single_character,
+                                 associated: l.associated)
         }
         return Presentation(text: String(cString: p.text), cursor: p.cursor, clauses: clauses,
                             focusedClause: p.focused_clause < 0 ? nil : p.focused_clause,

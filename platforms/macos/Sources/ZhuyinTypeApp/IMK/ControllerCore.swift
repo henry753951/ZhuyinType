@@ -490,7 +490,8 @@ final class ControllerCore {
                 lastMark = mark
             }
         }
-        if !p.text.isEmpty, p.candidates != nil || popup || p.notice != nil {
+        // 聯想詞 are listed after a commit, with nothing composed.
+        if !p.text.isEmpty || p.candidates?.associated == true, p.candidates != nil || popup || p.notice != nil {
             showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor), p.notice, p.zhuyinHint)
         } else {
             hidePanel?()

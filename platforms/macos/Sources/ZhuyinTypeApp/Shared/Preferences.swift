@@ -86,6 +86,7 @@ final class Preferences: ObservableObject {
             Key.showModeToast: true,
             Key.startInEnglish: false,
             Key.learningEnabled: true,
+            Key.associatedPhrases: false,
             Key.popupCompositionApps: [String](),
             Key.typoTolerance: TypoSetting.standard.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
@@ -126,6 +127,8 @@ final class Preferences: ObservableObject {
         static let showModeToast = "showModeToast"
         static let startInEnglish = "startInEnglish"
         static let learningEnabled = "learningEnabled"
+        /// 「送出後列出聯想詞」: after a commit the candidate window lists likely next words.  Off by default.
+        static let associatedPhrases = "associatedPhrases"
         /// Bundle identifiers of apps that get the composition in the candidate window instead of inline.  Empty by
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"
@@ -167,7 +170,8 @@ final class Preferences: ObservableObject {
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
-                          recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace]
+                          recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace,
+                          associatedPhrases]
     }
 
     func resetToDefaults() {
@@ -279,6 +283,10 @@ final class Preferences: ObservableObject {
     var startInEnglish: Bool {
         get { defaults.bool(forKey: Key.startInEnglish) }
         set { defaults.set(newValue, forKey: Key.startInEnglish); changed() }
+    }
+    var associatedPhrases: Bool {
+        get { defaults.bool(forKey: Key.associatedPhrases) }
+        set { defaults.set(newValue, forKey: Key.associatedPhrases); changed() }
     }
     var learningEnabled: Bool {
         get { defaults.bool(forKey: Key.learningEnabled) }
