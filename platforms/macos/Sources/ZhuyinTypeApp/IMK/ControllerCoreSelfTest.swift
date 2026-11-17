@@ -592,6 +592,32 @@ enum ControllerCoreSelfTest {
             try expect(client.inserts == [visible] && hidden && client.marks.isEmpty,
                        "popup commit: visible=\(visible), inserted=\(client.inserts), hidden=\(hidden)")
         }
+        test("聯想詞 after a commit: ⇧1 sends the first, other keys close the list") {
+            let (core, client) = session()
+            core.composer.associatedPhrases = true
+            var list: CandidateList?
+            core.showPanel = { candidates, _, _, _, _ in list = candidates }
+            core.hidePanel = { list = nil }
+            type("vu,4vu,4", into: core)
+            _ = core.handle(.enter)
+            try expect(client.inserts == ["謝謝"], "commit: \(client.inserts)")
+            guard let shown = list, shown.associated, let first = shown.items.first?.text else {
+                throw Failure(description: "no 聯想詞 list after 謝謝: \(String(describing: list))")
+            }
+            try expect(core.composer.presentation.text.isEmpty, "the list left marked text")
+            // ⇧1 (key code 18 with Shift) sends the first suggestion.
+            _ = core.keyDown(keyCode: 18, modifiers: .shift)
+            try expect(client.inserts == ["謝謝", first], "⇧1 sent \(client.inserts), expected \(first)")
+            // A Zhuyin key starts a composition and closes any list.
+            type("1", into: core)
+            try expect(core.composer.presentation.text == "ㄅ" && list?.associated != true, "ㄅ did not start a composition")
+            core.composer.associatedPhrases = false
+            _ = core.handle(.escape)
+            _ = core.handle(.escape)
+            type("vu,4vu,4", into: core)
+            _ = core.handle(.enter)
+            try expect(list == nil && core.composer.presentation.isEmpty, "off still listed 聯想詞")
+        }
         test("Backspace removes one unfinished symbol at a time") {
             let (core, client) = session()
             type("su", into: core)

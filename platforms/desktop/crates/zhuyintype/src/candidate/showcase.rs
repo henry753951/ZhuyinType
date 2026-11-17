@@ -2,7 +2,7 @@
 //! UI renderer's `panels/` show it, for screenshots.  `--popup demo` drives the real floating windows instead.
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
-//! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
+//! `minimal`, `associated` (聯想詞 after a commit), `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
 //! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage).
 
 use std::rc::Rc;
@@ -12,7 +12,7 @@ use gpui_kit::{
     WindowDecorations, WindowOptions, div, point, px, size,
 };
 use serde_json::Value;
-use zt_core::presentation::{Presentation, PreviewList, Rect};
+use zt_core::presentation::{CandidateRow, Presentation, PreviewList, Rect};
 use zt_core::service::{PopupAction, PopupState, UiEvent};
 
 use super::layout::{Extras, WindowMeasure};
@@ -81,6 +81,29 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
         "notice-invalid" => (notice("自訂詞需為 1 到 6 個字"), None, None, None),
         "mode-toast" => (Presentation::default(), None, Some("中"), None),
         "composing" => (Presentation::default(), Some("王小ㄇㄧㄥ".to_owned()), None, None),
+        "associated" => {
+            let rows: Vec<CandidateRow> = ["你", "大家", "你們", "您", "各位"]
+                .iter()
+                .enumerate()
+                .map(|(index, text)| CandidateRow {
+                    index,
+                    text: (*text).to_owned(),
+                    annotation: None,
+                    key: keys.get(index).copied(),
+                })
+                .collect();
+            let p = Presentation {
+                count: rows.len(),
+                rows,
+                selection: Some(0),
+                selected: Some(0),
+                page_count: 1,
+                page_size: per_page,
+                associated: true,
+                ..Presentation::default()
+            };
+            (p, None, None, None)
+        }
         "minimal" => {
             let list = sample::list(sample::WORDS, sample::PANEL_CORRECTIONS, true, per_page, 0);
             (list.presentation("", &keys), None, None, None)
