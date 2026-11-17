@@ -70,6 +70,7 @@ enum CorrectionUndoSelfTest {
             let p = core.composer.presentation
             try expect(p.text == "八甲" && p.corrections.isEmpty && p.reverted, "after ⌫: \(p.text) \(p.corrections) \(p.reverted)")
             try expect(store.data.totals.correctionsReverted == 1, "counted \(store.data.totals.correctionsReverted)")
+            try expect(store.data.totals.backspaces == 0, "the reverting ⌫ was also counted as a deletion")
             _ = core.handle(.backspace)
             try expect(core.composer.presentation.text == "八", "the second ⌫ did not delete")
             try expect(store.data.totals.correctionsReverted == 1, "a plain ⌫ was counted as a revert")
