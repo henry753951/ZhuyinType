@@ -109,7 +109,7 @@ fn settings_validate_and_persist() {
     let path = dir.join("settings.json");
     {
         let settings = Settings::open(Some(path.clone()));
-        assert!(settings.set("candidateFontSize", Value::from(29)).is_err());
+        assert!(settings.set("candidateFontSize", Value::from(37)).is_err());
         assert!(settings.set("candidateFontSize", Value::from(18.5)).is_err());
         assert!(settings.set("candidateFontSize", Value::Null).is_err());
         assert!(settings.set("candidateFontSize", Value::from("18")).is_err());
