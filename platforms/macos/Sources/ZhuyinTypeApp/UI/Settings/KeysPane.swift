@@ -243,7 +243,7 @@ struct KeysPane: View {
             ]
         case .punctuation:
             let windows = preferences.punctuationKeys == .windows
-            return [
+            return ([
                 KeyItem(id: "punctuationWidth", title: "切換標點全半形", subtitle: "中文預設全形，英數與空白維持半形",
                         keys: .command(.togglePunctuationWidth)),
                 KeyItem(id: "brackets", title: "「 」 、", subtitle: "固定", keys: .fixed(["[", "]", "'"])),
@@ -256,7 +256,7 @@ struct KeysPane: View {
                 KeyItem(id: "punctuationList", title: "列出同類的標點", subtitle: "在標點上按", keys: .fixed(["↓"])),
                 KeyItem(id: "symbolPicker", title: "開啟符號與 Emoji 面板", subtitle: "再按一次或按 Esc 關閉",
                         keys: .command(.symbolPicker), feature: .symbolPicker),
-            ]
+            ] as [KeyItem]).filter { $0.id != "symbolPicker" || SymbolSources.isAvailable }
         case .mode:
             return [
                 KeyItem(id: "shiftTap", title: "單按 Shift 切換中英", subtitle: "在可以打字的地方", keys: .shiftTap,

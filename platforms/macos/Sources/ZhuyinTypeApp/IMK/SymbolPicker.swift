@@ -205,8 +205,10 @@ final class SymbolPicker {
 }
 
 enum SymbolSources {
-    /// The input method's symbols.
-    static let app: SymbolSource = SampleSymbolSource()
+    /// The input method's symbols; nil when this build has none, which leaves the feature out (its key goes to the
+    /// app and the settings do not show it).
+    static let app: SymbolSource? = SampleSymbolSource()
+    static var isAvailable: Bool { app != nil }
 }
 
 /// A small fixed set of symbols, for the UI previews and the self-tests (and until the engine provides them).
