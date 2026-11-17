@@ -285,8 +285,9 @@ final class ZhuyinInputController: IMKInputController {
         core.composer.punctuationWidth = EngineHost.punctuationWidth
         core.punctuationWidthChanged = { [weak self, weak core] width in
             EngineHost.punctuationWidth = width
-            guard let self, self.active, Self.activeController === self,
-                  self.showModeToast, let client = self.textClient, let core else { return }
+            guard let self, self.active, Self.activeController === self else { return }
+            ScreenReader.announce(CandidateAnnouncer.punctuationWidth(half: width == .half))
+            guard self.showModeToast, let client = self.textClient, let core else { return }
             ModeToast.shared.show(width == .half ? "半" : "全", caret: client.caretRect(cursorIndex: core.composer.presentation.cursor),
                                   windowLevel: client.windowLevel)
         }
@@ -309,6 +310,8 @@ final class ZhuyinInputController: IMKInputController {
                   EngineHost.currentInputSourceIsOurs() else { return }
             // Caps Lock's badge is temporary; only the Shift-selected mode carries across fields.
             EngineHost.lastEnglishMode = core.isEnglish
+            // VoiceOver hears the mode whether or not the badge shows.
+            ScreenReader.announce(CandidateAnnouncer.mode(english: english))
             guard self.showModeToast, let client = self.textClient else { return }
             ModeToast.shared.show(english ? "英" : "中", caret: caret, windowLevel: client.windowLevel)
         }

@@ -58,5 +58,6 @@ let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
 let inputMethodServer = IMKServer(name: EngineHost.connectionName, bundleIdentifier: Bundle.main.bundleIdentifier)
 EngineHost.load()
+ScreenReader.start()
 Updater.shared.start()
 withExtendedLifetime(inputMethodServer) { application.run() }

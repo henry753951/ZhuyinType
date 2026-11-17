@@ -55,8 +55,39 @@ final class InputSurface: NSView {
         backdrop.frame = bounds
         backdrop.autoresizingMask = [.width, .height]
         addSubview(backdrop)
+        applyDisplayOptions()
+        displayObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.applyDisplayOptions() }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    deinit { displayObserver.map(NSWorkspace.shared.notificationCenter.removeObserver) }
+
+    private var displayObserver: NSObjectProtocol?
+    /// Whether the surface is solid now (`DisplayOptions.solidBackground`), for the self-tests.
+    private(set) var isSolid = false
+
+    /// Increase Contrast or Reduce Transparency: the content gets an opaque background over the glass or material, and
+    /// under Increase Contrast a 2 pt border; it follows the settings as they change (and the previews' override).
+    func applyDisplayOptions() {
+        isSolid = DisplayOptions.solidBackground
+        let border = DisplayOptions.increaseContrast
+        guard isSolid || content.layer?.backgroundColor != nil || (content.layer?.borderWidth ?? 0) > 0 else { return }
+        content.wantsLayer = true
+        guard let layer = content.layer else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer.cornerRadius = isSolid ? radius : 0
+            layer.backgroundColor = isSolid ? NSColor.windowBackgroundColor.cgColor : nil
+            layer.borderWidth = border ? DisplayOptions.borderWidth : 0
+            layer.borderColor = border ? DisplayOptions.borderColor.cgColor : nil
+        }
+        // The selection's outline and the hover colour change with Increase Contrast.
+        func redraw(_ view: NSView) {
+            view.needsDisplay = true
+            view.subviews.forEach(redraw)
+        }
+        redraw(content)
+    }
 
     /// Follow the content's size after the owner has laid it out.
     func fitContent() {
@@ -99,6 +130,7 @@ final class InputSurface: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateShadows()
+        if isSolid { applyDisplayOptions() }
     }
 
     private func updateShadows() {
@@ -136,6 +168,7 @@ private final class CandidateRow: NSView {
     private var fontSize: CGFloat = 18
     private var compact = false
     private var selected = false
+    private var accent = AccentColorSetting.system
     private var hovered = false
     private var keyAttributes: [NSAttributedString.Key: Any] = [:]
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
@@ -147,34 +180,38 @@ private final class CandidateRow: NSView {
     var isSelectedRow: Bool { selected }
     var preferredWidth: CGFloat = 0
 
-    func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool) {
+    func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool,
+                accent: AccentColorSetting = .system) {
         if self.candidate == candidate, self.key == key, self.fontSize == fontSize, self.compact == compact,
-           self.selected == selected { return }
+           self.selected == selected, self.accent == accent { return }
         self.candidate = candidate
         self.key = key
         self.fontSize = fontSize
         self.compact = compact
         self.selected = selected
+        self.accent = accent
         refreshAttributes()
         let textWidth = (candidate.text as NSString).size(withAttributes: textAttributes).width
         let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width + 10 } ?? 0
         preferredWidth = ceil(textInset + textWidth + annotationWidth + trailingPad)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(([key, candidate.text, candidate.annotation].compactMap { $0 }).joined(separator: "，"))
+        setAccessibilityLabel(CandidateAnnouncer.item(candidate, key: key))
         setAccessibilityValue(selected ? "已選取" : "")
+        setAccessibilitySelected(selected)
         needsDisplay = true
     }
     private func refreshAttributes() {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
+        let onAccent = CandidateColors.onAccent(accent)
         keyAttributes = [.font: NSFont.monospacedDigitSystemFont(ofSize: fontSize * 0.68, weight: .medium),
-                         .foregroundColor: selected ? NSColor.white.withAlphaComponent(0.85) : NSColor.secondaryLabelColor,
+                         .foregroundColor: selected ? onAccent.withAlphaComponent(0.85) : NSColor.secondaryLabelColor,
                          .paragraphStyle: paragraph]
         textAttributes = [.font: NSFont.systemFont(ofSize: fontSize),
-                          .foregroundColor: selected ? NSColor.white : NSColor.labelColor, .paragraphStyle: paragraph]
+                          .foregroundColor: selected ? onAccent : NSColor.labelColor, .paragraphStyle: paragraph]
         annotationAttributes = [.font: NSFont.systemFont(ofSize: fontSize * 0.68),
-                                .foregroundColor: selected ? NSColor.white.withAlphaComponent(0.8) : NSColor.tertiaryLabelColor,
+                                .foregroundColor: selected ? onAccent.withAlphaComponent(0.8) : NSColor.tertiaryLabelColor,
                                 .paragraphStyle: paragraph]
     }
     override func viewDidChangeEffectiveAppearance() {
@@ -186,10 +223,11 @@ private final class CandidateRow: NSView {
     var drawsSelection = false
     var cornerRadius: CGFloat { compact ? 6 : 8 }
     override func draw(_ dirtyRect: NSRect) {
-        if selected && drawsSelection || hovered && !selected {
-            (selected ? NSColor.controlAccentColor : NSColor.quaternaryLabelColor).setFill()
-            let radius: CGFloat = compact ? 6 : 8
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
+        if selected && drawsSelection {
+            SelectionHighlight.draw(in: bounds, radius: cornerRadius, accent: accent)
+        } else if hovered && !selected {
+            (DisplayOptions.increaseContrast ? NSColor.tertiaryLabelColor : NSColor.quaternaryLabelColor).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: cornerRadius, yRadius: cornerRadius).fill()
         }
         let textHeight = (candidate.text as NSString).size(withAttributes: textAttributes).height
         let keyHeight = (key as NSString).size(withAttributes: keyAttributes).height
@@ -328,6 +366,7 @@ private final class KeycapToggle: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
     /// The key shown on the keycap: the command's current shortcut.
     var key: String { didSet { needsDisplay = true } }
+    var accent = AccentColorSetting.system { didSet { if accent != oldValue { needsDisplay = true } } }
     private let label: String
     private let labelFont = NSFont.systemFont(ofSize: 12)
     init(key: String, label: String, help: String) {
@@ -345,15 +384,16 @@ private final class KeycapToggle: NSButton {
         let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: keycapWidth, height: 19)
         let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
         if on {
-            NSColor.controlAccentColor.setFill()
+            CandidateColors.accent(accent).setFill()
             border.fill()
         } else {
             border.lineWidth = 1
             NSColor.quaternaryLabelColor.setStroke()
             border.stroke()
         }
-        let color: NSColor = on ? .controlAccentColor : .secondaryLabelColor
-        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: on ? NSColor.white : color]
+        let color: NSColor = on ? CandidateColors.accent(accent) : .secondaryLabelColor
+        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont,
+                                                            .foregroundColor: on ? CandidateColors.onAccent(accent) : color]
         let attributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: color]
         let height = (label as NSString).size(withAttributes: attributes).height
         let keyWidth = (key as NSString).size(withAttributes: keyAttributes).width
@@ -371,6 +411,8 @@ struct CandidateStyle: Equatable {
     var showsAnnotations = true
     var showsListSwitches = true
     var keyLabels = CandidateKeyLabels()
+    /// 強調色: the selection's fill and the switches while on.
+    var accentColor = AccentColorSetting.system
 }
 
 /// One page of candidate rows.  The window has two, so a page change can move the old page out while the new one
@@ -395,9 +437,34 @@ private final class RowPage: NSView {
 /// The selected row's highlight, under the pages: it does not move or fade when the page turns.
 private final class SelectionHighlight: NSView {
     var radius: CGFloat = 8
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.controlAccentColor.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
+    var accent = AccentColorSetting.system { didSet { if accent != oldValue { needsDisplay = true } } }
+    override func draw(_ dirtyRect: NSRect) { Self.draw(in: bounds, radius: radius, accent: accent) }
+
+    /// The accent's fill, with a 2 pt outline in the text colour under Increase Contrast.
+    static func draw(in bounds: NSRect, radius: CGFloat, accent: AccentColorSetting) {
+        let shape = bounds.insetBy(dx: 0, dy: 1)
+        CandidateColors.accent(accent).setFill()
+        NSBezierPath(roundedRect: shape, xRadius: radius, yRadius: radius).fill()
+        guard DisplayOptions.increaseContrast else { return }
+        let inset = DisplayOptions.selectionOutline / 2
+        let outline = NSBezierPath(roundedRect: shape.insetBy(dx: inset, dy: inset), xRadius: max(0, radius - inset),
+                                   yRadius: max(0, radius - inset))
+        outline.lineWidth = DisplayOptions.selectionOutline
+        NSColor.labelColor.setStroke()
+        outline.stroke()
+    }
+}
+
+/// The rows' area, which VoiceOver sees as the list of candidates: its children are the rows of the page shown, and
+/// the selected row is its selected child.
+private final class CandidateListElement: InputMaterialView {
+    var rows: () -> [NSView] = { [] }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .list }
+    override func accessibilityLabel() -> String? { "候選字" }
+    override func accessibilityChildren() -> [Any]? { rows().filter { !$0.isHidden } }
+    override func accessibilitySelectedChildren() -> [Any]? {
+        rows().filter { !$0.isHidden && $0.isAccessibilitySelected() }
     }
 }
 
@@ -430,7 +497,7 @@ enum PageMotion {
 
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
-    private let rowClip = InputMaterialView()
+    private let rowClip = CandidateListElement()
     private let pageViews = [RowPage(frame: .zero), RowPage(frame: .zero)]
     private let highlight = SelectionHighlight()
     private var highlightOrigin = NSPoint.zero
@@ -471,6 +538,7 @@ final class CandidateContentView: InputMaterialView {
         super.init(frame: frame)
         rowClip.wantsLayer = true
         rowClip.layer?.masksToBounds = true
+        rowClip.rows = { [weak self] in self.map { $0.rows } ?? [] }
         rowClip.addSubview(highlight)
         for page in pageViews { rowClip.addSubview(page) }
         pageViews[1].isHidden = true
@@ -563,6 +631,9 @@ final class CandidateContentView: InputMaterialView {
         zhuyinButton.needsDisplay = true
         correctionButton.on = list?.tolerant == true
         singleButton.on = list?.singleCharacter == true
+        correctionButton.accent = style.accentColor
+        singleButton.accent = style.accentColor
+        highlight.accent = style.accentColor
         let singleWidth: CGFloat = hasSingle ? ceil(singleButton.preferredWidth) + 8 : 0
         let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
         let footerWidth = pageWidth + singleWidth + toggleWidth
@@ -595,7 +666,7 @@ final class CandidateContentView: InputMaterialView {
             var candidate = list.items[index]
             if !style.showsAnnotations { candidate.annotation = nil }
             row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
-                       fontSize: fontSize, compact: compact, selected: index == list.selection)
+                       fontSize: fontSize, compact: compact, selected: index == list.selection, accent: style.accentColor)
             row.action = { [weak self] in self?.onSelect?(index) }
         }
         let activeRows = rows.prefix(indices.count)
@@ -642,6 +713,7 @@ final class CandidateContentView: InputMaterialView {
                 highlight.isHidden = true
             }
             layoutIsVertical = layout == .vertical
+            rowClip.setAccessibilityOrientation(layout == .vertical ? .vertical : .horizontal)
             if layout == .vertical { y += rowsArea.height }
             let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
             if layout == .horizontal && listOpen { y += rowHeight }
@@ -951,6 +1023,8 @@ final class CandidatePanelController {
     private lazy var panel = InputPanel(content: surface)
     private var lastCaret: NSRect?
     private var lastScreen: NSRect?
+    /// The list VoiceOver was last told about.
+    private var announced: CandidateAnnouncer.Shown?
 
     func show(list: CandidateList?, preview: String?, caret: NSRect, keys: [Character], windowLevel: NSWindow.Level,
               notice: String? = nil, zhuyinHint: String? = nil) {
@@ -975,11 +1049,22 @@ final class CandidatePanelController {
         lastScreen = visible
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         PanelMotion.present(panel, frame: frame, caret: caret)
+        if ScreenReader.isRunning { announce(list, keys: keys, reading: zhuyinHint) }
+    }
+
+    /// Tells VoiceOver about a new list, a new page or a moved highlight.
+    private func announce(_ list: CandidateList?, keys: [Character], reading: String?) {
+        guard let list, !list.items.isEmpty else { announced = nil; return }
+        if let text = CandidateAnnouncer.announcement(for: list, keys: keys, reading: reading, previous: announced) {
+            ScreenReader.announce(text, from: panel)
+        }
+        announced = CandidateAnnouncer.Shown(list)
     }
     func hide() {
         panel.orderOut(nil)
         panel.alphaValue = 1
         lastCaret = nil
+        announced = nil
         content.resetHover()
         content.reset()
     }
