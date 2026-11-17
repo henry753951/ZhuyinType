@@ -458,18 +458,6 @@ impl Service {
             }
             !wanted
         });
-        // The keys the adapter must claim even when nothing is composed (a Windows text service lets idle chords
-        // through): 選取的字加入自訂詞's.
-        if request.get("op").and_then(Value::as_str) == Some("focus") && reply.get("ok") == Some(&Value::Bool(true)) {
-            let keys: Vec<Value> = self
-                .inner
-                .shortcuts
-                .bindings("addSelectedText")
-                .iter()
-                .map(|b| Value::from(vec![i64::from(b.binding.key), i64::from(b.binding.modifiers)]))
-                .collect();
-            reply.insert("idleKeys".into(), Value::Array(keys));
-        }
         if draws {
             effects.retain(|effect| match effect {
                 Effect::Toast { text } => {

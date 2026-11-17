@@ -77,27 +77,17 @@ pub(crate) fn host_wants_key(key: &Key, composing: bool, english: bool) -> bool 
     !letter && chord != (CONTROL | ALT)
 }
 
-/// A key the user bound to one of the host's commands (`hotkeys` in a reply, e.g. 「開啟快速設定」): claimed in any
-/// mode, since the local rules above would give a chord such as Ctrl+Alt+Q to the application.  Only the press; a
-/// letter matches in either case.
-pub(crate) fn is_hotkey(key: &Key, hotkeys: &[(i32, i32)]) -> bool {
+/// A key the host listed in `claims` (IPC.md §攔截的按鍵: the keys of 開啟快速設定, 符號與 Emoji, 選取的字加入自訂詞 that
+/// can run in this field and mode): claimed whatever the composition, since the local rules above would give a chord
+/// such as Ctrl+Alt+Q to the application.  Only the press; a letter matches in either case.
+pub(crate) fn claimed_key(key: &Key, claims: &[(i32, i32)]) -> bool {
     let upper = |code: i32| if (i32::from(b'a')..=i32::from(b'z')).contains(&code) { code - 32 } else { code };
-    let modifiers = key.modifiers & (SHIFT | CONTROL | ALT | META);
+    let chord = |modifiers: i32| modifiers & (SHIFT | CONTROL | ALT | META);
     !key.release
         && key.key != 0
-        && hotkeys
+        && claims
             .iter()
-            .any(|&(code, mods)| upper(code) == upper(key.key) && mods & (SHIFT | CONTROL | ALT | META) == modifiers)
-}
-
-/// A key the host claimed in its last reply (`claims`: 符號與 Emoji's shortcut), whatever the composition or 中/英.
-pub(crate) fn claimed_key(key: &Key, claims: &[(i32, i32)]) -> bool {
-    if key.release || key.key == 0 {
-        return false;
-    }
-    let modifiers = key.modifiers & (SHIFT | CONTROL | ALT | META);
-    let code = if (i32::from(b'a')..=i32::from(b'z')).contains(&key.key) { key.key - 32 } else { key.key };
-    claims.iter().any(|&(claimed, claimed_modifiers)| claimed == code && claimed_modifiers == modifiers)
+            .any(|&(code, modifiers)| upper(code) == upper(key.key) && chord(modifiers) == chord(key.modifiers))
 }
 
 /// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
@@ -121,13 +111,22 @@ mod tests {
 
     #[test]
     fn claimed_keys_are_taken_in_any_state() {
-        let picker = [(i32::from(b','), CONTROL | ALT)];
-        assert!(claimed_key(&key(',' as i32, CONTROL | ALT), &picker));
-        assert!(!claimed_key(&key(',' as i32, CONTROL), &picker));
-        assert!(!claimed_key(&key('.' as i32, CONTROL | ALT), &picker));
+        let claims = [(i32::from(b','), CONTROL | ALT), ('Q' as i32, CONTROL | ALT), ('J' as i32, ALT)];
+        assert!(claimed_key(&key(',' as i32, CONTROL | ALT), &claims));
+        assert!(claimed_key(&key('Q' as i32, CONTROL | ALT), &claims));
+        assert!(claimed_key(&key('q' as i32, CONTROL | ALT | KEYPAD), &claims), "either case, keypad aside");
+        assert!(claimed_key(&key('J' as i32, ALT), &claims));
+        assert!(!claimed_key(&key(',' as i32, CONTROL), &claims));
+        assert!(!claimed_key(&key('.' as i32, CONTROL | ALT), &claims));
+        assert!(!claimed_key(&key('W' as i32, CONTROL | ALT), &claims));
+        assert!(!claimed_key(&key('J' as i32, ALT | SHIFT), &claims));
         let mut release = key(',' as i32, CONTROL | ALT);
         release.release = true;
-        assert!(!claimed_key(&release, &picker));
+        assert!(!claimed_key(&release, &claims));
+        assert!(!claimed_key(&key('Q' as i32, CONTROL | ALT), &[]));
+        // Ctrl+Delete is no command's: with nothing composed it reaches the application.
+        assert!(!claimed_key(&key(KEY_DELETE, CONTROL), &claims));
+        assert!(!host_wants_key(&key(KEY_DELETE, CONTROL), false, false));
     }
 
     #[test]
@@ -169,19 +168,6 @@ mod tests {
         assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), false, true));
         assert!(!host_observes_key(&key(KEY_BACKSPACE, CONTROL), false, false));
         assert!(!host_observes_key(&key(KEY_LEFT, 0), false, false));
-    }
-
-    #[test]
-    fn bound_hotkeys_are_claimed() {
-        let hotkeys = [('Q' as i32, CONTROL | ALT)];
-        assert!(is_hotkey(&key('Q' as i32, CONTROL | ALT), &hotkeys));
-        assert!(is_hotkey(&key('q' as i32, CONTROL | ALT | KEYPAD), &hotkeys));
-        assert!(!is_hotkey(&key('Q' as i32, CONTROL), &hotkeys));
-        assert!(!is_hotkey(&key('W' as i32, CONTROL | ALT), &hotkeys));
-        let mut release = key('Q' as i32, CONTROL | ALT);
-        release.release = true;
-        assert!(!is_hotkey(&release, &hotkeys));
-        assert!(!is_hotkey(&key('Q' as i32, CONTROL | ALT), &[]));
     }
 
     #[test]

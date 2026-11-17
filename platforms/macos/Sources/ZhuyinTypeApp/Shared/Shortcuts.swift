@@ -197,9 +197,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .blockCandidate: return Shortcut("⌫", control: true)
         case .forgetCandidate: return Shortcut("⌫", control: true, shift: true)
         case .addCandidatePhrase: return Shortcut("Return", control: true)
-        // Not bound by default (`defaultBindings` is empty); the key the settings would suggest first.
-        case .addSelectedText: return Shortcut("A", control: true, option: true)
-        case .quickSettings: return nil
+        case .addSelectedText, .quickSettings: return nil
         case .symbolPicker: return Shortcut(",", control: true, option: true)
         }
     }
@@ -264,13 +262,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .nextPage: return [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)]
         case .previousPage: return [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
-        case .addSelectedText: return []
         default: return defaultShortcut.map { [$0] } ?? []
         }
     }
     /// The defaults of earlier versions, which stored every command's keys once any was changed: a stored list equal
     /// to these is read as the current default.
-    var legacyDefaultBindings: [Shortcut] { self == .addSelectedText ? [] : defaultShortcut.map { [$0] } ?? [] }
+    var legacyDefaultBindings: [Shortcut] { defaultShortcut.map { [$0] } ?? [] }
     static var defaultBindings: [ShortcutCommand: [Shortcut]] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
     }

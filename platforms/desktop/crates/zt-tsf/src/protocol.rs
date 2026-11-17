@@ -54,14 +54,10 @@ pub(crate) struct Reply {
     pub(crate) quick: Option<QuickState>,
     /// The `quickSettings` shortcut was pressed: the text service shows its quick menu at the caret.
     pub(crate) quick_panel: bool,
-    /// Keys bound to host commands that the text service claims in any mode (`(key, modifiers)`); left out: as before.
-    pub(crate) hotkeys: Option<Vec<(i32, i32)>>,
     /// 選取的字加入自訂詞: send the field's selected text next (op `selection`).
     pub(crate) selection: bool,
-    /// The keys to claim even when nothing is composed (`[key, modifiers]`, a `focus` reply's `idleKeys`).
-    pub(crate) idle_keys: Option<Vec<(i32, i32)>>,
-    /// Keys the host takes even with nothing composed (符號與 Emoji's): `(key, modifiers)`; `None`: left out (an
-    /// older host), keep the last ones.
+    /// The keys to claim even when nothing is composed (IPC.md §攔截的按鍵): `(key, modifiers)`, already filtered by
+    /// the host for this field and mode; `None`: left out (unchanged since the last), keep the last ones.
     pub(crate) claims: Option<Vec<(i32, i32)>>,
 }
 
@@ -177,17 +173,6 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
             Some(value) => value.as_bool(),
         }
     };
-    let hotkeys = match object.get("hotkeys") {
-        None => None,
-        Some(value) => {
-            let mut keys = Vec::new();
-            for item in value.as_array()? {
-                let code = |name: &str| item.get(name).and_then(Value::as_i64).and_then(|n| i32::try_from(n).ok());
-                keys.push((code("key")?, code("modifiers")?));
-            }
-            Some(keys)
-        }
-    };
     let quick = match object.get("quick") {
         None => None,
         Some(value) => {
@@ -209,25 +194,11 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         None => false,
         Some(value) => value.as_bool()?,
     };
-    let idle_keys = match object.get("idleKeys") {
-        None => None,
-        Some(value) => Some(
-            value
-                .as_array()?
-                .iter()
-                .map(|pair| {
-                    let pair = pair.as_array().filter(|pair| pair.len() == 2)?;
-                    let number = |n: &Value| n.as_i64().and_then(|n| i32::try_from(n).ok());
-                    Some((number(&pair[0])?, number(&pair[1])?))
-                })
-                .collect::<Option<Vec<_>>>()?,
-        ),
-    };
     let claims = match object.get("claims") {
         None => None,
         Some(value) => {
             let mut keys = Vec::new();
-            for pair in value.as_array().filter(|list| list.len() <= 16)? {
+            for pair in value.as_array().filter(|list| list.len() <= 64)? {
                 let pair = pair.as_array().filter(|pair| pair.len() == 2)?;
                 keys.push((i32::try_from(pair[0].as_i64()?).ok()?, i32::try_from(pair[1].as_i64()?).ok()?));
             }
@@ -253,9 +224,7 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         learning_paused: optional("learningPaused")?,
         quick,
         quick_panel: optional("quickPanel")?,
-        hotkeys,
         selection,
-        idle_keys,
         claims,
     })
 }
@@ -316,7 +285,11 @@ mod tests {
         assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, None);
         value["claims"] = json!([[44, 0x0c00_0000]]);
         assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, Some(vec![(44, 0x0c00_0000)]));
+        value["claims"] = json!([]);
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, Some(vec![]));
         value["claims"] = json!([[44]]);
+        assert!(parse_reply(&line(value.clone()), 7, "{A}").is_none());
+        value["claims"] = json!([["Q", 0]]);
         assert!(parse_reply(&line(value), 7, "{A}").is_none());
     }
 
@@ -490,12 +463,6 @@ mod tests {
                 symbols: false
             })
         );
-        assert_eq!(reply.hotkeys, None);
-        let mut hotkeys = quick.clone();
-        hotkeys["hotkeys"] = json!([{"key": 81, "modifiers": 0x0C00_0000}]);
-        assert_eq!(parse_reply(&line(hotkeys.clone()), 7, "{A}").unwrap().hotkeys, Some(vec![(81, 0x0C00_0000)]));
-        hotkeys["hotkeys"] = json!([{"key": "Q", "modifiers": 0}]);
-        assert!(parse_reply(&line(hotkeys), 7, "{A}").is_none());
         let mut no_symbols = quick.clone();
         no_symbols["quick"].as_object_mut().unwrap().remove("symbols");
         assert!(!parse_reply(&line(no_symbols), 7, "{A}").unwrap().quick.unwrap().symbols);
