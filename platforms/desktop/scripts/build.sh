@@ -65,6 +65,13 @@ compile_linux() {
     (cd "$desktop" && CARGO_TARGET_DIR=$dir cargo "${cargo_args[@]}") || fail "cargo build 失敗（見上方）"
 
     local addon=$dir/fcitx5-$profile generator=()
+    # The builder and tester images share this directory, and CMake keeps what it found (Qt, GTK for the tests'
+    # probes) in its cache: configure afresh when the build moves to another image.
+    local where=${ZT_IMAGE:-native}
+    if [[ -f $addon/CMakeCache.txt && $(cat "$addon/.zt-image" 2>/dev/null) != "$where" ]]; then
+        rm -rf "$addon"
+    fi
+    mkdir -p "$addon" && echo "$where" > "$addon/.zt-image"
     command -v ninja >/dev/null && generator=(-G Ninja)
     [[ -f $addon/CMakeCache.txt ]] && generator=()
     # Packages get the distribution's hardening flags (stack protector, fortify, relro, bindnow).
@@ -161,7 +168,7 @@ compile_in_builder() {
     step "在 $image 中編譯"
     # --init: an init process reaps the tests' X servers and daemons (xvfb-run waits for a signal PID 1 ignores).
     "$runtime" run --rm --init "${user[@]}" "${mounts[@]}" \
-        -e HOME=/tmp -e CARGO_HOME=/cargo -e CARGO_TARGET_DIR=/target -e CARGO_BUILD_JOBS -e ZT_IN_BUILDER=1 \
+        -e HOME=/tmp -e CARGO_HOME=/cargo -e CARGO_TARGET_DIR=/target -e CARGO_BUILD_JOBS -e ZT_IN_BUILDER=1 -e ZT_IMAGE="$image" \
         -e ZT_REQUIRE_HOST -e ZT_DELIVERY_CAPTURE_DIR \
         -w /src "$image" bash platforms/desktop/scripts/build.sh "${args[@]}" \
         || fail "建置映像中的編譯失敗（見上方）"
