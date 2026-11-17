@@ -285,5 +285,66 @@ class Mining(unittest.TestCase):
         self.assertFalse(contained("今天晚上去吃蚵仔煎", grams))
 
 
+class Colloquial(unittest.TestCase):
+    def test_ptt_lines_read_pushes_titles_and_skip_ids(self):
+        import json
+
+        from zhuyintype_ml.training.lexicon.corpora import ptt_lines
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "reply"
+            folder.mkdir()
+            responses = [{"User": "someone", "Vote": "推", "Content": "爆甲了啦"}, {"User": "x", "Content": ""}]
+            articles = [responses, {"Title": "有沒有打瓦的八卦", "Responses": responses}]
+            (folder / "0.json").write_text(json.dumps(articles, ensure_ascii=False), encoding="utf-8")
+            csv_file = Path(tmp) / "qa.csv"
+            csv_file.write_text("question,answer\n問題,沒有資料\n架槍?,先架好\n", encoding="utf-8")
+            lines = ptt_lines(folder) + ptt_lines(csv_file)
+        self.assertEqual(lines, ["爆甲了啦", "有沒有打瓦的八卦", "爆甲了啦", "問題", "架槍?", "先架好"])
+        self.assertNotIn("someone", "".join(lines))
+
+    def test_extend_adds_only_new_words(self):
+        from zhuyintype_ml.training.lexicon.extend import extend
+
+        with tempfile.TemporaryDirectory() as tmp:
+            lexicon, pack, out = Path(tmp) / "lexicon.tsv", Path(tmp) / "ptt.tsv", Path(tmp) / "words" / "out.tsv"
+            (Path(tmp) / "lm").mkdir()
+            lexicon.write_text("# header\nㄎㄜˋ ㄐㄧㄣ\t課金\t-12.0\n", encoding="utf-8")
+            pack.write_text("# pack\nㄎㄜˋ ㄐㄧㄣ\t課金\t-11.0\nㄉㄚˇ ㄨㄚˇ\t打瓦\t-13.5\n", encoding="utf-8")
+            summary = extend(lexicon, [pack], out)
+            rows = out.read_text(encoding="utf-8").splitlines()
+            self.assertTrue((out.parent / "lm").is_symlink())
+        self.assertEqual(rows, ["# header", "ㄎㄜˋ ㄐㄧㄣ\t課金\t-12.0", "ㄉㄚˇ ㄨㄚˇ\t打瓦\t-13.5"])
+        self.assertEqual(summary["added"], {"ptt": 1})
+
+    def test_screen_drops_fragments_and_demotes_vulgar_words(self):
+        from zhuyintype_ml.training.lexicon.screen import screen
+
+        with tempfile.TemporaryDirectory() as tmp:
+            packs, out = Path(tmp) / "packs", Path(tmp) / "out"
+            packs.mkdir()
+            (packs / "ptt.tsv").write_text(
+                "# pack\nㄌㄨˇ ㄕㄜˊ\t魯蛇\t-11.0\nㄐㄧㄠˋ ㄊㄚ\t叫他\t-10.0\nㄌㄢˇ ㄐㄧㄠˋ\t懶叫\t-10.0\n"
+                "ㄕㄨ ㄌㄧㄠˇ\t輸了\t-10.0\nㄍㄢˋ ㄋㄧˇ ㄋㄧㄤˊ\t幹你娘啦\t-12.0\nㄉㄚˇ ㄨㄚˇ\t打瓦\t-12.0\n",
+                encoding="utf-8",
+            )
+            labels = {
+                "魯蛇": ("word", "ok"),
+                "叫他": ("fragment", "ok"),
+                "懶叫": ("vulgar", "ok"),
+                "輸了": ("word", "wrong"),
+                "幹你娘啦": ("word", "ok"),
+            }
+            summary = screen(packs, ["ptt"], labels, {"幹你娘"}, out, 4.0)
+            lexicon = (out / "ptt.tsv").read_text(encoding="utf-8").splitlines()[1:]
+            seed = (out / "ptt.seed.tsv").read_text(encoding="utf-8").splitlines()[1:]
+        self.assertEqual(
+            lexicon,
+            ["ㄌㄨˇ ㄕㄜˊ\t魯蛇\t-11.0", "ㄌㄢˇ ㄐㄧㄠˋ\t懶叫\t-14.000", "ㄍㄢˋ ㄋㄧˇ ㄋㄧㄤˊ\t幹你娘啦\t-16.000"],
+        )
+        self.assertEqual(seed, ["ㄌㄨˇ ㄕㄜˊ\t魯蛇\t-11.0"])
+        self.assertEqual(summary["corpora"]["ptt"]["left_out_unlabelled"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
