@@ -78,6 +78,10 @@ done
 # The host after Fcitx, as when the addon starts it: GPUI looks for an XIM server once, when it starts, so its own
 # text fields (the self-host case) use the input method only if Fcitx is already there.
 host_args=(--background)
+# As after the first few lists: the word actions' tip (「Ctrl+Del 不要再推薦・右鍵看更多」) would make the window taller,
+# and the probe clicks the fixture's second row by the window's height.
+mkdir -p "$XDG_CONFIG_HOME/zhuyintype"
+printf '{"wordActionHintCount": 5}\n' > "$XDG_CONFIG_HOME/zhuyintype/settings.json"
 if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then
     # The settings window as a returning user has it: fresh settings would open the setup wizard over it.
     printf '{"setupWizardSeenVersion": "999.0.0"}\n' > "$work/settings.json"
