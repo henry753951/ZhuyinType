@@ -1,6 +1,7 @@
 //! The 中/英 indicator in the taskbar's input indicator (`GUID_LBI_INPUTMODE`), like the built-in Bopomofo IME: a
-//! monochrome 中 or 英 in the taskbar's text colour.  A left click asks the host to switch modes; a right click opens
-//! the input method's menu (switch, settings).  The button keeps no state but what the host last reported.
+//! monochrome 中 or 英 (简 with 簡體 output) in the taskbar's text colour.  A left click asks the host to switch modes;
+//! a right click opens the input method's menu (快速設定 and the settings, quick_menu.rs).  The button keeps no state
+//! but what the host last reported.
 //!
 //! Where ZhuyinType cannot type Chinese — no text field has the focus (the desktop, a window without one), a password
 //! or input-method-disabled field, no answer from the app — the button shows 英, as Microsoft Bopomofo does there:
@@ -29,6 +30,7 @@ use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HICON, ICONINF
 use windows::core::{BOOL, BSTR, GUID, IUnknown, Interface, Ref, Result, implement, w};
 
 use crate::module::{ObjectCount, SERVICE_ID, guard};
+use crate::quick_menu;
 
 /// What a click does: `(right_click, screen point)`.
 pub(crate) type Action = Rc<dyn Fn(bool, POINT)>;
@@ -40,6 +42,8 @@ pub(crate) struct ModeButton {
     action: RefCell<Option<Action>>,
     sink: RefCell<Option<ITfLangBarItemSink>>,
     english: Cell<bool>,
+    simplified: Cell<bool>,
+    learning_paused: Cell<bool>,
     /// A field that takes Chinese has the focus (`set_available`).
     available: Cell<bool>,
     _count: ObjectCount,
@@ -51,16 +55,23 @@ impl ModeButton {
             action: RefCell::new(Some(action)),
             sink: RefCell::new(None),
             english: Cell::new(false),
+            simplified: Cell::new(false),
+            learning_paused: Cell::new(false),
             // Until the text service has a field that takes Chinese.
             available: Cell::new(false),
             _count: ObjectCount::new(),
         }
     }
 
-    /// Shows the host's mode; repaints the taskbar only when it changed.
-    pub(crate) fn set_english(&self, english: bool) {
-        if self.english.replace(english) != english && self.available.get() {
-            self.notify(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
+    /// Shows the host's mode, 繁／簡 output and 暫停學習; repaints the taskbar only when something changed.
+    pub(crate) fn set_state(&self, english: bool, simplified: bool, learning_paused: bool) {
+        let glyph = self.glyph();
+        let before = (self.english.replace(english), self.simplified.replace(simplified));
+        let paused_before = self.learning_paused.replace(learning_paused);
+        if before != (english, simplified) || paused_before != learning_paused {
+            // 暫停學習 shows in the tooltip even without a field; 中/简 only with one.
+            let flags = if glyph == self.glyph() { TF_LBI_TOOLTIP } else { TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP };
+            self.notify(flags);
         }
     }
 
@@ -91,7 +102,7 @@ impl ModeButton {
     }
 
     fn glyph(&self) -> &'static str {
-        if self.shows_english() { "英" } else { "中" }
+        quick_menu::glyph(self.shows_english(), self.simplified.get())
     }
 }
 
@@ -128,13 +139,12 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetTooltipString(&self) -> Result<BSTR> {
-        Ok(BSTR::from(if !self.available.get() {
-            "英文"
-        } else if self.english.get() {
-            "英文（按一下切換成中文）"
-        } else {
-            "中文（按一下切換成英文）"
-        }))
+        Ok(BSTR::from(quick_menu::tooltip(
+            self.available.get(),
+            self.english.get(),
+            self.simplified.get(),
+            self.learning_paused.get(),
+        )))
     }
 }
 

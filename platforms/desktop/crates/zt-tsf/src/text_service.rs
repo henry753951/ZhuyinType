@@ -23,7 +23,9 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::Com::CoCreateGuid;
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, VK_CAPITAL};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetFocus, GetKeyState, VK_CAPITAL, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+};
 use windows::Win32::UI::TextServices::{
     IEnumTfDisplayAttributeInfo, ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext,
     ITfDisplayAttributeInfo, ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfDocumentMgr,
@@ -34,10 +36,11 @@ use windows::Win32::UI::TextServices::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GWLP_USERDATA, GetMessageTime, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_APP, WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    GWLP_USERDATA, GetCursorPos, GetMessageTime, GetWindowLongPtrW, HMENU, HWND_MESSAGE, KillTimer, MENU_ITEM_FLAGS,
+    MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON,
+    TPM_TOPALIGN, TPM_VERTICAL, TPMPARAMS, TrackPopupMenu, TrackPopupMenuEx, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{BOOL, ComObject, IUnknown, IUnknownImpl, Interface, PCWSTR, Ref, Result, implement, w};
 
@@ -45,11 +48,12 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{host_observes_key, host_wants_key};
+use crate::keys::{host_observes_key, host_wants_key, is_hotkey};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
 use crate::protocol::Reply;
+use crate::quick_menu::{self, Command, Effect, QuickState};
 use crate::registration::guid_string;
 
 /// Adds 前文 to a request: the application's name and the text before the caret (IPC.md §前文).
@@ -68,6 +72,14 @@ const POLL_TIMER: usize = 1;
 const POLL_MS: u32 = 20;
 /// Posted to the message window after a field got focus: `PanelWindow::warm`, once the focus is handled.
 const WM_WARM: u32 = WM_APP + 0x32;
+/// Posted to the message window when the `quickSettings` shortcut was pressed: the quick menu at the caret, once the
+/// key event has returned (a menu's modal loop must not run inside TSF's key handling and edit session).
+const WM_QUICK: u32 = WM_APP + 0x33;
+/// Retries `WM_QUICK` while the shortcut's modifiers are still held: releasing Alt would close the menu at once.
+const QUICK_TIMER: usize = 2;
+const QUICK_WAIT_MS: u32 = 20;
+/// About a second of waiting, then the menu shows anyway.
+const QUICK_WAIT_TRIES: u8 = 50;
 
 fn same<T: Interface>(a: Option<&T>, b: Option<&T>) -> bool {
     a.map(Interface::as_raw) == b.map(Interface::as_raw)
@@ -133,6 +145,12 @@ pub(crate) struct TextService {
     activated: Cell<bool>,
     /// A `WM_WARM` is on its way.
     warm_posted: Cell<bool>,
+    /// 快速設定's switches as the host last reported them (`fullWidth` and `symbols` only come with a `quick` reply).
+    quick: Cell<QuickState>,
+    /// `QUICK_TIMER` ticks spent waiting for the modifiers to be released.
+    quick_wait: Cell<u8>,
+    /// Keys bound to host commands, claimed in any mode (`hotkeys` in a reply).
+    hotkeys: RefCell<Vec<(i32, i32)>>,
     _count: ObjectCount,
 }
 
@@ -175,6 +193,9 @@ impl TextService {
             private: Cell::new(false),
             activated: Cell::new(false),
             warm_posted: Cell::new(false),
+            quick: Cell::new(QuickState { full_width: true, ..QuickState::default() }),
+            quick_wait: Cell::new(0),
+            hotkeys: RefCell::new(Vec::new()),
             _count: ObjectCount::new(),
         }
         .into()
@@ -212,7 +233,9 @@ impl TextService {
     fn claims(&self, vk: WPARAM, flags: LPARAM, release: bool) -> bool {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
         let composing = self.composing.get() || load(&self.composition).is_some();
-        host_wants_key(&translate_key(vk, flags, release), composing, self.english.get() && !caps_changed)
+        let key = translate_key(vk, flags, release);
+        host_wants_key(&key, composing, self.english.get() && !caps_changed)
+            || self.hotkeys.try_borrow().is_ok_and(|hotkeys| is_hotkey(&key, &hotkeys))
     }
 
     fn destroy_windows(&self) {
@@ -536,9 +559,25 @@ impl TextService_Impl {
         }
         self.english.set(reply.english);
         self.composing.set(reply.composing);
+        let mut quick = reply.quick.unwrap_or(self.quick.get());
+        quick.english = reply.english;
+        quick.simplified = reply.simplified;
+        quick.learning_paused = reply.learning_paused;
+        self.quick.set(quick);
+        if let Some(hotkeys) = &reply.hotkeys
+            && let Ok(mut slot) = self.hotkeys.try_borrow_mut()
+        {
+            slot.clone_from(hotkeys);
+        }
         // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
         if let Some(button) = self.button() {
-            button.set_english(reply.english);
+            button.set_state(reply.english, reply.simplified, reply.learning_paused);
+        }
+        let window = self.window.get();
+        if reply.quick_panel && !self.secure.get() && !window.is_invalid() {
+            self.quick_wait.set(0);
+            // SAFETY: our own window.
+            let _ = unsafe { PostMessageW(Some(window), WM_QUICK, WPARAM(0), LPARAM(0)) };
         }
         if self.secure.get() {
             self.panel.hide();
@@ -573,29 +612,20 @@ impl TextService_Impl {
         }
     }
 
-    /// The right-click menu of the 中/英 button, the usual place for an input method's settings on Windows.
+    /// The right-click menu of the 中/英 button, the usual place for an input method's settings on Windows: 快速設定's
+    /// switches (quick_menu.rs), then the settings.
     fn show_menu(&self, point: POINT) {
         let _ = guard(|| {
-            if self.menu_owner.get().is_invalid() {
-                let owner = self.new_window(WS_EX_TOOLWINDOW, WS_POPUP, None)?;
-                self.menu_owner.set(owner);
+            let owner = self.menu_owner()?;
+            let switches = self.can_toggle();
+            if switches {
+                // The switches as they are now (punctuation width is not in every reply).
+                self.host_request("quick", Map::new());
             }
-            let owner = self.menu_owner.get();
+            let items = quick_menu::items(&self.quick.get(), switches, true);
             // SAFETY: a menu created, shown and destroyed here, owned by our window.
-            unsafe {
-                let menu = CreatePopupMenu()?;
-                let toggle = if self.can_toggle() { MF_STRING } else { MF_STRING | MF_GRAYED };
-                let label = if self.english.get() { w!("切換成中文") } else { w!("切換成英文") };
-                let _ = AppendMenuW(menu, toggle, 1, label);
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                // The macOS input menu's items.
-                let _ = AppendMenuW(menu, MF_STRING, 2, w!("ZhuyinType 設定…"));
-                let _ = AppendMenuW(menu, MF_STRING, 3, w!("自訂詞與學到的詞…"));
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                let _ = AppendMenuW(menu, MF_STRING, 4, w!("設定嚮導…"));
-                let _ = AppendMenuW(menu, MF_STRING, 5, w!("新功能導覽…"));
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                let _ = AppendMenuW(menu, MF_STRING, 6, w!("關於 ZhuyinType"));
+            let command = unsafe {
+                let menu = build_menu(&items)?;
                 let _ = SetForegroundWindow(owner);
                 let command = TrackPopupMenu(
                     menu,
@@ -608,22 +638,95 @@ impl TextService_Impl {
                 );
                 let _ = PostMessageW(Some(owner), WM_NULL, WPARAM(0), LPARAM(0));
                 let _ = DestroyMenu(menu);
-                match command.0 {
-                    1 => self.toggle_mode(),
-                    2 => self.open_settings(None),
-                    3 => self.open_settings(Some("words")),
-                    4 => self.open_settings(Some("wizard")),
-                    5 => self.open_settings(Some("tour")),
-                    6 => self.open_settings(Some("about")),
-                    _ => {}
-                }
-            }
+                command.0
+            };
+            self.run_command(command);
             Ok(())
         });
     }
 
+    /// The `quickSettings` shortcut (`WM_QUICK`): the same switches in a menu at the caret.  The menu's owner is our
+    /// hidden window on the application's thread, never activated, so the field keeps the focus and its composition.
+    fn show_quick_menu(&self) {
+        let _ = guard(|| {
+            let window = self.window.get();
+            if window.is_invalid() || !self.can_toggle() {
+                return Ok(());
+            }
+            // SAFETY: our own window.
+            let _ = unsafe { KillTimer(Some(window), QUICK_TIMER) };
+            if modifiers_down() && self.quick_wait.get() < QUICK_WAIT_TRIES {
+                self.quick_wait.set(self.quick_wait.get() + 1);
+                // SAFETY: our own window.
+                unsafe { SetTimer(Some(window), QUICK_TIMER, QUICK_WAIT_MS, None) };
+                return Ok(());
+            }
+            let owner = self.menu_owner()?;
+            self.host_request("quick", Map::new());
+            if !self.can_toggle() {
+                return Ok(());
+            }
+            let items = quick_menu::items(&self.quick.get(), true, false);
+            let caret = self.rect.get();
+            // SAFETY: a menu created, shown and destroyed here; coordinates are physical pixels, as the caret is.
+            let command = unsafe {
+                let menu = build_menu(&items)?;
+                let command = composition::per_monitor(|| {
+                    let mut at = POINT { x: caret.left, y: caret.bottom };
+                    if caret.right <= caret.left && caret.bottom <= caret.top {
+                        // No caret from the application: where the pointer is.
+                        let _ = GetCursorPos(&mut at);
+                    }
+                    let params = TPMPARAMS { cbSize: size_of::<TPMPARAMS>() as u32, rcExclude: caret };
+                    TrackPopupMenuEx(
+                        menu,
+                        (TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL).0,
+                        at.x,
+                        at.y,
+                        owner,
+                        Some(&params),
+                    )
+                });
+                let _ = DestroyMenu(menu);
+                command.0
+            };
+            self.run_command(command);
+            Ok(())
+        });
+    }
+
+    /// The hidden window that owns our menus (a menu needs a real window).
+    fn menu_owner(&self) -> Result<HWND> {
+        if self.menu_owner.get().is_invalid() {
+            let owner = self.new_window(WS_EX_TOOLWINDOW, WS_POPUP, None)?;
+            self.menu_owner.set(owner);
+        }
+        Ok(self.menu_owner.get())
+    }
+
+    /// What a picked menu item does: a `quick` op for a switch, `show-settings` for a place.
+    fn run_command(&self, id: i32) {
+        let Some(command) = u32::try_from(id).ok().and_then(Command::from_id) else { return };
+        match command.effect(&self.quick.get()) {
+            Effect::Quick(key, value) => {
+                let mut fields = Map::new();
+                fields.insert(key.into(), Value::from(value));
+                self.host_request("quick", fields);
+            }
+            Effect::Settings(place) => self.open_settings(place),
+        }
+    }
+
     /// A click on the 中/英 button: switches the focused field's mode (IPC `mode`), not while composing or secure.
     fn toggle_mode(&self) {
+        let mut fields = Map::new();
+        fields.insert("english".into(), Value::from(!self.english.get()));
+        self.host_request("mode", fields);
+    }
+
+    /// Sends `op` for the focused field from outside a key event (the 中/英 button, a menu) in an edit session, and
+    /// applies the reply like a key's.  Nothing while the field is secure or has no host.
+    fn host_request(&self, op: &'static str, fields: Map<String, Value>) {
         if self.broker.busy() || !self.thread_focused.get() || !self.host_focused.get() || self.secure.get() {
             return;
         }
@@ -640,9 +743,7 @@ impl TextService_Impl {
             this.rect.set(rect);
             this.scale.set(scale);
             this.panel.set_owner(owner);
-            let mut fields = Map::new();
-            fields.insert("english".into(), Value::from(!this.english.get()));
-            let reply = this.broker.request(&this.name(), "mode", fields);
+            let reply = this.broker.request(&this.name(), op, fields);
             if generation == this.generation.get()
                 && let Some(reply) = reply
             {
@@ -651,6 +752,16 @@ impl TextService_Impl {
             this.recover_deferred();
             S_OK
         });
+    }
+
+    /// A character the text service types itself; the badge keeps what the host last reported.
+    fn local_commit(&self, typed: u16) -> Reply {
+        let quick = self.quick.get();
+        Reply {
+            simplified: quick.simplified,
+            learning_paused: quick.learning_paused,
+            ..Reply::commit_only(vec![typed], self.english.get())
+        }
     }
 
     fn recover_deferred(&self) {
@@ -752,7 +863,7 @@ impl TextService_Impl {
                     && !release
                     && !self.composing.get()
                     && let Some(typed) = typed_character(vk, flags)
-                    && self.apply(cookie, &Reply::commit_only(vec![typed], self.english.get()))
+                    && self.apply(cookie, &self.local_commit(typed))
                 {
                     handled.set(true);
                 }
@@ -914,6 +1025,38 @@ impl TextService_Impl {
     }
 }
 
+/// A modifier key is held (by the queue's key state: its release has not been handled yet).
+fn modifiers_down() -> bool {
+    [VK_MENU, VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN]
+        .into_iter()
+        // SAFETY: no preconditions.
+        .any(|key| unsafe { GetKeyState(i32::from(key.0)) } < 0)
+}
+
+/// A popup menu of `items` (quick_menu.rs); the caller destroys it.
+fn build_menu(items: &[quick_menu::Item]) -> Result<HMENU> {
+    // SAFETY: a new menu; AppendMenuW copies each label.
+    unsafe {
+        let menu = CreatePopupMenu()?;
+        for item in items {
+            let Some(command) = item.command else {
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                continue;
+            };
+            let mut flags: MENU_ITEM_FLAGS = MF_STRING;
+            if item.checked {
+                flags |= MF_CHECKED;
+            }
+            if !item.enabled {
+                flags |= MF_GRAYED;
+            }
+            let label: Vec<u16> = item.label.encode_utf16().chain([0]).collect();
+            let _ = AppendMenuW(menu, flags, command.id() as usize, PCWSTR(label.as_ptr()));
+        }
+        Ok(menu)
+    }
+}
+
 /// The poll timer and the menu owner.  The window's user data points at the text service while the window exists.
 unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     // SAFETY: Windows calls this with valid arguments; the user data is cleared before the service goes away.
@@ -933,6 +1076,13 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
             let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
             if !service.is_null() {
                 let _ = catch_unwind(AssertUnwindSafe(|| (*service).warm()));
+            }
+            return LRESULT(0);
+        }
+        if message == WM_QUICK || (message == WM_TIMER && wparam.0 == QUICK_TIMER) {
+            let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
+            if !service.is_null() {
+                let _ = catch_unwind(AssertUnwindSafe(|| (*service).show_quick_menu()));
             }
             return LRESULT(0);
         }

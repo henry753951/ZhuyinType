@@ -12,6 +12,7 @@
 mod coordinates;
 mod keys;
 mod protocol;
+mod quick_menu;
 
 #[cfg(windows)]
 mod broker;
