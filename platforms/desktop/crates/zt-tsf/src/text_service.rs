@@ -18,7 +18,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use serde_json::{Map, Value};
-use windows::Win32::Foundation::{E_INVALIDARG, HWND, LPARAM, LRESULT, POINT, RECT, S_OK, WPARAM};
+use windows::Win32::Foundation::{
+    E_INVALIDARG, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, S_OK, WPARAM,
+};
 use windows::Win32::System::Com::CoCreateGuid;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, VK_CAPITAL};
@@ -35,7 +37,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GWLP_USERDATA, GetMessageTime, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MF_GRAYED, MF_SEPARATOR, MF_STRING,
     PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    WM_APP, WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{BOOL, ComObject, IUnknown, IUnknownImpl, Interface, PCWSTR, Ref, Result, implement, w};
 
@@ -64,6 +66,8 @@ static SWITCHED_AWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 
 const POLL_TIMER: usize = 1;
 const POLL_MS: u32 = 20;
+/// Posted to the message window after a field got focus: `PanelWindow::warm`, once the focus is handled.
+const WM_WARM: u32 = WM_APP + 0x32;
 
 fn same<T: Interface>(a: Option<&T>, b: Option<&T>) -> bool {
     a.map(Interface::as_raw) == b.map(Interface::as_raw)
@@ -127,6 +131,8 @@ pub(crate) struct TextService {
     /// The user selected ZhuyinType again after another input method in this application: the next focus says so,
     /// and 中/英 starts as 「開始輸入時使用英文」 says.
     activated: Cell<bool>,
+    /// A `WM_WARM` is on its way.
+    warm_posted: Cell<bool>,
     _count: ObjectCount,
 }
 
@@ -168,6 +174,7 @@ impl TextService {
             observed: Cell::new((0, 0, 0)),
             private: Cell::new(false),
             activated: Cell::new(false),
+            warm_posted: Cell::new(false),
             _count: ObjectCount::new(),
         }
         .into()
@@ -244,7 +251,13 @@ impl TextService_Impl {
         };
         // SAFETY: the class name outlives the class (kept in window_class until unregistered).
         if unsafe { RegisterClassW(&klass) } == 0 {
-            return Err(windows::core::Error::from_thread());
+            // A class of this name left by an earlier instance at the same address on a thread with the same id is
+            // this module's own class, with this window procedure: use it rather than fail the activation (TSF would
+            // then switch the thread to another input method).
+            let error = windows::core::Error::from_thread();
+            if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
+                return Err(error);
+            }
         }
         if let Ok(mut slot) = self.window_class.try_borrow_mut() {
             *slot = class;
@@ -363,7 +376,13 @@ impl TextService_Impl {
         let old_composition = self.composition.try_borrow_mut().ok().and_then(|mut slot| slot.take());
         if let Some(old) = current {
             let reply = if self.broker.connected() && self.host_focused.get() {
-                self.broker.request(&self.name(), "blur", Map::new())
+                let reply = self.broker.request(&self.name(), "blur", Map::new());
+                if reply.is_none() {
+                    // A late blur (the app was saving the personal data) is no reason to keep the next field from
+                    // connecting at once.  The composition's text stays in the document below.
+                    self.broker.disconnect(false);
+                }
+                reply
             } else {
                 None
             };
@@ -394,6 +413,11 @@ impl TextService_Impl {
         self.scale.set(1.0);
         self.set_name(String::new());
         if next.is_none() {
+            // Nothing to type into here (the desktop, a window without a text field): the taskbar shows that
+            // ZhuyinType has no field, not the 中/英 of the last one.
+            if let Some(button) = self.button() {
+                button.set_available(false);
+            }
             self.broker.disconnect(false);
             return;
         }
@@ -410,7 +434,7 @@ impl TextService_Impl {
         let Some(context) = load(&self.context) else { return false };
         let secure = self.restricted.get() || composition::is_secure(&context, cookie);
         if let Some(button) = self.button() {
-            button.set_enabled(!secure);
+            button.set_available(!secure);
         }
         if secure {
             self.applying.set(true);
@@ -432,6 +456,10 @@ impl TextService_Impl {
             let _ = composition::finish(cookie, &self.composition, secure);
             self.applying.set(false);
             if !self.broker.connect() {
+                // Keys go to the application as they are until the app answers.
+                if let Some(button) = self.button() {
+                    button.set_available(false);
+                }
                 return false;
             }
         }
@@ -475,8 +503,20 @@ impl TextService_Impl {
         if !window.is_invalid() && self.broker.connected() {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(window), POLL_TIMER, POLL_MS, None) };
+            if !secure && self.panel.cold() && !self.warm_posted.replace(true) {
+                // SAFETY: our own window.
+                let _ = unsafe { PostMessageW(Some(window), WM_WARM, WPARAM(0), LPARAM(0)) };
+            }
         }
         true
+    }
+
+    /// The first 中/英 badge in this application shows at once (`PanelWindow::warm`).
+    fn warm(&self) {
+        self.warm_posted.set(false);
+        if self.thread_focused.get() && self.host_focused.get() && !self.secure.get() && load(&self.context).is_some() {
+            self.panel.warm();
+        }
     }
 
     fn apply(&self, cookie: u32, reply: &Reply) -> bool {
@@ -496,15 +536,16 @@ impl TextService_Impl {
         }
         self.english.set(reply.english);
         self.composing.set(reply.composing);
+        // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
+        if let Some(button) = self.button() {
+            button.set_english(reply.english);
+        }
         if self.secure.get() {
             self.panel.hide();
         } else {
             self.panel.apply(&reply.panel, reply.boundary, reply.toast.as_deref(), self.rect.get(), self.scale.get());
         }
         self.caps_at_reply.set(caps_lock_on());
-        if let Some(button) = self.button() {
-            button.set_english(reply.english);
-        }
         true
     }
 
@@ -888,6 +929,13 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
             }
             return LRESULT(0);
         }
+        if message == WM_WARM {
+            let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
+            if !service.is_null() {
+                let _ = catch_unwind(AssertUnwindSafe(|| (*service).warm()));
+            }
+            return LRESULT(0);
+        }
         if message == WM_PANEL_ACTION {
             let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
             if !service.is_null() {
@@ -925,7 +973,11 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             self.atoms.set(display_attributes::atoms());
             // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
             self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
+            // The message window and the 中/英 button come first: advising the key sink already reports the focus
+            // (`OnSetFocus`), and handling it starts the poll timer on that window and shows the field's 中/英.
             let sinks = || -> Result<()> {
+                self.create_window()?;
+                self.add_mode_button(&manager);
                 let source = manager.cast::<ITfSource>()?;
                 store(&self.source, Some(source.clone()));
                 let events: ITfThreadMgrEventSink = self.to_interface();
@@ -939,13 +991,12 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
                     let sink: ITfKeyEventSink = self.to_interface();
                     keys.AdviseKeyEventSink(client, &sink, true)?;
                 }
-                self.create_window()
+                Ok(())
             };
             if let Err(error) = sinks() {
                 self.deactivate();
                 return Err(error);
             }
-            self.add_mode_button(&manager);
             // SAFETY: no preconditions.
             self.thread_focused.set(!unsafe { GetFocus() }.is_invalid());
             self.refresh_focus();
