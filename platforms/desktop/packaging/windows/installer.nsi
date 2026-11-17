@@ -128,11 +128,18 @@ Function RecordAppSessions
   System::Call 'kernel32::ProcessIdToSessionId(i r0, *i .r1)'
   StrCpy $InstallerSession $1
   StrCpy $AppSessions ""
-  nsExec::ExecToStack `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "@(Get-Process zhuyintype -ErrorAction SilentlyContinue | ForEach-Object SessionId | Sort-Object -Unique) -join ','"`
+  ; Through a file: with its input redirected PowerShell may also print progress records (CLIXML) to the output.
+  InitPluginsDir
+  Delete "$PLUGINSDIR\sessions.txt"
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -InputFormat None -Command "$$ProgressPreference = 'SilentlyContinue'; (@(Get-Process zhuyintype -ErrorAction SilentlyContinue | ForEach-Object SessionId | Sort-Object -Unique) -join ',') | Set-Content -Encoding Ascii -LiteralPath '$PLUGINSDIR\sessions.txt'"`
   Pop $0
-  Pop $2
+  ClearErrors
+  FileOpen $3 "$PLUGINSDIR\sessions.txt" r
   ${If} $0 == 0
-    ; Only the digits and commas (the output ends with a line break).
+  ${AndIfNot} ${Errors}
+    FileRead $3 $2
+    FileClose $3
+    ; Session numbers and commas only; anything else counts as not knowing.
     StrCpy $4 0
     ${Do}
       StrCpy $5 $2 1 $4
@@ -142,10 +149,19 @@ Function RecordAppSessions
       ${StrStr} $6 "0123456789," $5
       ${If} $6 != ""
         StrCpy $AppSessions "$AppSessions$5"
+      ${ElseIf} $5 != "$\r"
+      ${AndIf} $5 != "$\n"
+        StrCpy $AppSessions "unknown"
+        ${Break}
       ${EndIf}
       IntOp $4 $4 + 1
     ${Loop}
   ${Else}
+    StrCpy $AppSessions "unknown"
+  ${EndIf}
+  ${If} $AppSessions == "unknown"
+    ; Without PowerShell: every signed-in session if the app runs anywhere.
+    StrCpy $AppSessions ""
     nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /NH /FO CSV /FI "IMAGENAME eq ${APP}"'
     Pop $0
     Pop $2
@@ -289,7 +305,8 @@ Function RelaunchApp
   ${EndIf}
 FunctionEnd
 
-; The installation folder must be ZhuyinType's own: new, empty, or an earlier installation.  The installer gives it
+; The installation folder must be ZhuyinType's own: new, empty, or an earlier installation (or what an uninstall left
+; until the next restart: text service DLLs that applications still had loaded).  The installer gives it
 ; to the administrators (the update service runs its program as SYSTEM; the text service runs inside every
 ; application) and the uninstaller deletes it, so a shared folder (C:\, Program Files, a user's folder) would be
 ; damaged.  $R0 = 1 when it may be used.
@@ -301,6 +318,7 @@ Function CheckInstallDir
   ${EndIf}
   ${If} ${FileExists} "$INSTDIR\${APP}"
   ${OrIf} ${FileExists} "$INSTDIR\uninstall.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\zhuyintype-tsf-*"
   ${OrIfNot} ${FileExists} "$INSTDIR\*.*"
     StrCpy $R0 1
     Return
