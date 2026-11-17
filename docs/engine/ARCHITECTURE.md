@@ -299,6 +299,16 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 `Composer.commitAll` 送出組字。未完成的音節照畫面上的注音符號送出，不猜聲調也不修正。學習開著、也不是安全輸入時，把每個詞交給 `Engine.learn`：選過的詞（不含 frozen）標為手動選字，語言模型接續的兩個詞（前一次送出的，或 App 文字的）作為前文。
 
+### 9.0 聯想詞
+
+`Composer::set_associated_phrases(true)`（設定 `associatedPhrases`）後，一個鍵送出了結尾是中文字的文字、又沒有留下組字時，`composer/association.rs` 以送出後的前文歷史（`leading_history`）呼叫 `Engine::predict_after`（`prediction.rs`），把結果放進 `Presentation.candidates`，`CandidateList::associated()` 為真、`text` 是空的。安全輸入（`set_learning_suspended`）時不列出。
+
+- 候選：語言模型在前文之後存的詞（`VocabularyLanguageModel::followers`：二元的那一組，三元模型再加上前兩個詞的那一組；兩個領域的混合模型取兩邊的聯集，以目前的比重計分），以及個人連詞在同一個前文之後的詞（`PersonalLanguageModel::followers`）。各取前 64 個。
+- 篩選：全是中文字、在詞庫中、不是「不記住」的詞；單字要 P(詞 | 前文) ≥ 5% 而且本身的機率 ≥ 0.01%，不列「的之了著地得於及與或等其」；兩個字以上 ≥ 0.1%。以設定的寫法（台／臺）去掉重複。
+- 排序：個人連詞的強度 ≥ 0.25 的詞在前（強的在前），其餘依 P(詞 | 前文)，學習開著時經過個人模型調整（`EngineModel::adapted`）；「記住選過的字詞」關閉時只用內建模型。
+- 按鍵（清單開著時，`Composer::handle` 在 `process` 之前處理）：⇧ 加選字鍵與點一下送出那個詞，像打出來的一樣學習（手動選字，不記整段的讀音）、成為下一段的前文，再列出它後面的詞；Esc 關閉清單並吃掉這個鍵；其他鍵關閉清單後照沒有組字時處理。`commit_all`、`reset` 與任何重畫組字的動作（設定、模型）都會關閉清單。
+- 關閉時（預設）組字器的行為和沒有這個功能時逐位元相同（`engine/parity/gate.sh --quick`：12,572 行 0 差異）。`zhuyin-cli --predict N` 對每一行輸入印出聯想詞，加 `--timing` 印出延遲。
+
 ### 9.1 學到什麼
 
 | 記住什麼 | 什麼時候 | 程式 | 數字 |
