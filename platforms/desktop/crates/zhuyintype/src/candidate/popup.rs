@@ -136,6 +136,7 @@ pub fn handle(event: UiEvent, cx: &mut App) {
             }
         }
         UiEvent::ShowSettings(place) => show_settings(place, cx),
+        UiEvent::QuickPanel { .. } => {}
     }
 }
 

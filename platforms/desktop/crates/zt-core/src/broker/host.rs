@@ -21,9 +21,14 @@ pub enum Effect {
         text: &'static str,
     },
     Boundary(i32),
+    /// The 開啟快速設定 shortcut: show the 快速設定 panel at the caret.
+    QuickPanel,
 }
 
-const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action"];
+const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action", "quick"];
+
+/// The switches of `op: "quick"` (快速設定), in the reply's `quick` object too.
+const QUICK: &[&str] = &["english", "fullWidth", "simplified", "learningPaused"];
 
 fn failure(message: &str) -> Map<String, Value> {
     let mut object = Map::new();
@@ -134,8 +139,10 @@ impl Host {
                     }
                 }
                 ControllerEvent::ModeSwitched { english } if self.focused() => {
-                    effects.push(Effect::Toast { text: if english { "英" } else { "中" } });
+                    let chinese = if controller.simplified() { "简" } else { "中" };
+                    effects.push(Effect::Toast { text: if english { "英" } else { chinese } });
                 }
+                ControllerEvent::QuickPanel if self.focused() => effects.push(Effect::QuickPanel),
                 ControllerEvent::WidthSwitched { full } if self.focused() => {
                     effects.push(Effect::Toast { text: if full { "全" } else { "半" } });
                 }
@@ -175,7 +182,8 @@ impl Host {
 
     fn snapshot(&mut self, controller: &InputController, handled: bool) -> Map<String, Value> {
         let commit = std::mem::take(&mut self.commit);
-        let p = controller.presentation();
+        // 繁／簡: the composition as the app shows it (the conversion keeps offsets and clauses).
+        let p = controller.output_presentation();
         // A listed app shows nothing itself: the composition is in the candidate window.
         let preedit = if self.secure || self.popup_app() { String::new() } else { p.composition.clone() };
         let cursor = if preedit.is_empty() { 0 } else { p.cursor };
@@ -198,6 +206,9 @@ impl Host {
         object.insert("cursor".into(), cursor.into());
         object.insert("candidates".into(), visible.into());
         object.insert("english".into(), controller.english().into());
+        object.insert("simplified".into(), controller.simplified().into());
+        object.insert("learningPaused".into(), controller.learning_paused().into());
+        object.insert("fullWidth".into(), controller.full_width().into());
         // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
         object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible)).into());
         object
@@ -249,7 +260,10 @@ impl Host {
         if matches!(op, "key" | "focus" | "secure") && flag("secure").is_none() {
             return Err("缺少安全輸入狀態。");
         }
-        for field in ["secure", "private", "activated", "repeat", "capsLock", "inlinePreedit", "panel"] {
+        for field in ["secure", "private", "activated", "repeat", "capsLock", "inlinePreedit", "panel"]
+            .into_iter()
+            .chain(QUICK.iter().copied().filter(|_| op == "quick"))
+        {
             if r.contains_key(field) && flag(field).is_none() {
                 return Err("輸入狀態格式無效。");
             }
@@ -353,7 +367,7 @@ impl Host {
         if let Some(caps_lock) = flag("capsLock") {
             controller.synchronize_caps_lock(caps_lock);
         }
-        if !self.secure && !controller.private() && (op == "focus" || app.is_some() || before.is_some()) {
+        if !self.secure && !controller.unlearned() && (op == "focus" || app.is_some() || before.is_some()) {
             if op == "focus" || app.is_some() {
                 self.client_app = app.unwrap_or_default();
             }
@@ -370,6 +384,7 @@ impl Host {
                 }
             }
             "mode" if !self.secure => controller.set_english(flag("english") == Some(true)),
+            "quick" => Self::quick(controller, &flag),
             "action" if !self.secure => match action.expect("validated") {
                 Action::Pick(row) => self.pick(controller, row),
                 Action::Page(delta) => self.turn_page(controller, delta),
@@ -386,7 +401,14 @@ impl Host {
             _ => {}
         }
         let effects = self.drain(controller);
-        let reply = self.snapshot(controller, handled);
+        let mut reply = self.snapshot(controller, handled);
+        if effects.contains(&Effect::QuickPanel) {
+            reply.insert("quickPanel".into(), true.into());
+            reply.insert("handled".into(), true.into());
+        }
+        if op == "quick" {
+            reply.insert("quick".into(), Self::quick_state(controller));
+        }
         if op == "blur" {
             self.active = None;
             self.context.clear();
@@ -395,6 +417,40 @@ impl Host {
             }
         }
         Ok((reply, effects))
+    }
+
+    /// `connection`'s field `context` has focus: its requests may operate the composer.
+    #[must_use]
+    pub fn owns(&self, connection: ConnectionId, context: &str) -> bool {
+        self.active == Some(connection) && self.context == context
+    }
+
+    /// `op: "quick"`: applies the switches present, as their own controls do (中／英 not while composing or in a
+    /// secure field; 暫停學習 is kept only in memory).  `simplified` is the `outputScript` setting, which the
+    /// service sets before the request reaches here: nothing sets a setting under the service's lock.
+    fn quick(controller: &mut InputController, flag: &dyn Fn(&str) -> Option<bool>) {
+        if let Some(english) = flag("english") {
+            controller.set_english(english);
+        }
+        if let Some(full) = flag("fullWidth") {
+            controller.set_full_width(full);
+        }
+        if let Some(paused) = flag("learningPaused") {
+            controller.set_learning_paused(paused);
+        }
+    }
+
+    /// The reply's `quick` object: the 快速設定 switches as they are now.
+    #[must_use]
+    pub fn quick_state(controller: &InputController) -> Value {
+        json!({
+            "english": controller.english(),
+            "fullWidth": controller.full_width(),
+            "simplified": controller.simplified(),
+            "learningPaused": controller.learning_paused(),
+            // A 符號 picker: none yet (the 「符號…」 item stays hidden).
+            "symbols": false,
+        })
     }
 
     /// Picks row `row` of the current page (a click in the candidate window).

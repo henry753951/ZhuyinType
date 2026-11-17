@@ -70,6 +70,8 @@ pub enum UiEvent {
     ShowSettings(Option<&'static str>),
     /// A page turn or highlight move stopped at the list's end (1 past the last, -1 before the first).
     Boundary(i32),
+    /// The 開啟快速設定 shortcut: show the 快速設定 panel by the caret (screen logical pixels), without taking focus.
+    QuickPanel { anchor: Rect },
 }
 
 /// A click or control in the candidate window.
@@ -278,7 +280,7 @@ impl Service {
             let effects = host.drain(controller);
             // An adapter that draws the window itself gets it in its replies; the app's own window stays hidden.
             let next = (host.visible(controller) && !host.draws_panel()).then(|| PopupState {
-                presentation: controller.presentation().clone(),
+                presentation: controller.output_presentation().into_owned(),
                 caret: host.anchor(),
                 inline_preedit: host.inline_preedit(),
             });
@@ -296,6 +298,7 @@ impl Service {
             let event = match effect {
                 Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
+                Effect::QuickPanel => UiEvent::QuickPanel { anchor },
                 Effect::Toast { text } => {
                     if !self.inner.settings.bool("showModeToast") {
                         continue;
@@ -317,6 +320,7 @@ impl Service {
     /// that stopped at the list's end in `boundary`, instead of the app showing them (`IPC.md` §候選字視窗).
     #[must_use]
     pub fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
+        self.quick_script(connection, request);
         let mut effects = Vec::new();
         let mut draws = false;
         let mut reply = self.with_core(|core| {
@@ -329,7 +333,7 @@ impl Service {
                     let panel = crate::panel::panel(
                         &self.inner.settings,
                         |command| shortcuts.active_label(command),
-                        core.controller.presentation(),
+                        &core.controller.output_presentation(),
                         core.host.inline_preedit(),
                     );
                     serde_json::to_value(panel).unwrap_or(Value::Null)
@@ -358,11 +362,31 @@ impl Service {
                     reply.insert("boundary".into(), Value::from(*direction));
                     false
                 }
+                // The adapter shows its own quick menu (the reply's `quickPanel`).
+                Effect::QuickPanel => false,
                 Effect::ShowSettings(_) => true,
             });
         }
         self.emit(effects, None);
         reply
+    }
+
+    /// `op: "quick"` with `simplified` from the focused field: 繁／簡 is a setting, set here before the request is
+    /// handled (settings are never set under the service's lock: their observer takes it).
+    fn quick_script(&self, connection: ConnectionId, request: &Map<String, Value>) {
+        let (Some("quick"), Some(simplified)) =
+            (request.get("op").and_then(Value::as_str), request.get("simplified").and_then(Value::as_bool))
+        else {
+            return;
+        };
+        let context = request.get("context").and_then(Value::as_str).unwrap_or_default();
+        if !self.inner.core.lock().host.owns(connection, context) {
+            return;
+        }
+        let script = if simplified { "simplified" } else { "traditional" };
+        if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
+            log::warn!("quick: {error}");
+        }
     }
 
     /// Runs `work` on the input controller under the service's lock (advanced use and tests); the popup follows.
