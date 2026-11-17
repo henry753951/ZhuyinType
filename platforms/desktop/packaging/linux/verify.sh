@@ -144,7 +144,7 @@ redhat() {
         expect present; libraries
         [ -z \"$old_rpm\" ] || upgraded
         downloaded
-        $remove >/dev/null
+        $remove >/tmp/remove.log 2>&1 || { tail -30 /tmp/remove.log; echo FAIL remove; exit 1; }
         leftovers
         echo PASS $image"
 }
