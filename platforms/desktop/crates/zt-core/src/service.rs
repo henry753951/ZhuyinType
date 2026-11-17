@@ -351,7 +351,6 @@ impl Service {
     /// that stopped at the list's end in `boundary`, instead of the app showing them (`IPC.md` §候選字視窗).
     #[must_use]
     pub fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
-        self.quick_script(connection, request);
         // The panel the app shows closes at the next key or when the field changes.
         let op = request.get("op").and_then(Value::as_str).unwrap_or_default();
         let press = op == "key" && request.get("release") == Some(&Value::Bool(false));
@@ -362,23 +361,17 @@ impl Service {
         }
         let mut effects = Vec::new();
         let mut draws = false;
+        let context = request.get("context").and_then(Value::as_str).unwrap_or_default();
+        let mut script = None;
         let mut reply = self.with_core(|core| {
             let (mut reply, found) = core.host.dispatch(&mut core.controller, connection, request);
             effects = found;
-            draws = core.host.draws_panel() && reply.get("ok") == Some(&Value::Bool(true));
+            script = core.host.take_pending_script();
+            draws = core.host.draws_panel()
+                && core.host.owns(connection, context)
+                && reply.get("ok") == Some(&Value::Bool(true));
             if draws {
-                let panel = if core.host.visible(&core.controller) {
-                    let shortcuts = &self.inner.shortcuts;
-                    let panel = crate::panel::panel(
-                        &self.inner.settings,
-                        |command| shortcuts.active_label(command),
-                        &core.controller.output_presentation(),
-                        core.host.inline_preedit(),
-                    );
-                    serde_json::to_value(panel).unwrap_or(Value::Null)
-                } else {
-                    Value::Null
-                };
+                let panel = self.panel_value(core);
                 let focus = request.get("op").and_then(Value::as_str) == Some("focus");
                 if focus || core.sent_panel.as_ref() != Some(&panel) {
                     reply.insert("panel".into(), panel.clone());
@@ -406,25 +399,55 @@ impl Service {
                 Effect::ShowSettings(_) => true,
             });
         }
+        if let Some(simplified) = script {
+            self.set_script(simplified, connection, context, draws, &mut reply);
+        }
         self.emit(effects, None);
         reply
     }
 
-    /// `op: "quick"` with `simplified` from the focused field: 繁／簡 is a setting, set here before the request is
-    /// handled (settings are never set under the service's lock: their observer takes it).
-    fn quick_script(&self, connection: ConnectionId, request: &Map<String, Value>) {
-        let (Some("quick"), Some(simplified)) =
-            (request.get("op").and_then(Value::as_str), request.get("simplified").and_then(Value::as_bool))
-        else {
-            return;
-        };
-        let context = request.get("context").and_then(Value::as_str).unwrap_or_default();
-        if !self.inner.core.lock().host.owns(connection, context) {
-            return;
+    /// The candidate window for an adapter that draws it (`IPC.md` §候選字視窗), or null when hidden.
+    fn panel_value(&self, core: &Core) -> Value {
+        if !core.host.visible(&core.controller) {
+            return Value::Null;
         }
+        let shortcuts = &self.inner.shortcuts;
+        let panel = crate::panel::panel(
+            &self.inner.settings,
+            |command| shortcuts.active_label(command),
+            &core.controller.output_presentation(),
+            core.host.inline_preedit(),
+        );
+        serde_json::to_value(panel).unwrap_or(Value::Null)
+    }
+
+    /// 繁／簡 from `op: "quick"`: the `outputScript` setting, set after the request with the service's lock released
+    /// (the settings' observer takes it); the requesting field's composition and window in `reply` follow.
+    fn set_script(
+        &self,
+        simplified: bool,
+        connection: ConnectionId,
+        context: &str,
+        draws: bool,
+        reply: &mut Map<String, Value>,
+    ) {
         let script = if simplified { "simplified" } else { "traditional" };
         if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
             log::warn!("quick: {error}");
+        }
+        let mut core = self.inner.core.lock();
+        if !core.host.owns(connection, context) {
+            return;
+        }
+        // The conversion keeps the length, so `cursor` and `clauses` stay valid.
+        if reply.get("preedit").and_then(Value::as_str).is_some_and(|preedit| !preedit.is_empty()) {
+            let preedit = core.controller.output_presentation().composition.clone();
+            reply.insert("preedit".into(), preedit.into());
+        }
+        if draws {
+            let panel = self.panel_value(&core);
+            reply.insert("panel".into(), panel.clone());
+            core.sent_panel = Some(panel);
         }
     }
 
