@@ -38,6 +38,8 @@ pub enum ControllerEvent {
     Boundary(i32),
     /// A candidate was picked by a click.
     CandidateChosen { elapsed_ms: f64 },
+    /// 選取的字加入自訂詞 while not composing: the adapter is asked for the field's selected text (IPC `selection`).
+    SelectionWanted,
     /// A list opened with the word actions' tip: the host counts it in [`WORD_ACTION_TIP_KEY`] (outside the lock).
     WordActionTip,
 }
@@ -480,6 +482,17 @@ impl InputController {
 
     fn dispatch(&mut self, id: &str, action: Action, key: &Key, time: f64) -> bool {
         match action {
+            // Only when not composing (with a composition the key does nothing); never from a private field.
+            Action::AddSelectedText => {
+                if self.session.composing() {
+                    return true;
+                }
+                if self.private {
+                    return false;
+                }
+                self.events.push(ControllerEvent::SelectionWanted);
+                true
+            }
             // Only while composing; a word action that does not apply here keeps the composition (no commit).
             Action::Word(action) => {
                 if !self.session.composing() {

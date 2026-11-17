@@ -24,7 +24,7 @@ fn resolve(shortcuts: &Shortcuts, key: i32, modifiers: u32) -> Option<&'static s
 #[test]
 fn defaults_and_normalization() {
     let (_, shortcuts) = fresh();
-    assert_eq!(Shortcuts::commands().len(), 16, "the macOS commands, with 標點全半形 and 插入空白");
+    assert_eq!(Shortcuts::commands().len(), 17, "the macOS commands, with 標點全半形 and 插入空白");
     assert!(shortcuts.error().is_none());
     assert!(!shortcuts.any_customised());
     assert_eq!(resolve(&shortcuts, code::TAB, 0), Some("nextPage"));

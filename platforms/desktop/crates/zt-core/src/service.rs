@@ -17,6 +17,7 @@ use crate::broker::{self, Broker, ConnectionId, Handler, ReserveError};
 use crate::controller::{InputController, UsageSink};
 use crate::corrections::CorrectionLog;
 use crate::engine::{DataFiles, EngineData, EngineSession, Phrase};
+use crate::phrase_draft::PhraseDraft;
 use crate::practice::PracticeSession;
 use crate::presentation::{Presentation, Rect};
 use crate::settings::Settings;
@@ -71,6 +72,8 @@ pub enum UiEvent {
     ShowSettings(Option<&'static str>),
     /// A page turn or highlight move stopped at the list's end (1 past the last, -1 before the first).
     Boundary(i32),
+    /// 選取的字加入自訂詞: open the 加入自訂詞 form (字詞 › 自訂詞) filled in with the field's selected text.
+    AddPhrase(PhraseDraft),
 }
 
 /// A click or control in the candidate window.
@@ -302,6 +305,14 @@ impl Service {
             let event = match effect {
                 Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
+                // Only an adapter's reply can ask it for the selection.
+                Effect::SelectionWanted => continue,
+                Effect::AddSelectedText(text) => {
+                    let added = |word: &str, reading: &str| {
+                        self.user_phrases().iter().any(|p| p.word == word && p.reading == reading)
+                    };
+                    UiEvent::AddPhrase(crate::phrase_draft::draft(&text, |word| self.readings(word), added))
+                }
                 Effect::WordActionTip => {
                     // Outside the service's lock: setting a value calls the service's settings observer.
                     let key = crate::controller::WORD_ACTION_TIP_KEY;
@@ -363,6 +374,26 @@ impl Service {
             }
             reply
         });
+        // 選取的字加入自訂詞: the adapter sends the field's selected text next (op `selection`).
+        effects.retain(|effect| {
+            let wanted = *effect == Effect::SelectionWanted;
+            if wanted {
+                reply.insert("selection".into(), Value::Bool(true));
+            }
+            !wanted
+        });
+        // The keys the adapter must claim even when nothing is composed (a Windows text service lets idle chords
+        // through): 選取的字加入自訂詞's.
+        if request.get("op").and_then(Value::as_str) == Some("focus") && reply.get("ok") == Some(&Value::Bool(true)) {
+            let keys: Vec<Value> = self
+                .inner
+                .shortcuts
+                .bindings("addSelectedText")
+                .iter()
+                .map(|b| Value::from(vec![i64::from(b.binding.key), i64::from(b.binding.modifiers)]))
+                .collect();
+            reply.insert("idleKeys".into(), Value::Array(keys));
+        }
         if draws {
             effects.retain(|effect| match effect {
                 Effect::Toast { text } => {
@@ -375,7 +406,8 @@ impl Service {
                     reply.insert("boundary".into(), Value::from(*direction));
                     false
                 }
-                Effect::ShowSettings(_) | Effect::WordActionTip => true,
+                Effect::ShowSettings(_) | Effect::WordActionTip | Effect::AddSelectedText(_) => true,
+                Effect::SelectionWanted => false,
             });
         }
         self.emit(effects, None);

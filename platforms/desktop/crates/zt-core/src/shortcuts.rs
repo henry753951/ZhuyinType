@@ -48,6 +48,8 @@ pub enum Action {
     /// 不要再推薦, 忘記這個選字, 加入自訂詞: a word action on the highlighted candidate (or, adding, the whole
     /// composition).
     Word(CandidateAction),
+    /// 選取的字加入自訂詞: the field's selected text in the 加入自訂詞 form (only when not composing).
+    AddSelectedText,
 }
 
 /// One rebindable command.
@@ -272,6 +274,17 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             false,
             &[b(code::RETURN, CONTROL)],
             Action::Word(CandidateAction::AddPhrase),
+        ),
+        // No key until the user gives it one.
+        command(
+            "addSelectedText",
+            "選取的字加入自訂詞",
+            "把 App 裡選取的字加入自訂詞",
+            "choosing",
+            None,
+            false,
+            &[],
+            Action::AddSelectedText,
         ),
     ]
 });
@@ -750,6 +763,9 @@ impl Shortcuts {
         let Some(entry) = Self::command(command) else { return self.refuse("找不到這個按鍵功能。") };
         let mut all = self.state();
         all.insert(entry.id, Vec::new());
+        if entry.defaults.is_empty() {
+            return self.store(&all);
+        }
         let free: Vec<Binding> =
             entry.defaults.iter().filter(|b| self.problem(**b, entry.id, 0, &all).is_none()).copied().collect();
         if free.is_empty() {

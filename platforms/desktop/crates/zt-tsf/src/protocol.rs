@@ -41,6 +41,10 @@ pub(crate) struct Reply {
     pub(crate) toast: Option<String>,
     /// A page turn stopped at the list's end (1 past the last, -1 before the first): the page nudges.
     pub(crate) boundary: Option<i32>,
+    /// 選取的字加入自訂詞: send the field's selected text next (op `selection`).
+    pub(crate) selection: bool,
+    /// The keys to claim even when nothing is composed (`[key, modifiers]`, a `focus` reply's `idleKeys`).
+    pub(crate) idle_keys: Option<Vec<(i32, i32)>>,
 }
 
 impl Reply {
@@ -155,6 +159,24 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
     };
+    let selection = match object.get("selection") {
+        None => false,
+        Some(value) => value.as_bool()?,
+    };
+    let idle_keys = match object.get("idleKeys") {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_array()?
+                .iter()
+                .map(|pair| {
+                    let pair = pair.as_array().filter(|pair| pair.len() == 2)?;
+                    let number = |n: &Value| n.as_i64().and_then(|n| i32::try_from(n).ok());
+                    Some((number(&pair[0])?, number(&pair[1])?))
+                })
+                .collect::<Option<Vec<_>>>()?,
+        ),
+    };
     Some(Reply {
         handled: boolean("handled")?,
         candidates,
@@ -169,6 +191,8 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         panel,
         toast,
         boundary,
+        selection,
+        idle_keys,
     })
 }
 

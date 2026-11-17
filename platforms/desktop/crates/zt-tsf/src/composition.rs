@@ -293,6 +293,20 @@ pub(crate) fn text_before(context: &ITfContext, cookie: u32) -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[start..length]))
 }
 
+/// The selected text (選取的字加入自訂詞), at most `limit` UTF-16 units: empty when nothing is selected, `None`
+/// when the field cannot say.
+pub(crate) fn selected_text(context: &ITfContext, cookie: u32, limit: usize) -> Option<String> {
+    let range = selection(context, cookie).ok()?;
+    let mut buffer = vec![0u16; limit];
+    let mut length = 0u32;
+    // SAFETY: a valid range under the edit cookie; the buffer bounds what is read.
+    unsafe { range.GetText(cookie, 0, &mut buffer, &mut length).ok()? };
+    let length = (length as usize).min(buffer.len());
+    // A cut surrogate pair at the end is dropped.
+    let end = length - usize::from(length > 0 && (0xd800..=0xdbff).contains(&buffer[length - 1]));
+    Some(String::from_utf16_lossy(&buffer[..end]))
+}
+
 /// The application's executable name (`app`, IPC.md §前文): separates the text each program was sent.
 pub(crate) fn app_name() -> &'static str {
     static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();

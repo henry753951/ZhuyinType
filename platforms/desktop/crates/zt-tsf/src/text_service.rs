@@ -45,7 +45,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{host_observes_key, host_wants_key};
+use crate::keys::{ALT, CONTROL, META, SHIFT, host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
@@ -117,6 +117,8 @@ pub(crate) struct TextService {
     english: Cell<bool>,
     composing: Cell<bool>,
     caps_at_reply: Cell<bool>,
+    /// The keys claimed even when nothing is composed (選取的字加入自訂詞's; IPC `idleKeys`).
+    idle_keys: RefCell<Vec<(i32, i32)>>,
     lang_bar: RefCell<Option<ITfLangBarItemMgr>>,
     mode_button: RefCell<Option<(ITfLangBarItemButton, ComObject<ModeButton>)>>,
     rect: Cell<RECT>,
@@ -165,6 +167,7 @@ impl TextService {
             english: Cell::new(false),
             composing: Cell::new(false),
             caps_at_reply: Cell::new(false),
+            idle_keys: RefCell::new(Vec::new()),
             lang_bar: RefCell::new(None),
             mode_button: RefCell::new(None),
             rect: Cell::new(RECT::default()),
@@ -212,7 +215,14 @@ impl TextService {
     fn claims(&self, vk: WPARAM, flags: LPARAM, release: bool) -> bool {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
         let composing = self.composing.get() || load(&self.composition).is_some();
-        host_wants_key(&translate_key(vk, flags, release), composing, self.english.get() && !caps_changed)
+        let key = translate_key(vk, flags, release);
+        let chord = key.modifiers & (SHIFT | CONTROL | ALT | META);
+        let idle = !composing
+            && !release
+            && !self.english.get()
+            && !self.private.get()
+            && self.idle_keys.borrow().iter().any(|&(code, modifiers)| (code, modifiers) == (key.key, chord));
+        idle || host_wants_key(&key, composing, self.english.get() && !caps_changed)
     }
 
     fn destroy_windows(&self) {
@@ -536,6 +546,9 @@ impl TextService_Impl {
         }
         self.english.set(reply.english);
         self.composing.set(reply.composing);
+        if let Some(keys) = &reply.idle_keys {
+            self.idle_keys.replace(keys.clone());
+        }
         // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
         if let Some(button) = self.button() {
             button.set_english(reply.english);
@@ -745,6 +758,9 @@ impl TextService_Impl {
         match reply {
             Some(reply) if self.apply(cookie, &reply) => {
                 handled.set(reply.handled);
+                if reply.selection && !release {
+                    self.send_selection(cookie, generation);
+                }
                 // A typed character the host declined (the mode changed in between): put it in the document here
                 // rather than lose it.
                 if !reply.handled
@@ -763,6 +779,24 @@ impl TextService_Impl {
                 self.applying.set(false);
                 self.host_focused.set(false);
             }
+        }
+    }
+
+    /// 選取的字加入自訂詞: the field's selected text (at most 32 UTF-16 units, as macOS reads) to the host, which
+    /// opens the 加入自訂詞 form with it.  Never from a secure or private field.
+    fn send_selection(&self, cookie: u32, generation: u64) {
+        if self.secure.get() || self.private.get() {
+            return;
+        }
+        let Some(context) = load(&self.context) else { return };
+        let text = composition::selected_text(&context, cookie, 32).unwrap_or_default();
+        let mut fields = Map::new();
+        fields.insert("text".into(), Value::from(text));
+        let reply = self.broker.request(&self.name(), "selection", fields);
+        if generation == self.generation.get()
+            && let Some(reply) = reply
+        {
+            self.apply(cookie, &reply);
         }
     }
 

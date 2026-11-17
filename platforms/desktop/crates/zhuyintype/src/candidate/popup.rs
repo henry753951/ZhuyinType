@@ -136,6 +136,11 @@ pub fn handle(event: UiEvent, cx: &mut App) {
             }
         }
         UiEvent::ShowSettings(place) => show_settings(place, cx),
+        UiEvent::AddPhrase(draft) => {
+            crate::pages::words::request_add(draft, cx);
+            crate::shell::show(cx);
+            crate::app::go(crate::app::Place::subpage(crate::pages::Page::Words, "phrases"), cx);
+        }
     }
 }
 

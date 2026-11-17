@@ -416,3 +416,47 @@ fn word_actions_from_the_window_the_adapter_draws() {
     f.service.popup_action(PopupAction::UndoWordAction);
     assert!(f.service.blocked_entries().is_empty());
 }
+
+#[test]
+fn selected_text_opens_the_add_form_filled_in() {
+    use zt_core::phrase_draft::{NO_SELECTION, PhraseDraft};
+    let mut f = Fixture::new();
+    let (j, alt) = ('J' as i32, modifier::ALT);
+    f.service.shortcuts().record("addSelectedText", j, alt, None).unwrap();
+    let focus = f.request("focus", json!({"secure": false}));
+    assert_eq!(focus["idleKeys"], json!([[j, alt]]), "the key the adapter claims when idle");
+    let press = json!({"secure": false, "key": j, "modifiers": alt, "release": false});
+    let reply = f.request("key", press.clone());
+    assert_eq!((reply["handled"].clone(), reply["selection"].clone()), (json!(true), json!(true)));
+    f.ui_events();
+    assert!(ok(&f.request("selection", json!({"text": "你好"}))));
+    let filled = PhraseDraft { word: "你好".into(), reading: "ㄋㄧˇ ㄏㄠˇ".into(), problem: None };
+    assert!(f.ui_events().contains(&UiEvent::AddPhrase(filled)));
+    assert!(ok(&f.request("selection", json!({"text": ""}))));
+    assert!(
+        f.ui_events().iter().any(|e| matches!(e, UiEvent::AddPhrase(d) if d.problem.as_deref() == Some(NO_SELECTION)))
+    );
+    assert!(!ok(&f.request("selection", json!({"text": "字".repeat(300)}))), "too long");
+    assert!(!ok(&f.request("selection", json!({"text": 3}))));
+    // While composing the key does nothing.
+    f.keys("su3");
+    let composing = f.request("key", press.clone());
+    assert_eq!(composing["handled"], true);
+    assert!(composing.get("selection").is_none());
+    assert_eq!(f.composition(), "你");
+    // A private field and a secure one: never asked, nothing taken.
+    assert!(ok(&f.request("focus", json!({"secure": false, "private": true}))));
+    let private =
+        f.request("key", json!({"secure": false, "private": true, "key": j, "modifiers": alt, "release": false}));
+    assert!(private.get("selection").is_none());
+    f.ui_events();
+    assert!(ok(&f.request("selection", json!({"text": "你好", "private": true}))));
+    assert!(ok(&f.request("focus", json!({"secure": true}))));
+    let secure = f.request("key", json!({"secure": true, "key": j, "modifiers": alt, "release": false}));
+    assert!(secure.get("selection").is_none());
+    f.request("selection", json!({"text": "你好"}));
+    assert!(
+        !f.ui_events().iter().any(|e| matches!(e, UiEvent::AddPhrase(_))),
+        "nothing from a private or secure field"
+    );
+}

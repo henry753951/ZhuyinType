@@ -39,10 +39,11 @@ pub enum Command {
     BlockCandidate,
     ForgetCandidate,
     AddCandidatePhrase,
+    AddSelectedText,
 }
 
 impl Command {
-    pub const ALL: [Command; 16] = [
+    pub const ALL: [Command; 17] = [
         Command::SingleCharacterList,
         Command::CorrectionsList,
         Command::TypeZhuyin,
@@ -59,6 +60,7 @@ impl Command {
         Command::BlockCandidate,
         Command::ForgetCandidate,
         Command::AddCandidatePhrase,
+        Command::AddSelectedText,
     ];
 
     /// The id in settings, links and `settings.json` `commands`.
@@ -80,6 +82,7 @@ impl Command {
             Command::BlockCandidate => "blockCandidate",
             Command::ForgetCandidate => "forgetCandidate",
             Command::AddCandidatePhrase => "addCandidatePhrase",
+            Command::AddSelectedText => "addSelectedText",
         }
     }
 
@@ -106,6 +109,7 @@ impl Command {
             Command::BlockCandidate => "不要再推薦",
             Command::ForgetCandidate => "忘記這個選字",
             Command::AddCandidatePhrase => "加入自訂詞",
+            Command::AddSelectedText => "選取的字加入自訂詞",
         }
     }
 

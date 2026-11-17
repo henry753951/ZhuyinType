@@ -317,6 +317,8 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
             KeyItem::new("selectRight", "往右選取", Keys::Command("selectRight"))
                 .sub("再按 Return 加入自訂詞")
                 .feature("feature.selectPhrase"),
+            KeyItem::new("addSelectedText", "選取的字加入自訂詞", Keys::Command("addSelectedText"))
+                .sub("在 App 裡選取 1 到 6 個字再按；預設沒有按鍵"),
             KeyItem::new("deleteAfterCommit", "送出後刪掉重打", fixed(&["⌫"]))
                 .sub("送出後 30 秒內刪掉剛送出的字再打，算作改字並接著前文選字")
                 .feature("feature.deleteAfterCommit"),
