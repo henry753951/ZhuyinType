@@ -303,7 +303,7 @@ impl CandidatePanel {
         let mut surface =
             shell(self.chrome, c, layout.radius).relative().w(px(layout.width)).h(px(layout.height)).text_color(c.text);
         if let Some(notice) = &layout.notice {
-            surface = surface.child(notice_element(notice, p, c));
+            surface = surface.child(notice_element(notice, c));
             if let Some(frame) = notice.undo {
                 surface = surface.child(undo_link(frame, notice.font_size, p, actions.clone()));
             }
@@ -333,12 +333,12 @@ impl CandidatePanel {
                     )
                     .children(layout.preview_marks.iter().map(|&(x, w)| {
                         // 「標示自動修正」: a dotted line in the accent colour just under the composition's underline.
-                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, c.accent)
+                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, p.accent)
                     })),
             );
         }
         if let Some(hint) = &layout.hint {
-            surface = surface.child(hint_element(hint, layout.row_radius, p, c, actions.clone()));
+            surface = surface.child(hint_element(hint, layout.row_radius, c, actions.clone()));
         }
         if let Some((frame, text)) = &layout.typed {
             let inset = layout.rows.first().map_or(8., |row| row.key_inset);
@@ -377,12 +377,11 @@ impl CandidatePanel {
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
-                clip = clip.child(page_element(rows, layout, p, c, (x, y, alpha), false, None, None, "out"));
+                clip = clip.child(page_element(rows, layout, c, (x, y, alpha), false, None, None, "out"));
             }
             clip = clip.child(page_element(
                 &layout.rows,
                 layout,
-                p,
                 c,
                 incoming,
                 self.hover,
@@ -398,7 +397,7 @@ impl CandidatePanel {
         for toggle in [&layout.single, &layout.corrections].into_iter().flatten() {
             let action =
                 if toggle.label == "單字" { PopupAction::ToggleSingle } else { PopupAction::ToggleCorrections };
-            surface = surface.child(toggle_element(toggle, p, c, action, actions.clone()));
+            surface = surface.child(toggle_element(toggle, c, action, actions.clone()));
         }
         if let Some(pager) = &layout.pager {
             let label = |text: &str, alpha: f32| {
@@ -566,7 +565,6 @@ pub const SHADOW_MARGIN: f32 = 18.;
 fn page_element(
     rows: &[RowLayout],
     layout: &PanelLayout,
-    p: &Palette,
     c: &Colors,
     (x, y, alpha): (f32, f32, f32),
     hover: bool,
@@ -644,7 +642,7 @@ fn page_element(
 
 /// A key cap of the reading row, the footer or a notice: borderless on a faint fill (stronger, with the label in the
 /// text colour, while its switch is on), vertically centred in a control box `box_h` tall.
-fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) -> Div {
+fn keycap(width: f32, box_h: f32, key: &str, on: bool, c: &Colors) -> Div {
     let color = if on { c.text } else { c.text_secondary };
     // A lone punctuation key is drawn larger by `key_glyphs`, in the text colour so the mark is clearly there.
     let glyphs = key_glyphs(key, tokens::KEYCAP_FONT, if crate::ui::keycap::is_speck(key) { c.text } else { color });
@@ -675,13 +673,7 @@ fn dotted(x: f32, width: f32, bottom: f32, color: gpui_kit::Hsla) -> impl IntoEl
     )
 }
 
-fn hint_element(
-    hint: &HintLayout,
-    radius: f32,
-    p: &Palette,
-    c: &Colors,
-    actions: Option<ActionHandler>,
-) -> impl IntoElement {
+fn hint_element(hint: &HintLayout, radius: f32, c: &Colors, actions: Option<ActionHandler>) -> impl IntoElement {
     let actions = actions.filter(|_| hint.clickable);
     let group_w = hint.keycap_w + 6. + hint.key_label_w;
     let key_room = if hint.keycap_w > 0. { group_w + hint.keycap_right + 12. } else { 0. };
@@ -712,7 +704,7 @@ fn hint_element(
                     .bottom_0()
                     .right(px(hint.keycap_right))
                     .w(px(group_w))
-                    .child(keycap(hint.keycap_w, hint.frame.h, &hint.key, false, p, c))
+                    .child(keycap(hint.keycap_w, hint.frame.h, &hint.key, false, c))
                     .child(
                         div()
                             .absolute()
@@ -738,7 +730,6 @@ fn hint_element(
 
 fn toggle_element(
     toggle: &ToggleLayout,
-    p: &Palette,
     c: &Colors,
     action: PopupAction,
     actions: Option<ActionHandler>,
@@ -748,7 +739,7 @@ fn toggle_element(
     at(toggle.frame)
         .id(toggle.label)
         .text_color(color)
-        .child(keycap(toggle.keycap_w, CONTROL_H, &toggle.key, toggle.on, p, c))
+        .child(keycap(toggle.keycap_w, CONTROL_H, &toggle.key, toggle.on, c))
         .child(
             div()
                 .absolute()
@@ -769,14 +760,12 @@ fn toggle_element(
         })
 }
 
-fn notice_element(notice: &NoticeLayout, p: &Palette, c: &Colors) -> impl IntoElement {
+fn notice_element(notice: &NoticeLayout, c: &Colors) -> impl IntoElement {
     let fs = notice.font_size;
     let line = px(fs * 1.3);
     let icon = tokens::NOTICE_ICON;
     at(notice.frame)
-        .when_some(notice.key.clone(), |this, key| {
-            this.child(keycap(notice.keycap_w, notice.frame.h, &key, false, p, c))
-        })
+        .when_some(notice.key.clone(), |this, key| this.child(keycap(notice.keycap_w, notice.frame.h, &key, false, c)))
         .when(notice.key.is_none() && notice.done, |this| {
             this.child(
                 div()
