@@ -407,6 +407,8 @@ pub(crate) enum Control {
     Previous,
     Next,
     Zhuyin,
+    /// The notice's 「復原」.
+    Undo,
 }
 
 /// Draws the window's content for `layout` (the surface itself is drawn by the caller).
@@ -415,6 +417,13 @@ pub(crate) fn content(p: &Painter<'_>, layout: &PanelLayout, motion: &Motion<'_>
     let c = p.c;
     if let Some(notice) = &layout.notice {
         notice_element(p, notice);
+        if let Some(frame) = notice.undo {
+            let ink = if motion.hover_control == Some(Control::Undo) { c.text } else { c.text_secondary };
+            p.text(layout::UNDO_LABEL, notice.font_size, true, Family::Ui, frame, 1., ink);
+        }
+    }
+    if let Some((frame, text, size)) = &layout.tip {
+        p.text(text, *size, false, Family::Ui, *frame, 0., c.text_tertiary);
     }
     if let Some((frame, text, text_w)) = &layout.preview {
         p.text(text, fs, false, Family::Ui, *frame, 0., c.text);
@@ -622,6 +631,11 @@ pub(crate) enum Hit {
 }
 
 pub(crate) fn hit(layout: &PanelLayout, x: f32, y: f32) -> Option<Hit> {
+    if let Some(undo) = layout.notice.as_ref().and_then(|notice| notice.undo)
+        && undo.contains(x, y)
+    {
+        return Some(Hit::Control(Control::Undo));
+    }
     if layout.list_open && layout.rows_area.contains(x, y) {
         let (rx, ry) = (x - layout.rows_area.x, y - layout.rows_area.y);
         return layout.rows.iter().find(|row| row.frame.contains(rx, ry)).map(|row| Hit::Row(row.index));

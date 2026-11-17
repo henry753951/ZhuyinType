@@ -239,6 +239,11 @@ pub struct CandidateWindow {
     /// The window appearing: when, and how far it starts from its place.
     appeared: Option<(Instant, f32)>,
     appearance: PanelAppearance,
+    /// What it shows (laid out again when a row's menu opens or 「復原」 expires), the row whose menu is open, and
+    /// which 「復原」 is showing.
+    state: Option<PopupState>,
+    menu: Option<usize>,
+    undo_generation: u64,
 }
 
 impl CandidateWindow {
@@ -253,6 +258,9 @@ impl CandidateWindow {
             last_caret: None,
             appeared: None,
             appearance: PanelAppearance::System,
+            state: None,
+            menu: None,
+            undo_generation: 0,
         }
     }
 }
@@ -275,6 +283,7 @@ impl Render for CandidateWindow {
                 }
             });
         });
+        self.panel.on_menu = Some(Rc::new(|row, _, cx| cx.defer(move |cx| open_menu(row, cx))));
         let (mut alpha, mut dy) = (1., 0.);
         if let Some((started, from)) = self.appeared {
             let t = started.elapsed().as_secs_f32() * 1000. / motion::APPEAR;
@@ -312,6 +321,45 @@ fn candidate_window(cx: &mut App) -> Option<WindowHandle<CandidateWindow>> {
     Some(handle)
 }
 
+/// Opens (`Some(row)`) or closes a row's right-click menu: the window is laid out again with it.
+fn open_menu(row: Option<usize>, cx: &mut App) {
+    let Some(handle) = popups(cx).candidate else { return };
+    let state = handle
+        .update(cx, |view, _, _| {
+            let changed = view.menu != row;
+            view.menu = row;
+            view.state.clone().filter(|_| changed && view.visible)
+        })
+        .ok()
+        .flatten();
+    if let Some(state) = state {
+        show_candidates(state, cx);
+    }
+}
+
+/// The notice's 「復原」 goes after `WORD_UNDO_SECONDS` (Ctrl+Z stops working then too).
+fn expire_undo(generation: u64, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let wait = Duration::from_secs_f64(zt_core::controller::WORD_UNDO_SECONDS);
+        cx.background_executor().timer(wait).await;
+        cx.update(|cx| {
+            let Some(handle) = popups(cx).candidate else { return };
+            let state = handle
+                .update(cx, |view, _, _| {
+                    let current = view.undo_generation == generation && view.visible;
+                    view.state.clone().filter(|state| current && state.presentation.undo)
+                })
+                .ok()
+                .flatten();
+            if let Some(mut state) = state {
+                state.presentation.undo = false;
+                show_candidates(state, cx);
+            }
+        });
+    })
+    .detach();
+}
+
 fn show_candidates(state: PopupState, cx: &mut App) {
     let Some(handle) = candidate_window(cx) else { return };
     let screen = screen_at(state.caret, cx);
@@ -322,9 +370,15 @@ fn show_candidates(state: PopupState, cx: &mut App) {
     let moves = crate::motion::Panel::new(animates, cx);
     let above = settings.string("candidatePlacement") == "above";
     let appearance = PanelAppearance::from_settings(&settings);
+    let mut expire = None;
     let reopen = handle
         .update(cx, |view, window, cx| {
             let p = &state.presentation;
+            if p.undo && !view.state.as_ref().is_some_and(|shown| shown.presentation.undo) {
+                view.undo_generation += 1;
+                expire = Some(view.undo_generation);
+            }
+            view.state = Some(state.clone());
             let preview = (!state.inline_preedit).then_some(p.composition.as_str());
             if !p.has_list() && preview.is_none_or(str::is_empty) && p.notice.is_none() {
                 hide(view, window);
@@ -336,8 +390,14 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             view.panel.reduced = moves.reduced;
             let margin = view.margin;
             let max_width = (screen.width as f32 - margin * 2.).max(100.);
-            let (width, height) =
-                view.panel.update(p, Extras { preview }, &style, max_width, view.visible, &mut WindowMeasure(window));
+            let (width, height) = view.panel.update(
+                p,
+                Extras { preview, menu: view.menu },
+                &style,
+                max_width,
+                view.visible,
+                &mut WindowMeasure(window),
+            );
             let text_inset = view.panel.layout().map_or(14., |layout| layout.text_inset);
             let caret = state.caret;
             let (mut x, y) =
@@ -391,6 +451,9 @@ fn show_candidates(state: PopupState, cx: &mut App) {
         })
         .ok()
         .flatten();
+    if let Some(generation) = expire {
+        expire_undo(generation, cx);
+    }
     if let Some(frame) = reopen {
         // This platform cannot move a window: open it where it goes (the state is drawn again into the new one).
         let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -425,6 +488,7 @@ fn hide(view: &mut CandidateWindow, window: &mut Window) {
     view.visible = false;
     view.last_caret = None;
     view.appeared = None;
+    view.menu = None;
     view.panel.reset();
 }
 

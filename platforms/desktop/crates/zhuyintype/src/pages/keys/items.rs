@@ -301,6 +301,11 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
                 .sub("候選字視窗上方的注音")
                 .feature("feature.zhuyinRowClick"),
             KeyItem::new("close", "關閉候選字視窗", fixed(&["Esc"])).sub("固定"),
+            KeyItem::new("blockCandidate", "不要再推薦", Keys::Command("blockCandidate"))
+                .sub("反白的字詞不再出現在清單；5 秒內按 Ctrl+Z 復原"),
+            KeyItem::new("forgetCandidate", "忘記這個選字", Keys::Command("forgetCandidate")).sub("忘記選過反白的字詞"),
+            KeyItem::new("addCandidatePhrase", "加入自訂詞", Keys::Command("addCandidatePhrase"))
+                .sub("反白的字詞；沒開清單時是整段組字"),
         ],
         KeySection::Editing => vec![
             KeyItem::new("typeZhuyin", "打出注音本身", Keys::Command("typeZhuyin"))

@@ -38,9 +38,9 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
 use windows::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, CreateCompatibleDC,
-    CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC, InvalidateRect,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject, UpdateWindow,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, ClientToScreen,
+    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC,
+    InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject, UpdateWindow,
 };
 use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
@@ -48,18 +48,20 @@ use windows::Win32::System::Registry::{
 use windows::Win32::UI::Controls::{MARGINS, WM_MOUSELEAVE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CS_IME, CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GWLP_USERDATA, GetAncestor,
-    GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW,
-    MA_NOACTIVATE, PostMessageW, RegisterClassW, SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetCursor, SetTimer,
-    SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, ULW_ALPHA, UnregisterClassW,
+    AppendMenuW, CREATESTRUCTW, CS_IME, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
+    GA_ROOT, GWLP_USERDATA, GetAncestor, GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW,
+    IsWindowVisible, KillTimer, LoadCursorW, MA_NOACTIVATE, MF_GRAYED, MF_STRING, PostMessageW, RegisterClassW,
+    SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetCursor, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenuEx, ULW_ALPHA, UnregisterClassW,
     UpdateLayeredWindow, WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
+    WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
 use windows_numerics::Matrix3x2;
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
+use zt_panel::model::WORD_ACTIONS;
 use zt_panel::position::{Rect, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
 use zt_panel::tokens::{self, motion};
@@ -76,6 +78,9 @@ pub(crate) const ACTION_PAGE: usize = 2;
 pub(crate) const ACTION_SINGLE: usize = 3;
 pub(crate) const ACTION_CORRECTIONS: usize = 4;
 pub(crate) const ACTION_ZHUYIN: usize = 5;
+pub(crate) const ACTION_UNDO: usize = 6;
+/// A word action on a row: `ACTION_WORD + n` is `zt_panel::model::WORD_ACTIONS[n]`.
+pub(crate) const ACTION_WORD: usize = 7;
 
 /// The broker's name for an action.
 pub(crate) fn action_name(action: usize) -> Option<&'static str> {
@@ -85,12 +90,17 @@ pub(crate) fn action_name(action: usize) -> Option<&'static str> {
         ACTION_SINGLE => "single",
         ACTION_CORRECTIONS => "corrections",
         ACTION_ZHUYIN => "zhuyin",
+        ACTION_UNDO => "undo",
+        word if (ACTION_WORD..ACTION_WORD + WORD_ACTIONS.len()).contains(&word) => WORD_ACTIONS[word - ACTION_WORD].0,
         _ => return None,
     })
 }
 
 const ANIMATION_TIMER: usize = 1;
 const TOAST_TIMER: usize = 2;
+/// The notice's 「復原」 goes after this long (as Ctrl+Z stops working).
+const UNDO_TIMER: usize = 3;
+const UNDO_MS: u32 = 5000;
 const FRAME_MS: u32 = 8;
 
 /// Which of the two windows a window procedure call is for.
@@ -923,8 +933,9 @@ impl PanelWindow {
         let max_width = ((screen.right - screen.left) as f32 / scale - 16.).max(100.);
         let layout = panel_layout::compute(model, &panel.style, max_width, state.steady, &mut DirectWriteMeasure(&g));
         if layout.list_open {
-            state.steady = (layout.width, layout.height);
+            state.steady = (layout.width, layout.height - layout.transient_height);
         }
+        let undo_appears = model.undo && !state.panel.as_ref().is_some_and(|shown| shown.model.undo);
         let previous = state.layout.take();
         if direction != 0 && panel.animates && visible {
             state.outgoing = previous.as_ref().map(|previous| previous.rows.clone());
@@ -969,6 +980,10 @@ impl PanelWindow {
         drop(state);
         self.panel.place(x, y as i32, width, height, scale);
         self.redraw(Kind::Panel);
+        if undo_appears {
+            // SAFETY: our own window.
+            unsafe { SetTimer(Some(self.panel.window.get()), UNDO_TIMER, UNDO_MS, None) };
+        }
         if animating {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(self.panel.window.get()), ANIMATION_TIMER, FRAME_MS, None) };
@@ -1117,6 +1132,45 @@ impl PanelWindow {
         });
     }
 
+    /// A right-click on a row: the word actions as a menu (the row's unavailable ones greyed), sent like a click.
+    /// The window stays inactive (the field keeps focus and its composition); the menu returns the chosen command.
+    fn row_menu(&self, window: HWND, x: i32, y: i32) {
+        let scale = self.panel.scale.get().max(0.25);
+        let margin = self.panel.margin();
+        let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
+        let (hit, actions) = {
+            let state = self.state.borrow();
+            let hit = state.layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
+            let Some(Hit::Row(row)) = hit else { return };
+            let bits = state.panel.as_ref().and_then(|panel| panel.model.rows.get(row)).map_or(0, |r| r.actions);
+            (row, bits)
+        };
+        let mut point = POINT { x, y };
+        // SAFETY: a menu created, shown and destroyed here, owned by our window.
+        let command = unsafe {
+            let _ = ClientToScreen(window, &mut point);
+            let Ok(menu) = CreatePopupMenu() else { return };
+            for (n, (_, title)) in WORD_ACTIONS.iter().enumerate() {
+                let flags = if actions & (1 << n) != 0 { MF_STRING } else { MF_STRING | MF_GRAYED };
+                let title: Vec<u16> = title.encode_utf16().chain([0]).collect();
+                let _ = AppendMenuW(menu, flags, n + 1, PCWSTR(title.as_ptr()));
+            }
+            let command = TrackPopupMenuEx(
+                menu,
+                (TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON).0,
+                point.x,
+                point.y,
+                window,
+                None,
+            );
+            let _ = DestroyMenu(menu);
+            command.0
+        };
+        if let Some(n) = usize::try_from(command).ok().filter(|n| (1..=WORD_ACTIONS.len()).contains(n)) {
+            self.post_action(ACTION_WORD + n - 1, hit as isize);
+        }
+    }
+
     fn mouse(&self, x: i32, y: i32, click: bool) {
         let scale = self.panel.scale.get().max(0.25);
         let margin = self.panel.margin();
@@ -1136,8 +1190,13 @@ impl PanelWindow {
             Some(Hit::Control(Control::Single)) => (ACTION_SINGLE, 0),
             Some(Hit::Control(Control::Corrections)) => (ACTION_CORRECTIONS, 0),
             Some(Hit::Control(Control::Zhuyin)) => (ACTION_ZHUYIN, 0),
+            Some(Hit::Control(Control::Undo)) => (ACTION_UNDO, 0),
             None => return,
         };
+        self.post_action(action, value);
+    }
+
+    fn post_action(&self, action: usize, value: isize) {
         let notify = self.notify.get();
         if !notify.is_invalid() {
             // SAFETY: the text service's own message window.
@@ -1161,6 +1220,27 @@ impl PanelWindow {
             }
             WM_TIMER if wparam.0 == ANIMATION_TIMER => {
                 self.redraw(kind);
+                Some(LRESULT(0))
+            }
+            WM_TIMER if wparam.0 == UNDO_TIMER => {
+                // SAFETY: our own window.
+                let _ = unsafe { KillTimer(Some(window), UNDO_TIMER) };
+                let shown = {
+                    let state = self.state.borrow();
+                    state.panel.clone().filter(|panel| panel.model.undo).zip(state.last_caret)
+                };
+                if let Some((mut panel, caret)) = shown
+                    && self.panel.visible()
+                {
+                    panel.model.undo = false;
+                    self.show(&panel, caret, self.panel.scale.get().max(0.25));
+                }
+                Some(LRESULT(0))
+            }
+            WM_RBUTTONUP if kind == Kind::Panel => {
+                let x = i32::from(lparam.0 as u32 as u16 as i16);
+                let y = i32::from((lparam.0 as u32 >> 16) as u16 as i16);
+                self.row_menu(window, x, y);
                 Some(LRESULT(0))
             }
             WM_TIMER if wparam.0 == TOAST_TIMER => {

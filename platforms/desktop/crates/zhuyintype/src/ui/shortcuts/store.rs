@@ -79,7 +79,8 @@ pub fn command(id: &str) -> Option<&'static CommandInfo> {
 /// `ShortcutCommand.place`).
 pub fn command_place(id: &str) -> Place {
     let page = match id {
-        "typeZhuyin" | "correctionsList" | "selectLeft" | "selectRight" => Page::Choosing,
+        "typeZhuyin" | "correctionsList" | "selectLeft" | "selectRight" | "blockCandidate" | "forgetCandidate"
+        | "addCandidatePhrase" => Page::Choosing,
         "singleCharacterList" | "nextPage" | "previousPage" | "previousCharacter" | "nextCharacter" => Page::Candidates,
         _ => Page::Typing,
     };

@@ -21,8 +21,8 @@ use zt_core::presentation::Presentation;
 use zt_core::service::PopupAction;
 
 use super::layout::{
-    self, BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, NoticeLayout,
-    PanelLayout, RowLayout, SMALL_FONT, ToggleLayout,
+    self, BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, MenuLayout,
+    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, UNDO_LABEL,
 };
 use super::style::PanelStyle;
 use crate::theme::candidate::{self as tokens, Colors};
@@ -30,6 +30,8 @@ use crate::theme::{self, Palette};
 
 /// A click in the window.
 pub type ActionHandler = Rc<dyn Fn(PopupAction, &mut Window, &mut App)>;
+/// A right-click on a row opens its menu (`Some(row)`); a menu item or a click elsewhere closes it (`None`).
+pub type MenuHandler = Rc<dyn Fn(Option<usize>, &mut Window, &mut App)>;
 
 /// How a page change and the end of the list move (macOS `PageMotion`): short, eased out, a few pixels along the list.
 pub mod motion {
@@ -115,6 +117,8 @@ pub struct CandidatePanel {
     /// How the surface's edge is drawn: by itself (rounded, hairline, shadow), square, or by the system.
     pub chrome: Chrome,
     pub pinned: Option<Pinned>,
+    /// Opens and closes a row's right-click menu (the floating window only).
+    pub on_menu: Option<MenuHandler>,
 }
 
 /// Who draws the surface's edge.
@@ -153,6 +157,7 @@ impl CandidatePanel {
             reduced: false,
             chrome: Chrome::Floating,
             pinned: None,
+            on_menu: None,
         }
     }
 
@@ -185,7 +190,8 @@ impl CandidatePanel {
         self.shown = identity.map(|identity| (identity, p.page));
         let layout = layout::compute(p, extras, style, max_width, self.steady, measure);
         if layout.list_open {
-            self.steady = (layout.width, layout.height);
+            // The menu is not part of the list's size: the window shrinks back when it closes.
+            self.steady = (layout.width, layout.height - layout.transient_height);
         }
         let previous = self.layout.take();
         if direction != 0 && self.animates && visible {
@@ -298,6 +304,9 @@ impl CandidatePanel {
             shell(self.chrome, c, layout.radius).relative().w(px(layout.width)).h(px(layout.height)).text_color(p.text);
         if let Some(notice) = &layout.notice {
             surface = surface.child(notice_element(notice, p, c));
+            if let Some(frame) = notice.undo {
+                surface = surface.child(undo_link(frame, notice.font_size, p, actions.clone()));
+            }
         }
         if let Some((frame, text, text_w)) = &layout.preview {
             surface = surface.child(
@@ -343,9 +352,19 @@ impl CandidatePanel {
                 );
             }
             if let (Some(rows), Some((x, y, alpha))) = (&self.outgoing, outgoing) {
-                clip = clip.child(page_element(rows, layout, p, c, (x, y, alpha), false, None, "out"));
+                clip = clip.child(page_element(rows, layout, p, c, (x, y, alpha), false, None, None, "out"));
             }
-            clip = clip.child(page_element(&layout.rows, layout, p, c, incoming, self.hover, actions.clone(), "in"));
+            clip = clip.child(page_element(
+                &layout.rows,
+                layout,
+                p,
+                c,
+                incoming,
+                self.hover,
+                actions.clone(),
+                self.on_menu.clone(),
+                "in",
+            ));
             surface = surface.child(clip);
         }
         if let Some(rule) = layout.footer_rule {
@@ -400,8 +419,85 @@ impl CandidatePanel {
                 );
             }
         }
+        if let Some((frame, text, size)) = &layout.tip {
+            surface = surface.child(
+                at(*frame)
+                    .flex()
+                    .items_center()
+                    .text_size(px(*size))
+                    .line_height(px(size * 1.3))
+                    .text_color(p.text_tertiary)
+                    .child(div().truncate().child(SharedString::from(text.clone()))),
+            );
+        }
+        if let Some(menu) = &layout.menu {
+            surface = surface.child(menu_element(menu, layout.row_radius, p, c, actions, self.on_menu.clone()));
+        }
         surface.children(edge(self.chrome, c, layout.radius)).into_any_element()
     }
+}
+
+/// The notice's 「復原」 after a word action.
+fn undo_link(frame: Frame, size: f32, p: &Palette, actions: Option<ActionHandler>) -> impl IntoElement {
+    let accent = p.accent;
+    at(frame)
+        .id("word-undo")
+        .flex()
+        .items_center()
+        .justify_end()
+        .text_size(px(size))
+        .line_height(px(size * 1.3))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(accent)
+        .whitespace_nowrap()
+        .child(UNDO_LABEL)
+        .when_some(actions, |this, actions| {
+            this.cursor_pointer()
+                .hover(|style| style.opacity(0.75))
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| actions(PopupAction::UndoWordAction, window, cx))
+        })
+}
+
+/// A row's right-click menu, drawn under the list inside the window (the window never takes focus, so it cannot
+/// open a menu window of its own).
+fn menu_element(
+    menu: &MenuLayout,
+    radius: f32,
+    p: &Palette,
+    c: &Colors,
+    actions: Option<ActionHandler>,
+    on_menu: Option<MenuHandler>,
+) -> impl IntoElement {
+    let row = menu.row;
+    let size = menu.font_size;
+    let hover_fill = c.hover;
+    div().child(at(menu.rule).bg(c.hairline)).children(menu.items.iter().map(|item| {
+        let action = zhuyin_core::composer::CandidateAction::from_raw(item.action as u32);
+        let actions = actions.clone().filter(|_| item.enabled);
+        let on_menu = on_menu.clone();
+        at(item.frame)
+            .id(("word-menu", item.action))
+            .flex()
+            .items_center()
+            .pl(px(10.))
+            .rounded(px(radius))
+            .text_size(px(size))
+            .line_height(px(size * 1.3))
+            .text_color(if item.enabled { p.text } else { p.text_tertiary.opacity(0.6) })
+            .whitespace_nowrap()
+            .child(item.label)
+            .when_some(actions.zip(action), |this, (actions, action)| {
+                this.cursor_pointer().hover(|style| style.bg(hover_fill)).on_mouse_down(
+                    MouseButton::Left,
+                    move |_, window, cx| {
+                        if let Some(on_menu) = &on_menu {
+                            on_menu(None, window, cx);
+                        }
+                        actions(PopupAction::Word(action, row), window, cx);
+                    },
+                )
+            })
+    }))
 }
 
 /// An absolutely placed box at `frame`.
@@ -450,6 +546,7 @@ fn page_element(
     (x, y, alpha): (f32, f32, f32),
     hover: bool,
     actions: Option<ActionHandler>,
+    on_menu: Option<MenuHandler>,
     id: &'static str,
 ) -> impl IntoElement {
     let fs = layout.font_size;
@@ -466,6 +563,7 @@ fn page_element(
         let annotation_color = if selected { p.text_secondary } else { p.text_tertiary };
         let hover_fill = c.hover;
         let actions = actions.clone();
+        let on_menu = on_menu.clone();
         let cell = |left: f32, width: f32| {
             div().absolute().left(px(left)).top_0().bottom_0().w(px(width.max(0.))).flex().items_center()
         };
@@ -482,6 +580,9 @@ fn page_element(
                 this.cursor_pointer().on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     actions(PopupAction::Pick(index), window, cx)
                 })
+            })
+            .when_some(on_menu, |this, on_menu| {
+                this.on_mouse_down(MouseButton::Right, move |_, window, cx| on_menu(Some(index), window, cx))
             })
             // The selection key, right-aligned in its fixed column, centred on the row like the candidate.
             .child(
