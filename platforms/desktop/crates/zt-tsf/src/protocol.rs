@@ -35,6 +35,9 @@ pub(crate) struct Reply {
     pub(crate) focus: Option<usize>,
     /// The word ↓ would change while no list is open.
     pub(crate) target: Option<usize>,
+    /// The parts of `preedit` (UTF-16 ranges, in order, not overlapping) converted through an automatic typing
+    /// correction or a fuzzy sound, marked with a dotted underline; empty when the user turned the marks off.
+    pub(crate) corrections: Vec<(usize, usize)>,
     /// The candidate window, which the text service draws.
     pub(crate) panel: PanelUpdate,
     /// The 中/英 badge to show by the caret.
@@ -129,20 +132,10 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         Some(value) => Some(value.as_str().filter(|text| text.chars().count() <= 4)?.to_owned()),
     };
     // Left out by older hosts and with no composition; a bad value fails the reply like any other field.
-    let mut clauses = Vec::new();
-    if let Some(value) = object.get("clauses") {
-        let mut end = 0;
-        for clause in value.as_array()? {
-            let pair = clause.as_array().filter(|pair| pair.len() == 2)?;
-            let start = usize::try_from(pair[0].as_u64()?).ok()?;
-            let stop = usize::try_from(pair[1].as_u64()?).ok()?;
-            if start < end || stop <= start || stop > preedit.len() {
-                return None;
-            }
-            clauses.push((start, stop));
-            end = stop;
-        }
-    }
+    let clauses = match object.get("clauses") {
+        Some(value) => ranges(value, preedit.len())?,
+        None => Vec::new(),
+    };
     let clause = |key: &str| -> Option<Option<usize>> {
         match object.get(key) {
             None | Some(Value::Null) => Some(None),
@@ -151,6 +144,9 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
     };
     let focus = clause("focus")?;
     let target = clause("target")?;
+    // Only a mark: left out by older hosts, with no composition and with the marks off, and a bad value drops the
+    // marks rather than the key.
+    let corrections = object.get("corrections").and_then(|value| ranges(value, preedit.len())).unwrap_or_default();
     let boundary = match object.get("boundary") {
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
@@ -166,10 +162,28 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         clauses,
         focus,
         target,
+        corrections,
         panel,
         toast,
         boundary,
     })
+}
+
+/// `[[start, end], ...]`: ranges of a text `length` units long, in order, not empty and not overlapping.
+fn ranges(value: &Value, length: usize) -> Option<Vec<(usize, usize)>> {
+    let mut list = Vec::new();
+    let mut end = 0;
+    for range in value.as_array()? {
+        let pair = range.as_array().filter(|pair| pair.len() == 2)?;
+        let start = usize::try_from(pair[0].as_u64()?).ok()?;
+        let stop = usize::try_from(pair[1].as_u64()?).ok()?;
+        if start < end || stop <= start || stop > length {
+            return None;
+        }
+        list.push((start, stop));
+        end = stop;
+    }
+    Some(list)
 }
 
 #[cfg(test)]
@@ -292,6 +306,34 @@ mod tests {
             let mut bad = marked.clone();
             bad[key] = value;
             assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
+        }
+    }
+
+    #[test]
+    fn corrections() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!(reply.corrections, vec![]);
+        let mut marked = good();
+        marked["preedit"] = json!("你好嗎");
+        marked["cursor"] = json!(3);
+        marked["clauses"] = json!([[0, 2], [2, 3]]);
+        marked["corrections"] = json!([[1, 2], [2, 3]]);
+        let reply = parse_reply(&line(marked.clone()), 7, "{A}").unwrap();
+        assert_eq!((reply.clauses, reply.corrections), (vec![(0, 2), (2, 3)], vec![(1, 2), (2, 3)]));
+        // A bad list drops the marks, not the reply.
+        for value in [
+            json!([[0, 4]]),
+            json!([[1, 1]]),
+            json!([[0, 2], [1, 3]]),
+            json!([[0]]),
+            json!([[-1, 1]]),
+            json!("0-2"),
+            json!(null),
+        ] {
+            let mut bad = marked.clone();
+            bad["corrections"] = value.clone();
+            let reply = parse_reply(&line(bad), 7, "{A}").unwrap_or_else(|| panic!("{value}"));
+            assert_eq!((reply.clauses.len(), reply.corrections), (2, vec![]), "{value}");
         }
     }
 

@@ -123,7 +123,7 @@ pub(crate) struct TextService {
     scale: Cell<f64>,
     panel: PanelWindow,
     /// The display attributes' atoms (display_attributes.rs), from activation.
-    atoms: Cell<Option<[u32; 4]>>,
+    atoms: Cell<Option<display_attributes::Atoms>>,
     /// The last key `observe` sent (virtual key, flags, message time).
     observed: Cell<(usize, isize, i32)>,
     /// The field is private (`composition::is_private`): no 前文 is sent.
