@@ -87,11 +87,13 @@ pub struct Keycap {
     label: SharedString,
     height: Height,
     tint: Option<Hsla>,
+    /// How much of the tint shows (0…1): a just-recorded key's accent fades back to the plain cap.
+    tint_amount: f32,
 }
 
 /// A key cap `H_XS` tall.
 pub fn keycap(label: impl Into<SharedString>) -> Keycap {
-    Keycap { label: label.into(), height: Height::Medium, tint: None }
+    Keycap { label: label.into(), height: Height::Medium, tint: None, tint_amount: 1. }
 }
 
 impl Keycap {
@@ -107,20 +109,30 @@ impl Keycap {
         self.tint = tint;
         self
     }
+
+    /// Only part of the tint (0…1), on its way back to the plain cap.
+    pub fn tint_amount(mut self, amount: f32) -> Self {
+        self.tint_amount = amount.clamp(0., 1.);
+        self
+    }
 }
 
 impl RenderOnce for Keycap {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let height = if self.height == Height::Small { size::KEYCAP_SM } else { size::H_XS };
-        let ink = self.tint.unwrap_or(p.text);
+        let amount = self.tint_amount;
+        let ink = self.tint.map_or(p.text, |tint| if amount >= 1. { tint } else { p.text.blend(tint.opacity(amount)) });
+        let fill = self.tint.map_or(p.subtle, |tint| {
+            if amount >= 1. { tint.opacity(0.12) } else { p.subtle.blend(tint.opacity(0.12 * amount)) }
+        });
         h().flex_shrink_0()
             .h(height)
             .min_w(height)
             .px(space::S6)
             .justify_center()
             .rounded(size::R_XS)
-            .bg(self.tint.map_or(p.subtle, |tint| tint.opacity(0.12)))
+            .bg(fill)
             .font_weight(weight::REGULAR)
             .whitespace_nowrap()
             .child(key_glyphs(&self.label, f32::from(text::CAPTION), ink))
@@ -135,6 +147,13 @@ pub fn key_combo(keys: impl IntoIterator<Item = impl Into<SharedString>>) -> Div
 /// One shortcut written as a label (「Alt+⌫」) as its caps, optionally tinted.
 pub fn binding(label: &str, tint: Option<Hsla>) -> Div {
     h().flex_shrink_0().gap(space::S4).children(split(label).into_iter().map(move |cap| keycap(cap).tint(tint)))
+}
+
+/// A binding whose tint shows only `amount` (0…1) of the way.
+pub fn binding_faded(label: &str, tint: Option<Hsla>, amount: f32) -> Div {
+    h().flex_shrink_0()
+        .gap(space::S4)
+        .children(split(label).into_iter().map(move |cap| keycap(cap).tint(tint).tint_amount(amount)))
 }
 
 /// Several shortcuts (alternatives) side by side, further apart than the caps of one.

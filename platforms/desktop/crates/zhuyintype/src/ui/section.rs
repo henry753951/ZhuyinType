@@ -62,7 +62,7 @@ impl Section {
 }
 
 impl RenderOnce for Section {
-    fn render(mut self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let count = self.rows.len();
         let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
@@ -99,9 +99,8 @@ impl RenderOnce for Section {
                     v().w_full()
                         .relative()
                         .when(untitled, |this| this.child(hairline()))
-                        .when_some(arrival.clone(), |this, (title, generation)| {
-                            this.child(arrival_tint(format!("section-{title}"), generation, cx))
-                                .child(anchor_probe(title))
+                        .when_some(arrival.clone(), |this, (title, _)| {
+                            this.child(arrival_tint(window, cx)).child(anchor_probe(title))
                         })
                         .children(self.rows.into_iter().enumerate().map(|(index, row)| {
                             div().w_full().when(index > 0, |this| this.child(hairline())).child(row)

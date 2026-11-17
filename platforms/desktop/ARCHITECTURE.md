@@ -72,7 +72,7 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 
 - 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。
 - 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
-- 動畫使用 `theme::motion`，系統要求減少動態效果時略過。
+- 動畫使用 `theme::motion` 與 `motion.rs`（選取的淡入、展開箭頭、按下與鍵盤焦點框、浮動視窗的出現）。系統要求減少動態效果時（Windows 的「動畫效果」、桌面入口的 `reduced-motion`、GNOME 的 `enable-animations`；`ZT_REDUCE_MOTION=1` 可強制）略過位移，淡入淡出照常。候選字視窗與中英提示在每次更新時只讀一次這個設定，動畫不延後任何按鍵的結果。
 - 「主題」與「透明效果」（`zt_core::appearance`）：每個視窗在 `render` 開頭呼叫 `theme::sync`，依設定與系統換掉全域的 `Palette`；設定視窗與嚮導再呼叫 `platform::backdrop::apply`，向視窗系統要背景材質（Windows 的 Mica、KDE 的模糊）與深淺色的邊框。材質存在時，視窗的根不畫底色，框架與頁面畫 `Palette::frame`、`Palette::page` 兩層半透明的顏色；其他顏色不變。細節見 [DESKTOP.md](../../docs/product/DESKTOP.md)「主題與透明效果」。
 - 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
 - Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。系統會替視窗畫圓角時（Windows 11 且不是虛擬機的基本顯示卡），邊緣交給系統：圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同；「透明效果」關閉時畫不透明的背景）；其他情況（Windows 10、虛擬機）改用分層視窗，自己畫圓角、細框與柔和陰影，所以任何環境都是圓角。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。欄位取得焦點、處理完焦點之後，文字服務先在背景建立中英提示的視窗與繪圖目標，並在畫面外畫一次「中」「英」（`PanelWindow::warm`）：硬體繪圖目標第一次在一個行程裡建立時要載入 Direct3D 與顯示卡驅動程式，這段時間不再落在使用者第一次切換中英的時候。Linux 仍由 App 畫浮動視窗。

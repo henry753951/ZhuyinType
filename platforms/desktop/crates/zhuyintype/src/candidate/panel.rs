@@ -52,16 +52,9 @@ pub mod motion {
     pub const TOAST_FADE: f32 = 200.;
 }
 
-/// Ease-out (CoreAnimation's `easeOut` drawn as macOS's pinned frames draw it).
-pub fn ease_out(t: f32) -> f32 {
-    let t = t.clamp(0., 1.);
-    1. - (1. - t) * (1. - t)
-}
-
-fn ease_in_out(t: f32) -> f32 {
-    let t = t.clamp(0., 1.);
-    if t < 0.5 { 2. * t * t } else { 1. - (-2. * t + 2.).powi(2) / 2. }
-}
+use crate::motion::ease_in_out;
+/// Ease-out (CoreAnimation's `easeOut` drawn as macOS's pinned frames draw it) and ease-in-out.
+pub use crate::motion::ease_out;
 
 /// What makes two lists the same list, so that a new page of it is a page change (and not a new list).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,6 +109,9 @@ pub struct CandidatePanel {
     pub hover: bool,
     /// The 動畫 setting (the wizard's practice field follows its own draft settings).
     pub animates: bool,
+    /// The system asks for less motion: a page turn only cross-fades, and the bounce dims the page instead of
+    /// nudging it.
+    pub reduced: bool,
     /// How the surface's edge is drawn: by itself (rounded, hairline, shadow), square, or by the system.
     pub chrome: Chrome,
     pub pinned: Option<Pinned>,
@@ -154,6 +150,7 @@ impl CandidatePanel {
             bounce: None,
             hover: true,
             animates: true,
+            reduced: false,
             chrome: Chrome::Floating,
             pinned: None,
         }
@@ -251,7 +248,7 @@ impl CandidatePanel {
             ),
         };
         if let Some(elapsed) = turn_ms.filter(|elapsed| *elapsed < motion::DURATION) {
-            let travel = motion::OFFSET * turn_dir as f32;
+            let travel = if self.reduced { 0. } else { motion::OFFSET * turn_dir as f32 };
             let t = elapsed / motion::DURATION;
             let (x, y) = along(travel * (1. - ease_out(t)));
             let fade = (elapsed - motion::IN_DELAY) / (motion::DURATION - motion::IN_DELAY);
@@ -283,9 +280,15 @@ impl CandidatePanel {
             }),
         };
         if let Some(amount) = bounce {
-            let (x, y) = along(amount);
-            incoming = (x, y, 1.);
-            highlight_shift = (x, y);
+            if self.reduced {
+                // No movement: the page dims for a moment and comes back.
+                let dim = (1. - zt_panel::tokens::motion::BOUNCE_DIM) * (amount / motion::BOUNCE).abs();
+                incoming = (0., 0., 1. - dim);
+            } else {
+                let (x, y) = along(amount);
+                incoming = (x, y, 1.);
+                highlight_shift = (x, y);
+            }
         }
 
         let fs = layout.font_size;

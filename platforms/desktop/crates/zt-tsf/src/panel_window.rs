@@ -50,11 +50,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, Tr
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, CS_IME, CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GWLP_USERDATA, GetAncestor,
     GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW,
-    MA_NOACTIVATE, PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetCursor, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UnregisterClassW, UpdateLayeredWindow,
-    WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST,
-    WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
-    WS_THICKFRAME,
+    MA_NOACTIVATE, PostMessageW, RegisterClassW, SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetCursor, SetTimer,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, ULW_ALPHA, UnregisterClassW,
+    UpdateLayeredWindow, WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE,
+    WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
 use windows_numerics::Matrix3x2;
@@ -154,6 +155,21 @@ fn system_rounds() -> bool {
             !(description.VendorId == 0x1414 && description.DeviceId == 0x8c)
         }
     })
+}
+
+/// Whether Windows' 「動畫效果」 (Settings › Accessibility › Visual effects) is off: the system asks for less motion.
+fn reduced_motion() -> bool {
+    let mut enabled = BOOL(1);
+    // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL through the pointer, which outlives the call.
+    let read = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some((&raw mut enabled).cast()),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    };
+    read.is_ok() && !enabled.as_bool()
 }
 
 /// The apps' light or dark choice (Settings › Personalization › Colors).
@@ -586,6 +602,8 @@ struct State {
     old_label: Option<String>,
     turn: Option<(i32, Instant)>,
     bounce: Option<(i32, Instant)>,
+    /// Windows' 「動畫效果」 is off: a page turn only cross-fades and the bounce dims the page instead of moving it.
+    reduced: bool,
     hover: Option<Hit>,
     /// The caret of the last placement and the window's x then (it keeps its x while the caret stays on the line).
     last_caret: Option<RECT>,
@@ -881,7 +899,9 @@ impl PanelWindow {
         }
         self.panel.set_dark(panel.appearance.dark(system_dark()));
         let visible = self.panel.visible();
+        let reduced = reduced_motion();
         let mut state = self.state.borrow_mut();
+        state.reduced = reduced;
         // A new page of the same list turns; anything else starts over at its own size.
         let identity = Identity::of(panel);
         let model = &panel.model;
@@ -1006,7 +1026,7 @@ impl PanelWindow {
             let elapsed = started.elapsed().as_secs_f32() * 1000.;
             if elapsed < motion::DURATION {
                 frames.running = true;
-                let travel = motion::OFFSET * direction as f32;
+                let travel = if state.reduced { 0. } else { motion::OFFSET * direction as f32 };
                 let t = elapsed / motion::DURATION;
                 let (x, y) = along(travel * (1. - motion::ease_out(t)));
                 let fade = (elapsed - motion::IN_DELAY) / (motion::DURATION - motion::IN_DELAY);
@@ -1028,9 +1048,13 @@ impl PanelWindow {
                 } else {
                     1. - motion::ease_in_out((elapsed - motion::BOUNCE_OUT) / motion::BOUNCE_BACK)
                 };
-                let (x, y) = along(motion::BOUNCE * direction as f32 * amount);
-                frames.incoming = (x, y, 1.);
-                frames.highlight = (x, y);
+                if state.reduced {
+                    frames.incoming = (0., 0., 1. - (1. - motion::BOUNCE_DIM) * amount);
+                } else {
+                    let (x, y) = along(motion::BOUNCE * direction as f32 * amount);
+                    frames.incoming = (x, y, 1.);
+                    frames.highlight = (x, y);
+                }
             }
         }
         frames

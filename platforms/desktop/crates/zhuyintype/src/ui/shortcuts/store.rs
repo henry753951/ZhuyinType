@@ -289,7 +289,8 @@ impl KeyStore {
     /// Why the stored keys could not be read, if so.
     pub fn error(&self) -> Option<String> {
         match self {
-            KeyStore::Core(core) => core.error(),
+            // Not a refused change: the field shows that one where it happened.
+            KeyStore::Core(core) => core.storage_error(),
             KeyStore::Local(local) => local.error(),
         }
     }

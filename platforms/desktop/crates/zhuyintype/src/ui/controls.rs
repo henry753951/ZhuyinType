@@ -111,37 +111,74 @@ pub fn popup_button<T: Clone + PartialEq + 'static>(
         })
 }
 
-/// Segments for two or three short choices: a track `H_MD` tall, segments `H_SM` inside it (radii concentric).
+/// Segments for two or three short choices: a track `H_MD` tall, segments `H_SM` inside it (radii concentric).  The
+/// raised fill fades from the old choice to the new one; each segment takes the keyboard (Tab, then Space or Enter).
 pub fn segmented<T: Clone + PartialEq + 'static>(
     id: impl Into<SharedString>,
     options: Vec<(SharedString, T)>,
     current: T,
     on_pick: impl Fn(T, &mut Window, &mut App) + 'static,
-    cx: &App,
+    _cx: &App,
 ) -> impl IntoElement {
-    let p = theme::palette(cx);
-    let id = id.into();
     let on_pick = Rc::new(on_pick);
-    h().flex_shrink_0().h(size::H_MD).p(space::S2).gap(space::S2).rounded(size::R_SM).bg(p.subtle).children(
-        options.into_iter().enumerate().map(|(index, (label, value))| {
+    let segments = options
+        .into_iter()
+        .map(|(label, value)| {
             let selected = value == current;
             let on_pick = on_pick.clone();
-            h().id(SharedString::from(format!("{id}-{index}")))
-                .h(size::H_SM)
-                .px(space::S12)
-                .justify_center()
-                .rounded(size::R_XS)
-                .text_size(text::SUBTITLE)
-                .whitespace_nowrap()
-                .cursor_pointer()
-                .when(selected, |this| this.bg(p.card).text_color(p.text).shadow_xs())
-                .when(!selected, |this| {
-                    this.text_color(p.text_secondary).hover(|style| style.bg(p.hover).text_color(p.text))
-                })
-                .on_click(move |_, window, cx| on_pick(value.clone(), window, cx))
-                .child(label)
-        }),
-    )
+            let pick: PickHandler = Rc::new(move |window, cx| on_pick(value.clone(), window, cx));
+            (label, selected, pick)
+        })
+        .collect();
+    Segmented { id: id.into(), segments }
+}
+
+type PickHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+
+#[derive(IntoElement)]
+struct Segmented {
+    id: SharedString,
+    segments: Vec<(SharedString, bool, PickHandler)>,
+}
+
+impl gpui_kit::RenderOnce for Segmented {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let p = theme::palette(cx);
+        let id = self.id;
+        let fills: Vec<f32> = self
+            .segments
+            .iter()
+            .enumerate()
+            .map(|(index, (_, selected, _))| {
+                let key = SharedString::from(format!("{id}-fill-{index}"));
+                crate::motion::fade(key, *selected, crate::motion::SELECT, window, cx)
+            })
+            .collect();
+        h().flex_shrink_0().h(size::H_MD).p(space::S2).gap(space::S2).rounded(size::R_SM).bg(p.subtle).children(
+            self.segments.into_iter().zip(fills).enumerate().map(|(index, ((label, selected, pick), fill))| {
+                h().id(SharedString::from(format!("{id}-{index}")))
+                    .relative()
+                    .h(size::H_SM)
+                    .px(space::S12)
+                    .justify_center()
+                    .rounded(size::R_XS)
+                    .text_size(text::SUBTITLE)
+                    .whitespace_nowrap()
+                    .cursor_pointer()
+                    .tab_index(0)
+                    .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface.blend(p.subtle)))
+                    .when(fill > 0., |this| {
+                        this.child(div().absolute().inset_0().rounded(size::R_XS).bg(p.card).shadow_xs().opacity(fill))
+                    })
+                    .text_color(if selected { p.text } else { p.text_secondary })
+                    .when(!selected, |this| {
+                        this.hover(|style| style.bg(p.hover).text_color(p.text)).active(|style| style.bg(p.pressed))
+                    })
+                    .on_click(move |_, window, cx| pick(window, cx))
+                    .child(div().relative().child(label))
+            }),
+        )
+    }
 }
 
 /// The › at the end of a row that goes somewhere.
@@ -239,7 +276,11 @@ pub fn text_link(
         .cursor_pointer()
         .text_size(text::SUBTITLE)
         .text_color(p.accent)
+        .rounded(size::R_XS)
+        .tab_index(0)
+        .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface))
         .hover(|style| style.opacity(0.8))
+        .active(|style| style.opacity(0.6))
         .on_click(on_click)
         .child(label.into())
         .child(Icon::new(IconName::ChevronRight).size(size::ICON_XS))
