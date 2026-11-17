@@ -395,6 +395,9 @@ struct Cache {
     revision: Option<u64>,
     user: State,
     error: Option<String>,
+    /// The error is a refused change (a key in use, the last key of a required command), not the stored keys
+    /// failing to load or save.
+    refused: bool,
 }
 
 /// The keys of every command.  Cheap to clone; clones share the settings store.
@@ -446,7 +449,10 @@ impl Shortcuts {
     /// stored value is kept until the user changes a key).
     #[must_use]
     pub fn new(settings: Settings) -> Self {
-        Self { settings, cache: Arc::new(Mutex::new(Cache { revision: None, user: State::new(), error: None })) }
+        Self {
+            settings,
+            cache: Arc::new(Mutex::new(Cache { revision: None, user: State::new(), error: None, refused: false })),
+        }
     }
 
     fn user(&self) -> State {
@@ -464,6 +470,7 @@ impl Shortcuts {
             cache.user = user;
             // A failed save's message stays until the next change.
             if error.is_some() || cache.revision.is_some() {
+                cache.refused = false;
                 cache.error = error;
             } else {
                 cache.error = None;
@@ -479,7 +486,19 @@ impl Shortcuts {
 
     fn fail<T>(&self, message: impl Into<String>) -> Result<T> {
         let message = message.into();
-        self.cache.lock().error = Some(message.clone());
+        let mut cache = self.cache.lock();
+        cache.error = Some(message.clone());
+        cache.refused = false;
+        Err(anyhow!(message))
+    }
+
+    /// A change that is not allowed: reported like a failure ([`Self::error`]) but not as a problem with the stored
+    /// keys ([`Self::storage_error`]).
+    fn refuse<T>(&self, message: impl Into<String>) -> Result<T> {
+        let message = message.into();
+        let mut cache = self.cache.lock();
+        cache.error = Some(message.clone());
+        cache.refused = true;
         Err(anyhow!(message))
     }
 
@@ -641,19 +660,19 @@ impl Shortcuts {
     /// # Errors
     /// Why not, in the page's words (reserved key, used by another command, too many keys, cannot save).
     pub fn record(&self, command: &str, key: i32, modifiers: u32, index: Option<usize>) -> Result<()> {
-        let Some(entry) = Self::command(command) else { return self.fail("找不到這個按鍵功能。") };
-        let Some(binding) = Binding::normalized(key, modifiers) else { return self.fail("這個鍵不能用") };
+        let Some(entry) = Self::command(command) else { return self.refuse("找不到這個按鍵功能。") };
+        let Some(binding) = Binding::normalized(key, modifiers) else { return self.refuse("這個鍵不能用") };
         let mut all = self.state();
         let mut list = all.get(entry.id).cloned().unwrap_or_default();
         let index = index.unwrap_or(list.len());
         if index > list.len() {
-            return self.fail("找不到要修改的按鍵。");
+            return self.refuse("找不到要修改的按鍵。");
         }
         if index == list.len() && list.len() >= MAX_BINDINGS {
-            return self.fail(format!("每個功能最多 {MAX_BINDINGS} 個按鍵"));
+            return self.refuse(format!("每個功能最多 {MAX_BINDINGS} 個按鍵"));
         }
         if let Some(reason) = self.problem(binding, entry.id, index, &all) {
-            return self.fail(reason);
+            return self.refuse(reason);
         }
         if index == list.len() {
             list.push(binding);
@@ -670,12 +689,12 @@ impl Shortcuts {
     /// When there is no such key, the command is required and this is its last key, or saving fails.
     pub fn remove(&self, command: &str, index: usize) -> Result<()> {
         let mut all = self.state();
-        let Some(entry) = Self::command(command) else { return self.fail("找不到要移除的按鍵。") };
+        let Some(entry) = Self::command(command) else { return self.refuse("找不到要移除的按鍵。") };
         let Some(list) = all.get_mut(entry.id).filter(|list| index < list.len()) else {
-            return self.fail("找不到要移除的按鍵。");
+            return self.refuse("找不到要移除的按鍵。");
         };
         if entry.required && list.len() == 1 {
-            return self.fail(format!("「{}」至少要有一個按鍵", entry.label));
+            return self.refuse(format!("「{}」至少要有一個按鍵", entry.label));
         }
         list.remove(index);
         self.store(&all)
@@ -693,14 +712,14 @@ impl Shortcuts {
             self.cache.lock().error = None;
             return Ok(());
         };
-        let Some(entry) = Self::command(command) else { return self.fail("找不到這個按鍵功能。") };
+        let Some(entry) = Self::command(command) else { return self.refuse("找不到這個按鍵功能。") };
         let mut all = self.state();
         all.insert(entry.id, Vec::new());
         let free: Vec<Binding> =
             entry.defaults.iter().filter(|b| self.problem(**b, entry.id, 0, &all).is_none()).copied().collect();
         if free.is_empty() {
             let reason = self.problem(entry.defaults[0], entry.id, 0, &all).unwrap_or_default();
-            return self.fail(reason);
+            return self.refuse(reason);
         }
         all.insert(entry.id, free);
         self.store(&all)
@@ -800,6 +819,14 @@ impl Shortcuts {
     pub fn error(&self) -> Option<String> {
         self.user();
         self.cache.lock().error.clone()
+    }
+
+    /// Why the stored keys could not be read or saved, if so (a refused change is not such a problem).
+    #[must_use]
+    pub fn storage_error(&self) -> Option<String> {
+        self.user();
+        let cache = self.cache.lock();
+        cache.error.clone().filter(|_| !cache.refused)
     }
 }
 

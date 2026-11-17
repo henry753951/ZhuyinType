@@ -112,6 +112,7 @@ fn reserved_keys_and_invalid_inputs() {
     for &(key, modifiers) in invalid {
         assert!(shortcuts.record("typeZhuyin", key, modifiers, Some(0)).is_err(), "{key:#x} {modifiers:#x}");
         assert!(shortcuts.error().is_some());
+        assert!(shortcuts.storage_error().is_none(), "a refused key is not a storage problem");
         assert_eq!(shortcuts.all(), original);
     }
     let reason = |key, modifiers| shortcuts.record("typeZhuyin", key, modifiers, Some(0)).unwrap_err().to_string();
@@ -226,4 +227,5 @@ fn failed_write_does_not_publish() {
     assert_eq!(shortcuts.all(), before);
     assert_eq!(settings.revision(), revision);
     assert!(shortcuts.error().is_some());
+    assert!(shortcuts.storage_error().is_some());
 }
