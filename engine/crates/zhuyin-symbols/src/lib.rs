@@ -236,6 +236,13 @@ fn english_score(keys: &Keys, query: &str) -> u32 {
         };
         best = best.max(score);
     }
+    // A tie goes to the shortest name with the word: "heart" → ❤️ (red heart) before 💘 (heart with arrow).
+    if let Some(name) = keys.english.first()
+        && best > 0
+        && name.split(' ').any(|word| word == query)
+    {
+        best += 4 - (name.split(' ').count() as u32 - 1).min(3);
+    }
     best
 }
 
@@ -255,7 +262,13 @@ pub fn search(query: &str, limit: usize) -> Vec<&'static Symbol> {
     let mut found: Vec<(u32, usize)> = Vec::new();
     for (order, keys) in catalog.keys.iter().enumerate() {
         let symbol = &catalog.categories[keys.category].symbols[keys.index];
-        let mut score = if ascii { 0 } else { chinese_score(keys, &symbol.name, query) };
+        let mut score = if symbol.text == query || symbol.text.replace('\u{fe0f}', "") == query {
+            110
+        } else if ascii {
+            0
+        } else {
+            chinese_score(keys, &symbol.name, query)
+        };
         if let Some(syllables) = &zhuyin {
             score = score.max(zhuyin_score(keys, syllables));
         }
