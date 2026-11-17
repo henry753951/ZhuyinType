@@ -62,7 +62,8 @@ pub struct Presentation {
     pub notice: Option<String>,
     /// The engine's reading channel (「接受常見的其他讀法」) is loaded and on.
     pub reading_channel_active: bool,
-    /// The list is next-word suggestions after a commit (聯想詞): no composition, ⇧ + a selection key picks.
+    /// The list is next-word suggestions after a commit (聯想詞): no composition; ↓ enters it.  While it is not
+    /// entered (passive) nothing is highlighted: `selection` and `selected` are `None`.
     pub associated: bool,
 }
 
@@ -109,6 +110,10 @@ impl Presentation {
         self.page_count = list.page_count();
         let range = list.page_range();
         self.selected = Some(list.selection() - range.start);
+        if list.passive() {
+            self.selection = None;
+            self.selected = None;
+        }
         self.rows = list.items()[range.clone()]
             .iter()
             .zip(range)

@@ -95,8 +95,6 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
             let p = Presentation {
                 count: rows.len(),
                 rows,
-                selection: Some(0),
-                selected: Some(0),
                 page_count: 1,
                 page_size: per_page,
                 associated: true,

@@ -534,6 +534,13 @@ impl TextService_Impl {
             self.host_focused.set(false);
             return false;
         }
+        // A commit that leaves only a list (聯想詞) ended the composition: the list goes at the caret after the
+        // commit, not where the key was typed.
+        if !self.secure.get() && reply.preedit.is_empty() && !reply.commit.is_empty() {
+            let (rect, scale, _) = composition::caret(&context, cookie);
+            self.rect.set(rect);
+            self.scale.set(scale);
+        }
         self.english.set(reply.english);
         self.composing.set(reply.composing);
         // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.

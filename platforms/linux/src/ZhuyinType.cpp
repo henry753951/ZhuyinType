@@ -281,7 +281,7 @@ void ZhuyinType::showPanel(fcitx::InputContext &ic, const State &state) {
     if (const auto reading = text(model, "reading"); !reading.empty()) panel.setAuxUp(fcitx::Text(reading));
     // 聯想詞 (next-word suggestions after a commit) have no reading: the label says what the list is.
     if (const auto associated = model.find("associated"); associated != model.end() && associated->is_boolean() &&
-        associated->get<bool>()) panel.setAuxUp(fcitx::Text("聯想詞・Shift 加選字鍵"));
+        associated->get<bool>()) panel.setAuxUp(fcitx::Text("聯想詞・↓ 選擇"));
     if (const auto notice = text(model, "notice"); !notice.empty()) panel.setAuxDown(fcitx::Text(notice));
     const auto rows = model.find("rows");
     if (rows == model.end() || !rows->is_array() || rows->empty()) return;

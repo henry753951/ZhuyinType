@@ -74,7 +74,7 @@ const NOTICE_X: f32 = 12.;
 /// A notice row above candidates.
 const NOTICE_ROW: f32 = 24.;
 /// The reading row's text above 聯想詞 (next-word suggestions), which have no reading.
-pub const ASSOCIATION_LABEL: &str = "聯想詞・Shift 加選字鍵";
+pub const ASSOCIATION_LABEL: &str = "聯想詞・↓ 選擇";
 
 /// A key cap's width for `key` at the key caps' font: the label and 5 on each side, never narrower than tall.
 pub fn keycap_width(measure: &mut dyn Measure, key: &str) -> f32 {

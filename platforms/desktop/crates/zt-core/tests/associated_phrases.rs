@@ -64,42 +64,42 @@ fn off_by_default_and_when_off() {
 }
 
 #[test]
-fn list_after_commit_and_shift_pick() {
+fn passive_list_down_enters_and_keys_pick() {
     let dir = TempDir::new();
     let mut input = controller(&dir, true);
     thanks(&mut input);
     let p = input.presentation();
     assert!(p.associated && p.composition.is_empty());
+    assert_eq!((p.selection, p.selected), (None, None), "passive: nothing highlighted");
     assert_eq!(rows(&input), ["你", "大家"]);
     assert!(p.panel_model(None).associated);
-    // ⇧2 sends 大家 and lists what follows it.
-    assert!(input.press(&Key::new('@' as i32, modifier::SHIFT)));
+    // ↓ enters the list; 2 sends 大家 and lists, passively, what follows it.
+    assert!(input.press(&Key::new(code::DOWN, 0)));
+    assert_eq!(input.presentation().selected, Some(0));
+    assert!(input.press(&key_for('2')));
     assert_eq!(commits(&mut input), ["大家"]);
     assert_eq!(rows(&input), ["好"]);
-    // A click picks too.
+    assert_eq!(input.presentation().selected, None);
+    // A click picks without entering.
     assert!(input.choose(0));
     assert_eq!(commits(&mut input), ["好"]);
     assert!(!input.presentation().has_list());
 }
 
 #[test]
-fn other_keys_close_the_list() {
-    let dir = TempDir::new();
-    let mut input = controller(&dir, true);
-    thanks(&mut input);
-    // Space goes to the app (it is not a pick) and closes the list.
-    assert!(!input.press(&Key::new(code::SPACE, 0)));
-    assert!(!input.presentation().has_list() && commits(&mut input).is_empty());
-    // A Zhuyin key starts a composition.
-    thanks(&mut input);
-    assert!(input.press(&key_for('s')));
-    assert_eq!(input.presentation().composition, "ㄋ");
-    assert!(!input.presentation().has_list());
-    // Esc only closes it.
-    let mut input = controller(&TempDir::new(), true);
-    thanks(&mut input);
-    assert!(input.press(&Key::new(code::ESCAPE, 0)));
-    assert!(!input.presentation().has_list());
+fn shift_digit_types_as_with_no_list() {
+    // ⇧1 after 謝謝 does exactly what it does with the feature off (it never sends a suggestion).
+    let mut outcomes = Vec::new();
+    for on in [false, true] {
+        let dir = TempDir::new();
+        let mut input = controller(&dir, on);
+        thanks(&mut input);
+        assert_eq!(input.presentation().has_list(), on);
+        let handled = input.press(&Key::new('!' as i32, modifier::SHIFT));
+        outcomes.push((handled, commits(&mut input), input.presentation().composition.clone()));
+        assert!(!input.presentation().has_list());
+    }
+    assert_eq!(outcomes[0], outcomes[1]);
 }
 
 #[test]
