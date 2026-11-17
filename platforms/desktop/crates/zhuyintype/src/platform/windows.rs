@@ -143,9 +143,11 @@ pub fn native_frame(window: &Window) -> bool {
 /// The settings and wizard windows' light or dark frame and their backdrop (`platform::backdrop`).
 ///
 /// `dark` sets `DWMWA_USE_IMMERSIVE_DARK_MODE`: the border DWM draws, and the tint of Mica, follow the 主題 rather
-/// than the system.  With `mica` GPUI asks for `DWMSBT_MAINWINDOW` (Windows 11 22H2 on) and clears to transparent,
-/// and the frame is extended over the whole client area so the backdrop shows behind the content; without it the
-/// backdrop is removed (GPUI leaves the last one set) and the frame goes back to `native_frame`'s one pixel.
+/// than the system.  With `mica` GPUI asks for `DWMSBT_MAINWINDOW` (Windows 11 22H2 on) and clears to transparent;
+/// the window has no redirection surface (GPUI draws with DirectComposition), so the backdrop shows behind the whole
+/// client area with `native_frame`'s one-pixel frame.  Extending the frame over the whole client area is not needed
+/// and would make DWM draw its own caption buttons over the app's.  Without `mica` the backdrop is removed (GPUI
+/// leaves the last one set).
 pub fn set_backdrop(window: &mut Window, dark: bool, mica: bool) -> bool {
     window.set_background_appearance(if mica {
         WindowBackgroundAppearance::MicaBackdrop
@@ -172,12 +174,6 @@ pub fn set_backdrop(window: &mut Window, dark: bool, mica: bool) -> bool {
                 size_of::<u32>() as u32,
             );
         }
-        let margins = if mica {
-            MARGINS { cxLeftWidth: -1, cxRightWidth: -1, cyTopHeight: -1, cyBottomHeight: -1 }
-        } else {
-            MARGINS { cxLeftWidth: 0, cxRightWidth: 0, cyTopHeight: 1, cyBottomHeight: 0 }
-        };
-        let _ = DwmExtendFrameIntoClientArea(window, &raw const margins);
     }
     true
 }

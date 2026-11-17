@@ -22,7 +22,7 @@
 
 透明效果的材質：
 
-- **Windows 11 22H2（組建 22621）以上**：設定視窗與設定嚮導用 Mica（`DWMSBT_MAINWINDOW`）。GPUI 的 DirectComposition 畫面以透明清除，視窗框架延伸到整個工作區，標題列與側欄在 Mica 上只加一層淡淡的視窗色，頁面再加一層較濃的頁面色，所以兩種主題的文字對比都和不透明時接近。Mica 只在視窗是使用中的視窗時顯示，其他時候 DWM 改用不透明的顏色。候選字視窗與中英提示由 TSF DLL 畫，系統替視窗畫圓角時（不是虛擬機的基本顯示卡）用 Acrylic（`DWMSBT_TRANSIENTWINDOW`），透明效果關閉時改畫不透明的背景（`zt_panel::style::Panel` 的 `translucent`）。
+- **Windows 11 22H2（組建 22621）以上**：設定視窗與設定嚮導用 Mica（`DWMSBT_MAINWINDOW`）。GPUI 的 DirectComposition 畫面以透明清除（視窗沒有重新導向的介面，所以背景材質會出現在整個工作區，不必把框架延伸到工作區；延伸時 DWM 會在 App 自己的視窗按鈕上再畫一組系統按鈕）。標題列與側欄在 Mica 上只加一層淡淡的視窗色，頁面再加一層較濃的頁面色，文字以灰階抗鋸齒畫，所以兩種主題的文字對比都和不透明時接近。Mica 只在視窗是使用中的視窗時顯示，其他時候、以及沒有硬體加速的顯示卡（虛擬機的基本顯示卡）上，DWM 改畫材質的不透明底色（淺色約 #f3f3f3、深色約 #202020）。候選字視窗與中英提示由 TSF DLL 畫，系統替視窗畫圓角時（不是虛擬機的基本顯示卡）用 Acrylic（`DWMSBT_TRANSIENTWINDOW`），透明效果關閉時改畫不透明的背景（`zt_panel::style::Panel` 的 `translucent`）。
 - **較舊的 Windows**：不透明，「透明效果」變暗並寫「需要 Windows 11 22H2 或更新的版本」。
 - **KDE Plasma**：設定視窗與設定嚮導用 KWin 的模糊：Wayland 由 GPUI 使用 `ext-background-effect` 或 KDE 的 blur 協定，範圍是圓角的視窗本身；X11 在有合成器時設定 `_KDE_NET_WM_BLUR_BEHIND_REGION`，範圍同樣不含陰影。模糊會透出後面移動的內容，所以框架與頁面的顏色保留得較多。Linux 的候選字視窗維持不透明。
 - **其他 Linux 桌面**：不透明，「透明效果」變暗並寫「只在 KDE Plasma 上提供」。
@@ -70,3 +70,4 @@
 - 程式碼簽章。
 - 引擎載入期間（登入後的頭一兩秒）打的鍵直接交給程式；macOS 會先保留最多 64 個鍵。
 - 替換用的資料夾（macOS 的 `Models/`）與資料更新時自動重新載入。
+- 透明效果只在虛擬機（基本顯示卡，DWM 畫材質的不透明底色）與沒有合成器的 Linux 上驗證過：真正的 Mica、候選字視窗的 Acrylic 與 KDE Plasma 的模糊還要在有 GPU 的 Windows 11 與 KDE 上確認文字對比。
