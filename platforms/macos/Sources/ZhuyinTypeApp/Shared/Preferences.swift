@@ -99,6 +99,8 @@ final class Preferences: ObservableObject {
             Key.disabledKeyFeatures: [String](),
             Key.lastShiftSide: ShiftToggle.both.rawValue,
             Key.recordsUsageStats: true,
+            Key.showCorrections: true,
+            Key.undoCorrectionWithBackspace: true,
         ])
     }
 
@@ -154,6 +156,10 @@ final class Preferences: ObservableObject {
         static let lastShiftSide = "lastShiftSide"
         /// 「記錄使用統計」: counts and timings for the 分析 page (UsageStatsStore).  On by default.
         static let recordsUsageStats = "recordsUsageStats"
+        /// 「標示自動修正」: a dotted underline under corrected characters and 「你打的是 …」 in the candidate window.
+        static let showCorrections = "showCorrections"
+        /// 「⌫ 還原自動修正」 (`ComposerOptions.undoCorrectionWithBackspace`).  On by default.
+        static let undoCorrectionWithBackspace = "undoCorrectionWithBackspace"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
@@ -161,7 +167,7 @@ final class Preferences: ObservableObject {
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
-                          recordsUsageStats, accentColor]
+                          recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace]
     }
 
     func resetToDefaults() {
@@ -299,6 +305,16 @@ final class Preferences: ObservableObject {
     var pageAtListEdge: Bool {
         get { defaults.object(forKey: Key.pageAtListEdge) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.pageAtListEdge); changed() }
+    }
+    /// 「標示自動修正」: corrected characters get a dotted underline, and the candidate window shows the Zhuyin as typed.
+    var showCorrections: Bool {
+        get { defaults.bool(forKey: Key.showCorrections) }
+        set { defaults.set(newValue, forKey: Key.showCorrections); changed() }
+    }
+    /// 「⌫ 還原自動修正」: ⌫ right after a correction appears converts the keys as typed; a second ⌫ deletes.
+    var undoCorrectionWithBackspace: Bool {
+        get { defaults.bool(forKey: Key.undoCorrectionWithBackspace) }
+        set { defaults.set(newValue, forKey: Key.undoCorrectionWithBackspace); changed() }
     }
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
@@ -500,6 +516,7 @@ final class Preferences: ObservableObject {
         o.characterForms = characterForms
         o.punctuationKeys = punctuationKeys
         o.pageAtListEdge = pageAtListEdge
+        o.undoCorrectionWithBackspace = undoCorrectionWithBackspace
         return o
     }
 }

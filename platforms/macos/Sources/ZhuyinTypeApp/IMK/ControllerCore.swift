@@ -37,6 +37,10 @@ final class ControllerCore {
     var disabledFeatures: Set<KeyFeature> = []
     /// The sentence shown has a typing correction (as last chosen by the reranker).
     private(set) var shownCorrected = false
+    /// 「標示自動修正」: characters shown through an automatic correction get a dotted accent underline.
+    var showCorrections = true {
+        didSet { if showCorrections != oldValue { lastMark = nil } }
+    }
 
     private struct Mark: Equatable {
         var text: String
@@ -44,6 +48,7 @@ final class ControllerCore {
         var clauses: [Range<Int>]
         var focus: Int?
         var target: Int?
+        var corrections: [Range<Int>] = []
     }
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
@@ -451,8 +456,9 @@ final class ControllerCore {
         if popup || p.text.isEmpty {
             clearMark()
         } else {
+            let corrections = showCorrections ? p.corrections.filter { $0.lowerBound >= 0 && $0.upperBound <= length } : []
             let mark = Mark(text: p.text, cursor: p.cursor, clauses: p.clauses, focus: p.focusedClause,
-                            target: p.targetClause)
+                            target: p.targetClause, corrections: corrections)
             if mark != lastMark {
                 let text = NSMutableAttributedString(string: p.text)
                 for (index, range) in p.clauses.enumerated() {
@@ -474,6 +480,7 @@ final class ControllerCore {
                     }
                     text.addAttributes(attributes, range: NSRange(location: range.lowerBound, length: range.count))
                 }
+                markCorrections(corrections, in: text, presentation: p)
                 // While choosing, the replaced part is the marked text's selection; clients that draw their own
                 // composition (web engines) show the selected clause with a thick underline.
                 let selection = p.focusedClause.flatMap { p.clauses.indices.contains($0) ? p.clauses[$0] : nil }
@@ -487,6 +494,18 @@ final class ControllerCore {
             showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor), p.notice, p.zhuyinHint)
         } else {
             hidePanel?()
+        }
+    }
+
+    /// Corrected characters outside the focused and target clauses: a dotted underline in the accent colour instead
+    /// of the plain one.  Only the underline changes, so each character keeps its clause; clients that draw their own
+    /// composition from the clause segments ignore it.
+    private func markCorrections(_ corrections: [Range<Int>], in text: NSMutableAttributedString, presentation p: Presentation) {
+        let accented = [p.focusedClause, p.targetClause].compactMap { $0 }.filter { p.clauses.indices.contains($0) }.map { p.clauses[$0] }
+        let attributes: [NSAttributedString.Key: Any] = [.underlineStyle: NSUnderlineStyle.single.union(.patternDot).rawValue,
+                                                         .underlineColor: NSColor.controlAccentColor]
+        for unit in Set(corrections.joined()) where !accented.contains(where: { $0.contains(unit) }) {
+            text.addAttributes(attributes, range: NSRange(location: unit, length: 1))
         }
     }
 

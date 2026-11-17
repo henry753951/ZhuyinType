@@ -516,6 +516,8 @@ final class CandidateContentView: InputMaterialView {
     private let previewLabel = NSTextField(labelWithString: "")
     private let noticeView = NoticeView()
     private let zhuyinButton = ZhuyinHintButton()
+    /// 「你打的是 ㄊㄜˇ · ⌫ 還原」 under the list, while it is open on an automatic correction (標示自動修正).
+    private let correctionNote = NSTextField(labelWithString: "")
     private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字")
     private let correctionButton = KeycapToggle(key: "⇧↑", label: "修正", help: "列出按錯修正的字")
     private let pageLabel = NSTextField(labelWithString: "")
@@ -556,6 +558,12 @@ final class CandidateContentView: InputMaterialView {
         }
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.maximumNumberOfLines = 1
+        correctionNote.font = .systemFont(ofSize: 12)
+        correctionNote.textColor = .secondaryLabelColor
+        correctionNote.lineBreakMode = .byTruncatingTail
+        correctionNote.maximumNumberOfLines = 1
+        correctionNote.isHidden = true
+        addSubview(correctionNote)
         pageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
         pageLabel.alignment = .center
@@ -583,7 +591,8 @@ final class CandidateContentView: InputMaterialView {
     /// Lays the window out for `list` and returns its size.  `style` holds the settings of the 候選字視窗 page.
     @discardableResult
     func update(list: CandidateList?, preview: String?, keys: [Character], style: CandidateStyle,
-                maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil) -> NSSize {
+                maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil,
+                correctionNote note: String? = nil) -> NSSize {
         keyLabels = style.keyLabels
         let layout = style.layout
         let fontSize = CGFloat(style.fontSize)
@@ -637,6 +646,10 @@ final class CandidateContentView: InputMaterialView {
         let singleWidth: CGFloat = hasSingle ? ceil(singleButton.preferredWidth) + 8 : 0
         let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
         let footerWidth = pageWidth + singleWidth + toggleWidth
+        let hasNote = !(note ?? "").isEmpty && listOpen
+        correctionNote.stringValue = hasNote ? note ?? "" : ""
+        correctionNote.isHidden = !hasNote
+        let noteWidth: CGFloat = hasNote ? ceil(correctionNote.intrinsicContentSize.width) + 8 : 0
         // A notice on its own is a compact pill; above candidates it is a row of the window.
         var width: CGFloat = hasPreview || listOpen ? (compact ? 96 : 160) : 0
         var y: CGFloat = padding
@@ -676,7 +689,8 @@ final class CandidateContentView: InputMaterialView {
             let rowsWidth = layout == .vertical ? (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2
                 : naturalRowWidth + gaps + padding * 2 + footerWidth
             // Pages of one list keep the widest width seen, so the window does not jump as pages turn.
-            return min(maxWidth, ceil(max(width, rowsWidth, footerWidth + padding * 2, steadySize.width)))
+            return min(maxWidth, ceil(max(width, rowsWidth, footerWidth + padding * 2, noteWidth + padding * 2,
+                                          steadySize.width)))
         }
         width = calculateWidth()
         func applyLayoutAndAnimation() -> NSSize {
@@ -749,6 +763,11 @@ final class CandidateContentView: InputMaterialView {
                 previous.isEnabled = list.page > 0
                 next.isEnabled = list.page + 1 < list.pageCount
                 if layout == .vertical { y += footerHeight }
+            }
+            if hasNote {
+                correctionNote.frame = NSRect(x: padding + 4, y: y + (compact ? 1 : 3),
+                                              width: max(0, width - padding * 2 - 8), height: 16)
+                y += footerHeight
             }
             let size = NSSize(width: width, height: max(y + padding, listOpen ? steadySize.height : 0))
             if listOpen { steadySize = size }
@@ -1027,7 +1046,7 @@ final class CandidatePanelController {
     private var announced: CandidateAnnouncer.Shown?
 
     func show(list: CandidateList?, preview: String?, caret: NSRect, keys: [Character], windowLevel: NSWindow.Level,
-              notice: String? = nil, zhuyinHint: String? = nil) {
+              notice: String? = nil, zhuyinHint: String? = nil, typedReading: String? = nil) {
         guard list?.items.isEmpty == false || !(preview ?? "").isEmpty || notice != nil else { hide(); return }
         let visible = InputPanelPlacement.screen(at: caret)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         content.onSelect = { [weak self] in self?.onSelect?($0) }
@@ -1038,7 +1057,8 @@ final class CandidatePanelController {
         let preferences = Preferences.shared
         panel.appearance = preferences.panelAppearance.appearance
         let size = content.update(list: list, preview: preview, keys: keys, style: preferences.candidateStyle,
-                                  maxWidth: visible.width, notice: notice, zhuyinHint: zhuyinHint)
+                                  maxWidth: visible.width, notice: notice, zhuyinHint: zhuyinHint,
+                                  correctionNote: Self.correctionNote(typedReading, preferences))
         let sameLine = panel.isVisible && lastScreen == visible && lastCaret.map { abs($0.minY - caret.minY) < 2 && abs($0.maxY - caret.maxY) < 2 } == true
         let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: visible, textInset: content.candidateTextInset,
                                              previousX: sameLine ? panel.frame.minX : nil,
@@ -1067,6 +1087,12 @@ final class CandidatePanelController {
         announced = nil
         content.resetHover()
         content.reset()
+    }
+
+    /// 「你打的是 ㄊㄜˇ」, with 「 · ⌫ 還原」 when ⌫ reverts the correction; nil with 標示自動修正 off.
+    static func correctionNote(_ typedReading: String?, _ preferences: Preferences) -> String? {
+        guard preferences.showCorrections, let typedReading, !typedReading.isEmpty else { return nil }
+        return "你打的是 " + typedReading + (preferences.undoCorrectionWithBackspace ? " · ⌫ 還原" : "")
     }
 
     /// Paging stopped at an end of the list (`direction`: 1 past the last page, -1 before the first).
