@@ -198,9 +198,10 @@ enum UIPreviewRenderer {
         for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
         let searching = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
+        let prefilled = SymbolPicker(source: source, recent: [], prefill: "笑")
         let empty = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [12, 12] { _ = empty.handle(keyCode: key, modifiers: []) }
-        for (name, picker) in [("browse", browsing), ("search", searching), ("no-results", empty)] {
+        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("no-results", empty)] {
             let view = SymbolPickerView(frame: .zero)
             view.hoverEnabled = false
             view.update(picker)

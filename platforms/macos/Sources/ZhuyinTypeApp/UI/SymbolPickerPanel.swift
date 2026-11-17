@@ -26,6 +26,7 @@ final class SymbolPickerView: InputMaterialView {
     private var rowCount = 0
     private var query = ""
     private var searching = false
+    private var prefilled = false
     private var hovered: Int?
     private var hoveredTab: Int?
     private var scrollRemainder: CGFloat = 0
@@ -56,6 +57,7 @@ final class SymbolPickerView: InputMaterialView {
         rowCount = picker.rowCount
         query = picker.shownQuery
         searching = picker.isSearching
+        prefilled = picker.prefilled
         if frame.size != Self.size { setFrameSize(Self.size) }
         rebuildAccessibility()
         needsDisplay = true
@@ -127,6 +129,13 @@ final class SymbolPickerView: InputMaterialView {
         let trailingAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor]
         let trailingWidth = ceil((trailing as NSString).size(withAttributes: trailingAttributes).width)
         let height = (text as NSString).size(withAttributes: attributes).height
+        if prefilled {
+            // The composition the picker was opened with is selected: the first key typed replaces it.
+            let width = min(ceil((text as NSString).size(withAttributes: attributes).width) + 4, max(0, rect.width - 44 - trailingWidth))
+            NSColor.selectedTextBackgroundColor.setFill()
+            NSBezierPath(roundedRect: NSRect(x: rect.minX + 26, y: rect.midY - height / 2, width: width, height: height),
+                         xRadius: 3, yRadius: 3).fill()
+        }
         (text as NSString).draw(in: NSRect(x: rect.minX + 28, y: rect.midY - height / 2, width: max(0, rect.width - 44 - trailingWidth),
                                            height: height), withAttributes: attributes)
         let trailingHeight = (trailing as NSString).size(withAttributes: trailingAttributes).height
@@ -333,6 +342,7 @@ final class SymbolPickerPanelController {
     private let content = SymbolPickerView(frame: .zero)
     private lazy var surface = InputSurface(content: content)
     private lazy var panel = InputPanel(content: surface)
+    private var lastAnnouncement: String?
 
     init() {
         content.onPick = { [weak self] in self?.onPick?($0) }
@@ -362,11 +372,29 @@ final class SymbolPickerPanelController {
         } else {
             PanelMotion.present(panel, frame: frame, caret: caret)
         }
+        announce(Self.announcement(for: picker))
+    }
+
+    /// What VoiceOver says as the highlight moves: 「笑哭，第 3 個，共 19 個，笑臉與情緒」.  The app being typed in keeps
+    /// the VoiceOver cursor, so the picker announces itself.
+    static func announcement(for picker: SymbolPicker) -> String {
+        guard let item = picker.highlighted else { return picker.isSearching ? "沒有符合的符號" : "" }
+        let place = picker.isSearching ? "搜尋結果" : picker.tabs[picker.tab].title
+        return "\(item.name.isEmpty ? item.text : item.name)，第 \(picker.highlight + 1) 個，共 \(picker.items.count) 個，\(place)"
+    }
+
+    private func announce(_ text: String) {
+        guard text != lastAnnouncement else { return }
+        lastAnnouncement = text
+        guard !text.isEmpty, NSWorkspace.shared.isVoiceOverEnabled else { return }
+        NSAccessibility.post(element: content, notification: .announcementRequested,
+                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
     }
 
     func hide() {
         panel.orderOut(nil)
         panel.alphaValue = 1
         content.resetHover()
+        lastAnnouncement = nil
     }
 }

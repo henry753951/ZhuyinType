@@ -27,10 +27,11 @@ protocol SymbolSource: AnyObject {
     func displayQuery(_ query: String) -> String
     /// The recent list's stored text after `symbol` was inserted (newest first, at most the capacity).
     func recentPush(stored: String, symbol: String) -> String
+    /// The name of a symbol in any category, for 最近使用.
+    func name(of text: String) -> String?
 }
 
 extension SymbolSource {
-    /// The name of a symbol in any category, for 最近使用.
     func name(of text: String) -> String? {
         for category in categories { if let item = category.symbols.first(where: { $0.text == text }) { return item.name } }
         return nil
