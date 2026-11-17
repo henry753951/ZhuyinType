@@ -11,7 +11,10 @@ and both models are counted again from the same text:
         finished run, linked, not copied), the same three-pass hard EM and modified Kneser-Ney, then prefer-tai;
         written to DIR/lm with the shipped model's test_sentences.txt for its perplexity
   chat  `zt train lm_chat2 real` on the same prepared utterances (DATA/lm_chat2: inputs/, no_generated/work/'s
-        prepared.json, sentences/, context_pairs.tsv), with SEED as its seed lexicon; written to DIR/lm_chat
+        prepared.json, sentences/, context_pairs.tsv), with SEED as its seed lexicon; written to DIR/lm_chat.
+        --chat-variant V trains another lm_chat2 variant from its prepared work instead (for example
+        ptt-cns-genpub, with --base data/build/lm_chat2/inputs/lexicon.tsv so only the packs' words differ);
+        written to DIR/lm_chat-V
 
 Only the seed vocabulary changes; text, holdouts, smoothing and pruning are the shipped models'.  GPU host (CPU).
 """
@@ -72,9 +75,12 @@ def wiki(seed_path: Path, work_source: Path, dump: Path, out: Path, shipped: Pat
     run("zhuyintype_ml.training.lm.prefer_tai", str(model), str(seed_path))
 
 
-def chat(seed_path: Path, data: Path, out: Path, workers: int) -> None:
+def chat(seed_path: Path, data: Path, out: Path, workers: int, variant: str = "real") -> None:
     """lm_chat2's trainer reads data/build/lm_chat2 through ZT_DATA: a private tree with the shared inputs linked."""
-    tree = out / "chat_data"
+    from zhuyintype_ml.training.lm_chat2.prepare import VARIANTS
+
+    folder = VARIANTS[variant] or "."
+    tree = out / ("chat_data" if variant == "real" else f"chat_data-{variant}")
     source = data / "lm_chat2"
     mirror = tree / "lm_chat2"
     (mirror / "inputs").mkdir(parents=True, exist_ok=True)
@@ -84,18 +90,20 @@ def chat(seed_path: Path, data: Path, out: Path, workers: int) -> None:
     shutil.copy(seed_path, mirror / "inputs" / "lexicon.tsv")
     for name in ("dev_dialogue.txt", "test_dialogue.txt"):
         link(source / name, mirror / name)
-    work = mirror / "no_generated" / "work"
+    work = mirror / folder / "work"
     work.mkdir(parents=True, exist_ok=True)
     for name in ("prepared.json", "sentences", "context_pairs.tsv"):
-        link(source / "no_generated" / "work" / name, work / name)
-    for name in ("corpus", "lm", "lm_chat"):
-        link(data / name, tree / name)
+        link(source / folder / "work" / name, work / name)
+    # corpus, models and the row sets the trainer's leakage audit reads
+    for name in ("corpus", "lm", "lm_chat", "loss-analysis", "private"):
+        if (data / name).exists():
+            link(data / name, tree / name)
     env = dict(paths.python_env(), ZT_DATA=str(tree), OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
-    run("zhuyintype_ml.training.lm_chat2.train", "--variant", "real", "--workers", str(workers), env=env)
-    target = out / "lm_chat"
+    run("zhuyintype_ml.training.lm_chat2.train", "--variant", variant, "--workers", str(workers), env=env)
+    target = out / ("lm_chat" if variant == "real" else f"lm_chat-{variant}")
     target.mkdir(parents=True, exist_ok=True)
     for name in ("unigram.tsv", "bigram.tsv", "backoff.tsv", "stats.json", "validation.json"):
-        shutil.copy(mirror / "no_generated" / name, target / name)
+        shutil.copy(mirror / folder / name, target / name)
 
 
 RESEGMENTED = (
@@ -139,17 +147,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--chat-data", type=Path, required=True, help="data directory with lm_chat2/")
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--only", choices=("wiki", "chat", "notices"))
+    parser.add_argument("--chat-variant", default="real", help="the lm_chat2 variant whose prepared work is re-counted")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     shipped_chat = args.chat_data / "lm_chat"
     if args.only == "notices":
         notices(args.out, args.shipped, shipped_chat)
         return 0
-    seed_path = seed(args.base, args.pack, args.out / "seed.tsv")
+    seed_path = seed(
+        args.base,
+        args.pack,
+        args.out / ("seed.tsv" if args.chat_variant == "real" else f"seed-{args.chat_variant}.tsv"),
+    )
     if args.only != "chat":
         wiki(seed_path, args.wiki_work, args.dump, args.out, args.shipped, args.workers)
     if args.only != "wiki":
-        chat(seed_path, args.chat_data, args.out, args.workers)
+        chat(seed_path, args.chat_data, args.out, args.workers, args.chat_variant)
     notices(args.out, args.shipped, shipped_chat)
     summary = {"seed_rows": sum(1 for _ in open(seed_path, encoding="utf-8")) - 1, "packs": [str(p) for p in args.pack]}
     (args.out / "lm.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1) + "\n")

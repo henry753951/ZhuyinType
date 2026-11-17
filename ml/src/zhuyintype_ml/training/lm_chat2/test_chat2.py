@@ -19,13 +19,21 @@ try:
     from zhuyintype_ml.core.zhuyin import Lexicon
     from zhuyintype_ml.training.lm import mkn
     from zhuyintype_ml.training.lm_chat2.evaluate import run_batch, selected_inputs
-    from zhuyintype_ml.training.lm_chat2.prepare import gazette_turns, wiki_threads
+    from zhuyintype_ml.training.lm_chat2.prepare import blocked_rows, gazette_turns, wiki_threads
 except ImportError:  # numpy, opencc, pyahocorasick, mwparserfromhell: the train dependency group
     mkn = None  # type: ignore[assignment]
 
 
 @unittest.skipIf(mkn is None, "needs the train dependency group")
 class Checks(unittest.TestCase):
+    def test_blocked_rows_keep_context_and_truth(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "rows.txt"
+            path.write_text(
+                "前面的文字|這樣母湯喔|ㄓㄜˋ ㄧㄤˋ ㄇㄨˇ ㄊㄤ ㄛ\n|好ㄉ|ㄏㄠˇ ㄉ\n整行沒有分隔\n", encoding="utf-8"
+            )
+            self.assertEqual(blocked_rows([path]), {"前面的文字", "這樣母湯喔", "整行沒有分隔"})
+
     def test_failed_batch_retains_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "failure.json"

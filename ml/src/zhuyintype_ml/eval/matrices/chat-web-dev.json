@@ -1,0 +1,107 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "shipped",
+   "config": "app"
+  },
+  {
+   "name": "control",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/control"
+   ]
+  },
+  {
+   "name": "web",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/web"
+   ]
+  },
+  {
+   "name": "web3",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/web3"
+   ]
+  },
+  {
+   "name": "ptt",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt"
+   ]
+  },
+  {
+   "name": "ptt14",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt14"
+   ]
+  },
+  {
+   "name": "ptt-meme",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-meme"
+   ]
+  },
+  {
+   "name": "ptt-lccc",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-lccc"
+   ]
+  },
+  {
+   "name": "ptt-zhihu",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-zhihu"
+   ]
+  },
+  {
+   "name": "ptt-others",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-others"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "wiki-context",
+   "set": "wiki-dev",
+   "options": [
+    "--context",
+    "line"
+   ]
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  },
+  {
+   "name": "smoke",
+   "set": "smoke"
+  }
+ ]
+}

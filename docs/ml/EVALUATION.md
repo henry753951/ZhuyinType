@@ -30,9 +30,9 @@
 | `latency` | `ml/eval-sets/latency_sentences.txt` | 量測延遲的固定 10 句 | 延遲 |
 | `zai-dev`、`zai-test` | `homophone2/{dev,test}_zai.txt` | 「在／再」各約 1,000 句，依位置分類；工具在 `ml/src/zhuyintype_ml/training/homophone/` | 開發／測試 |
 | `shanjie-*` | `ml/eval-sets/external/shanjie/` | 善解的評測集（CC0）：dev302、typing76、reported、fw、trap、daily | 外部 |
-| `slang-*` | `ml/eval-sets/slang-probe/` | 現代日常與網路用語的探針，286 列，依問題類別分成 9 個檔（網路用語、語氣詞、借詞、日語來源、專有名詞、新詞、實際讀音、寫法、注音文），目標詞照實際的打法標音；說明與標記在同一目錄，分析見 [slang-inventory.md](../research/slang-inventory.md) | 開發 |
+| `slang-*` | `ml/eval-sets/slang-probe/` | 現代日常與網路用語的探針，347 列，依問題類別分成 10 個檔（網路用語、語氣詞、借詞、日語來源、專有名詞、新詞、實際讀音、寫法、注音文、技術詞），目標詞照實際的打法標音；說明與標記在同一目錄，分析見 [slang-inventory.md](../research/slang-inventory.md) | 開發 |
 
-群組：`dev` 是三個開發集，`test` 是三個測試集加 `smoke`，`shanjie` 是六個善解評測集，`slang` 是九個現代用語探針。檔案路徑除了 `ml/` 開頭的以外，都相對於資料目錄（預設 `data/build`，可用 `ZT_DATA` 或 `--data` 改變）。資料目錄不在 git 裡，評測集用 `zt data fetch eval` 下載；產生方式見 `ml/src/zhuyintype_ml/training/corpus/README.md`、`ml/src/zhuyintype_ml/training/lm_chat/README.md`。`data/build/homophone/{dev,test}_pairs.txt` 另有 25 組常見同音字，由 `ml/src/zhuyintype_ml/training/homophone/` 的工具使用。
+群組：`dev` 是三個開發集，`test` 是三個測試集加 `smoke`，`shanjie` 是六個善解評測集，`slang` 是十個現代用語探針。檔案路徑除了 `ml/` 開頭的以外，都相對於資料目錄（預設 `data/build`，可用 `ZT_DATA` 或 `--data` 改變）。資料目錄不在 git 裡，評測集用 `zt data fetch eval` 下載；產生方式見 `ml/src/zhuyintype_ml/training/corpus/README.md`、`ml/src/zhuyintype_ml/training/lm_chat/README.md`。`data/build/homophone/{dev,test}_pairs.txt` 另有 25 組常見同音字，由 `ml/src/zhuyintype_ml/training/homophone/` 的工具使用。
 
 文字集用來抽樣：每一行切出 4–20 個中文字的連續段，以固定的 seed（`--seed`，預設 7）打亂後取前 `-n` 段。每個評測工具都用同一套抽樣，所以同一個 seed 下看到的是同一批句子；需要把游標移到每個字上的工具（候選字、改選、打字習慣、打字錯誤）只取每個字都有讀音的段。善解格式的評測集每行是 `前文|答案|注音`，照原樣輸入。
 

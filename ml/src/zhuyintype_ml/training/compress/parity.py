@@ -14,6 +14,10 @@ reranker parity sentences and a small prefix tree).  For each method, on the CPU
   the same comparison for the shipped models (`current`, against the fp16 method's reference), the usual Mac/Linux
   difference.
 
+- tree sizes: the prefix-tree package against PyTorch on the method's checkpoint over 600 trees shaped like the
+  engine's calls (`tree_sizes`): in fp16, Core ML's CPU kernels failed at single node counts that one small tree never
+  reaches (research log 2026-11-18, `chat-reranker`).  The check fails above 0.5 nats.
+
 Reported per model: the largest absolute difference of a log-probability the engine reads (valid candidates, real
 targets, tree edges) and, for v3, how often the top candidate agrees.  The report goes to <out>/parity-mac.json.
 Each method's v3/test_vectors.json is rewritten with its compressed Core ML outputs (the golden vectors of
@@ -136,6 +140,82 @@ def golden_vectors(v3: Path, got: dict[str, Any]) -> None:
     (v3 / "test_vectors.json").write_text(json.dumps(record) + "\n")
 
 
+def pack(prefix: list[int], candidates: list[list[int]]) -> dict[str, np.ndarray]:
+    """The model inputs of one prefix tree, as engine/crates/zhuyin-models/src/tree.rs packs them."""
+    ids, positions = list(prefix), list(range(len(prefix)))
+    parents = [max(0, i - 1) for i in range(len(prefix))]
+    children: dict[tuple[int, int], int] = {}
+    for candidate in candidates:
+        parent = len(prefix) - 1
+        for token in candidate:
+            if (parent, token) not in children:
+                children[parent, token] = len(ids)
+                ids.append(token)
+                positions.append(positions[parent] + 1)
+                parents.append(parent)
+            parent = children[parent, token]
+    states = sorted(set(parents))
+    index = {node: i for i, node in enumerate(states)}
+    ancestors = np.zeros((len(states), len(states)), np.int32)
+    for row, node in enumerate(states):
+        while True:
+            ancestors[row, index[node]] = 1
+            if node == 0:
+                break
+            node = parents[node]
+    return {
+        "ids": np.array([[ids[n] for n in states]], np.int32),
+        "positions": np.array([[positions[n] for n in states]], np.int32),
+        "ancestors": ancestors,
+        "parents": np.array([index[p] for p in parents], np.int32),
+        "targets": np.array(ids, np.int32),
+    }
+
+
+def sample_trees(count: int = 600, seed: int = 0) -> list[dict[str, np.ndarray]]:
+    """Trees shaped like the engine's calls: up to 24 context characters, then 1 to 16 candidates that share
+    prefixes and branch, within the model's 64 positions."""
+    rng = np.random.default_rng(seed)
+    trees: list[dict[str, np.ndarray]] = []
+    while len(trees) < count:
+        prefix = [1, *rng.integers(3, 3000, int(rng.integers(0, 25))).tolist()]
+        base = rng.integers(3, 3000, int(rng.integers(2, 31))).tolist()
+        candidates = []
+        for length in range(max(1, len(base) - int(rng.integers(1, 17)) + 1), len(base) + 1):
+            candidate = base[:length]
+            if rng.random() < 0.5:
+                candidate[int(rng.integers(0, length))] = int(rng.integers(3, 3000))
+            candidates.append(candidate)
+        if len(prefix) + len(base) <= 64:
+            trees.append(pack(prefix, candidates))
+    return trees
+
+
+def tree_sizes(reranker: Path, limit: float = 0.5) -> dict[str, Any]:
+    """The compiled prefix tree on the CPU against PyTorch on sampled trees: the largest error and the node counts
+    where some tree is wrong by more than `limit` nats or not finite."""
+    import torch
+
+    from zhuyintype_ml.training.reranker.export_tree import TreeScorer
+    from zhuyintype_ml.training.reranker.train import CharLM, Config
+
+    checkpoint = torch.load(reranker / "charlm.pt", map_location="cpu", weights_only=False)
+    charlm = CharLM(Config(**checkpoint["config"]))
+    charlm.load_state_dict(checkpoint["model"])
+    scorer, tree = TreeScorer(charlm.eval()), model(reranker / "RerankerTree.mlmodelc")
+    worst, failed = 0.0, dict[int, float]()
+    for inputs in sample_trees():
+        with torch.no_grad():
+            expected = scorer(*(torch.from_numpy(inputs[k]) for k in TREE)).numpy()
+        got = np.asarray(tree.predict(inputs)["logprob"], np.float64)
+        error = float(np.max(np.abs(got - expected)[1:])) if np.all(np.isfinite(got)) else float("inf")
+        worst = max(worst, error)
+        if not error <= limit:
+            nodes = int(inputs["ids"].shape[1])
+            failed[nodes] = max(failed.get(nodes, 0.0), error)
+    return {"trees": 600, "max_abs": worst, "failed_node_counts": dict(sorted(failed.items()))}
+
+
 def stored_weights(reranker: Path, v3: Path) -> dict[str, float]:
     """For each package, the largest difference between its decompressed weights and the uncompressed export's:
     0 means Core ML stores exactly the values the host evaluated."""
@@ -177,11 +257,16 @@ def main(argv: list[str] | None = None) -> int:
             entry["stored_weights_max_abs"] = stored_weights(reranker, v3)
             uncompressed = outputs(reranker, v3, ".uncompressed.mlpackage", reference)
             entry["uncompressed"] = differences(compressed, uncompressed)
+        entry["tree_sizes"] = tree_sizes(reranker)
         report[name] = entry
         print(name, json.dumps(entry), flush=True)
     record = args.out / "parity-mac.json"
     previous = json.loads(record.read_text()) if record.exists() else {}
     record.write_text(json.dumps({**previous, **report}, indent=2) + "\n")
+    failed = [name for name in args.method if report[name]["tree_sizes"]["failed_node_counts"]]
+    if failed:
+        print("prefix tree wrong on the CPU at some node counts:", ", ".join(failed), flush=True)
+        return 1
     return 0
 
 

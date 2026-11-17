@@ -1,0 +1,59 @@
+{
+ "evaluator": "corrections",
+ "configurations": [
+  {
+   "name": "words-ptt",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexicon_coverage/words-ptt/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexicon_coverage/words-ptt/lm_chat-ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "words-generated",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexicon_coverage/words-generated/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexicon_coverage/words-generated/lm_chat-ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "words-ptt-generated",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexicon_coverage/words-ptt-generated/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexicon_coverage/words-ptt-generated/lm_chat-ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "lex-ptt",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexicon_coverage/words-ptt/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "chat-ptt",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lexicon_coverage/words-ptt/lm_chat-ptt-cns-genpub"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "private-log",
+   "set": "data/build/private/corrections.jsonl"
+  }
+ ]
+}

@@ -5,7 +5,14 @@
     split     dev_dialogue.txt and test_dialogue.txt: 1,000 `previous<TAB>target` pairs each (900 gazette, 100
               talk page), whole documents reserved to one split; refuses to resample once splits.json exists
     prepare   training sentence shards and turn pairs for --variant real (no_generated/: real turns and Common
-              Voice) or mixed (also the 0.3.0 colloquial corpus); refuses to run twice
+              Voice) or mixed (also the 0.3.0 colloquial corpus); refuses to run twice.  control (control/) is real
+              again in a fresh tree; web (web/) is real plus 公共政策網路參與平臺 proposals (title, proposal,
+              benefits; never the proposer) and vTaiwan comments, with every tracked row set and the pushed
+              loss-analysis rows also blocked; web3 (web3/) keeps a fixed third of the proposal sentences; ptt
+              (ptt/) is real plus PTT Gossiping title/push pairs (as turn pairs too) and TOCP sentences; ptt14
+              (ptt14/) is the same corpus pruned to the shipped model's size; cn (cn/) is zh-meme, the LCCC
+              and 知乎 eighths alone (the mainland model of select.py); ptt-cn0 and ptt-cn20 are ptt plus the
+              sentences select.py keeps; ptt-gen and ptt-cn20-gen add data/build/private/gen (Claude Haiku)
 
 Every training text equal to, or sharing 8 characters with, a holdout or any frozen evaluation file is removed,
 also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 workers).
@@ -17,6 +24,7 @@ also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 w
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import random
@@ -37,6 +45,194 @@ from zhuyintype_ml.training.lm_chat.train import grams, normalized
 
 OUT = paths.data("lm_chat2")
 RAW = raw("lm_chat2")
+VARIANTS = {
+    "mixed": "",
+    "real": "no_generated",
+    "control": "control",
+    "web": "web",
+    "web3": "web3",
+    "ptt": "ptt",
+    "ptt14": "ptt14",
+    **{
+        v: v
+        for v in (
+            "ptt-meme",
+            "ptt-lccc",
+            "ptt-zhihu",
+            "ptt-others",
+            "cn",
+            "ptt-cn0",
+            "ptt-cn20",
+            "ptt-gen",
+            "ptt-cn20-gen",
+            "ptt-cns",
+            "ptt-cns-gen",
+            "ptt-genpub",
+            "ptt-cns-genpub",
+            "ptt-cns-genpub2",
+            "pttr-cns-genpub2",
+        )
+    },
+}
+
+
+def variant_directory(variant: str) -> Path:
+    return OUT / VARIANTS[variant] if VARIANTS[variant] else OUT
+
+
+def row_files() -> list[Path]:
+    """Row sets (context|truth|syllables) the web corpus must not overlap: tracked ones and pushed analysis rows."""
+    files = sorted((paths.ROOT / "ml" / "eval-sets").rglob("*.txt"))
+    files += sorted(paths.data("loss-analysis", "rows").glob("*.txt"))
+    files += sorted(paths.data("private").glob("*holdout*.rows.txt"))
+    return [p for p in files if p.is_file()]
+
+
+def blocked_rows(files: list[Path]) -> set[str]:
+    """The context and truth of every row (a line without `|` counts whole)."""
+    texts: set[str] = set()
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            fields = line.split("|")
+            texts.update(f.strip() for f in (fields[:2] if len(fields) >= 3 else fields) if len(f.strip()) >= 4)
+    return texts
+
+
+def join_texts() -> Iterator[str]:
+    """Sentences of every cached 提點子 proposal: title, proposal and benefits (the proposer field is never read)."""
+    for path in sorted((RAW / "join").glob("idea-*.json")):
+        for row in json.loads(path.read_text(encoding="utf-8")):
+            if not isinstance(row, dict):
+                continue
+            for field in ("標題", "提議內容", "利益與影響"):
+                value = row.get(field)
+                if isinstance(value, str):
+                    yield from mkn.SPLIT.split(value)
+
+
+def gossiping_pairs() -> Iterator[tuple[str, str]]:
+    """(title, push) pairs of the cached PTT Gossiping corpus; pushes marked 沒有資料 are skipped."""
+    path = RAW / "ptt" / "Gossiping-QA-Dataset-2_0.csv"
+    with path.open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            question, answer = (row.get("question") or "").strip(), (row.get("answer") or "").strip()
+            if question and answer and answer != "沒有資料":
+                yield question, answer
+
+
+def gossiping_replies() -> Iterator[tuple[str, list[str]]]:
+    """(title, pushes) of every article in the cached reply.7z, unpacked once beside it (titles may be empty).
+
+    A push longer than one PTT line is stored as consecutive responses by the same user; they are joined again
+    (as zake7749's PTT-Chat-Generator does).  User IDs and votes are never read further."""
+    folder = RAW / "ptt" / "reply"
+    if not (folder / ".complete").exists():
+        import py7zr
+
+        with py7zr.SevenZipFile(RAW / "ptt" / "reply.7z") as archive:
+            archive.extractall(path=folder)
+        (folder / ".complete").write_text("")
+    for path in sorted(folder.rglob("*.json")):
+        for article in json.loads(path.read_text(encoding="utf-8")):
+            # reply.7z holds each article as its list of responses, without the title; the crawler's article
+            # objects ({"Title", "Responses"}) are read too.
+            if isinstance(article, dict):
+                title, responses = article.get("Title") or "", article.get("Responses") or []
+            else:
+                title, responses = "", article
+            pushes: list[str] = []
+            user = None
+            for response in responses:
+                content = (response.get("Content") or "").strip()
+                if response.get("User") == user and pushes:
+                    pushes[-1] += content
+                else:
+                    pushes.append(content)
+                user = response.get("User")
+            yield title, [p for p in pushes if p]
+
+
+def tocp_texts() -> Iterator[str]:
+    """Original sentences of TOCP v1.0 (the JSON file inside the cached zip)."""
+    import zipfile
+
+    with zipfile.ZipFile(RAW / "ptt" / "TOCP_v1.0.zip") as archive:
+        for name in archive.namelist():
+            if name.lower().endswith(".json"):
+                data = json.loads(archive.read(name).decode("utf-8-sig"))
+                for row in data if isinstance(data, list) else data.values():
+                    if isinstance(row, dict) and isinstance(row.get("original_sentence"), str):
+                        yield row["original_sentence"]
+
+
+OTHERS = RAW / "others"
+EXTRA = {
+    "ptt-meme": ("meme",),
+    "ptt-lccc": ("lccc",),
+    "ptt-zhihu": ("zhihu",),
+    "ptt-others": ("meme", "lccc", "zhihu"),
+    "cn": ("meme", "lccc", "zhihu"),
+}
+SELECTED = {
+    "ptt-cn0": "kept-0.txt",
+    "ptt-cn20": "kept-q20.txt",
+    "ptt-cn20-gen": "kept-q20.txt",
+    "ptt-cns": "kept-strict.txt",
+    "ptt-cns-gen": "kept-strict.txt",
+    "ptt-cns-genpub": "kept-strict.txt",
+    "ptt-cns-genpub2": "kept-strict.txt",
+    "pttr-cns-genpub2": "kept-strict.txt",
+}
+# Sentences written by Claude Haiku 5.5 from the categories the probe and the private correction log show wrong
+# (data/build/private/gen, never in git; the correction holdout is blocked from training).
+GENERATED = paths.data("private", "gen")
+# The second, more detailed themed batch (games, voice chat and streams, communities, IT work, city life, confusable
+# characters), also written by Claude Haiku 5.5 without any user text.
+GENERATED2 = paths.data("private", "gen2")
+
+
+def eighth(text: str) -> bool:
+    """True for the fixed eighth of dialogues or answers kept from the large simplified-Chinese corpora."""
+    return hashlib.blake2b(text.encode(), digest_size=8).digest()[0] % 8 == 0
+
+
+def other_dialogues(source: str) -> Iterator[list[str]]:
+    """Turns (OpenCC s2twp) of one dialogue or QA pair at a time: zh-meme messages, LCCC dialogues (spaces between
+    words removed), 知乎 question and answer."""
+    import gzip
+
+    if source == "meme":
+        for name in ("train.jsonl", "validation.jsonl"):
+            for line in (OTHERS / "GaryYang123__zh-meme-sft-8k" / name).open(encoding="utf-8"):
+                messages = json.loads(line).get("messages") or []
+                yield [normalize(m["content"]) for m in messages if isinstance(m.get("content"), str)]
+    elif source == "lccc":
+        with gzip.open(OTHERS / "silver__lccc" / "lccc_base_train.jsonl.gz", "rt", encoding="utf-8") as f:
+            for line in f:
+                turns = json.loads(line)
+                if isinstance(turns, list) and eighth(line):
+                    yield [normalize(t.replace(" ", "")) for t in turns if isinstance(t, str)]
+    else:
+        with gzip.open(OTHERS / "liwu__MNBVC" / "qa/20230196/zhihu/0.jsonl.gz", "rt", encoding="utf-8") as f:
+            for line in f:
+                row = json.loads(line)
+                question, answer = row.get("问"), row.get("答")
+                if isinstance(question, str) and isinstance(answer, str) and eighth(line):
+                    yield [normalize(question), normalize(answer)]
+
+
+def third(sentence: str) -> bool:
+    """True for the two thirds of sentences web3 leaves out (a fixed hash, independent of order)."""
+    return hashlib.blake2b(sentence.encode(), digest_size=8).digest()[0] % 3 != 0
+
+
+def vtaiwan_texts() -> Iterator[str]:
+    """Sentences of the vTaiwan uberx comments that moderation did not reject."""
+    path = RAW / "vtaiwan" / "uberx-comments.csv"
+    with path.open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("moderated") != "-1":
+                yield from mkn.SPLIT.split(row.get("comment-body") or "")
 
 
 def evaluation_files() -> list[Path]:
@@ -333,13 +529,15 @@ def split() -> None:
 
 def prepare(variant: str, workers: int) -> None:
     """Training sentence shards and turn pairs of one variant (once)."""
-    out = OUT if variant == "mixed" else OUT / "no_generated"
+    out = variant_directory(variant)
     work = out / "work"
     work.mkdir(parents=True, exist_ok=True)
     marker = work / "prepared.json"
     if marker.exists():
         raise ValueError("training corpus already prepared")
     held = blocked_text(evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"])
+    if variant.startswith(("web", "ptt", "cn")):
+        held.update(blocked_rows(row_files()))
     # Canonical variants are also blocked so 台/臺 conversion cannot bypass the guard.
     held.update(normalize(s).replace("臺", "台") for s in list(held))
     machine = mkn.automaton(held)
@@ -385,7 +583,7 @@ def prepare(variant: str, workers: int) -> None:
         chars.update(text)
 
     try:
-        for line in (OUT / "real_dialogues.jsonl").open():
+        for line in (OUT / "real_dialogues.jsonl").open() if variant != "cn" else []:
             record = json.loads(line)
             if record["source"] + ":" + record["document"] in reserved:
                 continue
@@ -396,8 +594,77 @@ def prepare(variant: str, workers: int) -> None:
                     sentence = sentence.strip()
                     if 4 <= len(sentence) <= 200:
                         add(sentence, record["source"])
-        for line in (paths.data("corpus", "train_commonvoice.txt")).open():
+        for line in (paths.data("corpus", "train_commonvoice.txt")).open() if variant != "cn" else []:
             add(line.strip(), "commonvoice")
+        if variant.startswith("web"):
+            for source, texts in (("join", join_texts()), ("vtaiwan", vtaiwan_texts())):
+                for sentence in texts:
+                    sentence = sentence.strip()
+                    if variant == "web3" and source == "join" and third(sentence):
+                        counts[source + "_sampled_out"] += 1
+                    elif 4 <= len(sentence) <= 200 and valid(sentence):
+                        add(sentence, source)
+                    elif sentence:
+                        counts[source + "_invalid"] += 1
+        if variant.startswith("ptt"):
+            for question, answer in gossiping_pairs():
+                q, r = normalized(question), normalized(answer)
+                if valid(q) and valid(r) and len(q) <= 200 and len(r) <= 200:
+                    add_context(q, r)
+                for text in (question, answer):
+                    for sentence in mkn.SPLIT.split(text):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "gossiping")
+                        elif sentence:
+                            counts["gossiping_invalid"] += 1
+            for text in tocp_texts():
+                for sentence in mkn.SPLIT.split(text):
+                    sentence = sentence.strip()
+                    if 4 <= len(sentence) <= 200 and valid(sentence):
+                        add(sentence, "tocp")
+        if variant.startswith("pttr"):
+            for title, pushes in gossiping_replies():
+                # consecutive pushes of one article as context pairs (the title first when there is one)
+                turns = [normalized(t) for t in ([title] if title else []) + pushes[:4]]
+                short = [t for t in turns if valid(t) and len(t) <= 200]
+                for previous, target in zip(short, short[1:]):
+                    add_context(previous, target)
+                for text in (title, *pushes):
+                    for sentence in mkn.SPLIT.split(text):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "replies")
+                        elif sentence:
+                            counts["replies_invalid"] += 1
+        if variant.endswith(("-gen", "-genpub", "-genpub2")):
+            # genpub: only the themed files, not the ones seeded with the user's corrected phrases (seed-*.txt)
+            paths_ = sorted(GENERATED.glob("*.txt"))
+            if variant.endswith(("-genpub", "-genpub2")):
+                paths_ = [p for p in paths_ if not p.name.startswith("seed-")]
+            if variant.endswith("-genpub2"):
+                paths_ += sorted(GENERATED2.glob("*.txt"))
+            for path in paths_:
+                for line in path.open(encoding="utf-8"):
+                    for sentence in mkn.SPLIT.split(line):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "generated")
+        if variant in SELECTED:
+            for line in (OUT / "cn-select" / SELECTED[variant]).open(encoding="utf-8"):
+                add(line.rstrip("\n"), "cn_selected")
+        for source in EXTRA.get(variant, ()):
+            for turns in other_dialogues(source):
+                short = [t for t in turns if valid(t) and len(t) <= 200]
+                for previous, target in zip(short, short[1:]):
+                    add_context(previous, target)
+                for turn in turns:
+                    for sentence in mkn.SPLIT.split(turn):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, source)
+                        elif sentence:
+                            counts[source + "_invalid"] += 1
         if variant == "mixed":
             # Provenance of the 0.3.0 v3 colloquial corpus (data/build/v3 then) excludes TT: synthetic + Common Voice.
             for line in paths.data("v3_030", "colloquial.txt").open():
@@ -426,7 +693,7 @@ def prepare(variant: str, workers: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("phase", choices=["extract", "split", "prepare"])
-    p.add_argument("--variant", choices=["mixed", "real"], default="mixed")
+    p.add_argument("--variant", choices=list(VARIANTS), default="mixed")
     p.add_argument("--workers", type=int, default=24)
     a = p.parse_args(argv)
     OUT.mkdir(parents=True, exist_ok=True)
