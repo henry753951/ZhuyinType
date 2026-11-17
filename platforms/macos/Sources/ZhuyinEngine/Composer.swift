@@ -110,6 +110,19 @@ private func result(_ result: ZtKeyResult) -> KeyResult {
     KeyResult(handled: result.handled, commit: take(result.commit))
 }
 
+/// A word action from the candidate window (the engine's `CandidateAction`).
+public enum CandidateAction: UInt32, CaseIterable, Sendable {
+    case block = 0, forget = 1, addPhrase = 2
+
+    public var title: String {
+        switch self {
+        case .block: return "不要再推薦"
+        case .forget: return "忘記這個選字"
+        case .addPhrase: return "加入自訂詞"
+        }
+    }
+}
+
 public final class Composer {
     let handle: OpaquePointer
     private let engine: Engine
@@ -162,6 +175,7 @@ public final class Composer {
         o.key_decoder = UInt32(decoders[options.keyDecoder]!)
         o.vertical_list = options.verticalList
         o.page_at_list_edge = options.pageAtListEdge
+        o.undo_correction_with_backspace = options.undoCorrectionWithBackspace
         o.character_forms = UInt32(options.characterForms == .common ? ZT_FORMS_COMMON : ZT_FORMS_STANDARD)
         o.punctuation_keys = UInt32(options.punctuationKeys == .windows ? ZT_PUNCTUATION_WINDOWS : ZT_PUNCTUATION_MAC)
         return String(options.selectionKeys).withCString { keys in
@@ -210,6 +224,35 @@ public final class Composer {
     public func breakContext() { zt_composer_break_context(handle); cached = nil }
     public func reset() { zt_composer_reset(handle); cached = nil }
     public func toggleCorrections() { zt_composer_toggle_corrections(handle); cached = nil }
+    /// Converts the automatic correction at the cursor as typed: the open window's span, the correction the last key
+    /// made, or the character ↓ would change.  False when there is none; true leaves `presentation.reverted` set.
+    @discardableResult
+    public func revertCorrection() -> Bool {
+        defer { cached = nil }
+        return zt_composer_revert_correction(handle)
+    }
+
+    /// Whether `action` applies to candidate `index` of the open list (nil: the highlighted one; with no list open,
+    /// adding a custom word takes the whole composition).
+    public func candidateActionAvailable(_ action: CandidateAction, at index: Int? = nil) -> Bool {
+        zt_composer_candidate_action_available(handle, action.rawValue, index ?? -1)
+    }
+
+    /// Does `action` (see `candidateActionAvailable`); returns the notice shown, or nil when it does not apply.
+    @discardableResult
+    public func performCandidateAction(_ action: CandidateAction, at index: Int? = nil) -> String? {
+        defer { cached = nil }
+        return take(zt_composer_perform_candidate_action(handle, action.rawValue, index ?? -1))
+    }
+
+    public var canUndoCandidateAction: Bool { zt_composer_can_undo_candidate_action(handle) }
+
+    /// Undoes the last word action; false when there is none.
+    @discardableResult
+    public func undoCandidateAction() -> Bool {
+        defer { cached = nil }
+        return zt_composer_undo_candidate_action(handle)
+    }
 
     public var learningSuspended: Bool {
         get { zt_composer_learning_suspended(handle) }
@@ -218,6 +261,15 @@ public final class Composer {
 
     public var freezesOnPick = true {
         didSet { zt_composer_set_freezes_on_pick(handle, freezesOnPick) }
+    }
+
+    /// 聯想詞: after a commit, the words likely to come next are listed; ↓ enters the list.  Off by default.
+    public var associatedPhrases = false {
+        didSet {
+            guard associatedPhrases != oldValue else { return }
+            zt_composer_set_associated_phrases(handle, associatedPhrases)
+            cached = nil
+        }
     }
 
     public var isComposing: Bool { !presentation.isEmpty }
@@ -234,18 +286,22 @@ public final class Composer {
         defer { zt_presentation_free(pointer) }
         let p = pointer.pointee
         let clauses = (0..<p.clause_count).map { p.clauses[$0].start..<p.clauses[$0].end }
+        let corrections = (0..<p.correction_count).map { p.corrections[$0].start..<p.corrections[$0].end }
         let candidates = p.candidates.map { list -> CandidateList in
             let l = list.pointee
             let items = (0..<l.count).map { i in
                 Candidate(text: String(cString: l.items[i].text), annotation: l.items[i].annotation.map { String(cString: $0) })
             }
             return CandidateList(items: items, selection: l.selection, pageSize: l.page_size,
-                                 tolerant: l.tolerant < 0 ? nil : l.tolerant == 1, singleCharacter: l.single_character)
+                                 tolerant: l.tolerant < 0 ? nil : l.tolerant == 1, singleCharacter: l.single_character,
+                                 associated: l.associated, passive: l.passive)
         }
         return Presentation(text: String(cString: p.text), cursor: p.cursor, clauses: clauses,
                             focusedClause: p.focused_clause < 0 ? nil : p.focused_clause,
                             targetClause: p.target_clause < 0 ? nil : p.target_clause, candidates: candidates,
-                            notice: p.notice.map { String(cString: $0) }, zhuyinHint: p.zhuyin_hint.map { String(cString: $0) })
+                            notice: p.notice.map { String(cString: $0) }, zhuyinHint: p.zhuyin_hint.map { String(cString: $0) },
+                            corrections: corrections, typedReading: p.typed_reading.map { String(cString: $0) },
+                            backspaceReverts: p.backspace_reverts, reverted: p.reverted)
     }
 
     // MARK: - Models

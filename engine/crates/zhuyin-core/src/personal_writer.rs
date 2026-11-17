@@ -12,6 +12,8 @@ pub(super) struct Snapshot {
     pub(super) phrases: String,
     pub(super) learned: String,
     pub(super) excluded: String,
+    /// Empty: no `blocked.tsv` (the file exists only once a word was blocked).
+    pub(super) blocked: String,
     pub(super) typos: String,
     pub(super) personal: String,
 }
@@ -120,6 +122,12 @@ fn write_files(directory: &Path, snapshot: &Snapshot) -> std::io::Result<()> {
     write_atomically(&directory.join("user_phrases.tsv"), &snapshot.phrases)?;
     write_atomically(&directory.join("learned.tsv"), &snapshot.learned)?;
     write_atomically(&directory.join("excluded.tsv"), &snapshot.excluded)?;
+    let blocked = directory.join("blocked.tsv");
+    if !snapshot.blocked.is_empty() {
+        write_atomically(&blocked, &snapshot.blocked)?;
+    } else if blocked.exists() {
+        std::fs::remove_file(&blocked)?;
+    }
     write_atomically(&directory.join("typos.tsv"), &snapshot.typos)?;
     write_atomically(&directory.join(PersonalLanguageModel::FILE_NAME), &snapshot.personal)
 }
@@ -141,6 +149,7 @@ mod tests {
                 phrases: "phrase".into(),
                 learned: String::new(),
                 excluded: String::new(),
+                blocked: String::new(),
                 typos: String::new(),
                 personal: String::new(),
             },

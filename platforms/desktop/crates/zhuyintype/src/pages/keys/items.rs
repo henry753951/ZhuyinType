@@ -81,6 +81,7 @@ pub fn feature_place(feature: &str) -> Place {
         "feature.deleteWord" => Place::row(Page::Typing, "deleteWord"),
         "feature.controlPunctuation" => Place::row(Page::Typing, "controlPunctuation").in_subpage("punctuation"),
         "feature.optionSymbols" => Place::row(Page::Typing, "optionSymbols").in_subpage("punctuation"),
+        "feature.symbolPicker" => Place::row(Page::Typing, "symbolPicker").in_subpage("punctuation"),
         "feature.capsLockEnglish" => Place::row(Page::Typing, "capsLock"),
         "feature.deleteAfterCommit" => Place::row(Page::Choosing, "deleteAfterCommit"),
         _ => Place::page(Page::Keys),
@@ -301,6 +302,11 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
                 .sub("候選字視窗上方的注音")
                 .feature("feature.zhuyinRowClick"),
             KeyItem::new("close", "關閉候選字視窗", fixed(&["Esc"])).sub("固定"),
+            KeyItem::new("blockCandidate", "不要再推薦", Keys::Command("blockCandidate"))
+                .sub("反白的字詞不再出現在清單；5 秒內按 Ctrl+Z 復原"),
+            KeyItem::new("forgetCandidate", "忘記這個選字", Keys::Command("forgetCandidate")).sub("忘記選過反白的字詞"),
+            KeyItem::new("addCandidatePhrase", "加入自訂詞", Keys::Command("addCandidatePhrase"))
+                .sub("反白的字詞；沒開清單時是整段組字"),
         ],
         KeySection::Editing => vec![
             KeyItem::new("typeZhuyin", "打出注音本身", Keys::Command("typeZhuyin"))
@@ -312,6 +318,8 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
             KeyItem::new("selectRight", "往右選取", Keys::Command("selectRight"))
                 .sub("再按 Return 加入自訂詞")
                 .feature("feature.selectPhrase"),
+            KeyItem::new("addSelectedText", "選取的字加入自訂詞", Keys::Command("addSelectedText"))
+                .sub("在 App 裡選取 1 到 6 個字再按；預設沒有按鍵"),
             KeyItem::new("deleteAfterCommit", "送出後刪掉重打", fixed(&["⌫"]))
                 .sub("送出後 30 秒內刪掉剛送出的字再打，算作改字並接著前文選字")
                 .feature("feature.deleteAfterCommit"),
@@ -339,6 +347,9 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
                     .sub("兩種標點按法都能用")
                     .feature("feature.optionSymbols"),
                 KeyItem::new("punctuationList", "列出同類的標點", fixed(&["↓"])).sub("在標點上按"),
+                KeyItem::new("symbolPicker", "開啟符號與 Emoji 面板", Keys::Command("symbolPicker"))
+                    .sub("方向鍵移動，Tab 換類別，打注音或英文搜尋")
+                    .feature("feature.symbolPicker"),
             ]
         }
         KeySection::Mode => vec![
@@ -351,6 +362,8 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
         ],
         KeySection::Other => vec![
             KeyItem::new("insertSpace", "在組字中放一個空白", Keys::Command("insertSpace")),
+            KeyItem::new("quickSettings", "開啟快速設定", Keys::Command("quickSettings"))
+                .sub("英文、半形標點、簡體與暫停學習；預設沒有按鍵"),
             KeyItem::new("forwardDelete", "刪掉游標後的字", fixed(&["Del"])).sub("固定"),
         ],
     }

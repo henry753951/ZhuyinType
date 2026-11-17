@@ -44,7 +44,7 @@ pub fn commands() -> &'static [CommandInfo] {
     static LIST: OnceLock<Vec<CommandInfo>> = OnceLock::new();
     LIST.get_or_init(|| {
         use code::*;
-        use modifier::{ALT, SHIFT};
+        use modifier::{ALT, CONTROL, SHIFT};
         let c = |id, label, feature, required, defaults| CommandInfo { id, label, feature, required, defaults };
         vec![
             c("singleCharacterList", "只列一個字", Some("feature.singleCharacterList"), false, vec![b(DOWN, SHIFT)]),
@@ -66,6 +66,20 @@ pub fn commands() -> &'static [CommandInfo] {
             c("nextCharacter", "改後一個字", None, true, vec![b(RIGHT, ALT)]),
             c("togglePunctuationWidth", "標點全半形", None, false, vec![b(SPACE, SHIFT)]),
             c("insertSpace", "插入空白", None, false, vec![b(SPACE, ALT)]),
+            // The word actions (5 s to undo with Ctrl+Z).
+            c("blockCandidate", "不要再推薦", None, false, vec![b(DELETE, CONTROL)]),
+            c("forgetCandidate", "忘記這個選字", None, false, vec![b(DELETE, CONTROL | SHIFT)]),
+            c("addCandidatePhrase", "加入自訂詞", None, false, vec![b(RETURN, CONTROL)]),
+            // No default key: the user chooses one.
+            c("addSelectedText", "選取的字加入自訂詞", None, false, vec![]),
+            c("quickSettings", "快速設定", None, false, vec![]),
+            c(
+                "symbolPicker",
+                "符號與 Emoji",
+                Some("feature.symbolPicker"),
+                false,
+                vec![b(i32::from(b'/'), CONTROL | SHIFT)],
+            ),
         ]
     })
 }
@@ -79,10 +93,14 @@ pub fn command(id: &str) -> Option<&'static CommandInfo> {
 /// `ShortcutCommand.place`).
 pub fn command_place(id: &str) -> Place {
     let page = match id {
-        "typeZhuyin" | "correctionsList" | "selectLeft" | "selectRight" => Page::Choosing,
+        "typeZhuyin" | "correctionsList" | "selectLeft" | "selectRight" | "blockCandidate" | "forgetCandidate"
+        | "addCandidatePhrase" | "addSelectedText" => Page::Choosing,
         "singleCharacterList" | "nextPage" | "previousPage" | "previousCharacter" | "nextCharacter" => Page::Candidates,
         _ => Page::Typing,
     };
+    if id == "symbolPicker" {
+        return Place::row(page, format!("keys-{id}")).in_subpage("punctuation");
+    }
     Place::row(page, format!("keys-{id}"))
 }
 
@@ -289,7 +307,8 @@ impl KeyStore {
     /// Why the stored keys could not be read, if so.
     pub fn error(&self) -> Option<String> {
         match self {
-            KeyStore::Core(core) => core.error(),
+            // Not a refused change: the field shows that one where it happened.
+            KeyStore::Core(core) => core.storage_error(),
             KeyStore::Local(local) => local.error(),
         }
     }
@@ -666,5 +685,17 @@ mod tests {
         store.reset(Some("singleCharacterList")).unwrap();
         assert!(store.user().is_empty());
         assert!(store.remove("commitWithNewline", 0).is_err());
+    }
+
+    #[test]
+    fn the_local_port_has_every_core_command() {
+        let local: Vec<_> =
+            commands().iter().map(|c| (c.id, c.label, c.feature, c.required, c.defaults.clone())).collect();
+        let core: Vec<_> =
+            Shortcuts::commands().iter().map(|c| (c.id, c.label, c.feature, c.required, c.defaults.clone())).collect();
+        for command in &core {
+            assert!(local.contains(command), "{command:?}");
+        }
+        assert_eq!(local.len(), core.len());
     }
 }

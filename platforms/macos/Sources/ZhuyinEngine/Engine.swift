@@ -15,6 +15,13 @@ func take(_ pointer: UnsafeMutablePointer<CChar>?) -> String? {
     return String(cString: pointer)
 }
 
+/// `text` in simplified characters (OpenCC's `t2s`, one character at a time; `zhuyin_core::simplified`).  The
+/// length in UTF-16 units never changes, so cursor and clause offsets of the traditional text stay valid.
+public func simplified(_ text: String) -> String {
+    guard !text.isEmpty else { return text }
+    return take(zt_to_simplified(text)) ?? text
+}
+
 /// Runs `body` with an error slot and throws the library's message when it reports one.
 func checked<T>(_ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> T?) throws -> T {
     var error: UnsafeMutablePointer<CChar>?
@@ -131,6 +138,12 @@ public final class Engine: @unchecked Sendable {
     public func forgetLearned(word: String, reading: String) { zt_engine_forget_learned(handle, word, reading) }
     public func excludeFromLearning(word: String, reading: String) { zt_engine_exclude_from_learning(handle, word, reading) }
     public func includeInLearning(word: String, reading: String) { zt_engine_include_in_learning(handle, word, reading) }
+
+    /// Words never suggested for their reading (「不要再推薦」).
+    public func blockedEntries() -> [(reading: String, word: String)] {
+        phrases(zt_engine_blocked_entries(handle)).map { ($0.reading, $0.word) }
+    }
+    public func unblock(word: String, reading: String) { zt_engine_unblock(handle, word, reading) }
 
     public func readings(of word: String) -> [String] {
         guard let list = zt_engine_readings(handle, word) else { return [] }

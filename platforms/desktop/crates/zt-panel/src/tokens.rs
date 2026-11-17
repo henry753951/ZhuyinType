@@ -78,6 +78,16 @@ pub struct Colors {
     pub success: Rgba,
     /// The shadows' ink.
     pub shadow: Rgba,
+    /// The candidate on the selected row (`text`, or what reads on an accent or high-contrast fill).
+    pub selection_text: Rgba,
+    /// The selected row's selection key and annotation.
+    pub selection_secondary: Rgba,
+    /// The accent: focus rings, a footer switch that is on (ZhuyinType's indigo, or the system's accent).
+    pub accent: Rgba,
+    /// The window's border and the selection outline, in logical pixels: 1, or 2 in high contrast.
+    pub stroke: f32,
+    /// High contrast: an outline `stroke` wide around the selected row.
+    pub selection_outline: Option<Rgba>,
 }
 
 /// The light window.
@@ -97,6 +107,11 @@ pub const LIGHT: Colors = {
         text_tertiary: Rgba::hex(0x8b887f, 1.),
         success: Rgba::hex(0x2f8f5b, 1.),
         shadow: Rgba::hex(ink, 1.),
+        selection_text: Rgba::hex(0x1f1e1b, 1.),
+        selection_secondary: Rgba::hex(0x6b6962, 1.),
+        accent: Rgba::hex(0x4257d8, 1.),
+        stroke: 1.,
+        selection_outline: None,
     }
 };
 
@@ -117,6 +132,11 @@ pub const DARK: Colors = {
         text_tertiary: Rgba::hex(0x85827a, 1.),
         success: Rgba::hex(0x5cc28a, 1.),
         shadow: Rgba::hex(0x000000, 1.),
+        selection_text: Rgba::hex(0xedebe5, 1.),
+        selection_secondary: Rgba::hex(0xa6a39b, 1.),
+        accent: Rgba::hex(0x7a8cf0, 1.),
+        stroke: 1.,
+        selection_outline: None,
     }
 };
 
@@ -141,6 +161,8 @@ pub mod motion {
     pub const BOUNCE: f32 = 3.;
     pub const BOUNCE_OUT: f32 = 60.;
     pub const BOUNCE_BACK: f32 = 120.;
+    /// The bounce under reduced motion: the page dims to this opacity instead of moving.
+    pub const BOUNCE_DIM: f32 = 0.7;
     /// The 中/英 badge stays this long.
     pub const TOAST_HOLD: f32 = 800.;
 

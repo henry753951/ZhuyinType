@@ -118,6 +118,7 @@ final class LearnedListController: NSObject {
         return formatter
     }()
     private static let excludedPrefix = "excluded\t"
+    private static let blockedPrefix = "blocked\t"
 
     init(model: SettingsModel) {
         self.model = model
@@ -149,14 +150,20 @@ final class LearnedListController: NSObject {
             ListItem(id: Self.excludedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
                      meta: "不記住", count: -1, marked: true)
         }
-        list.set(learned + excluded)
+        // 「不要再推薦」 from the candidate window: removing the row suggests the word again.
+        let blocked = engine.blockedEntries().map { entry in
+            ListItem(id: Self.blockedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
+                     meta: "不推薦", count: -1, marked: true)
+        }
+        list.set(learned + excluded + blocked)
     }
 
-    /// Removing a learned word forgets it; removing an excluded one lets it be learned again.
+    /// Removing a learned word forgets it; removing an excluded one lets it be learned again, a blocked one suggested.
     private func remove(_ rows: [ListItem]) {
         guard let engine = model?.engine else { return }
         for row in rows {
-            if row.marked { engine.includeInLearning(word: row.title, reading: row.detail ?? "") }
+            if row.id.hasPrefix(Self.blockedPrefix) { engine.unblock(word: row.title, reading: row.detail ?? "") }
+            else if row.marked { engine.includeInLearning(word: row.title, reading: row.detail ?? "") }
             else { engine.forgetLearned(word: row.title, reading: row.detail ?? "") }
         }
         reload()
@@ -210,12 +217,13 @@ final class LearnedListController: NSObject {
         guard let window = SettingsWindowController.shared.sheetWindow else { return }
         let alert = NSAlert()
         alert.messageText = "要清除所有記住的字詞嗎？"
-        alert.informativeText = "清除後無法復原。不記住的字詞會保留。"
+        alert.informativeText = "最近使用的符號也會清除。清除後無法復原。不記住的字詞會保留。"
         alert.addButton(withTitle: "清除").hasDestructiveAction = true
         alert.addButton(withTitle: "取消")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.model?.engine?.forgetAllLearned()
+            RecentSymbols.shared.clear()
             self?.reload()
         }
     }

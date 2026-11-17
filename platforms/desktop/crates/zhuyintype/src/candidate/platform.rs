@@ -113,6 +113,19 @@ mod x11 {
     }
 }
 
+/// The window is an X11 one: carets from Fcitx are then in its device pixels (`popup::in_logical_pixels`).
+pub fn x11_pixels(window: &Window) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        x11::xid(window).is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = window;
+        false
+    }
+}
+
 /// Moves and sizes `window` (device pixels) without activating it.  False: this platform cannot; reopen it there.
 pub fn place(window: &Window, rect: DeviceRect) -> bool {
     #[cfg(target_os = "linux")]

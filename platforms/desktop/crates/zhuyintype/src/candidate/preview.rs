@@ -598,6 +598,7 @@ impl Render for UnifiedPreview {
         let panel_palette = PanelAppearance::from_settings(&settings).palette(p.dark);
         let animates = settings.bool("panelAnimation");
         self.panel.animates = animates;
+        self.panel.reduced = crate::motion::reduced(cx);
         let available = self.width.get();
         let geometry = self.geometry(&settings, &keys, &style, above, available, window);
         let flows = Flows::new(&settings, &keys, geometry.limit);

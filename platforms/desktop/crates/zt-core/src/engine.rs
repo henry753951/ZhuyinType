@@ -19,7 +19,7 @@ use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyInput, PunctuationKeys, PunctuationWidth,
     SpaceAction, TypoTolerance,
 };
-use zhuyin_core::composer::Composer;
+use zhuyin_core::composer::{CandidateAction, Composer};
 use zhuyin_core::engine::{Engine, EngineConfig, PhraseKey};
 
 use crate::keys::Key;
@@ -126,10 +126,26 @@ impl EngineData {
         Arc::new(Self { files, config, models: std::sync::OnceLock::new() })
     }
 
-    /// The neural models, loaded on first use (by the first session that opens).
+    /// The neural models, loaded on first use (by the first session that opens, or
+    /// [`load_models_in_background`](Self::load_models_in_background)); a caller waits while they load.
     pub fn models(&self) -> &crate::models::NeuralModels {
         self.models
             .get_or_init(|| crate::models::load(self.files.reranker.as_deref(), self.files.character_model.as_deref()))
+    }
+
+    /// Starts loading the neural models on a thread of their own, so they load while the first session opens the
+    /// lexicon and language models instead of after them; the session's [`models`](Self::models) waits for them.
+    pub fn load_models_in_background(self: &Arc<Self>) {
+        if self.files.reranker.is_none() && self.files.character_model.is_none() {
+            return;
+        }
+        let data = Arc::clone(self);
+        let spawned = std::thread::Builder::new().name("zt-models".into()).spawn(move || {
+            data.models();
+        });
+        if let Err(error) = spawned {
+            log::warn!("neural models: no loading thread ({error}); they load with the engine");
+        }
     }
 
     /// The engine data for the lexicon at `path` (a `lexicon.tsv`, which need not exist when `lexicon.bin` does),
@@ -244,6 +260,7 @@ impl Values {
             page_at_list_edge: self.bool("pageAtListEdge", true),
             character_forms: CharacterForms::from_raw(self.string("characterForms")).unwrap_or_default(),
             punctuation_keys: PunctuationKeys::from_raw(self.string("punctuationKeys")).unwrap_or_default(),
+            undo_correction_with_backspace: self.bool("undoCorrectionWithBackspace", true),
             ..ComposerOptions::default()
         }
     }
@@ -394,6 +411,7 @@ impl EngineSession {
 
     fn configure(composer: &mut Composer, engine: &Engine, values: &Values) {
         composer.set_options(values.options());
+        composer.set_associated_phrases(values.bool("associatedPhrases", false));
         engine.set_fuzzy_sounds(values.fuzzy());
         engine.set_reading_channel_enabled(values.bool("readingChannel", true));
         if !values.bool("usesPrecedingText", true) {
@@ -404,14 +422,80 @@ impl EngineSession {
     fn refresh(&mut self) {
         let page_size = self.values.number("candidatesPerPage").max(1.0) as usize;
         self.presentation = match &self.open {
-            Some(open) => Presentation::from_engine(
-                open.composer.presentation(),
-                &open.composer.options().selection_keys,
-                page_size,
-                open.engine.reading_channel().is_some(),
-            ),
+            Some(open) => {
+                let mut p = Presentation::from_engine(
+                    open.composer.presentation(),
+                    &open.composer.options().selection_keys,
+                    page_size,
+                    open.engine.reading_channel().is_some(),
+                )
+                .with_correction_marks(
+                    self.values.bool("showCorrections", true),
+                    self.values.bool("undoCorrectionWithBackspace", true),
+                );
+                p.row_actions = p
+                    .rows
+                    .iter()
+                    .map(|row| {
+                        CandidateAction::ALL
+                            .into_iter()
+                            .filter(|action| open.composer.candidate_action_available(*action, Some(row.index)))
+                            .fold(0, |bits, action| bits | 1 << action.raw_value())
+                    })
+                    .collect();
+                p
+            }
             None => Presentation::default(),
         };
+    }
+
+    // MARK: Word actions
+
+    /// Whether `action` applies to candidate `index` of the open list (`None`: the highlighted one; adding with no
+    /// list open takes the whole composition).
+    #[must_use]
+    pub fn word_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
+        self.open.as_ref().is_some_and(|open| open.composer.candidate_action_available(action, index))
+    }
+
+    /// Does `action` (see [`EngineSession::word_action_available`]); the notice it shows, or `None` when it does not
+    /// apply.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn perform_word_action(&mut self, action: CandidateAction, index: Option<usize>) -> Result<Option<String>> {
+        let notice = self.require()?.composer.perform_candidate_action(action, index);
+        if notice.is_some() {
+            self.personal_revision += 1;
+        }
+        self.committed.clear();
+        self.refresh();
+        Ok(notice)
+    }
+
+    /// The last word action can be undone.
+    #[must_use]
+    pub fn can_undo_word_action(&self) -> bool {
+        self.open.as_ref().is_some_and(|open| open.composer.can_undo_candidate_action())
+    }
+
+    /// Undoes the last word action; false when there is none.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn undo_word_action(&mut self) -> Result<bool> {
+        let undone = self.require()?.composer.undo_candidate_action();
+        if undone {
+            self.personal_revision += 1;
+        }
+        self.refresh();
+        Ok(undone)
+    }
+
+    /// Shows or hides the notice's 「復原」 and the word actions' tip (the controller decides both).
+    pub fn set_word_overlay(&mut self, undo: bool, tip: Option<String>) {
+        self.presentation.undo = undo;
+        self.presentation.tip = tip;
     }
 
     fn require(&mut self) -> Result<&mut Open> {
@@ -566,6 +650,18 @@ impl EngineSession {
         self.committed.clear();
         self.refresh();
         Ok(())
+    }
+
+    /// Puts the correction in the open window's span (else the one the last key made, else the one at the cursor's
+    /// target) back to the keys as typed; false when there is none.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn revert_correction(&mut self) -> Result<bool> {
+        let reverted = self.require()?.composer.revert_correction();
+        self.committed.clear();
+        self.refresh();
+        Ok(reverted)
     }
 
     /// The width of punctuation typed from now on.
@@ -756,6 +852,25 @@ impl EngineSession {
         self.engine().map_or_else(Vec::new, |engine| {
             engine.excluded_entries().into_iter().map(|key| Phrase::from_key(key, 0.0)).collect()
         })
+    }
+
+    /// Words never suggested (不要再推薦).
+    #[must_use]
+    pub fn blocked_entries(&self) -> Vec<Phrase> {
+        self.engine().map_or_else(Vec::new, |engine| {
+            engine.blocked_entries().into_iter().map(|key| Phrase::from_key(key, 0.0)).collect()
+        })
+    }
+
+    /// Suggests a blocked word again.
+    ///
+    /// # Errors
+    /// When the arguments are invalid or the change cannot be saved.
+    pub fn unblock(&mut self, word: &str, reading: &str) -> Result<()> {
+        self.require()?;
+        validate_phrase(word, reading)?;
+        self.require()?.engine.unblock(word, reading);
+        self.personal_changed()
     }
 
     /// Adds a user phrase.

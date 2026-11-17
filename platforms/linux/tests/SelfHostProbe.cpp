@@ -33,6 +33,17 @@ int main(int argc, char **argv) {
     if (!visible) { std::cerr << "FAIL self-host settings window unavailable\n"; return 2; }
     const auto window=QString::fromUtf8(output).trimmed().split('\n').first();
     if (!run("xdotool",{"windowraise",window,"windowfocus","--sync",window,"sleep","0.3"})) return 2;
+    // GPUI connects to Fcitx's XIM server on its UI thread, a few round trips that wait while the window's first
+    // frames are drawn (about two seconds of software rendering under Xvfb).  Until Fcitx has the window's input
+    // context, keys reach the field as plain letters, and a field focused before the connection is open makes GPUI's
+    // XIM client give up for the process: wait for the context before clicking a field.
+    bool connected=false;
+    for (int attempt=0;attempt<200 && !connected;++attempt) {
+        connected=run("dbus-send",{"--session","--print-reply","--dest=org.fcitx.Fcitx5","/controller",
+            "org.fcitx.Fcitx.Controller1.DebugInfo"}) && output.contains("frontend:xim");
+        if (!connected) run("xdotool",{"sleep","0.05"});
+    }
+    if (!connected) { std::cerr << "FAIL self-host settings window never connected to Fcitx's XIM server\n"; return 2; }
     if (!run("xdotool",{"getwindowgeometry","--shell",window})) return 2;
     const auto geometry=QString::fromUtf8(output);
     const auto number=[&](const QString &name) {

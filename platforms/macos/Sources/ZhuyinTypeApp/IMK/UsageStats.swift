@@ -37,6 +37,8 @@ struct UsageCounters: Codable, Equatable {
     /// Compositions in which the shown sentence had a typing correction, and those sent with one.
     var correctedShown = 0
     var correctedCommitted = 0
+    /// Automatic corrections converted back to the keys as typed (⌫ right after one appeared, or ⌫ in its window).
+    var correctionsReverted = 0
     /// Custom phrases added while typing (⇧← ⇧→ and Return).
     var phrasesAdded = 0
     /// Time between keys within a burst of typing, and pauses between bursts (thinking), in milliseconds.
@@ -56,6 +58,7 @@ struct UsageCounters: Codable, Equatable {
         undoLiteral = value(.undoLiteral); correctedShown = value(.correctedShown)
         correctedCommitted = value(.correctedCommitted); phrasesAdded = value(.phrasesAdded)
         typingMilliseconds = value(.typingMilliseconds); thinkingMilliseconds = value(.thinkingMilliseconds)
+        correctionsReverted = value(.correctionsReverted)
     }
 
     var picks: Int { picksNormal + picksCorrections + picksSingle + picksPunctuation }
@@ -77,6 +80,7 @@ struct UsageCounters: Codable, Equatable {
         a.undoLiteral &+= b.undoLiteral; a.correctedShown &+= b.correctedShown
         a.correctedCommitted &+= b.correctedCommitted; a.phrasesAdded &+= b.phrasesAdded
         a.typingMilliseconds &+= b.typingMilliseconds; a.thinkingMilliseconds &+= b.thinkingMilliseconds
+        a.correctionsReverted &+= b.correctionsReverted
     }
 
     static func + (a: UsageCounters, b: UsageCounters) -> UsageCounters {
@@ -481,6 +485,7 @@ final class UsageStatsObserver {
             else if before.zhuyinHint == nil { count.picksPunctuation = 1 }
             else { count.picksNormal = 1 }
         }
+        if case .key = input, handled, after.reverted { count.correctionsReverted = 1 }
         if case .key(let key, _) = input {
             if let original = literalBefore, handled, key == .char("`") || key == .escape, after.text == original {
                 count.undoLiteral = 1
@@ -492,7 +497,8 @@ final class UsageStatsObserver {
                 literalBefore = nil
                 switch key {
                 case .backspace, .optionBackspace:
-                    if handled, !before.isEmpty, before.candidates == nil {
+                    // A ⌫ that put a correction back is counted as that, not as a deletion (as on Linux/Windows).
+                    if handled, !before.isEmpty, before.candidates == nil, !after.reverted {
                         count.backspaces = 1
                     } else if !handled, before.isEmpty, !deletedSinceCommit,
                               clock() - lastCommit <= Self.deleteWindow {

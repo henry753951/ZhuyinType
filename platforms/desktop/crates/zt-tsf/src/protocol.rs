@@ -3,6 +3,8 @@
 
 use serde_json::{Map, Value};
 
+use crate::quick_menu::QuickState;
+
 /// The largest frame either side sends, newline included.
 pub(crate) const MAX_FRAME: usize = 256 * 1024;
 
@@ -35,12 +37,28 @@ pub(crate) struct Reply {
     pub(crate) focus: Option<usize>,
     /// The word ↓ would change while no list is open.
     pub(crate) target: Option<usize>,
+    /// The parts of `preedit` (UTF-16 ranges, in order, not overlapping) converted through an automatic typing
+    /// correction or a fuzzy sound, marked with a dotted underline; empty when the user turned the marks off.
+    pub(crate) corrections: Vec<(usize, usize)>,
     /// The candidate window, which the text service draws.
     pub(crate) panel: PanelUpdate,
     /// The 中/英 badge to show by the caret.
     pub(crate) toast: Option<String>,
     /// A page turn stopped at the list's end (1 past the last, -1 before the first): the page nudges.
     pub(crate) boundary: Option<i32>,
+    /// 簡體 output (the 中 badge shows 简); older hosts leave it out.
+    pub(crate) simplified: bool,
+    /// 暫停學習 is on (the button's tooltip says so); older hosts leave it out.
+    pub(crate) learning_paused: bool,
+    /// The four switches, in a reply to the `quick` op.
+    pub(crate) quick: Option<QuickState>,
+    /// The `quickSettings` shortcut was pressed: the text service shows its quick menu at the caret.
+    pub(crate) quick_panel: bool,
+    /// 選取的字加入自訂詞: send the field's selected text next (op `selection`).
+    pub(crate) selection: bool,
+    /// The keys to claim even when nothing is composed (IPC.md §攔截的按鍵): `(key, modifiers)`, already filtered by
+    /// the host for this field and mode; `None`: left out (unchanged since the last), keep the last ones.
+    pub(crate) claims: Option<Vec<(i32, i32)>>,
 }
 
 impl Reply {
@@ -129,20 +147,10 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         Some(value) => Some(value.as_str().filter(|text| text.chars().count() <= 4)?.to_owned()),
     };
     // Left out by older hosts and with no composition; a bad value fails the reply like any other field.
-    let mut clauses = Vec::new();
-    if let Some(value) = object.get("clauses") {
-        let mut end = 0;
-        for clause in value.as_array()? {
-            let pair = clause.as_array().filter(|pair| pair.len() == 2)?;
-            let start = usize::try_from(pair[0].as_u64()?).ok()?;
-            let stop = usize::try_from(pair[1].as_u64()?).ok()?;
-            if start < end || stop <= start || stop > preedit.len() {
-                return None;
-            }
-            clauses.push((start, stop));
-            end = stop;
-        }
-    }
+    let clauses = match object.get("clauses") {
+        Some(value) => ranges(value, preedit.len())?,
+        None => Vec::new(),
+    };
     let clause = |key: &str| -> Option<Option<usize>> {
         match object.get(key) {
             None | Some(Value::Null) => Some(None),
@@ -151,9 +159,51 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
     };
     let focus = clause("focus")?;
     let target = clause("target")?;
+    // Only a mark: left out by older hosts, with no composition and with the marks off, and a bad value drops the
+    // marks rather than the key.
+    let corrections = object.get("corrections").and_then(|value| ranges(value, preedit.len())).unwrap_or_default();
     let boundary = match object.get("boundary") {
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
+    };
+    // Left out by older hosts; a value of the wrong type fails the reply.
+    let optional = |key: &str| -> Option<bool> {
+        match object.get(key) {
+            None => Some(false),
+            Some(value) => value.as_bool(),
+        }
+    };
+    let quick = match object.get("quick") {
+        None => None,
+        Some(value) => {
+            let quick = value.as_object()?;
+            let flag = |key: &str| quick.get(key).and_then(Value::as_bool);
+            Some(QuickState {
+                english: flag("english")?,
+                full_width: flag("fullWidth")?,
+                simplified: flag("simplified")?,
+                learning_paused: flag("learningPaused")?,
+                symbols: match quick.get("symbols") {
+                    None => false,
+                    Some(value) => value.as_bool()?,
+                },
+            })
+        }
+    };
+    let selection = match object.get("selection") {
+        None => false,
+        Some(value) => value.as_bool()?,
+    };
+    let claims = match object.get("claims") {
+        None => None,
+        Some(value) => {
+            let mut keys = Vec::new();
+            for pair in value.as_array().filter(|list| list.len() <= 64)? {
+                let pair = pair.as_array().filter(|pair| pair.len() == 2)?;
+                keys.push((i32::try_from(pair[0].as_i64()?).ok()?, i32::try_from(pair[1].as_i64()?).ok()?));
+            }
+            Some(keys)
+        }
     };
     Some(Reply {
         handled: boolean("handled")?,
@@ -166,10 +216,34 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         clauses,
         focus,
         target,
+        corrections,
         panel,
         toast,
         boundary,
+        simplified: optional("simplified")?,
+        learning_paused: optional("learningPaused")?,
+        quick,
+        quick_panel: optional("quickPanel")?,
+        selection,
+        claims,
     })
+}
+
+/// `[[start, end], ...]`: ranges of a text `length` units long, in order, not empty and not overlapping.
+fn ranges(value: &Value, length: usize) -> Option<Vec<(usize, usize)>> {
+    let mut list = Vec::new();
+    let mut end = 0;
+    for range in value.as_array()? {
+        let pair = range.as_array().filter(|pair| pair.len() == 2)?;
+        let start = usize::try_from(pair[0].as_u64()?).ok()?;
+        let stop = usize::try_from(pair[1].as_u64()?).ok()?;
+        if start < end || stop <= start || stop > length {
+            return None;
+        }
+        list.push((start, stop));
+        end = stop;
+    }
+    Some(list)
 }
 
 #[cfg(test)]
@@ -203,6 +277,20 @@ mod tests {
         let mut fields = Map::new();
         fields.insert("before".into(), Value::from("x".repeat(MAX_FRAME)));
         assert!(request_line(1, "c", "context", fields).is_none());
+    }
+
+    #[test]
+    fn claims_are_parsed() {
+        let mut value = good();
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, None);
+        value["claims"] = json!([[44, 0x0c00_0000]]);
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, Some(vec![(44, 0x0c00_0000)]));
+        value["claims"] = json!([]);
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, Some(vec![]));
+        value["claims"] = json!([[44]]);
+        assert!(parse_reply(&line(value.clone()), 7, "{A}").is_none());
+        value["claims"] = json!([["Q", 0]]);
+        assert!(parse_reply(&line(value), 7, "{A}").is_none());
     }
 
     #[test]
@@ -250,16 +338,34 @@ mod tests {
             model: zt_panel::model::PanelModel::default(),
             style: zt_panel::style::PanelStyle::default(),
             appearance: zt_panel::style::Appearance::Dark,
+            translucent: true,
             animates: true,
             above: false,
+            accent: zt_panel::a11y::AccentChoice::Zhuyintype,
+            picker: None,
         };
         let mut shown = good();
         shown["panel"] = serde_json::to_value(&panel).unwrap();
         shown["toast"] = json!("英");
         shown["boundary"] = json!(-1);
         let reply = parse_reply(&line(shown), 7, "{A}").unwrap();
-        assert_eq!(reply.panel, PanelUpdate::Show(Box::new(panel)));
+        assert_eq!(reply.panel, PanelUpdate::Show(Box::new(panel.clone())));
         assert_eq!((reply.toast.as_deref(), reply.boundary), (Some("英"), Some(-1)));
+        // 符號與 Emoji's grid rides along in the panel.
+        let mut with_grid = panel.clone();
+        with_grid.picker = Some(zt_panel::picker::PickerView {
+            tabs: vec![zt_panel::picker::Tab { id: "smileys".into(), title: "笑臉與情緒".into() }],
+            tab: Some(0),
+            query: String::new(),
+            prefilled: false,
+            first_row: 0,
+            row_count: 1,
+            items: vec![zt_panel::picker::Item { text: "😀".into(), name: "笑臉".into() }],
+            highlight: Some(0),
+        });
+        let mut grid = good();
+        grid["panel"] = serde_json::to_value(&with_grid).unwrap();
+        assert_eq!(parse_reply(&line(grid), 7, "{A}").unwrap().panel, PanelUpdate::Show(Box::new(with_grid)));
         for (key, value) in [("panel", json!(3)), ("toast", json!(1)), ("boundary", json!(2))] {
             let mut bad = good();
             bad[key] = value;
@@ -295,6 +401,34 @@ mod tests {
     }
 
     #[test]
+    fn corrections() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!(reply.corrections, vec![]);
+        let mut marked = good();
+        marked["preedit"] = json!("你好嗎");
+        marked["cursor"] = json!(3);
+        marked["clauses"] = json!([[0, 2], [2, 3]]);
+        marked["corrections"] = json!([[1, 2], [2, 3]]);
+        let reply = parse_reply(&line(marked.clone()), 7, "{A}").unwrap();
+        assert_eq!((reply.clauses, reply.corrections), (vec![(0, 2), (2, 3)], vec![(1, 2), (2, 3)]));
+        // A bad list drops the marks, not the reply.
+        for value in [
+            json!([[0, 4]]),
+            json!([[1, 1]]),
+            json!([[0, 2], [1, 3]]),
+            json!([[0]]),
+            json!([[-1, 1]]),
+            json!("0-2"),
+            json!(null),
+        ] {
+            let mut bad = marked.clone();
+            bad["corrections"] = value.clone();
+            let reply = parse_reply(&line(bad), 7, "{A}").unwrap_or_else(|| panic!("{value}"));
+            assert_eq!((reply.clauses.len(), reply.corrections), (2, vec![]), "{value}");
+        }
+    }
+
+    #[test]
     fn cursor_stays_on_a_character() {
         let mut beyond = good();
         beyond["cursor"] = json!(2);
@@ -318,6 +452,48 @@ mod tests {
         old["preedit"] = json!("");
         old["cursor"] = json!(0);
         assert!(!parse_reply(&line(old), 7, "{A}").unwrap().composing);
+    }
+
+    #[test]
+    fn quick_settings() {
+        let reply = parse_reply(&line(good()), 7, "{A}").unwrap();
+        assert_eq!(
+            (reply.simplified, reply.learning_paused, reply.quick, reply.quick_panel),
+            (false, false, None, false)
+        );
+        let mut quick = good();
+        quick["simplified"] = json!(true);
+        quick["learningPaused"] = json!(true);
+        quick["quickPanel"] = json!(true);
+        quick["quick"] =
+            json!({"english": false, "fullWidth": true, "simplified": true, "learningPaused": true, "symbols": false});
+        let reply = parse_reply(&line(quick.clone()), 7, "{A}").unwrap();
+        assert!(reply.simplified && reply.learning_paused && reply.quick_panel);
+        assert_eq!(
+            reply.quick,
+            Some(QuickState {
+                english: false,
+                full_width: true,
+                simplified: true,
+                learning_paused: true,
+                symbols: false
+            })
+        );
+        let mut no_symbols = quick.clone();
+        no_symbols["quick"].as_object_mut().unwrap().remove("symbols");
+        assert!(!parse_reply(&line(no_symbols), 7, "{A}").unwrap().quick.unwrap().symbols);
+        for (key, value) in [
+            ("simplified", json!(1)),
+            ("learningPaused", json!("yes")),
+            ("quickPanel", json!(null)),
+            ("quick", json!(true)),
+            ("quick", json!({"english": false})),
+            ("quick", json!({"english": false, "fullWidth": 1, "simplified": true, "learningPaused": true})),
+        ] {
+            let mut bad = quick.clone();
+            bad[key] = value;
+            assert!(parse_reply(&line(bad), 7, "{A}").is_none(), "{key}");
+        }
     }
 
     #[test]

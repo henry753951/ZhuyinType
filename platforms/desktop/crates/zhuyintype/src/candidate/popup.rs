@@ -1,4 +1,5 @@
-//! The floating windows: the candidate window and the 中/英 badge (macOS `CandidatePanelController`, `ModeToast`).
+//! The floating windows: the candidate window and the 中/英 badge (macOS `CandidatePanelController`, `ModeToast`);
+//! the 快速設定 panel is in `quick`.
 //!
 //! Each is one borderless GPUI `WindowKind::PopUp` window, opened once and kept: shown, moved and hidden as the
 //! service's `UiEvent`s arrive, never activated and never given focus (see `platform`).  The window is the surface
@@ -15,8 +16,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{
     App, AppContext as _, Bounds, Context, Global, IntoElement, ParentElement, Pixels, Render, Styled, Window,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowKind,
-    WindowOptions, div, point, px, size,
+    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowHandle, WindowKind, WindowOptions, div, point,
+    px, size,
 };
 use zt_core::presentation::{Rect, popup_position};
 use zt_core::service::{PopupAction, PopupState, UiEvent};
@@ -50,15 +51,76 @@ fn popups(cx: &mut App) -> &mut Popups {
     cx.global_mut::<Popups>()
 }
 
+/// Transparent windows show what is behind them (the floating windows' margin for a shadow).
+pub(super) fn transparent(cx: &mut App) -> bool {
+    popups(cx).transparent
+}
+
 /// Drains the service's events on the foreground executor for as long as the app runs.  Call once.
 #[allow(dead_code, reason = "main.rs calls it once Service::start is ported")]
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
     cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
-            cx.update(|cx| handle(event, cx));
+            cx.update(|cx| {
+                let event = in_logical_pixels(event, cx);
+                handle(event, cx);
+            });
         }
     })
     .detach();
+}
+
+/// The service's caret comes from the Fcitx5 addon in the X server's pixels (Fcitx knows no other), which are GPUI's
+/// logical pixels times its scale (Xft.dpi, GPUI_X11_SCALE_FACTOR): on a HiDPI X11 desktop the window would land at
+/// twice the caret's place.  The Windows text service sends logical pixels already.
+fn in_logical_pixels(event: UiEvent, cx: &mut App) -> UiEvent {
+    let caret = match &event {
+        UiEvent::Popup(Some(state)) => state.caret,
+        UiEvent::Toast { anchor, .. } | UiEvent::QuickPanel { anchor } => *anchor,
+        _ => return event,
+    };
+    // GPUI's X11 scale is one for every window: the candidate window's (opened once and kept anyway).
+    let scale = candidate_window(cx)
+        .and_then(|handle| {
+            handle.update(cx, |_, window, _| platform::x11_pixels(window).then(|| window.scale_factor())).ok()
+        })
+        .flatten();
+    let Some(scale) = scale.filter(|scale| *scale > 0. && (*scale - 1.).abs() > f32::EPSILON) else { return event };
+    let scale = f64::from(scale);
+    let logical = Rect::new(caret.x / scale, caret.y / scale, caret.width / scale, caret.height / scale);
+    match event {
+        UiEvent::Popup(Some(state)) => UiEvent::Popup(Some(PopupState { caret: logical, ..state })),
+        UiEvent::Toast { text, .. } => UiEvent::Toast { text, anchor: logical },
+        UiEvent::QuickPanel { .. } => UiEvent::QuickPanel { anchor: logical },
+        other => other,
+    }
+}
+
+/// Opens the floating windows (hidden) and shapes some CJK text, which loads the system's fallback fonts, soon after
+/// start rather than at the first key: otherwise the session's first candidate window waits ~100 ms and its first
+/// badge ~55 ms.  For the copy that serves the input method on Linux (on Windows the text service draws both), on X11
+/// only: in a Wayland session the Fcitx5 addon has Fcitx show the list and the badge (IPC.md, `panel`), and GPUI's
+/// floating windows there are toplevels this app can neither hide nor move off screen, so opening them early would
+/// only put two empty windows on the desktop.
+#[cfg(target_os = "linux")]
+pub fn prewarm(cx: &mut App) {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()) {
+        return;
+    }
+    cx.spawn(async move |cx| cx.update(open_hidden)).detach();
+}
+
+#[cfg(target_os = "linux")]
+fn open_hidden(cx: &mut App) {
+    if let Some(handle) = candidate_window(cx) {
+        let _ = handle.update(cx, |_, window, _| {
+            let mut measure = WindowMeasure(window);
+            for medium in [false, true] {
+                super::layout::Measure::width(&mut measure, "候選字注音ㄓㄨˋㄧㄣ 中英 1234 Shift", 16., medium);
+            }
+        });
+    }
+    toast_window(cx);
 }
 
 /// Sends clicks somewhere else than the service (demos and screenshots).
@@ -81,6 +143,13 @@ pub fn handle(event: UiEvent, cx: &mut App) {
             }
         }
         UiEvent::ShowSettings(place) => show_settings(place, cx),
+        UiEvent::QuickPanel { anchor } => super::quick::show(anchor, cx),
+        UiEvent::HideQuickPanel => super::quick::hide(cx),
+        UiEvent::AddPhrase(draft) => {
+            crate::pages::words::request_add(draft, cx);
+            crate::shell::show(cx);
+            crate::app::go(crate::app::Place::subpage(crate::pages::Page::Words, "phrases"), cx);
+        }
     }
 }
 
@@ -105,7 +174,7 @@ fn show_settings(place: Option<&'static str>, cx: &mut App) {
 }
 
 /// The visible area of the screen with `caret` on it (logical pixels).
-fn screen_at(caret: Rect, cx: &App) -> Rect {
+pub(super) fn screen_at(caret: Rect, cx: &App) -> Rect {
     let to_rect = |bounds: Bounds<Pixels>| {
         Rect::new(
             f64::from(f32::from(bounds.origin.x)),
@@ -125,7 +194,7 @@ fn screen_at(caret: Rect, cx: &App) -> Rect {
         .unwrap_or(Rect::new(0., 0., 1440., 900.))
 }
 
-fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
+pub(super) fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
@@ -151,7 +220,7 @@ fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
 /// Far outside every screen: where a window waits before its first show on platforms that cannot hide it.
 const OFFSCREEN: f32 = -10000.;
 
-fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
+pub(super) fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
     DeviceRect {
         x: (rect.0 * scale).round() as i32,
         y: (rect.1 * scale).round() as i32,
@@ -162,7 +231,7 @@ fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
 
 /// The floating windows' edge: their own (rounded, shadowed) with a transparent margin around them, the system's
 /// (Windows), or square with a hairline (no compositor).
-fn popup_chrome(margin: f32) -> Chrome {
+pub(super) fn popup_chrome(margin: f32) -> Chrome {
     if platform::system_frames_popups() {
         Chrome::System
     } else if margin > 0. {
@@ -184,6 +253,13 @@ pub struct CandidateWindow {
     /// The window appearing: when, and how far it starts from its place.
     appeared: Option<(Instant, f32)>,
     appearance: PanelAppearance,
+    /// What it shows (laid out again when a row's menu opens or 「復原」 expires), the row whose menu is open, and
+    /// which 「復原」 is showing.
+    state: Option<PopupState>,
+    menu: Option<usize>,
+    undo_generation: u64,
+    /// 符號與 Emoji is open: the window draws its grid instead of the panel.
+    picker: Option<zt_core::symbols::PickerView>,
 }
 
 impl CandidateWindow {
@@ -198,13 +274,17 @@ impl CandidateWindow {
             last_caret: None,
             appeared: None,
             appearance: PanelAppearance::System,
+            state: None,
+            menu: None,
+            undo_generation: 0,
+            picker: None,
         }
     }
 }
 
 impl Render for CandidateWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+        let system_dark = crate::theme::system_dark(window);
         let palette = self.appearance.palette(system_dark);
         // After the event: the answer may update this window again, which cannot happen inside its own update.
         let actions: ActionHandler = Rc::new(|action, _, cx| {
@@ -220,6 +300,7 @@ impl Render for CandidateWindow {
                 }
             });
         });
+        self.panel.on_menu = Some(Rc::new(|row, _, cx| cx.defer(move |cx| open_menu(row, cx))));
         let (mut alpha, mut dy) = (1., 0.);
         if let Some((started, from)) = self.appeared {
             let t = started.elapsed().as_secs_f32() * 1000. / motion::APPEAR;
@@ -232,9 +313,15 @@ impl Render for CandidateWindow {
             }
         }
         let _ = cx;
-        div().size_full().font(crate::theme::font()).p(px(self.margin)).child(
-            div().relative().top(px(dy)).opacity(alpha).child(self.panel.render(&palette, Some(actions), window)),
-        )
+        let content = match &self.picker {
+            Some(picker) => super::picker::render(picker, &palette, self.panel.chrome, Some(actions)),
+            None => self.panel.render(&palette, Some(actions), window),
+        };
+        div()
+            .size_full()
+            .font(crate::theme::font())
+            .p(px(self.margin))
+            .child(div().relative().top(px(dy)).opacity(alpha).child(content))
     }
 }
 
@@ -257,6 +344,45 @@ fn candidate_window(cx: &mut App) -> Option<WindowHandle<CandidateWindow>> {
     Some(handle)
 }
 
+/// Opens (`Some(row)`) or closes a row's right-click menu: the window is laid out again with it.
+fn open_menu(row: Option<usize>, cx: &mut App) {
+    let Some(handle) = popups(cx).candidate else { return };
+    let state = handle
+        .update(cx, |view, _, _| {
+            let changed = view.menu != row;
+            view.menu = row;
+            view.state.clone().filter(|_| changed && view.visible)
+        })
+        .ok()
+        .flatten();
+    if let Some(state) = state {
+        show_candidates(state, cx);
+    }
+}
+
+/// The notice's 「復原」 goes after `WORD_UNDO_SECONDS` (Ctrl+Z stops working then too).
+fn expire_undo(generation: u64, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let wait = Duration::from_secs_f64(zt_core::controller::WORD_UNDO_SECONDS);
+        cx.background_executor().timer(wait).await;
+        cx.update(|cx| {
+            let Some(handle) = popups(cx).candidate else { return };
+            let state = handle
+                .update(cx, |view, _, _| {
+                    let current = view.undo_generation == generation && view.visible;
+                    view.state.clone().filter(|state| current && state.presentation.undo)
+                })
+                .ok()
+                .flatten();
+            if let Some(mut state) = state {
+                state.presentation.undo = false;
+                show_candidates(state, cx);
+            }
+        });
+    })
+    .detach();
+}
+
 fn show_candidates(state: PopupState, cx: &mut App) {
     let Some(handle) = candidate_window(cx) else { return };
     let screen = screen_at(state.caret, cx);
@@ -264,24 +390,44 @@ fn show_candidates(state: PopupState, cx: &mut App) {
     let keys = CurrentKeys::new(&settings, app::service(cx));
     let style = style::style_from_settings(&settings, &keys);
     let animates = settings.bool("panelAnimation");
+    let moves = crate::motion::Panel::new(animates, cx);
     let above = settings.string("candidatePlacement") == "above";
     let appearance = PanelAppearance::from_settings(&settings);
+    let mut expire = None;
     let reopen = handle
         .update(cx, |view, window, cx| {
             let p = &state.presentation;
+            if p.undo && !view.state.as_ref().is_some_and(|shown| shown.presentation.undo) {
+                view.undo_generation += 1;
+                expire = Some(view.undo_generation);
+            }
+            view.state = Some(state.clone());
             let preview = (!state.inline_preedit).then_some(p.composition.as_str());
-            if !p.has_list() && preview.is_none_or(str::is_empty) && p.notice.is_none() {
+            if state.picker.is_none() && !p.has_list() && preview.is_none_or(str::is_empty) && p.notice.is_none() {
                 hide(view, window);
                 cx.notify();
                 return None;
             }
             view.appearance = appearance;
             view.panel.animates = animates;
+            view.panel.reduced = moves.reduced;
             let margin = view.margin;
             let max_width = (screen.width as f32 - margin * 2.).max(100.);
-            let (width, height) =
-                view.panel.update(p, Extras { preview }, &style, max_width, view.visible, &mut WindowMeasure(window));
-            let text_inset = view.panel.layout().map_or(14., |layout| layout.text_inset);
+            view.picker = state.picker.clone();
+            let (width, height, text_inset) = if state.picker.is_some() {
+                let (width, height) = super::picker::size();
+                (width, height, super::picker::TEXT_INSET)
+            } else {
+                let (width, height) = view.panel.update(
+                    p,
+                    Extras { preview, menu: view.menu },
+                    &style,
+                    max_width,
+                    view.visible,
+                    &mut WindowMeasure(window),
+                );
+                (width, height, view.panel.layout().map_or(14., |layout| layout.text_inset))
+            };
             let caret = state.caret;
             let (mut x, y) =
                 popup_position(caret, f64::from(width), f64::from(height), above, f64::from(text_inset), screen);
@@ -310,11 +456,21 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             if appearing {
                 platform::set_visible(window, true);
                 if animates {
-                    // A few pixels away from the caret, towards its place.
+                    // A few pixels away from the caret, towards its place (only a fade under reduced motion).
                     let below = y + f64::from(height) / 2. > caret.y + caret.height / 2.;
-                    view.appeared =
-                        Some((Instant::now(), if below { -motion::APPEAR_SLIDE } else { motion::APPEAR_SLIDE }));
+                    let slide = if !moves.slides() {
+                        0.
+                    } else if below {
+                        -motion::APPEAR_SLIDE
+                    } else {
+                        motion::APPEAR_SLIDE
+                    };
+                    view.appeared = Some((Instant::now(), slide));
                 }
+            } else {
+                // Still appearing when the next key arrives: finish at once, so the window shows every key in full
+                // (macOS `PanelMotion.present`).
+                view.appeared = None;
             }
             view.frame = Some(frame);
             view.last_caret = Some(caret);
@@ -324,6 +480,9 @@ fn show_candidates(state: PopupState, cx: &mut App) {
         })
         .ok()
         .flatten();
+    if let Some(generation) = expire {
+        expire_undo(generation, cx);
+    }
     if let Some(frame) = reopen {
         // This platform cannot move a window: open it where it goes (the state is drawn again into the new one).
         let _ = handle.update(cx, |_, window, _| window.remove_window());
@@ -358,6 +517,8 @@ fn hide(view: &mut CandidateWindow, window: &mut Window) {
     view.visible = false;
     view.last_caret = None;
     view.appeared = None;
+    view.menu = None;
+    view.picker = None;
     view.panel.reset();
 }
 
@@ -376,6 +537,8 @@ pub struct ToastWindow {
     text: &'static str,
     margin: f32,
     shown_at: Option<Instant>,
+    /// Appearing: when, and how far it starts from its place (towards the caret).
+    appeared: Option<(Instant, f32)>,
     animates: bool,
     appearance: PanelAppearance,
     visible: bool,
@@ -383,25 +546,73 @@ pub struct ToastWindow {
 
 impl Render for ToastWindow {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+        let system_dark = crate::theme::system_dark(window);
         let palette = self.appearance.palette(system_dark);
-        let mut alpha = 1.;
+        let (mut alpha, mut dy) = (1., 0.);
+        if let Some((started, from)) = self.appeared {
+            let t = started.elapsed().as_secs_f32() * 1000. / crate::motion::panel::BADGE_APPEAR;
+            if t < 1. {
+                let from_alpha = crate::motion::panel::BADGE_FROM;
+                alpha = from_alpha + (1. - from_alpha) * ease_out(t);
+                dy = from * (1. - ease_out(t));
+                window.request_animation_frame();
+            } else {
+                self.appeared = None;
+            }
+        }
         if let Some(shown) = self.shown_at
             && self.animates
         {
             let elapsed = shown.elapsed().as_secs_f32() * 1000.;
             if elapsed >= motion::TOAST_HOLD {
-                alpha = (1. - (elapsed - motion::TOAST_HOLD) / motion::TOAST_FADE).max(0.);
+                alpha *= (1. - (elapsed - motion::TOAST_HOLD) / motion::TOAST_FADE).max(0.);
                 if alpha > 0. {
                     window.request_animation_frame();
                 }
             }
         }
-        div()
-            .size_full()
-            .font(crate::theme::font())
-            .p(px(self.margin))
-            .child(div().opacity(alpha).child(mode_badge_in(self.text, &palette, popup_chrome(self.margin))))
+        div().size_full().font(crate::theme::font()).p(px(self.margin)).child(
+            div().relative().top(px(dy)).opacity(alpha).child(mode_badge_in(
+                self.text,
+                &palette,
+                popup_chrome(self.margin),
+            )),
+        )
+    }
+}
+
+/// The badge's window, opened (hidden, off screen) on first use.
+fn toast_window(cx: &mut App) -> Option<WindowHandle<ToastWindow>> {
+    if let Some(handle) = popups(cx).toast {
+        return Some(handle);
+    }
+    let transparent = popups(cx).transparent;
+    let margin = if transparent { SHADOW_MARGIN } else { 0. };
+    let bounds =
+        Bounds::new(point(px(OFFSCREEN), px(OFFSCREEN)), size(px(BADGE_W + margin * 2.), px(BADGE_H + margin * 2.)));
+    let opened = cx.open_window(options(bounds, transparent), |window, cx| {
+        platform::make_non_activating(window);
+        platform::set_input_region(window, None);
+        platform::set_visible(window, false);
+        cx.new(|_| ToastWindow {
+            text: "中",
+            margin,
+            shown_at: None,
+            appeared: None,
+            animates: true,
+            appearance: PanelAppearance::System,
+            visible: false,
+        })
+    });
+    match opened {
+        Ok(handle) => {
+            popups(cx).toast = Some(handle);
+            Some(handle)
+        }
+        Err(error) => {
+            log::warn!("opening the 中/英 badge: {error:#}");
+            None
+        }
     }
 }
 
@@ -412,42 +623,12 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     if !settings.bool("showModeToast") || unknown {
         return;
     }
-    let transparent = popups(cx).transparent;
-    let margin = if transparent { SHADOW_MARGIN } else { 0. };
-    let handle = match popups(cx).toast {
-        Some(handle) => handle,
-        None => {
-            let bounds = Bounds::new(
-                point(px(OFFSCREEN), px(OFFSCREEN)),
-                size(px(BADGE_W + margin * 2.), px(BADGE_H + margin * 2.)),
-            );
-            let opened = cx.open_window(options(bounds, transparent), |window, cx| {
-                platform::make_non_activating(window);
-                platform::set_input_region(window, None);
-                cx.new(|_| ToastWindow {
-                    text: "中",
-                    margin,
-                    shown_at: None,
-                    animates: true,
-                    appearance: PanelAppearance::System,
-                    visible: true,
-                })
-            });
-            match opened {
-                Ok(handle) => {
-                    popups(cx).toast = Some(handle);
-                    handle
-                }
-                Err(error) => {
-                    log::warn!("opening the 中/英 badge: {error:#}");
-                    return;
-                }
-            }
-        }
-    };
+    let Some(handle) = toast_window(cx) else { return };
+    let margin = if popups(cx).transparent { SHADOW_MARGIN } else { 0. };
     let screen = screen_at(anchor, cx);
     let above = settings.string("candidatePlacement") == "above";
     let animates = settings.bool("panelAnimation");
+    let moves = crate::motion::Panel::new(animates, cx);
     let appearance = PanelAppearance::from_settings(&settings);
     let generation = {
         let popups = popups(cx);
@@ -460,6 +641,23 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
         platform::place(window, device(frame, window.scale_factor()));
         platform::set_visible(window, true);
         platform::set_input_region(window, None);
+        // Appearing (not when it is already up: a second toggle only changes the text and restarts the hold).
+        if !view.visible && animates {
+            let below = y + f64::from(BADGE_H) / 2. > anchor.y + anchor.height / 2.;
+            let slide = crate::motion::panel::BADGE_SLIDE;
+            view.appeared = Some((
+                Instant::now(),
+                if !moves.slides() {
+                    0.
+                } else if below {
+                    -slide
+                } else {
+                    slide
+                },
+            ));
+        } else if !animates {
+            view.appeared = None;
+        }
         view.text = text;
         view.shown_at = Some(Instant::now());
         view.animates = animates;

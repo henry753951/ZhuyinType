@@ -420,7 +420,7 @@ struct CurrentKeys {
     func isOn(_ command: ShortcutCommand) -> Bool { command.feature.map(isOn) ?? true }
 
     /// The command's keys as separate keycaps (["⇧", "↑"]), whether or not it is on.
-    func assigned(_ command: ShortcutCommand) -> [String] { (shortcuts[command] ?? command.defaultShortcut).keycaps }
+    func assigned(_ command: ShortcutCommand) -> [String] { (shortcuts[command] ?? command.defaultShortcut)?.keycaps ?? [] }
     /// The command's keycaps, or nil when it is turned off.
     func caps(_ command: ShortcutCommand) -> [String]? {
         // A command left with no key has nothing to show, like one that is turned off.

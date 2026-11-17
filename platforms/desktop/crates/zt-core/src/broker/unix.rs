@@ -109,7 +109,11 @@ impl Reservation {
                 if stop.load(Ordering::SeqCst) {
                     break;
                 }
-                let Ok(stream) = stream else { continue };
+                let Ok(stream) = stream else {
+                    // Out of file descriptors, say: not a busy loop while it lasts.
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    continue;
+                };
                 // Only this user's processes may type through us.
                 let peer = rustix::net::sockopt::socket_peercred(&stream).map(|cred| cred.uid.as_raw());
                 if peer.ok() != Some(me) {
@@ -128,6 +132,11 @@ impl Reservation {
         })?;
         Ok(Listener { path: self.path, _lock: self.lock })
     }
+}
+
+/// Wakes the accepting thread (the broker is stopping, `stop` is set).
+pub(super) fn wake(path: &str) {
+    let _ = connect(path);
 }
 
 pub(super) struct Listener {

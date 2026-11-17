@@ -143,11 +143,12 @@ struct AdvancedPane: View {
         .alert("要回復所有設定的預設值嗎？", isPresented: $confirmingReset) {
             Button("回復", role: .destructive) {
                 preferences.resetToDefaults()
+                RecentSymbols.shared.clear()
                 model.apps.reload()
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("自訂詞與記住的字詞會保留。")
+            Text("自訂詞與記住的字詞會保留；最近使用的符號會清除。")
         }
         .alert("要清除所有改字記錄嗎？", isPresented: $confirmingClear) {
             Button("清除", role: .destructive) { CorrectionLog.shared.clear { error in
@@ -215,6 +216,7 @@ enum CorrectionLogActions {
 struct AboutPane: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject private var updater = Updater.shared
+    @ObservedObject private var health = HealthMonitor.shared
     @State private var document: LicenseDocument?
 
     private var sourceURL: URL {
@@ -242,6 +244,10 @@ struct AboutPane: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
+            }
+            SettingsSection {
+                DrillRow(model: model, title: "檢查輸入法", subtitle: "確認輸入法可以正常使用，或回報問題",
+                         value: health.summary, subpage: .health)
             }
             if updater.isAvailable {
                 SettingsSection("更新") {

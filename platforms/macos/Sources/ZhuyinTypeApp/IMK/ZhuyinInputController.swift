@@ -1,6 +1,7 @@
 import AppKit
 import InputMethodKit
 import os
+import ZhuyinEngine
 
 final class IMKTextClient: TextClient {
     let input: IMKTextInput
@@ -26,6 +27,12 @@ final class IMKTextClient: TextClient {
         guard let text = input.attributedSubstring(from: NSRange(location: start, length: selection.location - start))?.string,
               text.utf16.count <= maxLength else { return nil }
         return text
+    }
+
+    func selectedText(maxLength: Int) -> String? {
+        let selection = input.selectedRange()
+        guard selection.location != NSNotFound, selection.length > 0, selection.length <= maxLength else { return nil }
+        return input.attributedSubstring(from: selection)?.string
     }
 
     func setMarkedText(_ text: NSAttributedString, selectionRange: NSRange, replacementRange: NSRange) {
@@ -131,6 +138,7 @@ final class ZhuyinInputController: IMKInputController {
         makeCoreIfReady()
         setPanelCallbacks()
         CandidatePanelController.shared.hide()
+        SymbolPickerPanelController.shared.hide()
     }
 
     /// Keys come only to the controller of the focused text, so it owns the candidate window even when
@@ -154,16 +162,22 @@ final class ZhuyinInputController: IMKInputController {
         active = false
         if Self.activeController === self {
             CandidatePanelController.shared.hide()
+            SymbolPickerPanelController.shared.hide()
             ModeToast.shared.hide()
+            QuickSettingsPanel.shared.hide()
             Self.activeController = nil
         }
     }
 
     override func commitComposition(_ sender: Any!) {
         // The client asks for this when the user clicks into the text or it moves the insertion point.
+        core?.closeSymbolPicker()
         core?.commit()
         core?.breakContext()
-        if Self.activeController === self { CandidatePanelController.shared.hide() }
+        if Self.activeController === self {
+            CandidatePanelController.shared.hide()
+            QuickSettingsPanel.shared.hide()
+        }
     }
 
     private var lastKeyDown: (keyCode: UInt16, timestamp: TimeInterval, handled: Bool)?
@@ -194,6 +208,10 @@ final class ZhuyinInputController: IMKInputController {
                 Self.keyLog.debug("key \(event.keyCode) duplicate ignored")
                 return last.handled
             }
+            if QuickSettingsPanel.shared.handle(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+                lastKeyDown = (event.keyCode, event.timestamp, true)
+                return true
+            }
             let handled = core.keyDown(keyCode: event.keyCode, modifiers: event.modifierFlags, time: event.timestamp)
             lastKeyDown = (event.keyCode, event.timestamp, handled)
             Self.keyLog.debug("key \(event.keyCode) t=\(event.timestamp) repeat=\(event.isARepeat) handled=\(handled)")
@@ -211,6 +229,20 @@ final class ZhuyinInputController: IMKInputController {
 
     override func menu() -> NSMenu! {
         let menu = NSMenu()
+        // 快速設定: the switches, checked when on.
+        let state = quickState()
+        for item in QuickSettings.Item.allCases {
+            let entry = menu.addItem(withTitle: item.title, action: #selector(toggleQuickSetting(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.tag = item.rawValue
+            entry.state = state.isOn(item) ? .on : .off
+        }
+        if QuickSettings.openSymbols != nil {
+            let symbols = menu.addItem(withTitle: QuickSettings.Link.symbols.title, action: #selector(openSymbols(_:)),
+                                       keyEquivalent: "")
+            symbols.target = self
+        }
+        menu.addItem(.separator())
         for (title, action) in [("設定…", #selector(openSettings(_:))), ("自訂詞與學到的詞…", #selector(openWords(_:)))] {
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
@@ -228,6 +260,58 @@ final class ZhuyinInputController: IMKInputController {
     }
 
     @objc private func openSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+    @objc private func openSymbols(_ sender: Any?) { QuickSettings.open(.symbols) }
+
+    /// IMK hands menu actions a dictionary holding the item (`kIMKCommandMenuItemName`), or the item itself.
+    @objc private func toggleQuickSetting(_ sender: Any?) {
+        let item = (sender as? NSMenuItem) ?? ((sender as? [String: Any])?[kIMKCommandMenuItemName] as? NSMenuItem)
+        guard let item, let setting = QuickSettings.Item(rawValue: item.tag) else { return }
+        toggle(setting)
+    }
+
+    /// The switches as this field has them: 中／英 and 全形／半形 from its controller, the rest shared.
+    private func quickState() -> QuickSettings.State {
+        QuickSettings.State(english: core?.isEnglish ?? EngineHost.lastEnglishMode ?? Preferences.shared.startInEnglish,
+                            halfWidth: (core?.composer.punctuationWidth ?? EngineHost.punctuationWidth) == .half,
+                            simplified: Preferences.shared.outputScript == .simplified,
+                            learningPaused: QuickSettings.learningPaused)
+    }
+
+    /// One switch of 快速設定 flipped, from the panel or the input menu.  Applies at once.
+    private func toggle(_ item: QuickSettings.Item) {
+        let state = quickState()
+        switch item {
+        case .english:
+            if let core { core.setEnglish(!state.english) } else { EngineHost.lastEnglishMode = !state.english }
+        case .halfWidth:
+            let width: PunctuationWidth = state.halfWidth ? .full : .half
+            if let core { core.setPunctuationWidth(width) } else { EngineHost.punctuationWidth = width }
+        case .simplified:
+            Preferences.shared.outputScript = state.simplified ? .traditional : .simplified
+            showModeBadge()
+        case .pauseLearning:
+            QuickSettings.learningPaused.toggle()
+            showModeBadge()
+        }
+    }
+
+    /// The 中／简／英 badge by the caret, after a switch that changes it.
+    private func showModeBadge() {
+        guard active, Self.activeController === self, showModeToast, let client = textClient, let core else { return }
+        ModeToast.shared.show(QuickSettings.modeLabel(english: core.isEnglish, script: Preferences.shared.outputScript),
+                              caret: client.caretRect(cursorIndex: core.composer.presentation.cursor),
+                              windowLevel: client.windowLevel)
+    }
+
+    private func showQuickSettings(caret: NSRect) {
+        guard active, Self.activeController === self, let client = textClient else { return }
+        ModeToast.shared.hide()
+        let panel = QuickSettingsPanel.shared
+        panel.state = { [weak self] in self?.quickState() ?? QuickSettings.State(english: false, halfWidth: false,
+                                                                                 simplified: false, learningPaused: false) }
+        panel.onToggle = { [weak self] in self?.toggle($0) }
+        panel.show(caret: caret, windowLevel: client.windowLevel)
+    }
     @objc private func openWords(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.words)) }
     @objc private func openAbout(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.about)) }
     @objc private func openWizard(_ sender: Any?) { WizardWindowController.shared.show(.quick) }
@@ -285,18 +369,31 @@ final class ZhuyinInputController: IMKInputController {
         core.composer.punctuationWidth = EngineHost.punctuationWidth
         core.punctuationWidthChanged = { [weak self, weak core] width in
             EngineHost.punctuationWidth = width
-            guard let self, self.active, Self.activeController === self,
-                  self.showModeToast, let client = self.textClient, let core else { return }
+            guard let self, self.active, Self.activeController === self else { return }
+            ScreenReader.announce(CandidateAnnouncer.punctuationWidth(half: width == .half))
+            guard self.showModeToast, let client = self.textClient, let core else { return }
             ModeToast.shared.show(width == .half ? "半" : "全", caret: client.caretRect(cursorIndex: core.composer.presentation.cursor),
                                   windowLevel: client.windowLevel)
         }
         EngineHost.lastEnglishMode = core.isEnglish
         loggedNotReady = false
+        core.addPhraseForm = { text in AddPhrasePanel.shared.show(text: text) }
         core.showPanel = { [weak self] list, preview, caret, notice, zhuyinHint in
             guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
             CandidatePanelController.shared.show(list: list, preview: preview, caret: caret,
                                                 keys: self.core?.composer.options.selectionKeys ?? [],
-                                                windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint)
+                                                windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint,
+                                                typedReading: self.core?.composer.presentation.typedReading)
+        }
+        core.quickSettingsRequested = { [weak self] caret in self?.showQuickSettings(caret: caret) }
+        core.symbolSource = SymbolSources.app
+        core.recentSymbols = RecentSymbols.shared
+        core.showSymbolPicker = { [weak self] picker, caret in
+            guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
+            SymbolPickerPanelController.shared.show(picker, caret: caret, windowLevel: client.windowLevel)
+        }
+        core.hideSymbolPicker = { [weak self] in
+            if let self, self.active, Self.activeController === self { SymbolPickerPanelController.shared.hide() }
         }
         core.listEdge = { [weak self] direction in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.bounce(direction: direction) }
@@ -309,8 +406,11 @@ final class ZhuyinInputController: IMKInputController {
                   EngineHost.currentInputSourceIsOurs() else { return }
             // Caps Lock's badge is temporary; only the Shift-selected mode carries across fields.
             EngineHost.lastEnglishMode = core.isEnglish
+            // VoiceOver hears the mode whether or not the badge shows.
+            ScreenReader.announce(CandidateAnnouncer.mode(english: english))
             guard self.showModeToast, let client = self.textClient else { return }
-            ModeToast.shared.show(english ? "英" : "中", caret: caret, windowLevel: client.windowLevel)
+            ModeToast.shared.show(english ? "英" : QuickSettings.modeLabel(english: false, script: core.outputScript),
+                                  caret: caret, windowLevel: client.windowLevel)
         }
         refreshPreferences()
         let held = bufferedKeys
@@ -324,9 +424,12 @@ final class ZhuyinInputController: IMKInputController {
         let p = Preferences.shared
         showModeToast = p.showModeToast
         core?.usesPrecedingText = p.usesPrecedingText
+        core?.composer.associatedPhrases = p.associatedPhrases
+        core?.outputScript = p.outputScript
         core?.shortcuts = Dictionary(p.activeBindings.flatMap { command, list in list.map { ($0, command) } },
                                      uniquingKeysWith: { first, _ in first })
         core?.disabledFeatures = p.disabledKeyFeatures
+        core?.showCorrections = p.showCorrections
         if let core, p.recordsUsageStats {
             core.stats = core.stats ?? UsageStatsObserver(store: UsageStatsStore.shared)
         } else {
@@ -362,9 +465,29 @@ final class ZhuyinInputController: IMKInputController {
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.selectCandidate(at: index)
         }
+        CandidatePanelController.shared.onMenu = { [weak self] index, event, view in
+            guard let self, self.active, Self.activeController === self, let core = self.core else { return }
+            WordActionMenu.show(for: core, index: index, event: event, view: view)
+        }
+        CandidatePanelController.shared.onNotice = { [weak self] in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.undoWordAction()
+        }
         CandidatePanelController.shared.onPage = { [weak self] direction in
             guard let self, self.active, Self.activeController === self else { return }
             _ = self.core?.handle(direction < 0 ? .pageUp : .pageDown)
+        }
+        SymbolPickerPanelController.shared.onPick = { [weak self] index in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.pickSymbol(at: index)
+        }
+        SymbolPickerPanelController.shared.onTab = { [weak self] index in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.selectSymbolCategory(index)
+        }
+        SymbolPickerPanelController.shared.onScroll = { [weak self] rows in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.scrollSymbols(rows: rows)
         }
     }
 
@@ -374,6 +497,10 @@ final class ZhuyinInputController: IMKInputController {
         observers.append(center.addObserver(forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.active else { return }
             self.refreshPreferences()
+        })
+        observers.append(center.addObserver(forName: QuickSettings.didChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.active else { return }
+            self.core?.learningPauseChanged()
         })
         observers.append(center.addObserver(forName: EngineHost.didLoad, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.active else { return }

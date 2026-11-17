@@ -5,17 +5,20 @@
 //! Linux: the package manager replaces the executable under the running app, so once idle the app starts the new
 //! one in its place (Windows: the installer stops the app and starts it again in every session).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use gpui_kit::{App, Global};
 use serde_json::{Value, json};
-use zt_core::update::{self, CHECK_INTERVAL, CHECKS_KEY, Found, INSTALLS_KEY};
+use zt_core::update::{self, CHECKS_KEY, Found, INSTALLS_KEY};
 
 use crate::app;
 
 /// How often the app looks at the clock, the composition and the executable.
 const TICK: Duration = Duration::from_secs(60);
+/// The system's updater was started this long ago and this copy still runs: it did not install (the package manager
+/// was busy, the download failed), so the next check may start it again.
+const INSTALL_GIVEN_UP: Duration = Duration::from_secs(60 * 60);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What 關於 shows.
@@ -27,6 +30,10 @@ pub struct Updates {
     /// The system's updater was started for this version.
     pub installing: Option<String>,
     pub error: Option<String>,
+    /// When the system's updater was started.
+    install_started: Option<Instant>,
+    /// The last check that failed; the next waits `update::RETRY_INTERVAL`.
+    last_failure: Option<DateTime<Local>>,
     #[cfg(target_os = "linux")]
     executable: Option<(u64, u64)>,
 }
@@ -84,16 +91,14 @@ fn tick(cx: &mut App) {
     let settings = app::settings(cx);
     let (checks, installs) = (settings.bool(CHECKS_KEY), settings.bool(INSTALLS_KEY));
     let state = state(cx);
-    let due = !state.checking
-        && state
-            .last_check
-            .is_none_or(|last| Local::now().signed_duration_since(last).to_std().unwrap_or_default() >= CHECK_INTERVAL);
+    let due =
+        !state.checking && update::check_due(state.last_check.as_ref(), state.last_failure.as_ref(), &Local::now());
     let ready = matches!(&state.found, Some(Found::Newer { .. })) && state.installing.is_none();
     if checks && due {
         check_now(cx);
     }
     if checks && installs && ready && idle(cx) {
-        install_now(cx);
+        install(false, cx);
     }
     #[cfg(target_os = "linux")]
     restart_if_replaced(cx);
@@ -123,12 +128,19 @@ pub fn check_now(cx: &mut App) {
             match result {
                 Ok(found) => {
                     state.last_check = Some(now);
+                    state.last_failure = None;
                     state.found = Some(found);
                     state.error = None;
+                    // Still running the old version long after the updater started: it did not install.
+                    if state.install_started.is_some_and(|started| started.elapsed() >= INSTALL_GIVEN_UP) {
+                        state.installing = None;
+                        state.install_started = None;
+                    }
                     save_last_check(now);
                 }
                 Err(error) => {
                     log::warn!("update check: {error:#}");
+                    state.last_failure = Some(now);
                     state.error = Some(format!("{error:#}"));
                 }
             }
@@ -138,24 +150,58 @@ pub fn check_now(cx: &mut App) {
     .detach();
 }
 
-/// 立即安裝 (or automatically when idle): starts the system's updater for the version found.
+/// 立即安裝: starts the system's updater for the version found (Linux may ask for a password).
 pub fn install_now(cx: &mut App) {
+    install(true, cx);
+}
+
+/// Starts the system's updater; automatically (`ask` false) it never brings up a password dialog.  `systemctl` runs
+/// on a background thread: while polkit asks for a password (立即安裝 in a remote session) it waits for the answer,
+/// and the UI thread, which also draws the candidate window, keeps running.
+fn install(ask: bool, cx: &mut App) {
     let Some(Found::Newer { version, .. }) = state(cx).found.clone() else { return };
-    let state = cx.global_mut::<Updates>();
-    match update::start_system_update() {
+    if state(cx).installing.is_some() {
+        return;
+    }
+    // Windows: the installer ends this app; what was learnt since the last write is written now.
+    if let Some(service) = app::service(cx) {
+        service.flush();
+    }
+    begin_install(cx.global_mut::<Updates>(), version.clone());
+    cx.refresh_windows();
+    let task = cx.background_executor().spawn(async move { update::start_system_update(ask) });
+    cx.spawn(async move |cx| {
+        let result = task.await;
+        cx.update(|cx| {
+            finish_install(cx.global_mut::<Updates>(), &version, result);
+            cx.refresh_windows();
+        });
+    })
+    .detach();
+}
+
+/// 關於 shows 安裝中… while the updater is being started, and neither 立即安裝 nor the next tick starts it again.
+fn begin_install(state: &mut Updates, version: String) {
+    state.installing = Some(version);
+    state.install_started = None;
+    state.error = None;
+}
+
+/// The system's updater started (it installs on its own), or it could not be started.
+fn finish_install(state: &mut Updates, version: &str, result: anyhow::Result<()>) {
+    match result {
         Ok(()) => {
             log::info!("installing update {version}");
-            state.installing = Some(version);
-            state.error = None;
+            state.install_started = Some(Instant::now());
         }
         Err(error) => {
             log::warn!("update: {error:#}");
+            state.installing = None;
             state.error = Some(format!("{error:#}"));
             // Not again until the next check.
             state.found = None;
         }
     }
-    cx.refresh_windows();
 }
 
 /// Linux: the package manager replaced the executable; once idle, become the new version.  The broker socket and
@@ -177,4 +223,48 @@ fn restart_if_replaced(cx: &mut App) {
     let error = std::process::Command::new(&path).arg("--background").exec();
     log::warn!("restarting after the update: {error}");
     cx.global_mut::<Updates>().executable = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found() -> Updates {
+        Updates {
+            found: Some(Found::Newer { version: "0.9.0".to_owned(), notes: "https://example.org".to_owned() }),
+            error: Some("earlier".to_owned()),
+            ..Updates::default()
+        }
+    }
+
+    #[test]
+    fn installing_is_shown_while_the_updater_starts() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        assert_eq!(state.installing.as_deref(), Some("0.9.0"));
+        assert!(state.install_started.is_none());
+        assert!(state.error.is_none());
+    }
+
+    #[test]
+    fn a_started_updater_keeps_installing() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        finish_install(&mut state, "0.9.0", Ok(()));
+        assert_eq!(state.installing.as_deref(), Some("0.9.0"));
+        assert!(state.install_started.is_some());
+        assert!(state.error.is_none());
+        assert!(matches!(state.found, Some(Found::Newer { .. })));
+    }
+
+    #[test]
+    fn an_updater_that_did_not_start_shows_the_error() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        finish_install(&mut state, "0.9.0", Err(anyhow::anyhow!("systemctl start: exit status: 4")));
+        assert!(state.installing.is_none());
+        assert!(state.install_started.is_none());
+        assert_eq!(state.error.as_deref(), Some("systemctl start: exit status: 4"));
+        assert!(state.found.is_none());
+    }
 }

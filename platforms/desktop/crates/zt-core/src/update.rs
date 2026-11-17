@@ -100,6 +100,23 @@ pub fn newer(candidate: &str, current: &str) -> bool {
     matches!((version(candidate), version(current)), (Some(a), Some(b)) if a > b)
 }
 
+/// How long after a failed check (offline, the server unreachable) the next one is tried.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+/// Whether the app should check now: it never has, the last check is [`CHECK_INTERVAL`] old or dated after `now`
+/// (saved while the clock was wrong), and no check failed in the last [`RETRY_INTERVAL`].
+#[must_use]
+pub fn check_due<Tz: chrono::TimeZone>(
+    last_check: Option<&chrono::DateTime<Tz>>,
+    last_failure: Option<&chrono::DateTime<Tz>>,
+    now: &chrono::DateTime<Tz>,
+) -> bool {
+    let since = |at: &chrono::DateTime<Tz>| now.clone().signed_duration_since(at.clone()).to_std().ok();
+    let checked = last_check.is_none_or(|last| since(last).is_none_or(|elapsed| elapsed >= CHECK_INTERVAL));
+    let resting = last_failure.is_some_and(|failed| since(failed).is_some_and(|elapsed| elapsed < RETRY_INTERVAL));
+    checked && !resting
+}
+
 /// Which installer fits this installation: Windows, or the Linux package format that installed it.  None for a
 /// copy the package manager does not own (a development build), which never updates itself.
 #[must_use]
@@ -195,15 +212,17 @@ fn download(asset: &Asset, directory: &Path, key: &VerifyingKey) -> Result<PathB
     Ok(path)
 }
 
-/// Where the updater keeps the installer: `<install dir>\updates` (Windows; only administrators can write there),
-/// `/var/cache/zhuyintype` (Linux, root).
+/// Where the updater keeps the installer: `<install dir>\updates` (Windows; only administrators can write there,
+/// which the service checks first), `/var/cache/zhuyintype` (Linux, root).
 fn download_directory() -> Result<PathBuf> {
-    if cfg!(windows) {
+    #[cfg(windows)]
+    {
+        windows::ensure_installation_protected()?;
         let exe = std::env::current_exe()?;
         Ok(exe.parent().ok_or_else(|| anyhow!("no install directory"))?.join("updates"))
-    } else {
-        Ok(PathBuf::from("/var/cache/zhuyintype"))
     }
+    #[cfg(not(windows))]
+    Ok(PathBuf::from("/var/cache/zhuyintype"))
 }
 
 /// The system's updater (the Windows service, the systemd unit; administrator or root): installs the newest signed
@@ -222,32 +241,64 @@ pub fn system_update(current: &str) -> Result<Option<String>> {
     // Earlier downloads are not kept.
     let _ = std::fs::remove_dir_all(&directory);
     let file = download(asset, &directory, &key)?;
-    install(asset_key, &file)?;
+    install(asset_key, &file, asset, &key)?;
     Ok(Some(feed.version))
 }
 
+/// Runs the installer.  It is opened so that nobody can change or replace it until it runs and its signature is
+/// checked again on what was read through that handle, so nothing written between the download and the start runs.
 #[cfg(windows)]
-fn install(_: &str, installer: &Path) -> Result<()> {
+fn install(_: &str, installer: &Path, asset: &Asset, key: &VerifyingKey) -> Result<()> {
+    use std::io::Read as _;
+    use std::os::windows::fs::OpenOptionsExt as _;
     use std::os::windows::process::CommandExt as _;
+    const FILE_SHARE_READ: u32 = 0x1;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    // /UPDATE: after installing, start the app again in every signed-in session (installer.nsi).
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(installer)
+        .with_context(|| installer.display().to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    ensure!(bytes.len() as u64 == asset.length, "安裝程式在下載後被改變");
+    verify(key, &bytes, &asset.signature).context("installer")?;
+    // /UPDATE: after installing, start the app again where it ran (installer.nsi).
     std::process::Command::new(installer)
         .args(["/S", "/UPDATE"])
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .context("安裝程式")?;
+    drop(file);
     Ok(())
 }
 
 #[cfg(not(windows))]
-fn install(asset_key: &str, package: &Path) -> Result<()> {
+fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Result<()> {
     let package = package.to_string_lossy().into_owned();
     let have = |program: &str| {
         ["/usr/bin", "/bin", "/usr/sbin", "/sbin"].iter().any(|dir| Path::new(dir).join(program).exists())
     };
     let (program, args): (&str, Vec<&str>) = match asset_key {
-        "linux-deb" => ("apt-get", vec!["install", "-y", "--no-install-recommends", &package]),
+        // Waits while another package manager holds the lock (unattended-upgrades, a software center) rather than
+        // failing at once.  A conffile the administrator changed (the autostart entry) is kept without a question:
+        // the updater has no terminal, and dpkg would fail at the prompt.
+        "linux-deb" => (
+            "apt-get",
+            vec![
+                "-o",
+                "DPkg::Lock::Timeout=600",
+                "-o",
+                "Dpkg::Options::=--force-confdef",
+                "-o",
+                "Dpkg::Options::=--force-confold",
+                "install",
+                "-y",
+                "--no-install-recommends",
+                &package,
+            ],
+        ),
         "linux-rpm" if have("dnf") => ("dnf", vec!["install", "-y", &package]),
         "linux-rpm" if have("zypper") => {
             ("zypper", vec!["--non-interactive", "install", "--allow-unsigned-rpm", &package])
@@ -259,7 +310,10 @@ fn install(asset_key: &str, package: &Path) -> Result<()> {
         .args(&args)
         .env("DEBIAN_FRONTEND", "noninteractive")
         .output()
-        .with_context(|| program.to_owned())?;
+        .with_context(|| program.to_owned());
+    // The package is installed (or was refused): it is not kept (about 110 MB in /var/cache).
+    let _ = std::fs::remove_file(&package);
+    let output = output?;
     if !output.status.success() {
         bail!("{program}：{}", String::from_utf8_lossy(&output.stderr).trim());
     }
@@ -267,18 +321,25 @@ fn install(asset_key: &str, package: &Path) -> Result<()> {
 }
 
 /// Starts the system's updater from the signed-in user's app.  It installs the newest release itself; this only
-/// asks it to run.
-pub fn start_system_update() -> Result<()> {
+/// asks it to run.  `ask`: Linux may ask for a password when polkit's rule does not let this user start it (not at
+/// the computer: a remote session); an automatic install never asks, the user's 立即安裝 may.  It waits while polkit
+/// asks, so the app calls it off the UI thread.
+pub fn start_system_update(ask: bool) -> Result<()> {
     #[cfg(windows)]
     {
+        let _ = ask;
         windows::start_service()
     }
     #[cfg(not(windows))]
     {
-        let status = std::process::Command::new("systemctl")
-            .args(["start", "--no-block", LINUX_UNIT])
-            .status()
-            .context("systemctl")?;
+        let mut command = std::process::Command::new("systemctl");
+        command.args(["start", "--no-block", LINUX_UNIT]);
+        // polkit lets the active user start it without a password; an automatic install never brings up a password
+        // prompt the user did not ask for.
+        if !ask {
+            command.arg("--no-ask-password");
+        }
+        let status = command.status().context("systemctl")?;
         ensure!(status.success(), "systemctl start {LINUX_UNIT}: {status}");
         Ok(())
     }
@@ -347,6 +408,30 @@ mod tests {
         assert!(verify(&key.verifying_key(), b"abc", &good).is_ok());
         assert!(verify(&key.verifying_key(), b"abd", &good).is_err());
         assert!(verify(&key.verifying_key(), b"abc", "not base64").is_err());
+    }
+
+    #[test]
+    fn checks_are_due_daily_and_after_a_wrong_clock() {
+        use chrono::{TimeZone as _, Utc};
+        let at = |hours: i64| Utc.timestamp_opt(1_800_000_000 + hours * 3600, 0).unwrap();
+        assert!(check_due(None, None, &at(0)));
+        assert!(!check_due(Some(&at(0)), None, &at(23)));
+        assert!(check_due(Some(&at(0)), None, &at(24)));
+        // The last check was saved while the clock was years ahead: checking must not wait for that date.
+        assert!(check_due(Some(&at(24 * 365)), None, &at(0)));
+    }
+
+    #[test]
+    fn a_failed_check_is_retried_after_an_hour_not_every_minute() {
+        use chrono::{TimeZone as _, Utc};
+        let at = |minutes: i64| Utc.timestamp_opt(1_800_000_000 + minutes * 60, 0).unwrap();
+        // Offline: never checked, and the attempt a minute ago failed.
+        assert!(!check_due(None, Some(&at(0)), &at(1)));
+        assert!(!check_due(None, Some(&at(0)), &at(59)));
+        assert!(check_due(None, Some(&at(0)), &at(60)));
+        assert!(!check_due(Some(&at(-24 * 60)), Some(&at(0)), &at(30)));
+        // A failure in the future (the clock went back) does not hold checks off.
+        assert!(check_due(None, Some(&at(600)), &at(0)));
     }
 
     #[test]

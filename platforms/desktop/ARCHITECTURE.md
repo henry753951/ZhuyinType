@@ -66,14 +66,22 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 - `channel.bin`，讀音通道（「接受常見的其他讀法」），有附帶時使用；
 - 旁邊的說明檔，供「關於」頁使用（`lm/NOTICE.md`、`lm/articles.tsv.gz`、`channel/NOTICE.md` 等）。
 
-`tools/zt data fetch engine && tools/zt data compile` 會在 `data/build` 產生這些檔案，和 macOS App 相同。神經模型（重排序與字模型）在 macOS 上用 Core ML，這裡不載入；接口留在 composer 的 hook（`EngineSession::composer_mut`）。個人資料、`stats.json` 與 `corrections.jsonl` 放在 `zt_core::paths::data_dir`；設定與按鍵放在 `zt_core::paths::settings_file`。試打工作階段在同一份 `EngineData` 上開自己的引擎，個人資料只在記憶體中；對應到記憶體的檔案是共用的。
+`tools/zt data fetch engine && tools/zt data compile` 會在 `data/build` 產生這些檔案，和 macOS App 相同。神經模型（重排序與字模型）在 macOS 上用 Core ML，這裡不載入；接口留在 composer 的 hook（`EngineSession::composer_mut`）。個人資料、`stats.json` 與 `corrections.jsonl` 放在 `zt_core::paths::data_dir`；設定與按鍵放在 `zt_core::paths::settings_file`。這些檔案都先寫到旁邊的暫存檔、寫進磁碟後再換上（`zt_core::settings::write_atomically`），當機或斷電後只會是舊的或新的內容。設定檔無法讀取時（寫到一半、手動改壞）先用預設值，第一次變更設定前把原檔留成 `settings.unreadable.json`，不會直接蓋掉使用者的設定與按鍵。試打工作階段在同一份 `EngineData` 上開自己的引擎，個人資料只在記憶體中；對應到記憶體的檔案是共用的。
+
+## 檢查輸入法
+
+`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`）與 `probe_linux`（`fcitx5-setup status`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次，結果放在全域狀態供「關於 › 檢查輸入法」與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
 
 ## 介面規則
 
 - 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。
 - 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
-- 動畫使用 `theme::motion`，系統要求減少動態效果時略過。
+- 動畫使用 `theme::motion` 與 `motion.rs`（選取的淡入、展開箭頭、按下與鍵盤焦點框、浮動視窗的出現）。系統要求減少動態效果時（Windows 的「動畫效果」、桌面入口的 `reduced-motion`、GNOME 的 `enable-animations`；`ZT_REDUCE_MOTION=1` 可強制）略過位移，淡入淡出照常。候選字視窗與中英提示在每次更新時只讀一次這個設定，動畫不延後任何按鍵的結果。
+- 「主題」與「透明效果」（`zt_core::appearance`）：每個視窗在 `render` 開頭呼叫 `theme::sync`，依設定與系統換掉全域的 `Palette`；設定視窗與嚮導再呼叫 `platform::backdrop::apply`，向視窗系統要背景材質（Windows 的 Mica、KDE 的模糊）與深淺色的邊框。材質存在時，視窗的根不畫底色，框架與頁面畫 `Palette::frame`、`Palette::page` 兩層半透明的顏色；其他顏色不變。細節見 [DESKTOP.md](../../docs/product/DESKTOP.md)「主題與透明效果」。
 - 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
-- Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。系統會替視窗畫圓角時（Windows 11 且不是虛擬機的基本顯示卡），邊緣交給系統：圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同）；其他情況（Windows 10、虛擬機）改用分層視窗，自己畫圓角、細框與柔和陰影，所以任何環境都是圓角。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。Linux 仍由 App 畫浮動視窗。
+- Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。系統會替視窗畫圓角時（Windows 11 且不是虛擬機的基本顯示卡），邊緣交給系統：圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同；「透明效果」關閉時畫不透明的背景）；其他情況（Windows 10、虛擬機）改用分層視窗，自己畫圓角、細框與柔和陰影，所以任何環境都是圓角。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。欄位取得焦點、處理完焦點之後，文字服務先在背景建立中英提示的視窗與繪圖目標，並在畫面外畫一次「中」「英」（`PanelWindow::warm`）：硬體繪圖目標第一次在一個行程裡建立時要載入 Direct3D 與顯示卡驅動程式，這段時間不再落在使用者第一次切換中英的時候。Linux 仍由 App 畫浮動視窗。
 - 組字在應用程式裡的標示和 macOS 相同：每個詞一條細底線，候選字清單正在替換的詞反白並加粗底線，清單沒開、游標在組字中間時 ↓ 會改的詞加粗底線。回應的 `clauses`、`focus`、`target`（IPC.md）帶來分段；TSF DLL 是顯示屬性的提供者（`GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER`，`crates/zt-tsf/src/display_attributes.rs`），把屬性寫進組字範圍的 `GUID_PROP_ATTRIBUTE`，反白用系統的選取色（`COLOR_HIGHLIGHT`）；相鄰的詞輪流用兩個外觀相同的屬性，讓會在屬性交界留空隙的應用程式（瀏覽器、Word）分出每個詞。Fcitx5 外掛以 `fcitx::Text` 的格式表達同樣的三種標示（`Underline`、加上 `HighLight`、加上 `Bold`）。
+- 快速設定（IPC.md〈快速設定〉）在服務裡是 `InputController` 的兩個狀態：`learning_paused`（只在記憶體，`unlearned()` 讓每個欄位當成私人欄位）與 `simplified()`（設定 `outputScript`）。簡體只在輸出端換：`committed()` 送出的 `Commit`、`Host::snapshot` 的組字與 `output_presentation()`（候選字視窗與 `panel`），引擎與觀察者（學習、改字記錄、使用統計）看的都是繁體。快捷鍵的 `QuickPanel` 事件在 App 畫視窗時成為 `UiEvent::QuickPanel`，GPUI 在游標旁開不取得焦點的小視窗（`crates/zhuyintype/src/candidate/quick.rs`），下一個按鍵或換欄位時服務送 `UiEvent::HideQuickPanel`。Fcitx5 外掛把四個勾選項目加在輸入法選單（`fcitx::SimpleAction`，可勾選），狀態取自每個回應的 `english`、`fullWidth`、`simplified`、`learningPaused`。
+- Windows 工作列輸入指示器的中／英（`GUID_LBI_INPUTMODE`，`crates/zt-tsf/src/mode_button.rs`）只在有可以輸入中文的欄位時可用：沒有取得焦點的欄位（桌面、沒有文字欄位的視窗）、安全欄位、App 沒有回應時，按鈕停用並顯示「英」，和微軟注音相同，因為這時按鍵照原樣交給程式。
+- Windows 的快速設定（`crates/zt-tsf/src/quick_menu.rs`）：中／英按鈕的右鍵選單最上面是「英文」「半形標點」「簡體」「暫停學習」四個勾選項，再來是設定的各個位置；勾選狀態在選單打開前以空的 `quick` 讀一次，選了就送只帶那一項的 `quick`。沒有可以輸入中文的欄位時四項變灰。「開啟快速設定」快捷鍵的回應帶 `quickPanel` 時，文字服務在按鍵處理結束、修飾鍵放開之後，在游標下方顯示同一份選單（沒有「設定嚮導…」等項目），擁有者是文字服務自己隱藏的視窗，不搶焦點，組字照常保留。按鈕在簡體輸出時顯示「简」，暫停學習時提示文字加上「暫停學習」。
 - 不顯示畫面的執行（截圖、測試）不在使用者的桌面開視窗，而在主機的虛擬顯示器上執行。

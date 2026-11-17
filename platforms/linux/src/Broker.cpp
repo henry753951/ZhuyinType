@@ -84,12 +84,14 @@ bool Broker::connect() {
         getsockopt(fd_, SOL_SOCKET, SO_PEERCRED, &peer, &peerLength) || peer.uid != getuid()) {
         disconnect(); return false;
     }
+    ++generation_;
     return true;
 }
 std::optional<nlohmann::json> Broker::request(const std::string &context, const char *op, nlohmann::json fields) {
     if (!connected()) return std::nullopt;
     fields["v"] = 1; fields["id"] = ++id_; fields["context"] = context; fields["op"] = op;
-    const auto wire = fields.dump() + '\n';
+    // Text from the field (its program's name) may not be UTF-8: replaced, never thrown into Fcitx's event loop.
+    const auto wire = fields.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) + '\n';
     const auto deadline = Clock::now() + std::chrono::milliseconds(80);
     std::string response;
     size_t sent = 0;

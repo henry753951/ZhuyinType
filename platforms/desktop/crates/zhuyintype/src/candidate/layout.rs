@@ -4,8 +4,8 @@
 use gpui_kit::{FontWeight, TextRun, Window, px};
 use zt_core::presentation::Presentation;
 pub use zt_panel::layout::{
-    BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Estimate, Frame, HintLayout, KEYCAP_HEIGHT, Measure, NoticeLayout,
-    PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, annotation_font,
+    BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Estimate, Frame, HintLayout, KEYCAP_HEIGHT, Measure, MenuLayout,
+    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, UNDO_LABEL, annotation_font,
 };
 
 use super::style::PanelStyle;
@@ -38,6 +38,8 @@ impl Measure for WindowMeasure<'_> {
 pub struct Extras<'a> {
     /// The composition, shown in the window when the app cannot show it inline.
     pub preview: Option<&'a str>,
+    /// The right-click menu is open on this row of the page.
+    pub menu: Option<usize>,
 }
 
 /// Lays the window out for `p` (`zt_panel::layout::compute`).
@@ -49,5 +51,7 @@ pub fn compute(
     steady: (f32, f32),
     measure: &mut dyn Measure,
 ) -> PanelLayout {
-    zt_panel::layout::compute(&p.panel_model(extras.preview), style, max_width, steady, measure)
+    let mut model = p.panel_model(extras.preview);
+    model.menu = extras.menu;
+    zt_panel::layout::compute(&model, style, max_width, steady, measure)
 }

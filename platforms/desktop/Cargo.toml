@@ -8,13 +8,14 @@ exclude = ["vendor"]
 
 [workspace.package]
 edition = "2024"
-version = "0.6.1"
+version = "0.7.0"
 license = "AGPL-3.0-only"
 publish = false
 rust-version = "1.98"
 
 [workspace.dependencies]
 zhuyin-core = { path = "../../engine/crates/zhuyin-core" }
+zhuyin-symbols = { path = "../../engine/crates/zhuyin-symbols" }
 # The neural models with ONNX Runtime, which the app loads at run time from beside itself (`load-dynamic`: nothing to
 # link, so the Windows build cross-compiles as before); zt-core/src/models.rs.
 zhuyin-models = { path = "../../engine/crates/zhuyin-models", features = ["onnx"] }
@@ -42,11 +43,14 @@ windows-sys = { version = "0.61", features = [
   "Win32_Storage_FileSystem",
   "Win32_System_IO",
   "Win32_System_Pipes",
+  "Win32_System_Registry",
   "Win32_System_Threading",
   "Win32_System_ProcessStatus",
   "Win32_System_Services",
   "Win32_System_RemoteDesktop",
   "Win32_System_Environment",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 # GPUI's Windows backend compiles its shaders only on a Windows build host; the vendored copy also takes them

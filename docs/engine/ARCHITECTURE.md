@@ -38,7 +38,8 @@
 | 引擎的 Swift 包裝 | `platforms/macos/Sources/ZhuyinEngine/` | 引擎的值型別（`KeyInput`、`ComposerOptions`、`Presentation` 等）、`Engine`、`Composer`（經 C 介面呼叫 Rust 引擎），以及 `NeuralReranker`、`SyllableScorer` 的 Core ML 推論（由 Rust 回呼）；`EngineBench`（`Sources/EngineBench/`）是不含 App 的引擎路徑，量延遲用 |
 | 核心 | `engine/crates/zhuyin-core/`（Rust） | `api`（按鍵、畫面與選項的介面）、`composer`（組字狀態；`candidates` 候選字視窗、`scoring` 字模型分數）、`key_decoder`、`key_channel`（按鍵容錯）、`engine`（詞庫、比對、學習）、`personal_writer`（個人資料的背景寫入）、`binary`（mmap 詞庫與語言模型）、`conversion`（詞圖解碼）、`language_model`（bigram、混合）、`personal`（個人模型） |
 | 神經模型 | `engine/crates/zhuyin-models/`（Rust） | `NeuralReranker`（v2b 整句重排，`RerankerTree` 把候選句排成前綴樹）、`SyllableScorer`（v3 前文編碼器與音節對字編碼器）的判斷邏輯；推論在 macOS 由 App 以 Core ML 執行，在 Linux 由 `onnx` 模組以 ONNX Runtime 執行 |
-| C 介面 | `engine/crates/zhuyin-ffi/` | `include/zhuyin.h`：引擎、組字器、個人資料、模型的 hook 與主機提供的推論 |
+| 符號與 Emoji | `engine/crates/zhuyin-symbols/`（Rust） | 符號面板的類別、以中文、注音（標準鍵盤的按鍵）或英文名稱搜尋、最近使用清單；資料 `data/symbols.tsv` 由 `generate.py` 從 CLDR 註解與 emoji-test.txt 產生，內建在程式中。不參與轉換 |
+| C 介面 | `engine/crates/zhuyin-ffi/` | `include/zhuyin.h`：引擎、組字器、個人資料、模型的 hook 與主機提供的推論；`zt_symbols_*` 給 macOS 的符號面板 |
 | 命令列 | `engine/crates/zhuyin-cli/` | 與 app 相同的引擎；評測、參數掃描、模型一致性檢查 |
 | 測試 | `engine/crates/*/tests/` | 行為與延遲檢查、和 Swift 引擎逐位元相同的 golden 摘要（`tools/zt check engine`） |
 
@@ -178,7 +179,8 @@ Caps Lock 的「英／中」提示只反映暫時的大寫鎖定狀態，跨輸�
 - 每個位置保留 12 條路徑（`Engine.decodingBeamWidth`），N-best 時放寬到 K。
 - 固定的字詞在它的範圍內只留這一條邊。
 - 歷史從句首或前文的最後兩個詞開始（§4）。
-- 沒有 v3 時，前面沒變的部分沿用上一次的解碼結果（`ConversionCache`）。v3 的分數看整段音節，所以有 v3 時每次重算。
+- 詞圖保留在 `ConversionCache`，下一個鍵沿用前面沒變的位置：每個位置的詞與它在各個歷史之後的語言模型分數。沒有 v3 時，連同那些位置的解碼結果一起沿用；v3 的分數看整段音節，所以有 v3 時路徑每次重新解碼，沿用的詞換上這一次的 v3 分數。
+- 整句重排取 N-best 時用 `convert` 剛建好的詞圖（`Engine.sentences_reusing`），不重建詞與語言模型分數。
 
 ### 5.6 ⑤ 整句重排（v2b）
 
@@ -251,12 +253,14 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 | 清單 | 空白、Tab、⇧Tab | 換頁 |
 | 清單 | ⇧↓、⇧↑ | 切換只列單字、修正優先 |
 | 清單 | \` | 這段改成注音符號本身 |
-| 清單 | Esc、Backspace | 關閉清單 |
+| 清單 | Esc、Backspace | 關閉清單（開啟 `undo_correction_with_backspace` 且清單的範圍有自動修正時，Backspace 先把修正改回照按鍵打的字） |
 | 清單 | 其他鍵 | 關閉清單，再照組字中處理 |
 | 組字中 | Return | 送出 |
 | 組字中 | Esc | 清空組字（設定可改成只清除注音） |
 
 橫式清單的方向鍵相反：←→ 移動反白，↑↓ 換頁。
+
+自動修正的標示與還原：`Presentation.corrections` 是畫面上經由修正或模糊音轉出的詞（`ConvertedWord.corrected`；整句重排挑選後也保留）在 `text` 中的 UTF-16 範圍，選過的字不列；清單開在其中時 `typed_reading` 是這段照按鍵的注音。`Composer::revert_correction`（C 介面 `zt_composer_revert_correction`）與開啟 `undo_correction_with_backspace` 時緊接在讓修正出現的鍵之後的 ⌫（`Presentation.backspace_reverts`），以 `Request::literal` 涵蓋那段音節重新轉換：詞圖在這段不收有註記（修正、模糊音）的詞，轉出的詞以凍結的固定詞留下（不是選字，不學習），`Presentation.reverted` 讓 App 計數。選項關閉時（引擎預設）轉換與按鍵行為不變。
 
 ### 8.2 清單內容
 
@@ -298,6 +302,16 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 `Composer.commitAll` 送出組字。未完成的音節照畫面上的注音符號送出，不猜聲調也不修正。學習開著、也不是安全輸入時，把每個詞交給 `Engine.learn`：選過的詞（不含 frozen）標為手動選字，語言模型接續的兩個詞（前一次送出的，或 App 文字的）作為前文。
 
+### 9.0 聯想詞
+
+`Composer::set_associated_phrases(true)`（設定 `associatedPhrases`）後，一個鍵送出了結尾是中文字的文字、又沒有留下組字時，`composer/association.rs` 以送出後的前文歷史（`leading_history`）呼叫 `Engine::predict_after`（`prediction.rs`），把結果放進 `Presentation.candidates`，`CandidateList::associated()` 為真、`text` 是空的。安全輸入（`set_learning_suspended`）時不列出。
+
+- 候選：語言模型在前文之後存的詞（`VocabularyLanguageModel::followers`：二元的那一組，三元模型再加上前兩個詞的那一組；兩個領域的混合模型取兩邊的聯集，以目前的比重計分），以及個人連詞在同一個前文之後的詞（`PersonalLanguageModel::followers`）。各取前 64 個。
+- 篩選：全是中文字、在詞庫中、不是「不記住」的詞；單字要 P(詞 | 前文) ≥ 5% 而且本身的機率 ≥ 0.01%，不列「的之了著地得於及與或等其」；兩個字以上 ≥ 0.1%。以設定的寫法（台／臺）去掉重複。
+- 排序：個人連詞的強度 ≥ 0.25 的詞在前（強的在前），其餘依 P(詞 | 前文)，學習開著時經過個人模型調整（`EngineModel::adapted`）；「記住選過的字詞」關閉時只用內建模型。
+- 按鍵（清單開著時，`Composer::handle` 在 `process` 之前處理）：清單先是被動的（`CandidateList::passive`，沒有反白），除了 ↓ 以外的鍵都先關閉清單、再照沒有清單時處理，所以 ⇧1 仍打「！」。↓ 進入清單（`Suggestions.highlight`）；進入後 ↑ ↓ 移動（第一個詞按 ↑ 回到被動），Return、選字鍵、⇧ 加選字鍵送出，Esc 關閉並吃掉這個鍵，其他鍵關閉後照常處理。點一下（`select_candidate`）不必進入。送出的詞像打出來的一樣學習（手動選字，不記整段的讀音）、成為下一段的前文，再被動地列出它後面的詞。`commit_all`、`reset` 與任何重畫組字的動作（設定、模型）都會關閉清單。Windows 的 TSF 在送出後重新讀取游標位置，清單放在送出的字後面。
+- 關閉時（預設）組字器的行為和沒有這個功能時逐位元相同（`engine/parity/gate.sh --quick`：12,572 行 0 差異）。`zhuyin-cli --predict N` 對每一行輸入印出聯想詞，加 `--timing` 印出延遲。
+
 ### 9.1 學到什麼
 
 | 記住什麼 | 什麼時候 | 程式 | 數字 |
@@ -311,7 +325,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 ### 9.2 寫入
 
-個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`。改變後 150 毫秒在背景執行緒以原子寫入更新（`personal_writer`）；重新載入引擎與結束程序前會先寫完。寫入失敗時資料保留到下一次寫入，`flush_personal_data`（C 介面 `zt_engine_flush_personal_data`）回報失敗，App 記錄錯誤。
+個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`，有不推薦的字詞時另有 `blocked.tsv`（`engine/crates/zhuyin-core/src/word_actions.rs`；最後一筆移除時刪除檔案，匯出檔的 `[blocked]` 段也只在有資料時寫出）。改變後 150 毫秒在背景執行緒以原子寫入更新（`personal_writer`）；重新載入引擎與結束程序前會先寫完。寫入失敗時資料保留到下一次寫入，`flush_personal_data`（C 介面 `zt_engine_flush_personal_data`）回報失敗，App 記錄錯誤。
 
 設定的「記住的字詞」可以搜尋、移除、全部清除、把個別字詞設為不記住，也可以匯出、匯入成一個文字檔。「記住選過的字詞」關閉時不學習。
 

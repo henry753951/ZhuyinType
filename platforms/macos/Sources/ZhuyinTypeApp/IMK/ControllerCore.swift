@@ -15,6 +15,13 @@ protocol TextClient: AnyObject {
     /// Up to `maxLength` UTF-16 units of the document before the insertion point; "" at its start, nil when the app
     /// does not say.
     func textBeforeInsertion(maxLength: Int) -> String?
+    /// The selected text, when it is at most `maxLength` UTF-16 units; nil when nothing is selected or the app does
+    /// not say.
+    func selectedText(maxLength: Int) -> String?
+}
+
+extension TextClient {
+    func selectedText(maxLength: Int) -> String? { nil }
 }
 
 final class ControllerCore {
@@ -25,8 +32,16 @@ final class ControllerCore {
     var popupCompositionApps: [String] = []
     var showPanel: ((CandidateList?, String?, NSRect, String?, String?) -> Void)?
     var hidePanel: (() -> Void)?
+    /// Opens the 加入自訂詞 form with the app's selected text (nil: nothing usable was selected).
+    var addPhraseForm: ((String?) -> Void)?
     var modeChanged: ((Bool, NSRect) -> Void)?
     var punctuationWidthChanged: ((PunctuationWidth) -> Void)?
+    /// The 開啟快速設定 shortcut was pressed (in Chinese or English mode), with the caret.
+    var quickSettingsRequested: ((NSRect) -> Void)?
+    /// 「繁／簡」: 簡體 converts what reaches the app and the candidate window, never what the engine sees.
+    var outputScript: OutputScript = .traditional {
+        didSet { if outputScript != oldValue { lastMark = nil; render() } }
+    }
     /// 「記錄改字」 when it is on: observes keys, clicks and commits, never changes what happens.
     var recorder: CorrectionRecorder? {
         didSet { recorder?.settings.punctuationWidth = composer.punctuationWidth.recordingValue }
@@ -37,6 +52,23 @@ final class ControllerCore {
     var disabledFeatures: Set<KeyFeature> = []
     /// The sentence shown has a typing correction (as last chosen by the reranker).
     private(set) var shownCorrected = false
+    /// 「標示自動修正」: characters shown through an automatic correction get a dotted accent underline.
+    var showCorrections = true {
+        didSet { if showCorrections != oldValue { lastMark = nil } }
+    }
+    /// When the last word action from the candidate window was done; ⌃Z and a click on the notice undo it for
+    /// `wordUndoSeconds` while the composition is still there (ControllerCore+WordActions.swift).
+    var wordActionTime: Date?
+    /// Whether the list was open at the last render, to count list openings for the word-action hint.
+    var listWasOpen = false
+    /// 符號與 Emoji (ControllerCore+Symbols.swift): the symbols, nil when the engine has none; the open picker, which
+    /// gets every key while it is open; where it was opened.
+    var symbolSource: SymbolSource?
+    var recentSymbols: RecentSymbols?
+    var symbolPicker: SymbolPicker?
+    var symbolCaret = NSRect.zero
+    var showSymbolPicker: ((SymbolPicker, NSRect) -> Void)?
+    var hideSymbolPicker: (() -> Void)?
 
     private struct Mark: Equatable {
         var text: String
@@ -44,6 +76,7 @@ final class ControllerCore {
         var clauses: [Range<Int>]
         var focus: Int?
         var target: Int?
+        var corrections: [Range<Int>] = []
     }
     private var lastMark: Mark?
     private var heldShifts: Set<UInt16> = []
@@ -134,7 +167,15 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval? = nil) -> Bool {
         shiftTap = nil
-        guard !rendering, !isEnglish else { return false }
+        guard !rendering else { return false }
+        if let handled = symbolKey(keyCode: keyCode, modifiers: modifiers) { return handled }
+        // 快速設定 opens in English mode too: it is one way back to Chinese.
+        if let quickSettingsRequested, let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers),
+           shortcuts[shortcut] == .quickSettings {
+            quickSettingsRequested(client.caretRect(cursorIndex: composer.presentation.cursor))
+            return true
+        }
+        guard !isEnglish else { return false }
         // With 「Caps Lock 打英文」 off, Caps Lock does not change what the keys type.
         let modifiers = disabledFeatures.contains(.capsLockEnglish) ? modifiers.subtracting(.capsLock) : modifiers
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
@@ -144,10 +185,14 @@ final class ControllerCore {
             return false
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
+            if let action = command.candidateAction { return wordAction(action) }
+            if command == .addSelectedText { return addSelectedText() }
             if let input = command.input { return handle(input, time: time) }
             if command == .togglePunctuationWidth { return togglePunctuationWidth() }
+            if command == .symbolPicker { return false }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
+        if isUndoKey(keyCode: keyCode, modifiers: modifiers), wordUndoOffered { return undoWordAction() }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
               !ShortcutCommand.commandInputs.contains(key), !turnedOff(key) else {
@@ -163,7 +208,7 @@ final class ControllerCore {
         guard !rendering, !isEnglish else { return false }
         composer.togglePunctuationWidth()
         recorder?.punctuationWidthChanged(to: composer.punctuationWidth, presentation: composer.presentation,
-                                         secure: composer.learningSuspended || secureInput())
+                                         secure: composer.learningSuspended || learnsNothing)
         punctuationWidthChanged?(composer.punctuationWidth)
         return true
     }
@@ -187,10 +232,10 @@ final class ControllerCore {
         let started = stats == nil ? 0 : DispatchTime.now().uptimeNanoseconds
         let before = composer.presentation
         let candidate = recorder?.candidate(for: .key(key, time: time), composer: composer,
-                                             secure: composer.learningSuspended || secureInput())
+                                             secure: composer.learningSuspended || learnsNothing)
         let result = time.map { composer.handle(key, at: $0) } ?? composer.handle(key)
         if let move = Self.listMove(key, vertical: composer.options.verticalList), let old = before.candidates,
-           let new = composer.presentation.candidates, old.items.count == new.items.count, old.pageSize == new.pageSize,
+           let new = composer.presentation.candidates, !old.passive, old.items.count == new.items.count, old.pageSize == new.pageSize,
            move.page ? old.page == new.page : old.selection == new.selection {
             listEdge?(move.direction)
         }
@@ -253,7 +298,7 @@ final class ControllerCore {
     private func prepareContext() {
         // Secure input (a password field, or an app protecting what is typed): no text is read or remembered, and
         // nothing is learned from this composition.
-        secureComposition = secureInput()
+        secureComposition = learnsNothing
         composer.learningSuspended = secureComposition
         if secureComposition || !usesPrecedingText {
             recentText = ""
@@ -284,7 +329,7 @@ final class ControllerCore {
     private func observe(_ input: CorrectionRecorder.Input, before: Presentation, commit: String?, handled: Bool,
                          latency: UInt64? = nil, candidate: CandidateDetails? = nil) {
         guard recorder != nil || stats != nil else { return }
-        let secure = composer.learningSuspended || secureInput()
+        let secure = composer.learningSuspended || learnsNothing
         recorder?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
                           options: composer.options, secure: secure, candidate: candidate, context: recentText)
         stats?.observe(input, before: before, after: composer.presentation, commit: commit, handled: handled,
@@ -294,9 +339,54 @@ final class ControllerCore {
 
     /// Whether the system's secure event input is on; a closure so the self-test can switch it.
     var secureInput: () -> Bool = { IsSecureEventInputEnabled() }
+    /// 暫停學習 (快速設定); a closure so the self-test can switch it.  In memory only (`QuickSettings`).
+    var learningPaused: () -> Bool = { QuickSettings.learningPaused }
+    /// Secure input or 暫停學習: typing works, but no text is read or remembered, nothing is learned and no correction
+    /// is recorded — what a private field gets on Linux and Windows.
+    private var learnsNothing: Bool { secureInput() || learningPaused() }
+
+    /// 暫停學習 was switched: a composition already started stops learning at once; resuming applies from the next one.
+    func learningPauseChanged() {
+        guard learningPaused(), !secureComposition else { return }
+        secureComposition = true
+        composer.learningSuspended = true
+        recentText = ""
+        sentDuringKey = ""
+        Self.appContext.removeValue(forKey: client.bundleIdentifier)
+    }
+
+    /// 中／英 from 快速設定 or the input menu; like a Shift tap, the composition is sent first.
+    func setEnglish(_ english: Bool) {
+        guard !rendering, english != isEnglish else { return }
+        commit()
+        isEnglish = english
+        breakContext()
+        modeChanged?(isEnglish, client.caretRect(cursorIndex: 0))
+    }
+
+    /// 全形／半形 from 快速設定 or the input menu (in English mode too: it is kept for when Chinese resumes).
+    func setPunctuationWidth(_ width: PunctuationWidth) {
+        guard !rendering, composer.punctuationWidth != width else { return }
+        composer.togglePunctuationWidth()
+        recorder?.punctuationWidthChanged(to: composer.punctuationWidth, presentation: composer.presentation,
+                                         secure: composer.learningSuspended || learnsNothing)
+        punctuationWidthChanged?(composer.punctuationWidth)
+    }
+
+    /// What the app and the candidate window show for engine text.
+    private func shown(_ text: String) -> String { outputScript == .simplified ? simplified(text) : text }
+    private func shown(_ list: CandidateList?) -> CandidateList? {
+        guard outputScript == .simplified, var list else { return list }
+        list.items = list.items.map { item in
+            var item = item
+            item.text = simplified(item.text)
+            return item
+        }
+        return list
+    }
 
     private func remember() {
-        guard !secureComposition, !secureInput(), usesPrecedingText else {
+        guard !secureComposition, !learnsNothing, usesPrecedingText else {
             recentText = ""
             Self.appContext.removeValue(forKey: client.bundleIdentifier)
             return
@@ -311,7 +401,7 @@ final class ControllerCore {
               list.items.indices.contains(index) else { return }
         let before = composer.presentation
         let candidate = recorder?.candidate(for: .click(index: index), composer: composer,
-                                             secure: composer.learningSuspended || secureInput())
+                                             secure: composer.learningSuspended || learnsNothing)
         let result = composer.selectCandidate(at: index)
         let commit = preservingVisibleSuffix(result.commit, visible: before.text)
         render(commit: commit)
@@ -356,7 +446,8 @@ final class ControllerCore {
             }
             return false
         }
-        guard keyCode == 56 || keyCode == 60 else {
+        // A Shift tap while the symbol picker is open does not switch 中/英.
+        guard keyCode == 56 || keyCode == 60, symbolPicker == nil else {
             shiftTap = nil
             return false
         }
@@ -391,6 +482,7 @@ final class ControllerCore {
     }
 
     func endSession() {
+        closeSymbolPicker()
         commit()
         heldShifts.removeAll()
         shiftTap = nil
@@ -426,7 +518,7 @@ final class ControllerCore {
         // A head the composer committed by itself comes back as (the start of) `commit`: from here it is recentText.
         sentDuringKey = ""
         if let commit, !commit.isEmpty {
-            client.insertText(commit, replacementRange: insertionRange)
+            client.insertText(shown(commit), replacementRange: insertionRange)
             recentText += commit
             remember()
             lastMark = nil // insertText replaces the old marked range, even if the next string is identical.
@@ -440,7 +532,7 @@ final class ControllerCore {
             let recovered = composer.commitAll()
             composer.reset()
             let text = recovered.isEmpty ? p.text : recovered
-            if !text.isEmpty { client.insertText(text, replacementRange: insertionRange) }
+            if !text.isEmpty { client.insertText(shown(text), replacementRange: insertionRange) }
             else { clearMark() }
             lastMark = nil
             hidePanel?()
@@ -451,10 +543,11 @@ final class ControllerCore {
         if popup || p.text.isEmpty {
             clearMark()
         } else {
+            let corrections = showCorrections ? p.corrections.filter { $0.lowerBound >= 0 && $0.upperBound <= length } : []
             let mark = Mark(text: p.text, cursor: p.cursor, clauses: p.clauses, focus: p.focusedClause,
-                            target: p.targetClause)
+                            target: p.targetClause, corrections: corrections)
             if mark != lastMark {
-                let text = NSMutableAttributedString(string: p.text)
+                let text = NSMutableAttributedString(string: shown(p.text))
                 for (index, range) in p.clauses.enumerated() {
                     var attributes: [NSAttributedString.Key: Any] = [
                         .underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -474,6 +567,7 @@ final class ControllerCore {
                     }
                     text.addAttributes(attributes, range: NSRange(location: range.lowerBound, length: range.count))
                 }
+                markCorrections(corrections, in: text, presentation: p)
                 // While choosing, the replaced part is the marked text's selection; clients that draw their own
                 // composition (web engines) show the selected clause with a thick underline.
                 let selection = p.focusedClause.flatMap { p.clauses.indices.contains($0) ? p.clauses[$0] : nil }
@@ -483,10 +577,24 @@ final class ControllerCore {
                 lastMark = mark
             }
         }
-        if !p.text.isEmpty, p.candidates != nil || popup || p.notice != nil {
-            showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor), p.notice, p.zhuyinHint)
+        // 聯想詞 are listed after a commit, with nothing composed.
+        if !p.text.isEmpty || p.candidates?.associated == true, p.candidates != nil || popup || p.notice != nil {
+            showPanel?(shown(p.candidates), popup ? shown(p.text) : nil, client.caretRect(cursorIndex: p.cursor),
+                       wordActionNotice(p.notice, listOpen: p.candidates != nil), p.zhuyinHint)
         } else {
             hidePanel?()
+        }
+    }
+
+    /// Corrected characters outside the focused and target clauses: a dotted underline in the accent colour instead
+    /// of the plain one.  Only the underline changes, so each character keeps its clause; clients that draw their own
+    /// composition from the clause segments ignore it.
+    private func markCorrections(_ corrections: [Range<Int>], in text: NSMutableAttributedString, presentation p: Presentation) {
+        let accented = [p.focusedClause, p.targetClause].compactMap { $0 }.filter { p.clauses.indices.contains($0) }.map { p.clauses[$0] }
+        let attributes: [NSAttributedString.Key: Any] = [.underlineStyle: NSUnderlineStyle.single.union(.patternDot).rawValue,
+                                                         .underlineColor: NSColor.controlAccentColor]
+        for unit in Set(corrections.joined()) where !accented.contains(where: { $0.contains(unit) }) {
+            text.addAttributes(attributes, range: NSRange(location: unit, length: 1))
         }
     }
 

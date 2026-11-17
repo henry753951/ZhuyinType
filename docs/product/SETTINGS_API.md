@@ -90,6 +90,10 @@ changes.revert(in: other) // 改回原本的值
 | 按錯鍵 | 關閉；標準；積極 | 擇一 | 「選字 › 按錯鍵修正」 |
 | 常見的其他讀法（有邊讀邊、輕聲照本調打、台灣讀音） | 接受；不接受 | 可以關閉 | 「選字 › 按錯鍵 › 接受常見的其他讀法」，預設接受 |
 | 模糊音 | ㄗ／ㄓ、ㄘ／ㄔ、ㄙ／ㄕ、ㄣ／ㄥ、ㄢ／ㄤ | 同時 | 「選字 › 模糊音」 |
+| 聯想詞 | 送出後列出常接的詞，按 ↓ 進入清單再選 | 可以開啟 | 「選字 › 聯想詞」，鍵 `associatedPhrases`，預設關閉；三個平台相同 |
+| 還原自動修正 | 修正剛出現時按 ⌫；候選字視窗開在修正過的字上時按 ⌫ | 可以關閉 | 「選字 › 按錯鍵 › ⌫ 還原自動修正」（`undoCorrectionWithBackspace`，預設開啟） |
+
+「選字 › 按錯鍵」的「標示自動修正」是 `showCorrections`（開關，預設開啟），只改顯示：組字中修正過的字加點線、候選字視窗顯示你打的注音。`undoCorrectionWithBackspace` 接到引擎的 `ComposerOptions::undo_correction_with_backspace`；引擎本身預設關閉，所以比對與評測的結果不變，App 依設定開啟。兩個鍵在 macOS（`Preferences`）與 Linux／Windows（`settings.json`）同名同值。
 
 ## 7. 習慣組合的出處
 
@@ -101,3 +105,24 @@ changes.revert(in: other) // 改回原本的值
 | macOS 注音的習慣 | 空白鍵：開啟候選字視窗、單按 Shift：關、Caps Lock 打英文：開、⌥ 加數字或符號鍵打鍵上的符號：開、選字鍵 1–9 |
 | ZhuyinType 預設 | 所有設定的預設值（按鍵與功能的開關除外） |
 | 自訂 | 不改變設定 |
+
+## 8. Linux 與 Windows 版
+
+Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`platforms/desktop/settings.json`，每個設定一個物件（`key`、`title`、`page`、`group`、`kind`、`default`、`options`、`detail`／`details`、`anchor`），由 `zt_core::settings` 讀取、驗證與儲存。和 macOS 意思相同的設定使用相同的鍵與值，所以兩邊的 `settings.json` 形狀相同。只有 Linux／Windows 版有的設定：
+
+| 鍵 | 值 | 預設 | 說明 |
+|---|---|---|---|
+| `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
+| `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
+
+`wordActionHintCount`（整數，預設 0，和 macOS 共用同一個鍵）：候選字清單下方顯示過「Ctrl+Del 不要再推薦・右鍵看更多」的次數；到 5 次後不再顯示。不出現在設定頁，由輸入法自己累加（`zt_core::controller::WORD_ACTION_TIP_KEY`）；macOS 存在 App 的 UserDefaults，同名，在 `ControllerCore+WordActions.swift`）。macOS 的提示寫「⌃⌫ 不要再推薦・右鍵看更多」。
+
+三個平台都有的 `accentColor`（強調色）：`system`（跟隨系統，預設）或 `zhuyintype`（ZhuyinType 藍）。macOS 在 `Preferences`，Linux／Windows 在 `settings.json`；顏色的計算在 `zt_panel::a11y`（Linux／Windows）與 `UI/Accessibility/ContrastMath.swift`（macOS），見 [DESKTOP.md](DESKTOP.md)「無障礙」。`candidateFontSize`（字級）三個平台都是 13–36 pt。
+
+符號與 Emoji 面板在兩邊用同樣的名稱：快捷鍵功能 `symbolPicker`（`keyBindings`／`shortcuts` 中的 id，預設 macOS ⌃⌥,、Linux／Windows Ctrl+Shift+/）與按鍵功能的開關 `symbolPicker`（macOS `KeyFeature.symbolPicker`，Linux／Windows `feature.symbolPicker`，預設開啟）。最近使用的符號不是設定，存在資料夾的 `recent-symbols.txt`。
+
+`panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
+
+`outputScript`（「繁／簡」，`traditional`／`simplified`，預設 `traditional`，「選字」頁「轉換」群組，「台／臺」之後）三個平台相同。它不交給引擎：服務在文字離開時才換成簡體（`InputController::output`、`Presentation::simplified`：送出的字、組字與候選字），引擎、詞庫、學習與改字記錄都是繁體。快速設定的「簡體」改的就是這個設定；「暫停學習」不是設定，只存在服務的記憶體裡（[IPC.md](../../platforms/desktop/IPC.md)〈快速設定〉）。
+
+macOS 上 `outputScript` 是 `Preferences.outputScript`（`OutputScript`），`ControllerCore` 在送出、組字與候選字視窗前以 `ZhuyinEngine.simplified`（C 介面 `zt_to_simplified`）轉換；「暫停學習」是 `QuickSettings.learningPaused`，不寫入 `UserDefaults`。「開啟快速設定」是 `ShortcutCommand.quickSettings`，預設沒有按鍵（`defaultShortcut` 為 nil）；Linux／Windows 的命令 ID 相同（`quickSettings`）。

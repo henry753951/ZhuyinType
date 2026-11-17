@@ -4,7 +4,7 @@
 //! Windows text service with DirectWrite, and both draw what this returns.
 
 use crate::keys::{self, Piece};
-use crate::model::PanelModel;
+use crate::model::{PanelModel, WORD_ACTIONS};
 use crate::style::{Layout, PanelStyle};
 use crate::tokens;
 
@@ -73,6 +73,8 @@ const ANNOTATION_GAP: f32 = 8.;
 const NOTICE_X: f32 = 12.;
 /// A notice row above candidates.
 const NOTICE_ROW: f32 = 24.;
+/// The reading row's text above 聯想詞 (next-word suggestions), which have no reading.
+pub const ASSOCIATION_LABEL: &str = "聯想詞・↓ 選擇";
 
 /// A key cap's width for `key` at the key caps' font: the label and 5 on each side, never narrower than tall.
 pub fn keycap_width(measure: &mut dyn Measure, key: &str) -> f32 {
@@ -125,6 +127,31 @@ pub struct NoticeLayout {
     pub keycap_h: f32,
     pub lead: f32,
     pub label_w: f32,
+    /// The 「復原」 link at the row's end (window coordinates), after a word action.
+    pub undo: Option<Frame>,
+}
+
+/// The link that undoes a word action.
+pub const UNDO_LABEL: &str = "復原";
+
+/// The right-click menu of a candidate, drawn inside the window under the list.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuLayout {
+    /// The row of the page it acts on.
+    pub row: usize,
+    /// The hairline above it.
+    pub rule: Frame,
+    pub items: Vec<MenuItemLayout>,
+    pub font_size: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuItemLayout {
+    pub frame: Frame,
+    /// Index into [`WORD_ACTIONS`] (the action's raw value).
+    pub action: usize,
+    pub label: &'static str,
+    pub enabled: bool,
 }
 
 /// A footer switch: its key cap and short name.
@@ -187,7 +214,13 @@ pub struct PanelLayout {
     pub notice: Option<NoticeLayout>,
     /// The composition, underlined, when the app cannot show it inline.
     pub preview: Option<(Frame, String, f32)>,
+    /// The preview's characters shown through an automatic correction: `(x, width)` from the preview text's left
+    /// edge, marked with a dotted underline in the accent colour.
+    pub preview_marks: Vec<(f32, f32)>,
     pub hint: Option<HintLayout>,
+    /// Below the list: 「你打的是 ㄊㄜˇ · ⌫ 還原」 for a span shown through an automatic correction, in the reading
+    /// row's type.  The frame is the whole row; the text starts at the rows' key inset.
+    pub typed: Option<(Frame, String)>,
     pub rows_area: Frame,
     pub rows: Vec<RowLayout>,
     /// The hairline above the footer (vertical, edge to edge) or before it (horizontal, 1 × 14).
@@ -198,6 +231,12 @@ pub struct PanelLayout {
     /// From the window's left edge to the candidates' text (the window lines its text up with the composition).
     pub text_inset: f32,
     pub list_open: bool,
+    /// The word actions' tip under the list, and its text size.
+    pub tip: Option<(Frame, String, f32)>,
+    pub menu: Option<MenuLayout>,
+    /// The part of `height` that is the menu: a list's steady size leaves it out, so the window shrinks back when
+    /// the menu closes.
+    pub transient_height: f32,
 }
 
 impl PanelLayout {
@@ -257,6 +296,8 @@ fn compute_fitted(
     let has_pages = p.page_count > 1 && list_open;
     let readable = p.reading.as_deref().is_some_and(|reading| !reading.is_empty()) && list_open;
     let has_hint = readable && style.shows_zhuyin_hint;
+    let association = p.associated && list_open && !has_hint;
+    let typed = p.typed.as_deref().filter(|text| !text.is_empty() && list_open);
     let has_toggle = p.tolerant.is_some()
         && list_open
         && !keys.corrections.is_empty()
@@ -298,6 +339,24 @@ fn compute_fitted(
         width = width.max(notice.preferred + NOTICE_X * 2.);
         y += notice_height + if alone { 0. } else { 2. };
     }
+    // The tip and the menu go under the list; they only widen the window here.
+    let tip_font = SMALL_FONT;
+    let tip = p.tip.as_deref().filter(|_| list_open).map(|text| {
+        width = width.max(ceil(measure.width(text, tip_font, false)) + padding * 2. + key_inset * 2.);
+        text.to_owned()
+    });
+    let menu_font = (fs * 0.8).round().max(12.);
+    let menu_row = p.menu.filter(|row| *row < p.rows.len() && list_open);
+    if menu_row.is_some() {
+        let widest = WORD_ACTIONS.iter().map(|(_, title)| measure.width(title, menu_font, false)).fold(0., f32::max);
+        width = width.max(ceil(widest) + padding * 2. + key_inset * 2.);
+    }
+    let undo_w = if p.undo { ceil(measure.width(UNDO_LABEL, (fs * 0.72).round(), true)) } else { 0. };
+    if let Some(notice) = &notice
+        && p.undo
+    {
+        width = width.max(notice.preferred + NOTICE_X * 2. + 12. + undo_w);
+    }
     let preview_y = y;
     let mut preview_width = 0.;
     if let Some(text) = preview {
@@ -318,6 +377,14 @@ fn compute_fitted(
             if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
         y += hint_height;
+    } else if association {
+        let label_w = measure.width(ASSOCIATION_LABEL, SMALL_FONT, false) + 4.;
+        width = width.max(ceil(padding * 2. + key_inset * 2. + label_w));
+        y += hint_height;
+    }
+    if let Some(text) = typed {
+        let typed_w = measure.width(text, SMALL_FONT, false) + 4.;
+        width = width.max(ceil(padding * 2. + key_inset * 2. + typed_w));
     }
 
     // The rows at their natural widths.
@@ -389,6 +456,11 @@ fn compute_fitted(
     let notice_frame = Frame::new(NOTICE_X, padding, (width - NOTICE_X * 2.).max(0.), notice_height);
     if let Some(notice) = &mut notice {
         notice.layout.frame = notice_frame;
+        if p.undo {
+            notice.layout.frame.w = (notice_frame.w - undo_w - 12.).max(0.);
+            notice.layout.undo =
+                Some(Frame::new(notice_frame.x + notice_frame.w - undo_w, notice_frame.y, undo_w, notice_frame.h));
+        }
     }
     // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them.
     let rows_room = (width - padding * 2. - if vertical { 0. } else { footer_width }).max(0.);
@@ -449,6 +521,11 @@ fn compute_fitted(
     if vertical {
         y += rows_area.h;
     }
+    // The typed reading under the list (vertical: above the footer); a horizontal list's footer stays on the row.
+    let typed_y = if vertical { y } else { y + row_height };
+    if vertical && typed.is_some() {
+        y += hint_height;
+    }
     let page_y = if vertical { y + footer_height - CONTROL_H } else { y + (row_height - CONTROL_H) / 2. };
     let footer_rule = has_footer.then(|| {
         if vertical {
@@ -461,6 +538,9 @@ fn compute_fitted(
     });
     if !vertical && list_open {
         y += row_height;
+        if typed.is_some() {
+            y += hint_height;
+        }
     }
     let text_inset_total = if list_open { padding + text_inset } else { NOTICE_X };
 
@@ -474,6 +554,20 @@ fn compute_fitted(
         key_label_w: hint_label_w,
         keycap_right: hint_keycap_right,
         clickable: keys.zhuyin_clickable,
+    });
+    // 聯想詞 take the reading row's place with a quiet label and no key.
+    let hint = hint.or_else(|| {
+        association.then(|| HintLayout {
+            frame: Frame::new(padding, hint_y, width - padding * 2., hint_height - 2.),
+            text_x: key_inset,
+            key: String::new(),
+            hint: ASSOCIATION_LABEL.to_owned(),
+            keycap_w: 0.,
+            key_label: "",
+            key_label_w: 0.,
+            keycap_right: hint_keycap_right,
+            clickable: false,
+        })
     });
     let footer_x = if vertical { padding + footer_lead } else { width - padding - footer_width + footer_lead };
     let single = (has_footer && has_single).then(|| {
@@ -496,7 +590,35 @@ fn compute_fitted(
     if has_footer && vertical {
         y += footer_height;
     }
-    let height = (y + padding).max(if list_open { steady.1 } else { 0. });
+    let steady_height = if list_open { steady.1 } else { 0. };
+    // The tip at the bottom of the list's steady size (which includes it), so it stays put as pages turn.
+    const TIP_H: f32 = 18.;
+    let tip = tip.map(|text| {
+        let tip_y = y.max(steady_height - padding - TIP_H);
+        y = tip_y + TIP_H;
+        (Frame::new(padding + key_inset, tip_y, (width - padding * 2. - key_inset * 2.).max(0.), TIP_H), text, tip_font)
+    });
+    let mut height = (y + padding).max(steady_height);
+    let mut below = height - padding;
+    let base_height = height;
+    let menu = menu_row.map(|row| {
+        let rule = Frame::new(0., below + 3., width, 1.);
+        below += 7.;
+        let item_h = ceil(menu_font * 1.8);
+        let bits = p.rows[row].actions;
+        let items = WORD_ACTIONS
+            .iter()
+            .enumerate()
+            .map(|(action, (_, label))| {
+                let frame = Frame::new(padding, below + action as f32 * item_h, width - padding * 2., item_h);
+                MenuItemLayout { frame, action, label, enabled: bits & (1 << action) != 0 }
+            })
+            .collect::<Vec<_>>();
+        below += item_h * items.len() as f32;
+        height = height.max(below + padding);
+        MenuLayout { row, rule, items, font_size: menu_font }
+    });
+    let transient_height = height - base_height;
     let layout = PanelLayout {
         width,
         height,
@@ -513,7 +635,10 @@ fn compute_fitted(
         preview: preview.map(|text| {
             (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)
         }),
+        preview_marks: preview.map_or_else(Vec::new, |text| marks(text, &p.preview_corrected, fs, measure)),
         hint,
+        typed: typed
+            .map(|text| (Frame::new(padding, typed_y, width - padding * 2., hint_height - 2.), text.to_owned())),
         rows_area,
         rows,
         footer_rule,
@@ -522,8 +647,26 @@ fn compute_fitted(
         pager,
         text_inset: text_inset_total,
         list_open,
+        tip,
+        menu,
+        transient_height,
     };
     (layout, wanted)
+}
+
+/// `(x, width)` of each UTF-16 range of `text` (ranges that do not fit it are left out).
+fn marks(text: &str, ranges: &[std::ops::Range<usize>], font_size: f32, measure: &mut dyn Measure) -> Vec<(f32, f32)> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let prefix = |end: usize| String::from_utf16(&units[..end]).ok();
+    ranges
+        .iter()
+        .filter(|range| range.start < range.end && range.end <= units.len())
+        .filter_map(|range| {
+            let (before, through) = (prefix(range.start)?, prefix(range.end)?);
+            let x = measure.width(&before, font_size, false);
+            Some((x, measure.width(&through, font_size, false) - x))
+        })
+        .collect()
 }
 
 struct ParsedNotice {
@@ -565,6 +708,7 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
             keycap_h,
             lead,
             label_w,
+            undo: None,
         },
         preferred,
     }
@@ -607,7 +751,7 @@ mod tests {
         let rows = WORDS[start..(start + page_size).min(WORDS.len())]
             .iter()
             .enumerate()
-            .map(|(row, text)| Row { key: keys.get(row).copied(), text: (*text).to_owned(), annotation: None })
+            .map(|(row, text)| Row { key: keys.get(row).copied(), text: (*text).to_owned(), ..Row::default() })
             .collect();
         PanelModel {
             rows,
@@ -648,6 +792,36 @@ mod tests {
         let last = compute(&page(9, 1, "123456789"), &style, 4000., (first.width, first.height), &mut Fixed);
         assert_eq!(last.rows.len(), 8);
         assert_eq!((last.width, last.height), (first.width, first.height));
+    }
+
+    #[test]
+    fn typed_reading_sits_under_the_list_and_preview_marks_the_corrections() {
+        let style = PanelStyle::default();
+        let plain = compute(&list(9), &style, 4000., (0., 0.), &mut Fixed);
+        let p = PanelModel {
+            typed: Some("你打的是 ㄊㄜˇ · ⌫ 還原".into()),
+            preview: Some("你特別".into()),
+            preview_corrected: std::iter::once(1..2).collect(),
+            ..list(9)
+        };
+        let layout = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        let (frame, text) = layout.typed.clone().expect("a typed-reading row");
+        assert_eq!(text, "你打的是 ㄊㄜˇ · ⌫ 還原");
+        assert_eq!(frame.y, layout.rows_area.y + layout.rows_area.h);
+        assert!(layout.footer_rule.is_some_and(|rule| rule.y > frame.y));
+        let (_, _, preview_w) = layout.preview.clone().expect("a preview");
+        assert_eq!(layout.height, plain.height + 26. + layout.row_height + 5.);
+        let [(x, w)] = layout.preview_marks[..] else { panic!("one mark") };
+        assert!(x > 0. && w > 0. && x + w < preview_w);
+        // Ranges outside the text are left out; no typed reading without a list.
+        let p = PanelModel {
+            preview: Some("你".into()),
+            preview_corrected: std::iter::once(0..3).collect(),
+            typed: Some("x".into()),
+            ..PanelModel::default()
+        };
+        let layout = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        assert!(layout.preview_marks.is_empty() && layout.typed.is_none());
     }
 
     #[test]
@@ -738,6 +912,19 @@ mod tests {
     }
 
     #[test]
+    fn associated_list_is_labelled() {
+        let mut p = list(9);
+        p.reading = None;
+        p.associated = true;
+        let layout = compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        let hint = layout.hint.expect("the 聯想詞 label");
+        assert_eq!((hint.hint.as_str(), hint.keycap_w, hint.clickable), (ASSOCIATION_LABEL, 0., false));
+        assert_eq!(layout.rows_area.y, hint.frame.y + hint.frame.h + 2.);
+        p.associated = false;
+        assert!(compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed).hint.is_none());
+    }
+
+    #[test]
     fn narrow_horizontal_list_drops_switches_then_candidates() {
         let style = PanelStyle { layout: Layout::Horizontal, ..PanelStyle::default() };
         let full = compute(&list(9), &style, 4000., (0., 0.), &mut Fixed);
@@ -755,5 +942,30 @@ mod tests {
         assert!(narrow.rows.iter().all(|row| row.main_width >= Fixed.width(&row.text, 18., false)));
         // The rows keep their page indices (what a click picks).
         assert_eq!(narrow.rows[0].index, 0);
+    }
+
+    #[test]
+    fn word_actions_tip_menu_and_undo() {
+        let style = PanelStyle::default();
+        let plain = compute(&list(5), &style, 4000., (0., 0.), &mut Fixed);
+        let mut p = list(5);
+        p.tip = Some("Ctrl+Del 不要再推薦・右鍵看更多".into());
+        let tipped = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        let (frame, ..) = tipped.tip.clone().expect("a tip under the list");
+        assert!(frame.y >= plain.height - plain.padding - 0.5, "under everything else");
+        assert_eq!(tipped.transient_height, 0., "the tip is part of the list's size");
+        p.rows[1].actions = 0b011;
+        p.menu = Some(1);
+        let menu = compute(&p, &style, 4000., (tipped.width, tipped.height), &mut Fixed);
+        let items = &menu.menu.as_ref().expect("the menu").items;
+        assert_eq!(items.iter().map(|item| item.enabled).collect::<Vec<_>>(), [true, true, false]);
+        assert!(menu.transient_height > 0.);
+        assert!((menu.height - menu.transient_height - tipped.height).abs() < 0.5, "shrinks back when it closes");
+        let mut notice = list(5);
+        notice.notice = Some("不再推薦「小明」".into());
+        notice.undo = true;
+        let undo = compute(&notice, &style, 4000., (0., 0.), &mut Fixed).notice.expect("a notice");
+        let link = undo.undo.expect("復原");
+        assert!(link.x >= undo.frame.x + undo.frame.w, "after the notice's text");
     }
 }

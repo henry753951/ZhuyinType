@@ -91,7 +91,10 @@ int main(int argc, char **argv) {
                 continue;
             }
             const auto caret = field.mapToGlobal(field.inputMethodQuery(Qt::ImCursorRectangle).toRect().bottomLeft());
-            if (std::abs(x - caret.x()) > 40 || std::abs(y - caret.y()) > h + 40) {
+            // The window's text lines up with the caret: its inset grows with the app's scale (HiDPI run).
+            bool scaled = false;
+            const int scale = std::max(1, qEnvironmentVariableIntValue("GPUI_X11_SCALE_FACTOR", &scaled));
+            if (std::abs(x - caret.x()) > 40 * scale || std::abs(y - caret.y()) > h + 40 * scale) {
                 if (!report) return false;
                 std::cerr << "FAIL popup anchor: window=" << x << ',' << y << " caret=" << caret.x() << ',' << caret.y() << '\n';
                 return false;

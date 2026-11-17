@@ -55,8 +55,39 @@ final class InputSurface: NSView {
         backdrop.frame = bounds
         backdrop.autoresizingMask = [.width, .height]
         addSubview(backdrop)
+        applyDisplayOptions()
+        displayObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.applyDisplayOptions() }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    deinit { displayObserver.map(NSWorkspace.shared.notificationCenter.removeObserver) }
+
+    private var displayObserver: NSObjectProtocol?
+    /// Whether the surface is solid now (`DisplayOptions.solidBackground`), for the self-tests.
+    private(set) var isSolid = false
+
+    /// Increase Contrast or Reduce Transparency: the content gets an opaque background over the glass or material, and
+    /// under Increase Contrast a 2 pt border; it follows the settings as they change (and the previews' override).
+    func applyDisplayOptions() {
+        isSolid = DisplayOptions.solidBackground
+        let border = DisplayOptions.increaseContrast
+        guard isSolid || content.layer?.backgroundColor != nil || (content.layer?.borderWidth ?? 0) > 0 else { return }
+        content.wantsLayer = true
+        guard let layer = content.layer else { return }
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer.cornerRadius = isSolid ? radius : 0
+            layer.backgroundColor = isSolid ? NSColor.windowBackgroundColor.cgColor : nil
+            layer.borderWidth = border ? DisplayOptions.borderWidth : 0
+            layer.borderColor = border ? DisplayOptions.borderColor.cgColor : nil
+        }
+        // The selection's outline and the hover colour change with Increase Contrast.
+        func redraw(_ view: NSView) {
+            view.needsDisplay = true
+            view.subviews.forEach(redraw)
+        }
+        redraw(content)
+    }
 
     /// Follow the content's size after the owner has laid it out.
     func fitContent() {
@@ -99,6 +130,7 @@ final class InputSurface: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         updateShadows()
+        if isSolid { applyDisplayOptions() }
     }
 
     private func updateShadows() {
@@ -136,45 +168,52 @@ private final class CandidateRow: NSView {
     private var fontSize: CGFloat = 18
     private var compact = false
     private var selected = false
+    private var accent = AccentColorSetting.system
     private var hovered = false
     private var keyAttributes: [NSAttributedString.Key: Any] = [:]
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
     private var annotationAttributes: [NSAttributedString.Key: Any] = [:]
     var action: (() -> Void)?
+    /// Right-click: the word actions menu for this candidate.
+    var menuAction: ((NSEvent, NSView) -> Void)?
     private var keyInset: CGFloat { compact ? 6 : 8 }
     var textInset: CGFloat { keyInset + ceil(fontSize * 0.68) + (compact ? 5 : 8) }
     private var trailingPad: CGFloat { compact ? 7 : 10 }
     var isSelectedRow: Bool { selected }
     var preferredWidth: CGFloat = 0
 
-    func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool) {
+    func update(candidate: Candidate, key: String, fontSize: CGFloat, compact: Bool, selected: Bool,
+                accent: AccentColorSetting = .system) {
         if self.candidate == candidate, self.key == key, self.fontSize == fontSize, self.compact == compact,
-           self.selected == selected { return }
+           self.selected == selected, self.accent == accent { return }
         self.candidate = candidate
         self.key = key
         self.fontSize = fontSize
         self.compact = compact
         self.selected = selected
+        self.accent = accent
         refreshAttributes()
         let textWidth = (candidate.text as NSString).size(withAttributes: textAttributes).width
         let annotationWidth = candidate.annotation.map { ($0 as NSString).size(withAttributes: annotationAttributes).width + 10 } ?? 0
         preferredWidth = ceil(textInset + textWidth + annotationWidth + trailingPad)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(([key, candidate.text, candidate.annotation].compactMap { $0 }).joined(separator: "，"))
+        setAccessibilityLabel(CandidateAnnouncer.item(candidate, key: key))
         setAccessibilityValue(selected ? "已選取" : "")
+        setAccessibilitySelected(selected)
         needsDisplay = true
     }
     private func refreshAttributes() {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
+        let onAccent = CandidateColors.onAccent(accent)
         keyAttributes = [.font: NSFont.monospacedDigitSystemFont(ofSize: fontSize * 0.68, weight: .medium),
-                         .foregroundColor: selected ? NSColor.white.withAlphaComponent(0.85) : NSColor.secondaryLabelColor,
+                         .foregroundColor: selected ? onAccent.withAlphaComponent(0.85) : NSColor.secondaryLabelColor,
                          .paragraphStyle: paragraph]
         textAttributes = [.font: NSFont.systemFont(ofSize: fontSize),
-                          .foregroundColor: selected ? NSColor.white : NSColor.labelColor, .paragraphStyle: paragraph]
+                          .foregroundColor: selected ? onAccent : NSColor.labelColor, .paragraphStyle: paragraph]
         annotationAttributes = [.font: NSFont.systemFont(ofSize: fontSize * 0.68),
-                                .foregroundColor: selected ? NSColor.white.withAlphaComponent(0.8) : NSColor.tertiaryLabelColor,
+                                .foregroundColor: selected ? onAccent.withAlphaComponent(0.8) : NSColor.tertiaryLabelColor,
                                 .paragraphStyle: paragraph]
     }
     override func viewDidChangeEffectiveAppearance() {
@@ -186,10 +225,11 @@ private final class CandidateRow: NSView {
     var drawsSelection = false
     var cornerRadius: CGFloat { compact ? 6 : 8 }
     override func draw(_ dirtyRect: NSRect) {
-        if selected && drawsSelection || hovered && !selected {
-            (selected ? NSColor.controlAccentColor : NSColor.quaternaryLabelColor).setFill()
-            let radius: CGFloat = compact ? 6 : 8
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
+        if selected && drawsSelection {
+            SelectionHighlight.draw(in: bounds, radius: cornerRadius, accent: accent)
+        } else if hovered && !selected {
+            (DisplayOptions.increaseContrast ? NSColor.tertiaryLabelColor : NSColor.quaternaryLabelColor).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: cornerRadius, yRadius: cornerRadius).fill()
         }
         let textHeight = (candidate.text as NSString).size(withAttributes: textAttributes).height
         let keyHeight = (key as NSString).size(withAttributes: keyAttributes).height
@@ -221,6 +261,7 @@ private final class CandidateRow: NSView {
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { action?() }
+    override func rightMouseDown(with event: NSEvent) { menuAction?(event, self) }
     override func accessibilityPerformPress() -> Bool { action?(); return true }
     func resetHover() { isHovered = false }
 }
@@ -261,6 +302,10 @@ private final class ZhuyinHintButton: NSButton {
 private final class NoticeView: NSView {
     override var isFlipped: Bool { true }
     var message = "" { didSet { if message != oldValue { parse(); needsDisplay = true } } }
+    /// A click on the notice (「復原」 after a word action).
+    var action: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { action?() }
     var fontSize: CGFloat = 13 { didSet { if fontSize != oldValue { needsDisplay = true } } }
     private var key: String?
     private var done = false
@@ -328,6 +373,7 @@ private final class KeycapToggle: NSButton {
     var on = false { didSet { needsDisplay = true; setAccessibilityValue(on ? "開啟" : "關閉") } }
     /// The key shown on the keycap: the command's current shortcut.
     var key: String { didSet { needsDisplay = true } }
+    var accent = AccentColorSetting.system { didSet { if accent != oldValue { needsDisplay = true } } }
     private let label: String
     private let labelFont = NSFont.systemFont(ofSize: 12)
     init(key: String, label: String, help: String) {
@@ -345,15 +391,16 @@ private final class KeycapToggle: NSButton {
         let keycap = NSRect(x: 0.5, y: (bounds.height - 19) / 2, width: keycapWidth, height: 19)
         let border = NSBezierPath(roundedRect: keycap, xRadius: 4, yRadius: 4)
         if on {
-            NSColor.controlAccentColor.setFill()
+            CandidateColors.accent(accent).setFill()
             border.fill()
         } else {
             border.lineWidth = 1
             NSColor.quaternaryLabelColor.setStroke()
             border.stroke()
         }
-        let color: NSColor = on ? .controlAccentColor : .secondaryLabelColor
-        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: on ? NSColor.white : color]
+        let color: NSColor = on ? CandidateColors.accent(accent) : .secondaryLabelColor
+        let keyAttributes: [NSAttributedString.Key: Any] = [.font: labelFont,
+                                                            .foregroundColor: on ? CandidateColors.onAccent(accent) : color]
         let attributes: [NSAttributedString.Key: Any] = [.font: labelFont, .foregroundColor: color]
         let height = (label as NSString).size(withAttributes: attributes).height
         let keyWidth = (key as NSString).size(withAttributes: keyAttributes).width
@@ -371,6 +418,8 @@ struct CandidateStyle: Equatable {
     var showsAnnotations = true
     var showsListSwitches = true
     var keyLabels = CandidateKeyLabels()
+    /// 強調色: the selection's fill and the switches while on.
+    var accentColor = AccentColorSetting.system
 }
 
 /// One page of candidate rows.  The window has two, so a page change can move the old page out while the new one
@@ -395,9 +444,34 @@ private final class RowPage: NSView {
 /// The selected row's highlight, under the pages: it does not move or fade when the page turns.
 private final class SelectionHighlight: NSView {
     var radius: CGFloat = 8
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.controlAccentColor.setFill()
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: radius, yRadius: radius).fill()
+    var accent = AccentColorSetting.system { didSet { if accent != oldValue { needsDisplay = true } } }
+    override func draw(_ dirtyRect: NSRect) { Self.draw(in: bounds, radius: radius, accent: accent) }
+
+    /// The accent's fill, with a 2 pt outline in the text colour under Increase Contrast.
+    static func draw(in bounds: NSRect, radius: CGFloat, accent: AccentColorSetting) {
+        let shape = bounds.insetBy(dx: 0, dy: 1)
+        CandidateColors.accent(accent).setFill()
+        NSBezierPath(roundedRect: shape, xRadius: radius, yRadius: radius).fill()
+        guard DisplayOptions.increaseContrast else { return }
+        let inset = DisplayOptions.selectionOutline / 2
+        let outline = NSBezierPath(roundedRect: shape.insetBy(dx: inset, dy: inset), xRadius: max(0, radius - inset),
+                                   yRadius: max(0, radius - inset))
+        outline.lineWidth = DisplayOptions.selectionOutline
+        NSColor.labelColor.setStroke()
+        outline.stroke()
+    }
+}
+
+/// The rows' area, which VoiceOver sees as the list of candidates: its children are the rows of the page shown, and
+/// the selected row is its selected child.
+private final class CandidateListElement: InputMaterialView {
+    var rows: () -> [NSView] = { [] }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .list }
+    override func accessibilityLabel() -> String? { "候選字" }
+    override func accessibilityChildren() -> [Any]? { rows().filter { !$0.isHidden } }
+    override func accessibilitySelectedChildren() -> [Any]? {
+        rows().filter { !$0.isHidden && $0.isAccessibilitySelected() }
     }
 }
 
@@ -430,7 +504,7 @@ enum PageMotion {
 
 final class CandidateContentView: InputMaterialView {
     override var isFlipped: Bool { true }
-    private let rowClip = InputMaterialView()
+    private let rowClip = CandidateListElement()
     private let pageViews = [RowPage(frame: .zero), RowPage(frame: .zero)]
     private let highlight = SelectionHighlight()
     private var highlightOrigin = NSPoint.zero
@@ -447,8 +521,12 @@ final class CandidateContentView: InputMaterialView {
     enum PinnedMotion { case page, bounce }
     private var layoutIsVertical = true
     private let previewLabel = NSTextField(labelWithString: "")
+    /// 「聯想詞」 above a list of next-word suggestions, so they are not taken for conversions.
+    private let associationLabel = NSTextField(labelWithString: "")
     private let noticeView = NoticeView()
     private let zhuyinButton = ZhuyinHintButton()
+    /// 「你打的是 ㄊㄜˇ · ⌫ 還原」 under the list, while it is open on an automatic correction (標示自動修正).
+    private let correctionNote = NSTextField(labelWithString: "")
     private let singleButton = KeycapToggle(key: "⇧↓", label: "單字", help: "只列這一個字")
     private let correctionButton = KeycapToggle(key: "⇧↑", label: "修正", help: "列出按錯修正的字")
     private let pageLabel = NSTextField(labelWithString: "")
@@ -459,6 +537,8 @@ final class CandidateContentView: InputMaterialView {
     var onZhuyin: (() -> Void)?
     var onCorrections: (() -> Void)?
     var onSingleCharacter: (() -> Void)?
+    var onMenu: ((Int, NSEvent, NSView) -> Void)?
+    var onNotice: (() -> Void)?
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
     /// Whether pages move and the end of the list bounces: the 動畫 setting unless set (the wizard's practice field
@@ -471,12 +551,17 @@ final class CandidateContentView: InputMaterialView {
         super.init(frame: frame)
         rowClip.wantsLayer = true
         rowClip.layer?.masksToBounds = true
+        rowClip.rows = { [weak self] in self.map { $0.rows } ?? [] }
         rowClip.addSubview(highlight)
         for page in pageViews { rowClip.addSubview(page) }
         pageViews[1].isHidden = true
         addSubview(rowClip)
         addSubview(previewLabel)
         addSubview(noticeView)
+        associationLabel.textColor = .secondaryLabelColor
+        associationLabel.lineBreakMode = .byTruncatingTail
+        associationLabel.setAccessibilityLabel("聯想詞，按向下鍵選擇")
+        addSubview(associationLabel)
         zhuyinButton.isBordered = false
         zhuyinButton.target = self
         zhuyinButton.action = #selector(chooseZhuyin)
@@ -488,6 +573,12 @@ final class CandidateContentView: InputMaterialView {
         }
         previewLabel.lineBreakMode = .byTruncatingTail
         previewLabel.maximumNumberOfLines = 1
+        correctionNote.font = .systemFont(ofSize: 12)
+        correctionNote.textColor = .secondaryLabelColor
+        correctionNote.lineBreakMode = .byTruncatingTail
+        correctionNote.maximumNumberOfLines = 1
+        correctionNote.isHidden = true
+        addSubview(correctionNote)
         pageLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
         pageLabel.alignment = .center
@@ -515,7 +606,8 @@ final class CandidateContentView: InputMaterialView {
     /// Lays the window out for `list` and returns its size.  `style` holds the settings of the 候選字視窗 page.
     @discardableResult
     func update(list: CandidateList?, preview: String?, keys: [Character], style: CandidateStyle,
-                maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil) -> NSSize {
+                maxWidth: CGFloat = 1200, notice: String? = nil, zhuyinHint: String? = nil,
+                correctionNote note: String? = nil) -> NSSize {
         keyLabels = style.keyLabels
         let layout = style.layout
         let fontSize = CGFloat(style.fontSize)
@@ -563,14 +655,22 @@ final class CandidateContentView: InputMaterialView {
         zhuyinButton.needsDisplay = true
         correctionButton.on = list?.tolerant == true
         singleButton.on = list?.singleCharacter == true
+        correctionButton.accent = style.accentColor
+        singleButton.accent = style.accentColor
+        highlight.accent = style.accentColor
         let singleWidth: CGFloat = hasSingle ? ceil(singleButton.preferredWidth) + 8 : 0
         let toggleWidth: CGFloat = hasToggle ? ceil(correctionButton.preferredWidth) + 8 : 0
         let footerWidth = pageWidth + singleWidth + toggleWidth
+        let hasNote = !(note ?? "").isEmpty && listOpen
+        correctionNote.stringValue = hasNote ? note ?? "" : ""
+        correctionNote.isHidden = !hasNote
+        let noteWidth: CGFloat = hasNote ? ceil(correctionNote.intrinsicContentSize.width) + 8 : 0
         // A notice on its own is a compact pill; above candidates it is a row of the window.
         var width: CGFloat = hasPreview || listOpen ? (compact ? 96 : 160) : 0
         var y: CGFloat = padding
         noticeView.isHidden = notice == nil
         noticeView.message = notice ?? ""
+        noticeView.action = { [weak self] in self?.onNotice?() }
         noticeView.fontSize = (fontSize * 0.72).rounded()
         let noticeHeight = ceil(fontSize * 1.25)
         if notice != nil {
@@ -588,6 +688,15 @@ final class CandidateContentView: InputMaterialView {
         }
         let hintY = y
         if hasHint { y += hintHeight }
+        // 聯想詞 have no reading to show: the label takes the reading's place.
+        let hasAssociation = list?.associated == true && listOpen && !hasHint
+        associationLabel.isHidden = !hasAssociation
+        if hasAssociation {
+            associationLabel.font = .systemFont(ofSize: (fontSize * 0.72).rounded())
+            associationLabel.stringValue = "聯想詞・↓ 選擇"
+            width = max(width, ceil(associationLabel.intrinsicContentSize.width) + 28)
+            y += hintHeight
+        }
         for (offset, row) in rows.enumerated() {
             row.isHidden = offset >= indices.count
             guard offset < indices.count, let list else { row.action = nil; continue }
@@ -595,8 +704,10 @@ final class CandidateContentView: InputMaterialView {
             var candidate = list.items[index]
             if !style.showsAnnotations { candidate.annotation = nil }
             row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
-                       fontSize: fontSize, compact: compact, selected: index == list.selection)
+                       fontSize: fontSize, compact: compact, selected: index == list.selection && !list.passive,
+                       accent: style.accentColor)
             row.action = { [weak self] in self?.onSelect?(index) }
+            row.menuAction = { [weak self] event, view in self?.onMenu?(index, event, view) }
         }
         let activeRows = rows.prefix(indices.count)
         let gaps = CGFloat(max(0, indices.count - 1)) * spacing
@@ -605,11 +716,15 @@ final class CandidateContentView: InputMaterialView {
             let rowsWidth = layout == .vertical ? (activeRows.map(\.preferredWidth).max() ?? 0) + padding * 2
                 : naturalRowWidth + gaps + padding * 2 + footerWidth
             // Pages of one list keep the widest width seen, so the window does not jump as pages turn.
-            return min(maxWidth, ceil(max(width, rowsWidth, footerWidth + padding * 2, steadySize.width)))
+            return min(maxWidth, ceil(max(width, rowsWidth, footerWidth + padding * 2, noteWidth + padding * 2,
+                                          steadySize.width)))
         }
         width = calculateWidth()
         func applyLayoutAndAnimation() -> NSSize {
             noticeView.frame = NSRect(x: 14, y: padding, width: max(0, width - 28), height: noticeHeight)
+            let labelHeight = ceil(associationLabel.intrinsicContentSize.height)
+            associationLabel.frame = NSRect(x: padding + 8, y: hintY + (hintHeight - labelHeight) / 2,
+                                            width: max(0, width - padding * 2 - 16), height: labelHeight)
             previewLabel.frame = NSRect(x: 14, y: previewY, width: max(0, width - 28), height: rowHeight)
             var x: CGFloat = 0
             // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them, so
@@ -642,6 +757,7 @@ final class CandidateContentView: InputMaterialView {
                 highlight.isHidden = true
             }
             layoutIsVertical = layout == .vertical
+            rowClip.setAccessibilityOrientation(layout == .vertical ? .vertical : .horizontal)
             if layout == .vertical { y += rowsArea.height }
             let pageY = layout == .horizontal ? y + (rowHeight - 22) / 2 : y + (compact ? 1 : 3)
             if layout == .horizontal && listOpen { y += rowHeight }
@@ -677,6 +793,11 @@ final class CandidateContentView: InputMaterialView {
                 previous.isEnabled = list.page > 0
                 next.isEnabled = list.page + 1 < list.pageCount
                 if layout == .vertical { y += footerHeight }
+            }
+            if hasNote {
+                correctionNote.frame = NSRect(x: padding + 4, y: y + (compact ? 1 : 3),
+                                              width: max(0, width - padding * 2 - 8), height: 16)
+                y += footerHeight
             }
             let size = NSSize(width: width, height: max(y + padding, listOpen ? steadySize.height : 0))
             if listOpen { steadySize = size }
@@ -946,14 +1067,18 @@ final class CandidatePanelController {
     var onZhuyin: (() -> Void)?
     var onCorrections: (() -> Void)?
     var onSingleCharacter: (() -> Void)?
+    var onMenu: ((Int, NSEvent, NSView) -> Void)?
+    var onNotice: (() -> Void)?
     private let content = CandidateContentView(frame: .zero)
     private lazy var surface = InputSurface(content: content)
     private lazy var panel = InputPanel(content: surface)
     private var lastCaret: NSRect?
     private var lastScreen: NSRect?
+    /// The list VoiceOver was last told about.
+    private var announced: CandidateAnnouncer.Shown?
 
     func show(list: CandidateList?, preview: String?, caret: NSRect, keys: [Character], windowLevel: NSWindow.Level,
-              notice: String? = nil, zhuyinHint: String? = nil) {
+              notice: String? = nil, zhuyinHint: String? = nil, typedReading: String? = nil) {
         guard list?.items.isEmpty == false || !(preview ?? "").isEmpty || notice != nil else { hide(); return }
         let visible = InputPanelPlacement.screen(at: caret)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         content.onSelect = { [weak self] in self?.onSelect?($0) }
@@ -961,10 +1086,13 @@ final class CandidatePanelController {
         content.onZhuyin = { [weak self] in self?.onZhuyin?() }
         content.onCorrections = { [weak self] in self?.onCorrections?() }
         content.onSingleCharacter = { [weak self] in self?.onSingleCharacter?() }
+        content.onMenu = { [weak self] in self?.onMenu?($0, $1, $2) }
+        content.onNotice = { [weak self] in self?.onNotice?() }
         let preferences = Preferences.shared
         panel.appearance = preferences.panelAppearance.appearance
         let size = content.update(list: list, preview: preview, keys: keys, style: preferences.candidateStyle,
-                                  maxWidth: visible.width, notice: notice, zhuyinHint: zhuyinHint)
+                                  maxWidth: visible.width, notice: notice, zhuyinHint: zhuyinHint,
+                                  correctionNote: Self.correctionNote(typedReading, preferences))
         let sameLine = panel.isVisible && lastScreen == visible && lastCaret.map { abs($0.minY - caret.minY) < 2 && abs($0.maxY - caret.maxY) < 2 } == true
         let frame = InputPanelPlacement.frame(size: size, caret: caret, visible: visible, textInset: content.candidateTextInset,
                                              previousX: sameLine ? panel.frame.minX : nil,
@@ -975,13 +1103,30 @@ final class CandidatePanelController {
         lastScreen = visible
         if NSApp.isHidden { NSApp.unhideWithoutActivation() }
         PanelMotion.present(panel, frame: frame, caret: caret)
+        if ScreenReader.isRunning { announce(list, keys: keys, reading: zhuyinHint) }
+    }
+
+    /// Tells VoiceOver about a new list, a new page or a moved highlight.
+    private func announce(_ list: CandidateList?, keys: [Character], reading: String?) {
+        guard let list, !list.items.isEmpty else { announced = nil; return }
+        if let text = CandidateAnnouncer.announcement(for: list, keys: keys, reading: reading, previous: announced) {
+            ScreenReader.announce(text, from: panel)
+        }
+        announced = CandidateAnnouncer.Shown(list)
     }
     func hide() {
         panel.orderOut(nil)
         panel.alphaValue = 1
         lastCaret = nil
+        announced = nil
         content.resetHover()
         content.reset()
+    }
+
+    /// 「你打的是 ㄊㄜˇ」, with 「 · ⌫ 還原」 when ⌫ reverts the correction; nil with 標示自動修正 off.
+    static func correctionNote(_ typedReading: String?, _ preferences: Preferences) -> String? {
+        guard preferences.showCorrections, let typedReading, !typedReading.isEmpty else { return nil }
+        return "你打的是 " + typedReading + (preferences.undoCorrectionWithBackspace ? " · ⌫ 還原" : "")
     }
 
     /// Paging stopped at an end of the list (`direction`: 1 past the last page, -1 before the first).
@@ -992,8 +1137,16 @@ final class CandidatePanelController {
 final class ModeBadgeView: InputMaterialView {
     static let size = NSSize(width: 52, height: 48)
     let label = NSTextField(labelWithString: "中")
+    /// 暫停學習: a small dot in the top-right corner, nothing more (DESIGN.md §4.4).
+    let pausedDot = NSView()
     override init(frame: NSRect) {
         super.init(frame: frame)
+        pausedDot.wantsLayer = true
+        pausedDot.layer?.cornerRadius = 2.5
+        pausedDot.layer?.backgroundColor = NSColor.secondaryLabelColor.cgColor
+        pausedDot.isHidden = true
+        pausedDot.frame = NSRect(x: 41, y: 7, width: 5, height: 5)
+        addSubview(pausedDot)
         label.font = .systemFont(ofSize: 23, weight: .medium)
         label.alignment = .center
         label.textColor = .labelColor
@@ -1040,6 +1193,8 @@ final class ModeToast {
         generation += 1
         let current = generation
         badge.label.stringValue = text
+        badge.pausedDot.isHidden = !QuickSettings.learningPaused
+        badge.pausedDot.layer?.backgroundColor = NSColor.secondaryLabelColor.cgColor
         // The glass backdrop (macOS 26 and later) sizes its content to itself when it adopts it, which leaves the badge
         // at zero size: set the size every time, as the candidate window does.
         _ = panel

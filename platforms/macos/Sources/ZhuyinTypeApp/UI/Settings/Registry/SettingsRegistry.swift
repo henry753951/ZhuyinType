@@ -130,6 +130,7 @@ enum SettingsRegistry {
                keywords: ["標點", "全形"]),
         feature(.controlPunctuation, "⌃ 加符號鍵打中文標點"),
         feature(.optionSymbols, "⌥ 加數字或符號鍵打鍵上的符號"),
+        feature(.symbolPicker, "符號與 Emoji"),
         toggle("shiftSwitch", "單按 Shift 切換中英", place(.typing, SettingsRow.shiftTap), \.shiftSwitchEnabled, preview: .mode,
                detail: { $0.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "關閉時，Shift 只當作 Shift" }, keywords: ["中英", "Shift"]),
         choice("shiftToggle", "使用的 Shift", place(.typing, SettingsRow.shiftTap), \.shiftToggle,
@@ -148,6 +149,9 @@ enum SettingsRegistry {
                [(AnchorSetting.after, "游標右邊的字"), (.before, "游標左邊的字")], demo: "anchor", detail: { _ in "要改的字以底線標出" }),
         choice("characterForms", "台／臺", place(.choosing), \.characterForms, [(CharacterForms.common, "台"), (.standard, "臺")],
                detail: { _ in "顯示與送出的寫法" }),
+        choice("outputScript", "繁／簡", place(.choosing), \.outputScript, [(OutputScript.traditional, "繁體"), (.simplified, "簡體")],
+               detail: { $0.outputScript == .simplified ? "組字、候選字與送出的字換成簡體字；詞庫與學習仍用繁體" : "顯示與送出正體字" },
+               keywords: ["簡體", "繁體", "簡繁", "繁簡"]),
         choice("typoTolerance", "按錯鍵修正", place(.choosing, SettingsRow.typo), \.typoTolerance,
                [(TypoSetting.off, "關閉"), (.standard, "標準"), (.aggressive, "積極")], preview: .corrections, demo: "typo",
                detail: { OptionDemos.typoSubtitle($0.typoTolerance) }, keywords: ["按錯", "容錯"]),
@@ -155,6 +159,12 @@ enum SettingsRegistry {
                detail: { $0.readingChannel ? "有邊讀邊、輕聲照本調打，也找得到要的詞" : "只照字典的讀音找詞" },
                keywords: ["讀音", "讀法", "有邊讀邊", "輕聲", "台灣讀音"]),
         feature(.correctionsList, "列出修正的字"),
+        toggle("showCorrections", "標示自動修正", place(.choosing, SettingsRow.showCorrections), \.showCorrections,
+               detail: { _ in "按錯鍵修正過的字，下方加一條點線；開啟候選字視窗時顯示你打的注音" },
+               keywords: ["修正", "點線", "你打的是", "自動修正"]),
+        toggle("undoCorrectionWithBackspace", "⌫ 還原自動修正", place(.choosing, SettingsRow.undoCorrection),
+               \.undoCorrectionWithBackspace, detail: { _ in "修正剛出現時按 ⌫，改回你打的注音；再按一次才刪除" },
+               keywords: ["還原", "復原", "退格", "Backspace", "自動修正"]),
         SettingDescriptor(id: "fuzzySounds", title: "模糊音",
                           kind: .flags([(1 << 0, "ㄗ 與 ㄓ"), (1 << 1, "ㄘ 與 ㄔ"), (1 << 2, "ㄙ 與 ㄕ"), (1 << 3, "ㄣ 與 ㄥ"),
                                         (1 << 4, "ㄢ 與 ㄤ")].map { (bit: $0.0, title: $0.1) }),
@@ -162,6 +172,9 @@ enum SettingsRegistry {
                           read: { .number(Double($0.fuzzySounds.rawValue)) },
                           write: { p, v in if case .number(let raw) = v { p.fuzzySounds = FuzzySounds(rawValue: Int(raw)) } }),
         toggle("usesPrecedingText", "參考游標前的文字", place(.choosing, nil, .context), \.usesPrecedingText, keywords: ["前文"]),
+        toggle("associatedPhrases", "送出後列出聯想詞", place(.choosing, SettingsRow.associatedPhrases), \.associatedPhrases,
+               detail: { _ in "送出後列出常接在後面的詞，按 ↓ 進入清單再選；其他鍵照常輸入" },
+               keywords: ["聯想", "聯想詞", "下一個詞"]),
         feature(.typeZhuyin, "打出注音本身"),
         feature(.selectPhrase, "選取加入自訂詞"),
         feature(.deleteAfterCommit, "送出後刪掉重打"),
@@ -174,7 +187,7 @@ enum SettingsRegistry {
                [(CandidateLayout.vertical, "直式"), (.horizontal, "橫式")], preview: .list,
                detail: { p in p.candidateLayout == .vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
                    : "← → 移動反白，↑ ↓ 翻頁" + (CurrentKeys(p).text(.previousCharacter).map { "，\($0) 改前一個字" } ?? "") }),
-        SettingDescriptor(id: "candidateFontSize", title: "字級", kind: .number(13...28, step: 1, unit: " pt"), place: place(.candidates),
+        SettingDescriptor(id: "candidateFontSize", title: "字級", kind: .number(Preferences.candidateFontSizes, step: 1, unit: " pt"), place: place(.candidates),
                           preview: .list, read: { .number($0.candidateFontSize) },
                           write: { p, v in if case .number(let n) = v { p.candidateFontSize = n } }),
         choice("candidateDensity", "間距", place(.candidates), \.candidateDensity, [(CandidateDensity.standard, "標準"), (.compact, "緊湊")],
@@ -203,6 +216,9 @@ enum SettingsRegistry {
         choice("panelAppearance", "外觀", place(.candidates, SettingsRow.appearance), \.panelAppearance,
                [(PanelAppearance.system, "跟隨系統"), (.light, "淺色"), (.dark, "深色")], preview: .list,
                detail: { _ in "也套用到加入自訂詞的提示與「中」「英」提示" }),
+        choice("accentColor", "強調色", place(.candidates, SettingsRow.appearance), \.accentColor,
+               [(AccentColorSetting.system, "跟隨系統"), (.zhuyintype, "ZhuyinType 藍")], preview: .list,
+               detail: { _ in "候選字的反白與開關的顏色" }, keywords: ["顏色", "反白", "對比"]),
         toggle("panelAnimation", "動畫", place(.candidates, SettingsRow.motion), \.panelAnimation, preview: .paging,
                detail: { _ in NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? "淡入淡出；已開啟「減少動態效果」，不滑動"
                    : "候選字視窗出現、翻頁與「中」「英」提示的動態" }),
@@ -231,6 +247,7 @@ enum SettingsRegistry {
                               switch command {
                               case .togglePunctuationWidth: return "中文預設全形標點；英數、空白與英文模式維持半形"
                               case .insertSpace: return "在組字中插入半形空白，繼續打字"
+                              case .quickSettings: return "在游標旁切換中／英、全形／半形、繁／簡與暫停學習"
                               default: return nil
                               }
                           },

@@ -131,6 +131,8 @@ enum KeyFeature: String, CaseIterable, Identifiable {
     case capsLockEnglish
     /// Deleting what was just sent and typing again counts as a correction (and keeps the sentence going).
     case deleteAfterCommit
+    /// The symbol and emoji picker's shortcut (符號與 Emoji).
+    case symbolPicker
     var id: String { rawValue }
 }
 
@@ -141,6 +143,14 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
     case togglePunctuationWidth, insertSpace
+    /// Word actions on the highlighted candidate (adding also takes the whole composition with no list open).
+    case blockCandidate, forgetCandidate, addCandidatePhrase
+    /// The text selected in the app, into the 加入自訂詞 form.  No key by default.
+    case addSelectedText
+    /// Opens 快速設定 by the caret (中／英, 全形／半形, 繁／簡, 暫停學習).  No key by default.
+    case quickSettings
+    /// Opens (and closes) the symbol and emoji picker.
+    case symbolPicker
 
     var id: String { rawValue }
 
@@ -159,10 +169,17 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "清單開著時改後一個字"
         case .togglePunctuationWidth: return "切換標點全半形"
         case .insertSpace: return "在組字中放一個空白"
+        case .blockCandidate: return "不要再推薦反白的字詞"
+        case .forgetCandidate: return "忘記選過反白的字詞"
+        case .addCandidatePhrase: return "把反白的字詞或整段組字加入自訂詞"
+        case .addSelectedText: return "把 App 裡選取的字加入自訂詞"
+        case .quickSettings: return "開啟快速設定"
+        case .symbolPicker: return "開啟符號與 Emoji 面板"
         }
     }
 
-    var defaultShortcut: Shortcut {
+    /// The default key; nil for a command that has none until the user assigns one.
+    var defaultShortcut: Shortcut? {
         switch self {
         case .singleCharacterList: return Shortcut("↓", shift: true)
         case .correctionsList: return Shortcut("↑", shift: true)
@@ -177,13 +194,19 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return Shortcut("→", option: true)
         case .togglePunctuationWidth: return Shortcut("Space", shift: true)
         case .insertSpace: return Shortcut("Space", option: true)
+        case .blockCandidate: return Shortcut("⌫", control: true)
+        case .forgetCandidate: return Shortcut("⌫", control: true, shift: true)
+        case .addCandidatePhrase: return Shortcut("Return", control: true)
+        case .addSelectedText, .quickSettings: return nil
+        case .symbolPicker: return Shortcut(",", control: true, option: true)
         }
     }
 
     /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
     var input: KeyInput? {
         switch self {
-        case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
+        case .previousCharacter, .nextCharacter, .togglePunctuationWidth, .quickSettings, .symbolPicker: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
@@ -213,6 +236,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "改後一個字"
         case .togglePunctuationWidth: return "標點全半形"
         case .insertSpace: return "插入空白"
+        case .blockCandidate: return "不要再推薦"
+        case .forgetCandidate: return "忘記這個選字"
+        case .addCandidatePhrase: return "加入自訂詞"
+        case .addSelectedText: return "選取的字加入自訂詞"
+        case .quickSettings: return "快速設定"
+        case .symbolPicker: return "符號與 Emoji"
         }
     }
 
@@ -233,12 +262,12 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .nextPage: return [Shortcut("Tab"), Shortcut("PageDown"), Shortcut("↓", option: true)]
         case .previousPage: return [Shortcut("Tab", shift: true), Shortcut("PageUp"), Shortcut("↑", option: true)]
-        default: return [defaultShortcut]
+        default: return defaultShortcut.map { [$0] } ?? []
         }
     }
     /// The defaults of earlier versions, which stored every command's keys once any was changed: a stored list equal
     /// to these is read as the current default.
-    var legacyDefaultBindings: [Shortcut] { [defaultShortcut] }
+    var legacyDefaultBindings: [Shortcut] { defaultShortcut.map { [$0] } ?? [] }
     static var defaultBindings: [ShortcutCommand: [Shortcut]] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultBindings) })
     }
@@ -252,7 +281,10 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
-        case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
+        case .symbolPicker: return .symbolPicker
+        case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace,
+             .quickSettings: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil
         }
     }
 
@@ -264,10 +296,20 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// The word action the command does, or nil.
+    var candidateAction: CandidateAction? {
+        switch self {
+        case .blockCandidate: return .block
+        case .forgetCandidate: return .forget
+        case .addCandidatePhrase: return .addPhrase
+        default: return nil
+        }
+    }
+
     /// Inputs that mean a command: produced only through a binding, never straight from a key.
     static let commandInputs = Set(allCases.compactMap(\.input))
 
     static var defaults: [ShortcutCommand: Shortcut] {
-        Dictionary(uniqueKeysWithValues: allCases.map { ($0, $0.defaultShortcut) })
+        Dictionary(uniqueKeysWithValues: allCases.compactMap { command in command.defaultShortcut.map { (command, $0) } })
     }
 }

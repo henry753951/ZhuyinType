@@ -446,9 +446,10 @@ extension ShortcutCommand {
         switch self {
         case .commitWithNewline, .deleteWord: return .composing
         case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
-        case .typeZhuyin, .selectLeft, .selectRight: return .editing
-        case .togglePunctuationWidth: return .punctuation
-        case .insertSpace: return .other
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return .list
+        case .typeZhuyin, .selectLeft, .selectRight, .addSelectedText: return .editing
+        case .togglePunctuationWidth, .symbolPicker: return .punctuation
+        case .insertSpace, .quickSettings: return .other
         }
     }
 }

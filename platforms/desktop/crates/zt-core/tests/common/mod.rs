@@ -54,6 +54,10 @@ pub const LEXICON: &str = "ㄋㄧˇ\t你\t-3\nㄋㄧˇ\t妳\t-4\nㄋㄧˇ\t擬\t
 pub const CONTROLLER_LEXICON: &str = "ㄋㄧˇ\t你\t-3\nㄋㄧˇ\t妳\t-4\nㄏㄠˇ\t好\t-3\n\
 ㄋㄧˇ ㄏㄠˇ\t你好\t-2\nㄕㄨ\t書\t-3\nㄙㄨ\t蘇\t-4\nㄈㄨˊ\t服\t-3\nㄕㄨ ㄈㄨˊ\t舒服\t-2\n";
 
+/// ㄊㄜˇ typed (`wk3`) reads 乙 through the tone correction: the exact 甲 is far rarer (the engine's
+/// `correction_undo` test).
+pub const CORRECTION_LEXICON: &str = "ㄊㄜˇ\t甲\t-9\nㄊㄜˋ\t乙\t0\nㄅㄚ\t八\t-2\n";
+
 /// Writes `text` as `lexicon.tsv` in `dir`; returns its path.
 pub fn write_lexicon(dir: &Path, text: &str) -> PathBuf {
     let path = dir.join("lexicon.tsv");
@@ -89,12 +93,16 @@ pub struct Fixture {
 
 impl Fixture {
     pub fn new() -> Self {
+        Self::with_lexicon(CONTROLLER_LEXICON)
+    }
+
+    pub fn with_lexicon(lexicon: &str) -> Self {
         let dir = TempDir::new();
         let settings = Settings::open(Some(dir.join("settings.json")));
         let shortcuts = Shortcuts::new(settings.clone());
         let mut session = EngineSession::new();
         session.apply(&settings).unwrap();
-        session.open(&data(dir.path(), CONTROLLER_LEXICON), Some(&dir.join("personal"))).unwrap();
+        session.open(&data(dir.path(), lexicon), Some(&dir.join("personal"))).unwrap();
         let input = InputController::new(session, settings.clone(), shortcuts.clone());
         Self { dir, settings, shortcuts, input }
     }

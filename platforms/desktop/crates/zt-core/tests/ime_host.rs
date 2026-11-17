@@ -30,8 +30,12 @@ fn config(dir: &TempDir) -> ServiceConfig {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_lexicon(LEXICON)
+    }
+
+    fn with_lexicon(lexicon: &str) -> Self {
         let dir = TempDir::new();
-        write_lexicon(dir.path(), LEXICON);
+        write_lexicon(dir.path(), lexicon);
         let (service, events) = Service::start(config(&dir)).unwrap();
         assert!(service.engine_error().is_none());
         let client = Client::connect(&service.endpoint().unwrap()).unwrap();
@@ -261,6 +265,11 @@ fn an_adapter_that_draws_the_window_gets_it_in_its_replies() {
     let reply = f.request("key", shift(true));
     assert_eq!(reply["toast"], "英");
     assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. })));
+    // A switch outside a request, and after the blur, never makes the app draw a second badge.
+    f.service.with_controller(|controller| controller.set_english(false));
+    f.request("blur", json!({}));
+    f.service.with_controller(|controller| controller.set_english(true));
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. } | UiEvent::Boundary(_))));
 }
 
 #[test]
@@ -278,6 +287,20 @@ fn replies_mark_the_words_and_the_one_being_changed() {
     assert_eq!(listed["focus"], 0, "the word the list replaces");
     let secure = f.request("key", json!({"secure": true}));
     assert!(secure.get("clauses").is_none(), "nothing about the text leaves a secure field");
+}
+
+#[test]
+fn replies_mark_the_corrected_words() {
+    let mut f = Fixture::with_lexicon(common::CORRECTION_LEXICON);
+    f.request("focus", json!({"secure": false}));
+    f.keys("18 wk");
+    let typed = f.key('3' as i32);
+    assert_eq!(typed["preedit"], "八乙");
+    assert_eq!(typed["corrections"], json!([[1, 2]]), "UTF-16 ranges of the corrected words");
+    f.service.settings().set("showCorrections", json!(false)).unwrap();
+    let typed = f.key(code::LEFT);
+    assert_eq!(typed["preedit"], "八乙");
+    assert!(typed.get("corrections").is_none(), "「標示自動修正」 off");
 }
 
 #[test]
@@ -310,6 +333,40 @@ fn mode_switch_from_the_indicator() {
     assert_eq!(f.request("mode", json!({"english": true}))["english"], false, "not in a secure field");
 }
 
+/// The addon connects the moment the socket answers (sign-in, an update restarting the service) and types at once:
+/// the endpoint is served only once the engine is open, so the very first keys compose and convert, and none goes
+/// on to the application as a raw letter or as its Zhuyin.
+#[test]
+fn the_first_keys_after_start_are_converted() {
+    let dir = TempDir::new();
+    write_lexicon(dir.path(), LEXICON);
+    let endpoint = config(&dir).endpoint.unwrap();
+    let typist = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut client = loop {
+            match Client::connect(&endpoint) {
+                Ok(client) => break client,
+                Err(_) if std::time::Instant::now() < deadline => std::thread::yield_now(),
+                Err(error) => panic!("the endpoint was never served: {error}"),
+            }
+        };
+        assert!(ok(&client.request("focus", json!({"secure": false})).unwrap()));
+        let mut replies = Vec::new();
+        for key in "SU3CL3".chars().map(|c| c as i32).chain([code::RETURN]) {
+            let reply =
+                client.request("key", json!({"secure": false, "key": key, "modifiers": 0, "release": false})).unwrap();
+            replies.push(reply);
+        }
+        replies
+    });
+    let (service, _events) = Service::start(config(&dir)).unwrap();
+    let replies = typist.join().unwrap();
+    assert!(replies.iter().all(|reply| ok(reply) && reply["handled"] == true), "{replies:?}");
+    let commits: String = replies.iter().map(|reply| reply["commit"].as_str().unwrap()).collect();
+    assert_eq!(commits, "你好");
+    drop(service);
+}
+
 #[test]
 fn show_settings_and_single_instance() {
     let f = Fixture::new();
@@ -322,6 +379,39 @@ fn show_settings_and_single_instance() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert!(shown, "the running instance was asked for its settings window");
+}
+
+#[test]
+fn a_copy_started_after_a_crash_takes_over_once_the_old_one_is_gone() {
+    // The UI thread panicked: the old copy is still ending when the new one starts.  The new one waits for the
+    // endpoint instead of asking the dying copy for its settings window and quitting, which left no input method.
+    let Fixture { dir, service, events, client } = Fixture::new();
+    let mut waiting = config(&dir);
+    waiting.wait_for_endpoint = Some(std::time::Duration::from_secs(5));
+    let old = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop((client, events, service));
+    });
+    let (service, _events) = Service::start(waiting).expect("takes over the endpoint");
+    old.join().unwrap();
+    let mut client = Client::connect(&service.endpoint().unwrap()).unwrap();
+    assert!(ok(&client.request("focus", json!({"secure": false})).unwrap()));
+
+    // Nothing goes away: after the wait it is an ordinary second copy, and it does not open the settings window.
+    let mut short = config(&dir);
+    short.wait_for_endpoint = Some(std::time::Duration::from_millis(200));
+    let error = Service::start(short).err().expect("a second instance");
+    assert!(error.downcast_ref::<zt_core::service::AlreadyRunning>().is_some());
+}
+
+#[test]
+fn a_quiet_second_instance_opens_no_window() {
+    let f = Fixture::new();
+    let error =
+        Service::start(ServiceConfig { quiet_if_running: true, ..config(&f.dir) }).err().expect("a second instance");
+    assert!(error.downcast_ref::<zt_core::service::AlreadyRunning>().is_some());
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(!f.ui_events().contains(&UiEvent::ShowSettings(None)), "zhuyintype --background never opens settings");
 }
 
 #[test]
@@ -355,4 +445,111 @@ fn duplicate_sequence_and_oversized_frames_disconnect() {
     let mut client = Client::connect(&f.service.endpoint().unwrap()).unwrap();
     client.send_raw("not json").unwrap();
     assert!(client.read_reply().is_err());
+}
+
+#[test]
+fn word_actions_from_the_window_the_adapter_draws() {
+    let mut f = Fixture::new();
+    assert!(ok(&f.request("focus", json!({"secure": false, "panel": true}))));
+    f.keys("su3cl3");
+    let reply = f.key(code::DOWN);
+    let row = &reply["panel"]["model"]["rows"][0];
+    assert_eq!(row["text"], "你好");
+    assert_eq!(row["actions"], 0b101, "不要再推薦 and 加入自訂詞; nothing learned to forget");
+    assert!(!ok(&f.request("action", json!({"action": "block"}))), "block needs a row");
+    let blocked = f.request("action", json!({"action": "block", "value": 0}));
+    assert!(ok(&blocked));
+    assert_eq!(blocked["panel"]["model"]["notice"], "不再推薦「你好」");
+    assert_eq!(blocked["panel"]["model"]["undo"], true);
+    assert!(f.service.blocked_entries().iter().any(|p| p.word == "你好"));
+    let undone = f.request("action", json!({"action": "undo"}));
+    assert!(ok(&undone));
+    assert_eq!(undone["panel"]["model"]["notice"], "已復原");
+    assert!(undone["panel"]["model"].get("undo").is_none(), "left out when false");
+    assert!(f.service.blocked_entries().is_empty());
+    // The app's own window: the same through popup_action.
+    f.service.popup_action(PopupAction::Word(zhuyin_core::composer::CandidateAction::Block, 0));
+    assert!(!f.service.blocked_entries().is_empty());
+    f.service.popup_action(PopupAction::UndoWordAction);
+    assert!(f.service.blocked_entries().is_empty());
+}
+
+#[test]
+fn selected_text_opens_the_add_form_filled_in() {
+    use zt_core::phrase_draft::{NO_SELECTION, PhraseDraft};
+    let mut f = Fixture::new();
+    let (j, alt) = ('J' as i32, modifier::ALT);
+    f.service.shortcuts().record("addSelectedText", j, alt, None).unwrap();
+    assert!(ok(&f.request("focus", json!({"secure": false}))));
+    let press = json!({"secure": false, "key": j, "modifiers": alt, "release": false});
+    let reply = f.request("key", press.clone());
+    assert_eq!((reply["handled"].clone(), reply["selection"].clone()), (json!(true), json!(true)));
+    f.ui_events();
+    assert!(ok(&f.request("selection", json!({"text": "你好"}))));
+    let filled = PhraseDraft { word: "你好".into(), reading: "ㄋㄧˇ ㄏㄠˇ".into(), problem: None };
+    assert!(f.ui_events().contains(&UiEvent::AddPhrase(filled)));
+    assert!(ok(&f.request("selection", json!({"text": ""}))));
+    assert!(
+        f.ui_events().iter().any(|e| matches!(e, UiEvent::AddPhrase(d) if d.problem.as_deref() == Some(NO_SELECTION)))
+    );
+    assert!(!ok(&f.request("selection", json!({"text": "字".repeat(300)}))), "too long");
+    assert!(!ok(&f.request("selection", json!({"text": 3}))));
+    // While composing the key does nothing.
+    f.keys("su3");
+    let composing = f.request("key", press.clone());
+    assert_eq!(composing["handled"], true);
+    assert!(composing.get("selection").is_none());
+    assert_eq!(f.composition(), "你");
+    // A private field and a secure one: never asked, nothing taken.
+    assert!(ok(&f.request("focus", json!({"secure": false, "private": true}))));
+    let private =
+        f.request("key", json!({"secure": false, "private": true, "key": j, "modifiers": alt, "release": false}));
+    assert!(private.get("selection").is_none());
+    f.ui_events();
+    assert!(ok(&f.request("selection", json!({"text": "你好", "private": true}))));
+    assert!(ok(&f.request("focus", json!({"secure": true}))));
+    let secure = f.request("key", json!({"secure": true, "key": j, "modifiers": alt, "release": false}));
+    assert!(secure.get("selection").is_none());
+    f.request("selection", json!({"text": "你好"}));
+    assert!(
+        !f.ui_events().iter().any(|e| matches!(e, UiEvent::AddPhrase(_))),
+        "nothing from a private or secure field"
+    );
+}
+
+/// `claims` (IPC.md §攔截的按鍵): the keys of 開啟快速設定, 符號與 Emoji and 選取的字加入自訂詞 the adapter claims with
+/// nothing composed, each where its command can run; sent at focus and when they change.
+#[test]
+fn claims_list_the_keys_reachable_with_nothing_composed() {
+    let mut f = Fixture::new();
+    let picker = json!(['/' as i32, modifier::CONTROL | modifier::SHIFT]);
+    let quick = json!(['Q' as i32, modifier::ALT]);
+    let add = json!(['J' as i32, modifier::ALT]);
+    let focus = f.request("focus", json!({"secure": false}));
+    assert_eq!(focus["claims"], json!([picker]), "only 符號與 Emoji has a key by default, sent at focus");
+    assert!(f.request("poll", json!({})).get("claims").is_none(), "unchanged: left out");
+    // A shortcut edit.
+    f.service.shortcuts().record("quickSettings", 'Q' as i32, modifier::ALT, None).unwrap();
+    f.service.shortcuts().record("addSelectedText", 'J' as i32, modifier::ALT, None).unwrap();
+    let changed = f.request("poll", json!({}));
+    assert_eq!(changed["claims"], json!([quick, picker, add]));
+    assert!(f.request("poll", json!({})).get("claims").is_none());
+    // English mode: 選取的字加入自訂詞 is Chinese only.
+    let english = f.request("mode", json!({"english": true}));
+    assert_eq!(english["claims"], json!([quick, picker]));
+    let chinese = f.request("mode", json!({"english": false}));
+    assert_eq!(chinese["claims"], json!([quick, picker, add]));
+    // A private field: never 選取的字加入自訂詞; a secure one: nothing (the service takes no key there).
+    let private = f.request("focus", json!({"secure": false, "private": true}));
+    assert_eq!(private["claims"], json!([quick, picker]));
+    let secure = f.request("secure", json!({"secure": true}));
+    assert_eq!(secure["claims"], json!([]));
+    let open = f.request("secure", json!({"secure": false, "private": false}));
+    assert_eq!(open["claims"], json!([quick, picker, add]));
+    // 符號與 Emoji turned off.
+    f.service.settings().set("feature.symbolPicker", Value::Bool(false)).unwrap();
+    assert_eq!(f.request("poll", json!({}))["claims"], json!([quick, add]));
+    // Every focus carries the list, changed or not.
+    assert_eq!(f.request("focus", json!({"secure": false}))["claims"], json!([quick, add]));
+    assert!(f.request("blur", json!({})).get("claims").is_none(), "not at blur");
 }

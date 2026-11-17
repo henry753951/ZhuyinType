@@ -30,6 +30,17 @@ use crate::ui::{self, v};
 const LEARNED: &str = "learnedWords";
 const PHRASES: &str = "phrases";
 const EXCLUDED_PREFIX: &str = "excluded\t";
+const BLOCKED_PREFIX: &str = "blocked\t";
+
+/// 選取的字加入自訂詞: the form to open on 自訂詞 once the page shows (`request_add`).
+struct PendingAdd(Option<zt_core::phrase_draft::PhraseDraft>);
+
+impl gpui_kit::Global for PendingAdd {}
+
+/// Opens the 加入自訂詞 form filled in with `draft` when the 自訂詞 page next draws (the caller shows it).
+pub fn request_add(draft: zt_core::phrase_draft::PhraseDraft, cx: &mut App) {
+    cx.set_global(PendingAdd(Some(draft)));
+}
 
 /// The add or edit sheet of 自訂詞 while it is open.
 struct PhraseSheet {
@@ -102,9 +113,11 @@ impl WordsPage {
     ) {
         let learned = data::learned_entries(cx);
         let excluded = data::excluded_entries(cx);
+        let blocked = data::blocked_entries(cx);
         let phrases = data::user_phrases(cx);
         self.counts = data::available(cx).then_some((learned.len(), phrases.len()));
-        let rows = learned_rows(&learned, &excluded);
+        let mut rows = learned_rows(&learned, &excluded);
+        rows.extend(blocked_rows(&blocked));
         let available = data::available(cx);
         self.learned.update(cx, |list, cx| list.set_items(rows, select_learned, cx));
         let rows = phrases.iter().map(phrase_row).collect();
@@ -115,7 +128,7 @@ impl WordsPage {
             list.set_items(rows, select_phrase.map(|id| BTreeSet::from([id])), cx);
         });
         self.learned.update(cx, |list, _| {
-            list.set_footer(Some("選過的字詞下次排在前面；設為「不記住」的字詞之後不再學。".into()));
+            list.set_footer(Some("選過的字詞下次排在前面；「不記住」的之後不再學，「不推薦」的不再列出。".into()));
         });
     }
 
@@ -142,11 +155,18 @@ impl WordsPage {
         let page = cx.entity().downgrade();
         window.defer(cx, move |window, cx| {
             if data::demo("add").is_some() {
-                open_sheet(&page, "", "", None, window, cx);
+                open_sheet(&page, "", "", None, None, window, cx);
             }
             if data::demo("edit").is_some() {
                 let item = ListItem::new("ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ\t王小明", "王小明").detail("ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ");
-                open_sheet(&page, "王小明", "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ", Some(item), window, cx);
+                open_sheet(&page, "王小明", "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ", Some(item), None, window, cx);
+            }
+            if data::demo("selected").is_some() {
+                open_sheet(&page, "台南", "ㄊㄞˊ ㄋㄢˊ", None, None, window, cx);
+            }
+            if data::demo("selected-invalid").is_some() {
+                let problem = zt_core::phrase_draft::check("台南市政府大樓", "");
+                open_sheet(&page, "台南市政府大樓", "", None, problem, window, cx);
             }
             if data::demo("invalid").is_some() {
                 show_invalid(&page, "台南市政府大樓前", "ㄊㄞˊ", None, window, cx);
@@ -179,13 +199,15 @@ impl WordsPage {
                     ),
             )
             .child(
-                ui::section("").row(
-                    ui::row("drill-phrases", "自訂詞")
-                        .subtitle(phrases_subtitle)
-                        .anchor(PHRASES)
-                        .when_some(counts, |row, (_, phrases)| row.value(value(phrases)))
-                        .on_click(|_, _, cx| app::go(Place::subpage(Page::Words, PHRASES), cx)),
-                ),
+                ui::section("")
+                    .row(
+                        ui::row("drill-phrases", "自訂詞")
+                            .subtitle(phrases_subtitle)
+                            .anchor(PHRASES)
+                            .when_some(counts, |row, (_, phrases)| row.value(value(phrases)))
+                            .on_click(|_, _, cx| app::go(Place::subpage(Page::Words, PHRASES), cx)),
+                    )
+                    .footer("在候選字上按右鍵可以不要再推薦、忘記這個選字或加入自訂詞。"),
             )
             .into_any_element()
     }
@@ -207,7 +229,15 @@ impl WordsPage {
                 log::info!("adding phrase {word} {reading}: {error:#}");
                 let page = cx.entity().downgrade();
                 let editing = sheet.editing.clone();
-                window.defer(cx, move |window, cx| show_invalid(&page, &word, &reading, editing, window, cx));
+                // What is wrong, in the form itself when it can say; otherwise 「無法加入」.
+                match zt_core::phrase_draft::check(&word, &reading) {
+                    Some(problem) => window.defer(cx, move |window, cx| {
+                        open_sheet(&page, &word, &reading, editing, Some(problem), window, cx);
+                    }),
+                    None => {
+                        window.defer(cx, move |window, cx| show_invalid(&page, &word, &reading, editing, window, cx))
+                    }
+                }
             }
         }
     }
@@ -217,6 +247,15 @@ impl Render for WordsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.refresh(cx);
         self.open_demo_states(window, cx);
+        if app::nav(cx).subpage.as_deref() == Some(PHRASES)
+            && let Some(draft) = cx.try_global::<PendingAdd>().and_then(|pending| pending.0.clone())
+        {
+            cx.set_global(PendingAdd(None));
+            let page = cx.entity().downgrade();
+            window.defer(cx, move |window, cx| {
+                open_sheet(&page, &draft.word, &draft.reading, None, draft.problem.clone(), window, cx);
+            });
+        }
         match app::nav(cx).subpage.as_deref() {
             Some(LEARNED) => self.learned.clone().into_any_element(),
             Some(PHRASES) => self.phrases.clone().into_any_element(),
@@ -263,6 +302,20 @@ fn learned_rows(learned: &[Phrase], excluded: &[Phrase]) -> Vec<ListItem> {
     rows
 }
 
+/// The words set to 不要再推薦 in the candidate window, after the 不記住 ones; removing one suggests it again.
+fn blocked_rows(blocked: &[Phrase]) -> Vec<ListItem> {
+    blocked
+        .iter()
+        .map(|entry| {
+            ListItem::new(format!("{BLOCKED_PREFIX}{}\t{}", entry.reading, entry.word), entry.word.clone())
+                .detail(entry.reading.clone())
+                .meta("不推薦")
+                .count(-2.)
+                .marked(true)
+        })
+        .collect()
+}
+
 fn phrases_footer(cx: &App) -> SharedString {
     match (data::key_text("selectLeft", cx), data::key_text("selectRight", cx)) {
         (Some(left), Some(right)) => {
@@ -302,7 +355,9 @@ fn configure_learned(list: &mut ListView, page: WeakEntity<WordsPage>) {
     // Removing a learned word forgets it; removing a 不記住 one lets it be learned again.
     list.on_remove(move |rows, _, cx| {
         apply(&remove_page, &rows, cx, |row, cx| {
-            if row.marked {
+            if row.id.starts_with(BLOCKED_PREFIX) {
+                data::unblock(&row.title, &reading_of(row), cx)
+            } else if row.marked {
                 data::include_learned(&row.title, &reading_of(row), cx)
             } else {
                 data::forget_learned(&row.title, &reading_of(row), cx)
@@ -430,11 +485,11 @@ pub(crate) fn learned_info(cx: &App) -> AnyElement {
 
 fn configure_phrases(list: &mut ListView, page: WeakEntity<WordsPage>) {
     let add_page = page.clone();
-    list.on_add(move |window, cx| open_sheet(&add_page, "", "", None, window, cx));
+    list.on_add(move |window, cx| open_sheet(&add_page, "", "", None, None, window, cx));
     let edit_page = page.clone();
     list.on_edit(move |item, window, cx| {
         let reading = reading_of(&item);
-        open_sheet(&edit_page, &item.title.clone(), &reading, Some(item), window, cx);
+        open_sheet(&edit_page, &item.title.clone(), &reading, Some(item), None, window, cx);
     });
     list.on_remove(move |rows, _, cx| {
         apply(&page, &rows, cx, |row, cx| data::remove_phrase(&row.title, &reading_of(row), cx));
@@ -449,12 +504,14 @@ fn submit_sheet(page: &mut WordsPage, window: &mut Window, cx: &mut Context<Word
     }
 }
 
-/// The sheet that adds or edits a phrase: 詞 and 讀音, the lexicon's readings of the word as suggestions.
+/// The sheet that adds or edits a phrase: 詞 and 讀音, the lexicon's readings of the word as suggestions; `problem`
+/// says what is wrong with the text it starts with (選取的字加入自訂詞, or a refused 加入).
 fn open_sheet(
     page: &WeakEntity<WordsPage>,
     word: &str,
     reading: &str,
     editing: Option<ListItem>,
+    problem: Option<String>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -500,7 +557,7 @@ fn open_sheet(
     let first_frame = Rc::new(Cell::new(true));
     let (fields_word, fields_reading) = (word_input.clone(), reading_input.clone());
     alert(if adding { "加入自訂詞" } else { "編輯自訂詞" })
-        .message("自訂詞在選字時優先列出。")
+        .message(problem.map_or_else(|| "自訂詞在選字時優先列出。".to_owned(), |problem| format!("{problem}。")))
         .width(420.)
         .content(move |window, cx| {
             if first_frame.replace(false) {
@@ -568,7 +625,7 @@ fn show_invalid(
             AlertButton::cancel(),
             AlertButton::new("修改", move |window, cx| {
                 let (page, word, reading, editing) = (page.clone(), word.clone(), reading.clone(), editing.clone());
-                window.defer(cx, move |window, cx| open_sheet(&page, &word, &reading, editing, window, cx));
+                window.defer(cx, move |window, cx| open_sheet(&page, &word, &reading, editing, None, window, cx));
             })
             .default(),
         ])

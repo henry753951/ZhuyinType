@@ -79,12 +79,14 @@ final class Preferences: ObservableObject {
             Key.showsAnnotations: true,
             Key.showsListSwitches: true,
             Key.panelAppearance: PanelAppearance.system.rawValue,
+            Key.accentColor: AccentColorSetting.system.rawValue,
             Key.panelAnimation: true,
             Key.escapeClearsComposition: true,
             Key.shiftToggle: ShiftToggle.both.rawValue,
             Key.showModeToast: true,
             Key.startInEnglish: false,
             Key.learningEnabled: true,
+            Key.associatedPhrases: false,
             Key.popupCompositionApps: [String](),
             Key.typoTolerance: TypoSetting.standard.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
@@ -92,12 +94,15 @@ final class Preferences: ObservableObject {
             Key.readingChannel: true,
             Key.usesPrecedingText: true,
             Key.characterForms: CharacterForms.common.rawValue,
+            Key.outputScript: OutputScript.traditional.rawValue,
             Key.punctuationKeys: PunctuationKeys.windows.rawValue,
             Key.recordsCorrections: false,
             Key.recordsCorrectionContext: false,
             Key.disabledKeyFeatures: [String](),
             Key.lastShiftSide: ShiftToggle.both.rawValue,
             Key.recordsUsageStats: true,
+            Key.showCorrections: true,
+            Key.undoCorrectionWithBackspace: true,
         ])
     }
 
@@ -115,12 +120,16 @@ final class Preferences: ObservableObject {
         static let showsAnnotations = "showsAnnotations"
         static let showsListSwitches = "showsListSwitches"
         static let panelAppearance = "panelAppearance"
+        /// 強調色: the selection's and the switches' colour (`AccentColorSetting`).
+        static let accentColor = "accentColor"
         static let panelAnimation = "panelAnimation"
         static let escapeClearsComposition = "escapeClearsComposition"
         static let shiftToggle = "shiftToggle"
         static let showModeToast = "showModeToast"
         static let startInEnglish = "startInEnglish"
         static let learningEnabled = "learningEnabled"
+        /// 「送出後列出聯想詞」: after a commit the candidate window lists likely next words.  Off by default.
+        static let associatedPhrases = "associatedPhrases"
         /// Bundle identifiers of apps that get the composition in the candidate window instead of inline.  Empty by
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"
@@ -140,6 +149,8 @@ final class Preferences: ObservableObject {
         /// 「到頁底時 ↓ 翻到下一頁」 (`ComposerOptions.pageAtListEdge`).  On by default.
         static let pageAtListEdge = "pageAtListEdge"
         static let characterForms = "characterForms"
+        /// 「繁／簡」: 簡體 converts the composition, the candidates and the commits (`ZhuyinEngine.simplified`).
+        static let outputScript = "outputScript"
         static let punctuationKeys = "punctuationKeys"
         /// 「記錄改字」: compositions with a correction go to corrections.jsonl (CorrectionRecorder).  Off by default.
         static let recordsCorrections = "recordsCorrections"
@@ -151,14 +162,19 @@ final class Preferences: ObservableObject {
         static let lastShiftSide = "lastShiftSide"
         /// 「記錄使用統計」: counts and timings for the 分析 page (UsageStatsStore).  On by default.
         static let recordsUsageStats = "recordsUsageStats"
+        /// 「標示自動修正」: a dotted underline under corrected characters and 「你打的是 …」 in the candidate window.
+        static let showCorrections = "showCorrections"
+        /// 「⌫ 還原自動修正」 (`ComposerOptions.undoCorrectionWithBackspace`).  On by default.
+        static let undoCorrectionWithBackspace = "undoCorrectionWithBackspace"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
                           popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, readingChannel, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
-                          characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
+                          characterForms, outputScript, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
-                          recordsUsageStats]
+                          recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace,
+                          associatedPhrases]
     }
 
     func resetToDefaults() {
@@ -175,8 +191,10 @@ final class Preferences: ObservableObject {
         get { CandidateLayout(rawValue: defaults.string(forKey: Key.candidateLayout) ?? "") ?? .vertical }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateLayout); changed() }
     }
+    /// 字級, in points: up to 36 for low vision.
+    static let candidateFontSizes: ClosedRange<Double> = 13...36
     var candidateFontSize: Double {
-        get { min(28, max(13, defaults.double(forKey: Key.candidateFontSize))) }
+        get { min(Self.candidateFontSizes.upperBound, max(Self.candidateFontSizes.lowerBound, defaults.double(forKey: Key.candidateFontSize))) }
         set { defaults.set(newValue, forKey: Key.candidateFontSize); changed() }
     }
     var selectionKeys: SelectionKeySet {
@@ -235,6 +253,10 @@ final class Preferences: ObservableObject {
         get { PanelAppearance(rawValue: defaults.string(forKey: Key.panelAppearance) ?? "") ?? .system }
         set { defaults.set(newValue.rawValue, forKey: Key.panelAppearance); changed() }
     }
+    var accentColor: AccentColorSetting {
+        get { AccentColorSetting(rawValue: defaults.string(forKey: Key.accentColor) ?? "") ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: Key.accentColor); changed() }
+    }
     /// The candidate window fades in and the 中/英 badge fades out; with Reduce Motion, nothing slides.
     var panelAnimation: Bool {
         get { defaults.bool(forKey: Key.panelAnimation) }
@@ -245,7 +267,7 @@ final class Preferences: ObservableObject {
     var candidateStyle: CandidateStyle {
         CandidateStyle(layout: candidateLayout, fontSize: candidateFontSize, density: candidateDensity,
                        showsZhuyinHint: showsZhuyinHint, showsAnnotations: showsAnnotations,
-                       showsListSwitches: showsListSwitches, keyLabels: candidateKeyLabels)
+                       showsListSwitches: showsListSwitches, keyLabels: candidateKeyLabels, accentColor: accentColor)
     }
     /// The keys that pick candidates on a page, as many as `candidatesPerPage`.
     var pageSelectionKeys: [Character] { Array(Array(selectionKeys.rawValue).prefix(candidatesPerPage)) }
@@ -265,6 +287,10 @@ final class Preferences: ObservableObject {
         get { defaults.bool(forKey: Key.startInEnglish) }
         set { defaults.set(newValue, forKey: Key.startInEnglish); changed() }
     }
+    var associatedPhrases: Bool {
+        get { defaults.bool(forKey: Key.associatedPhrases) }
+        set { defaults.set(newValue, forKey: Key.associatedPhrases); changed() }
+    }
     var learningEnabled: Bool {
         get { defaults.bool(forKey: Key.learningEnabled) }
         set { defaults.set(newValue, forKey: Key.learningEnabled); changed() }
@@ -282,6 +308,10 @@ final class Preferences: ObservableObject {
         get { CharacterForms(rawValue: defaults.string(forKey: Key.characterForms) ?? "") ?? .common }
         set { defaults.set(newValue.rawValue, forKey: Key.characterForms); changed() }
     }
+    var outputScript: OutputScript {
+        get { OutputScript(rawValue: defaults.string(forKey: Key.outputScript) ?? "") ?? .traditional }
+        set { defaults.set(newValue.rawValue, forKey: Key.outputScript); changed() }
+    }
     var punctuationKeys: PunctuationKeys {
         get { PunctuationKeys(rawValue: defaults.string(forKey: Key.punctuationKeys) ?? "") ?? .windows }
         set { defaults.set(newValue.rawValue, forKey: Key.punctuationKeys); changed() }
@@ -290,6 +320,16 @@ final class Preferences: ObservableObject {
     var pageAtListEdge: Bool {
         get { defaults.object(forKey: Key.pageAtListEdge) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.pageAtListEdge); changed() }
+    }
+    /// 「標示自動修正」: corrected characters get a dotted underline, and the candidate window shows the Zhuyin as typed.
+    var showCorrections: Bool {
+        get { defaults.bool(forKey: Key.showCorrections) }
+        set { defaults.set(newValue, forKey: Key.showCorrections); changed() }
+    }
+    /// 「⌫ 還原自動修正」: ⌫ right after a correction appears converts the keys as typed; a second ⌫ deletes.
+    var undoCorrectionWithBackspace: Bool {
+        get { defaults.bool(forKey: Key.undoCorrectionWithBackspace) }
+        set { defaults.set(newValue, forKey: Key.undoCorrectionWithBackspace); changed() }
     }
     var candidateAnchor: AnchorSetting {
         get { AnchorSetting(rawValue: defaults.string(forKey: Key.candidateAnchor) ?? "") ?? .after }
@@ -491,6 +531,7 @@ final class Preferences: ObservableObject {
         o.characterForms = characterForms
         o.punctuationKeys = punctuationKeys
         o.pageAtListEdge = pageAtListEdge
+        o.undoCorrectionWithBackspace = undoCorrectionWithBackspace
         return o
     }
 }

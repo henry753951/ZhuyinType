@@ -13,7 +13,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 #[path = "personal_writer.rs"]
 mod personal_writer;
+#[path = "prediction.rs"]
+mod prediction;
 use personal_writer::{Snapshot, Writer};
+pub use prediction::Prediction;
+#[path = "word_actions.rs"]
+mod word_actions;
+pub use word_actions::{BLOCKED_COST, WordUndo};
 
 use crate::api::{FuzzySounds, TypoTolerance};
 use crate::binary::{DataError, MappedLexicon};
@@ -21,7 +27,8 @@ use crate::conversion::{CompositionToken, ConvertedWord};
 use crate::key_channel::{self, ReadingAlternative};
 use crate::keyboard;
 use crate::language_model::{
-    LanguageModel, LanguageModelHistory, MixtureLanguageModel, NO_CONTEXT, UnigramLanguageModel, VocabularyModel,
+    LanguageModel, LanguageModelHistory, MixtureLanguageModel, NO_CONTEXT, UnigramLanguageModel,
+    VocabularyLanguageModel, VocabularyModel,
 };
 use crate::lexicon::{TextLexicon, WordEntry, swift_max, swift_min};
 use crate::personal::{DecayingCount, PersonalLanguageModel, Word};
@@ -271,6 +278,31 @@ impl EngineModel {
     pub fn end(&self, history: LanguageModelHistory) -> f64 {
         self.end_score(history, self.end_share)
     }
+
+    /// The words the base model stores after `history`, with their spellings and log P(word | history), best
+    /// first, at most `limit` (聯想詞; [`VocabularyLanguageModel::followers`]).
+    #[must_use]
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String, f64)> {
+        match &self.base {
+            BaseModel::Unigram(_) => vec![],
+            BaseModel::Vocabulary(m) => m
+                .followers(history, limit)
+                .into_iter()
+                .map(|(id, _)| (id, m.word(id).into_owned(), m.score(Some(id), history, f64::NEG_INFINITY)))
+                .collect(),
+            BaseModel::Mixture(m) => m
+                .followers(history, limit, m.chat_weight())
+                .into_iter()
+                .filter_map(|(id, score)| Some((id, m.word(id)?.into_owned(), score)))
+                .collect(),
+        }
+    }
+
+    /// `base` (a base-model log probability of `word_id` after `history`) adapted to the user's statistics.
+    #[must_use]
+    pub fn adapted(&self, base: f64, word_id: Option<u32>, history: LanguageModelHistory) -> f64 {
+        self.personal.adapt(base, word_id, history)
+    }
 }
 
 impl LanguageModel for EngineModel {
@@ -319,6 +351,8 @@ struct State {
     entry_cache: HashMap<String, Arc<Vec<WordEntry>>>,
     learned: HashMap<PhraseKey, RecallValue>,
     excluded: HashSet<PhraseKey>,
+    /// Words never to suggest for a reading (「不要再推薦」): they score [`BLOCKED_COST`] lower.
+    blocked: HashSet<PhraseKey>,
     typo_counts: HashMap<String, f64>,
     next_personal_id: u32,
     cache_day: i64,
@@ -467,6 +501,7 @@ impl Engine {
             entry_cache: HashMap::new(),
             learned: HashMap::new(),
             excluded: HashSet::new(),
+            blocked: HashSet::new(),
             typo_counts: HashMap::new(),
             next_personal_id: FIRST_PERSONAL_ID,
             cache_day: i64::MIN,
@@ -1156,7 +1191,9 @@ impl Engine {
                 self.lexical_entries(&mut state, source).iter().find(|e| e.word == entry.word).map_or(-7.0, |e| e.logp)
             }
         };
-        (original, (phrase.map_or(0.0, |p| p - original) - entry.penalty) + entry.reading_prior)
+        let blocked =
+            if state.blocked.is_empty() { 0.0 } else { Self::blocked_cost(&state, &entry.word, source, reading) };
+        (original, (phrase.map_or(0.0, |p| p - original) - entry.penalty - blocked) + entry.reading_prior)
     }
 
     /// An entry's score after `history`.
@@ -1431,6 +1468,10 @@ impl Engine {
         text += &phrase_text(state.excluded.iter());
         text += "[typos]\n";
         text += &typo_text(&state.typo_counts);
+        if !state.blocked.is_empty() {
+            text += "[blocked]\n";
+            text += &phrase_text(state.blocked.iter());
+        }
         text
     }
 
@@ -1499,6 +1540,13 @@ impl Engine {
         scan_tsv(excluded.as_bytes(), false, |fields| {
             if fields.len() == 2 {
                 state.excluded.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
+                rows += 1;
+            }
+        });
+        let blocked = section("blocked");
+        scan_tsv(blocked.as_bytes(), false, |fields| {
+            if fields.len() == 2 && valid_phrase(&fields[1], &fields[0]) {
+                state.blocked.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
                 rows += 1;
             }
         });
@@ -1700,6 +1748,13 @@ impl Engine {
                 }
             });
         }
+        if let Ok(data) = std::fs::read(directory.join("blocked.tsv")) {
+            scan_tsv(&data, false, |fields| {
+                if fields.len() == 2 && valid_phrase(&fields[1], &fields[0]) {
+                    state.blocked.insert(PhraseKey::new(fields[0].as_ref(), fields[1].as_ref()));
+                }
+            });
+        }
         if let Ok(data) = std::fs::read(directory.join("learned.tsv")) {
             scan_tsv(&data, false, |fields| {
                 if fields.len() == 4 {
@@ -1750,6 +1805,7 @@ impl Engine {
             phrases: phrase_text(state.phrases.keys()),
             learned: learned_text(&state.learned),
             excluded: phrase_text(state.excluded.iter()),
+            blocked: phrase_text(state.blocked.iter()),
             typos: typo_text(&state.typo_counts),
             personal: self.personal.serialized(),
         };
@@ -2023,17 +2079,18 @@ impl LexiconRows for EngineRows<'_> {
             Some(mapped) => {
                 for reading in mapped.reading_strs() {
                     for entry in mapped.entry_refs(reading) {
-                        let word_id = self
-                            .engine
-                            .model
-                            .word_id(entry.word)
-                            .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32));
+                        let word_id = || {
+                            self.engine
+                                .model
+                                .word_id(entry.word)
+                                .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32))
+                        };
                         each(&RowRef {
                             reading,
                             word: entry.word,
                             logp: entry.logp,
                             reading_prior: entry.reading_prior,
-                            word_id,
+                            word_id: &word_id,
                         });
                     }
                 }
@@ -2046,7 +2103,7 @@ impl LexiconRows for EngineRows<'_> {
                             word: &entry.word,
                             logp: entry.logp,
                             reading_prior: entry.reading_prior,
-                            word_id: entry.word_id,
+                            word_id: &|| entry.word_id,
                         });
                     }
                 }

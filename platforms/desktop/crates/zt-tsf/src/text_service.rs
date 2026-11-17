@@ -1,5 +1,5 @@
 //! The text input processor: follows TSF focus, sends keys to the broker inside synchronous edit sessions, applies
-//! the replies, polls for candidate-window clicks, and owns the taskbar's 中/英 button.
+//! the replies, and owns the taskbar's 中/英 button.
 //!
 //! - Every TSF context gets its own broker context id.  Switching documents first sends `blur` for the old one and
 //!   finishes its composition there, then focuses the new one; replies of an older focus (`generation`) are dropped.
@@ -11,6 +11,10 @@
 //!   keys back.
 //! - Secure fields send only their secure state: no key identity or text leaves them.  Leaving one, or focusing a
 //!   field, syncs Caps Lock with the host.
+//! - Nothing runs between keys while the field is idle.  The host never writes unasked and clicks in the candidate
+//!   window arrive as messages, so the only thing that changes on its own is an open candidate list (a setting
+//!   changed meanwhile): the text service polls only while it shows one (`follow_list`).  A host that ended is
+//!   noticed before the next key is sent (`BrokerClient::check`).
 
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
@@ -18,24 +22,31 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
 use serde_json::{Map, Value};
-use windows::Win32::Foundation::{E_INVALIDARG, HWND, LPARAM, LRESULT, POINT, RECT, S_OK, WPARAM};
-use windows::Win32::System::Com::CoCreateGuid;
+use windows::Win32::Foundation::{
+    E_INVALIDARG, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, S_OK, WPARAM,
+};
+use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateGuid, CoCreateInstance};
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, VK_CAPITAL};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetFocus, GetKeyState, VK_CAPITAL, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+};
 use windows::Win32::UI::TextServices::{
-    IEnumTfDisplayAttributeInfo, ITfComposition, ITfCompositionSink, ITfCompositionSink_Impl, ITfContext,
-    ITfDisplayAttributeInfo, ITfDisplayAttributeProvider, ITfDisplayAttributeProvider_Impl, ITfDocumentMgr,
-    ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
+    CLSID_TF_InputProcessorProfiles, GUID_TFCAT_TIP_KEYBOARD, IEnumTfDisplayAttributeInfo, ITfComposition,
+    ITfCompositionSink, ITfCompositionSink_Impl, ITfContext, ITfDisplayAttributeInfo, ITfDisplayAttributeProvider,
+    ITfDisplayAttributeProvider_Impl, ITfDocumentMgr, ITfInputProcessorProfileMgr, ITfKeyEventSink,
+    ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
     ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink,
-    ITfThreadFocusSink_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl, TF_INVALID_COOKIE,
-    TF_TMAE_COMLESS, TF_TMAE_SECUREMODE, TF_TMAE_UIELEMENTENABLEDONLY,
+    ITfThreadFocusSink_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl, TF_INPUTPROCESSORPROFILE,
+    TF_INVALID_COOKIE, TF_PROFILETYPE_INPUTPROCESSOR, TF_TMAE_COMLESS, TF_TMAE_SECUREMODE,
+    TF_TMAE_UIELEMENTENABLEDONLY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GWLP_USERDATA, GetMessageTime, GetWindowLongPtrW, HWND_MESSAGE, KillTimer, MF_GRAYED, MF_SEPARATOR, MF_STRING,
-    PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer, SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_NONOTIFY,
-    TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
+    GWLP_USERDATA, GetCursorPos, GetMessageTime, GetWindowLongPtrW, HMENU, HWND_MESSAGE, KillTimer, MENU_ITEM_FLAGS,
+    MF_CHECKED, MF_GRAYED, MF_SEPARATOR, MF_STRING, PostMessageW, RegisterClassW, SetForegroundWindow, SetTimer,
+    SetWindowLongPtrW, TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTALIGN, TPM_RIGHTBUTTON,
+    TPM_TOPALIGN, TPM_VERTICAL, TPMPARAMS, TrackPopupMenu, TrackPopupMenuEx, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WM_APP, WM_NCCREATE, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{BOOL, ComObject, IUnknown, IUnknownImpl, Interface, PCWSTR, Ref, Result, implement, w};
 
@@ -43,11 +54,12 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{host_observes_key, host_wants_key};
+use crate::keys::{claimed_key, host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
-use crate::module::{ObjectCount, guard, instance};
+use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
-use crate::protocol::Reply;
+use crate::protocol::{PanelUpdate, Reply};
+use crate::quick_menu::{self, Command, Effect, QuickState};
 use crate::registration::guid_string;
 
 /// Adds 前文 to a request: the application's name and the text before the caret (IPC.md §前文).
@@ -58,12 +70,39 @@ fn put_context(fields: &mut Map<String, Value>, context: &ITfContext, cookie: u3
     }
 }
 
-/// This application had ZhuyinType deactivated before (the user picked another input method), so an activation is
-/// the user coming back to it rather than the application starting.
+/// The user picked another input method in this application since ZhuyinType was last activated here, so the next
+/// activation is the user coming back to it rather than the application starting or opening another thread.  Set
+/// when ZhuyinType deactivates because another keyboard input method became active (`switched_away`), not by every
+/// deactivation: a thread that ends deactivates its text service too.  Taken by the next activation.
 static SWITCHED_AWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether this thread's keyboard input method is now another one (or a keyboard layout).  TSF reports the new
+/// profile as active by the time it deactivates the old one; when a thread ends, ZhuyinType is still the active one.
+/// Unknown (COM no longer usable, say) counts as not switched.
+fn switched_away() -> bool {
+    // SAFETY: COM is initialised on a TSF thread; the profile is written by the call.
+    let active = unsafe {
+        CoCreateInstance::<_, ITfInputProcessorProfileMgr>(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_INPROC_SERVER)
+            .and_then(|profiles| {
+                let mut profile = TF_INPUTPROCESSORPROFILE::default();
+                profiles.GetActiveProfile(&GUID_TFCAT_TIP_KEYBOARD, &mut profile).map(|()| profile)
+            })
+    };
+    active.is_ok_and(|profile| !(profile.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR && profile.clsid == SERVICE_ID))
+}
 
 const POLL_TIMER: usize = 1;
 const POLL_MS: u32 = 20;
+/// Posted to the message window after a field got focus: `PanelWindow::warm`, once the focus is handled.
+const WM_WARM: u32 = WM_APP + 0x32;
+/// Posted to the message window when the `quickSettings` shortcut was pressed: the quick menu at the caret, once the
+/// key event has returned (a menu's modal loop must not run inside TSF's key handling and edit session).
+const WM_QUICK: u32 = WM_APP + 0x33;
+/// Retries `WM_QUICK` while the shortcut's modifiers are still held: releasing Alt would close the menu at once.
+const QUICK_TIMER: usize = 2;
+const QUICK_WAIT_MS: u32 = 20;
+/// About a second of waiting, then the menu shows anyway.
+const QUICK_WAIT_TRIES: u8 = 50;
 
 fn same<T: Interface>(a: Option<&T>, b: Option<&T>) -> bool {
     a.map(Interface::as_raw) == b.map(Interface::as_raw)
@@ -95,8 +134,12 @@ pub(crate) struct TextService {
     context_name: RefCell<String>,
     /// NUL-terminated name of this instance's window class (unique per thread and instance).
     window_class: RefCell<Vec<u16>>,
-    /// Message-only window for the poll timer.
+    /// Message-only window for the poll timer, the warm-up and the candidate window's clicks.
     window: Cell<HWND>,
+    /// The poll timer runs (only while a candidate list is shown).
+    polling: Cell<bool>,
+    /// The last reply applied to the document (a poll whose reply changes nothing leaves the document alone).
+    last_reply: RefCell<Option<Reply>>,
     /// Owner of the 中/英 button's menu (a menu needs a real window; it is never shown).
     menu_owner: Cell<HWND>,
     generation: Cell<u64>,
@@ -112,6 +155,9 @@ pub(crate) struct TextService {
     reset_deferred: Cell<bool>,
     english: Cell<bool>,
     composing: Cell<bool>,
+    /// The keys claimed even when nothing is composed (IPC `claims`, already filtered by the host for this field and
+    /// mode).
+    claimed: RefCell<Vec<(i32, i32)>>,
     caps_at_reply: Cell<bool>,
     lang_bar: RefCell<Option<ITfLangBarItemMgr>>,
     mode_button: RefCell<Option<(ITfLangBarItemButton, ComObject<ModeButton>)>>,
@@ -119,7 +165,7 @@ pub(crate) struct TextService {
     scale: Cell<f64>,
     panel: PanelWindow,
     /// The display attributes' atoms (display_attributes.rs), from activation.
-    atoms: Cell<Option<[u32; 4]>>,
+    atoms: Cell<Option<display_attributes::Atoms>>,
     /// The last key `observe` sent (virtual key, flags, message time).
     observed: Cell<(usize, isize, i32)>,
     /// The field is private (`composition::is_private`): no 前文 is sent.
@@ -127,6 +173,12 @@ pub(crate) struct TextService {
     /// The user selected ZhuyinType again after another input method in this application: the next focus says so,
     /// and 中/英 starts as 「開始輸入時使用英文」 says.
     activated: Cell<bool>,
+    /// A `WM_WARM` is on its way.
+    warm_posted: Cell<bool>,
+    /// 快速設定's switches as the host last reported them (`fullWidth` and `symbols` only come with a `quick` reply).
+    quick: Cell<QuickState>,
+    /// `QUICK_TIMER` ticks spent waiting for the modifiers to be released.
+    quick_wait: Cell<u8>,
     _count: ObjectCount,
 }
 
@@ -146,6 +198,8 @@ impl TextService {
             context_name: RefCell::new(String::new()),
             window_class: RefCell::new(Vec::new()),
             window: Cell::new(HWND::default()),
+            polling: Cell::new(false),
+            last_reply: RefCell::new(None),
             menu_owner: Cell::new(HWND::default()),
             generation: Cell::new(0),
             thread_focused: Cell::new(false),
@@ -158,6 +212,7 @@ impl TextService {
             reset_deferred: Cell::new(false),
             english: Cell::new(false),
             composing: Cell::new(false),
+            claimed: RefCell::new(Vec::new()),
             caps_at_reply: Cell::new(false),
             lang_bar: RefCell::new(None),
             mode_button: RefCell::new(None),
@@ -168,6 +223,9 @@ impl TextService {
             observed: Cell::new((0, 0, 0)),
             private: Cell::new(false),
             activated: Cell::new(false),
+            warm_posted: Cell::new(false),
+            quick: Cell::new(QuickState { full_width: true, ..QuickState::default() }),
+            quick_wait: Cell::new(0),
             _count: ObjectCount::new(),
         }
         .into()
@@ -185,11 +243,18 @@ impl TextService {
 
     fn bump(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
+        self.forget_reply();
+    }
+
+    fn forget_reply(&self) {
+        if let Ok(mut last) = self.last_reply.try_borrow_mut() {
+            *last = None;
+        }
     }
 
     fn kill_timer(&self) {
         let window = self.window.get();
-        if !window.is_invalid() {
+        if self.polling.replace(false) && !window.is_invalid() {
             // SAFETY: our own window.
             let _ = unsafe { KillTimer(Some(window), POLL_TIMER) };
         }
@@ -205,7 +270,9 @@ impl TextService {
     fn claims(&self, vk: WPARAM, flags: LPARAM, release: bool) -> bool {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
         let composing = self.composing.get() || load(&self.composition).is_some();
-        host_wants_key(&translate_key(vk, flags, release), composing, self.english.get() && !caps_changed)
+        let key = translate_key(vk, flags, release);
+        self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed))
+            || host_wants_key(&key, composing, self.english.get() && !caps_changed)
     }
 
     fn destroy_windows(&self) {
@@ -244,7 +311,13 @@ impl TextService_Impl {
         };
         // SAFETY: the class name outlives the class (kept in window_class until unregistered).
         if unsafe { RegisterClassW(&klass) } == 0 {
-            return Err(windows::core::Error::from_thread());
+            // A class of this name left by an earlier instance at the same address on a thread with the same id is
+            // this module's own class, with this window procedure: use it rather than fail the activation (TSF would
+            // then switch the thread to another input method).
+            let error = windows::core::Error::from_thread();
+            if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
+                return Err(error);
+            }
         }
         if let Ok(mut slot) = self.window_class.try_borrow_mut() {
             *slot = class;
@@ -285,7 +358,10 @@ impl TextService_Impl {
         let this = self.to_object();
         let (item, object) = mode_button::create(Rc::new(move |right_click, point| {
             if right_click {
+                // The menu's hidden owner takes the activation; the field gets it back afterwards.
+                let focus = crate::focus::Remembered::now();
                 this.show_menu(point);
+                focus.restore(this.menu_owner.get());
             } else {
                 this.toggle_mode();
             }
@@ -300,7 +376,9 @@ impl TextService_Impl {
     }
 
     fn deactivate(&self) {
-        SWITCHED_AWAY.store(true, std::sync::atomic::Ordering::Relaxed);
+        if load(&self.manager).is_some() && switched_away() {
+            SWITCHED_AWAY.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         self.switch_context(None);
         let button = self.mode_button.try_borrow_mut().ok().and_then(|mut button| button.take());
         if let Some((item, object)) = button {
@@ -363,7 +441,13 @@ impl TextService_Impl {
         let old_composition = self.composition.try_borrow_mut().ok().and_then(|mut slot| slot.take());
         if let Some(old) = current {
             let reply = if self.broker.connected() && self.host_focused.get() {
-                self.broker.request(&self.name(), "blur", Map::new())
+                let reply = self.broker.request(&self.name(), "blur", Map::new());
+                if reply.is_none() {
+                    // A late blur (the app was saving the personal data) is no reason to keep the next field from
+                    // connecting at once.  The composition's text stays in the document below.
+                    self.broker.disconnect(false);
+                }
+                reply
             } else {
                 None
             };
@@ -394,6 +478,11 @@ impl TextService_Impl {
         self.scale.set(1.0);
         self.set_name(String::new());
         if next.is_none() {
+            // Nothing to type into here (the desktop, a window without a text field): the taskbar shows that
+            // ZhuyinType has no field, not the 中/英 of the last one.
+            if let Some(button) = self.button() {
+                button.set_available(false);
+            }
             self.broker.disconnect(false);
             return;
         }
@@ -408,9 +497,11 @@ impl TextService_Impl {
     fn prepare(&self, cookie: u32, caps_key: bool) -> bool {
         let generation = self.generation.get();
         let Some(context) = load(&self.context) else { return false };
+        // An app that ended or restarted since the last key: reconnect now rather than lose this key.
+        self.broker.check();
         let secure = self.restricted.get() || composition::is_secure(&context, cookie);
         if let Some(button) = self.button() {
-            button.set_enabled(!secure);
+            button.set_available(!secure);
         }
         if secure {
             self.applying.set(true);
@@ -432,6 +523,10 @@ impl TextService_Impl {
             let _ = composition::finish(cookie, &self.composition, secure);
             self.applying.set(false);
             if !self.broker.connect() {
+                // Keys go to the application as they are until the app answers.
+                if let Some(button) = self.button() {
+                    button.set_available(false);
+                }
                 return false;
             }
         }
@@ -472,11 +567,53 @@ impl TextService_Impl {
             }
         }
         let window = self.window.get();
-        if !window.is_invalid() && self.broker.connected() {
+        if !window.is_invalid()
+            && self.broker.connected()
+            && !secure
+            && self.panel.cold()
+            && !self.warm_posted.replace(true)
+        {
+            // SAFETY: our own window.
+            let _ = unsafe { PostMessageW(Some(window), WM_WARM, WPARAM(0), LPARAM(0)) };
+        }
+        true
+    }
+
+    /// Polls the host only while a candidate list is shown; an idle field (and the app) wakes for nothing.
+    fn follow_list(&self) {
+        let window = self.window.get();
+        let wanted = !window.is_invalid()
+            && self.broker.connected()
+            && self.host_focused.get()
+            && !self.secure.get()
+            && self.panel.shows_list();
+        if !wanted {
+            self.kill_timer();
+        } else if !self.polling.replace(true) {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(window), POLL_TIMER, POLL_MS, None) };
         }
-        true
+    }
+
+    /// The first 中/英 badge in this application shows at once (`PanelWindow::warm`).
+    fn warm(&self) {
+        self.warm_posted.set(false);
+        if self.thread_focused.get() && self.host_focused.get() && !self.secure.get() && load(&self.context).is_some() {
+            self.panel.warm();
+        }
+    }
+
+    /// The reply changes nothing that the last applied one showed: no text to commit, the same composition, list,
+    /// mode and nothing to animate.
+    fn unchanged(&self, reply: &Reply) -> bool {
+        let last = self.last_reply.try_borrow().ok();
+        let Some(Some(last)) = last.as_deref() else { return false };
+        reply.commit.is_empty()
+            && reply.panel == PanelUpdate::Unchanged
+            && reply.toast.is_none()
+            && reply.boundary.is_none()
+            && (reply.english, reply.composing, &reply.preedit, reply.cursor, &reply.clauses, reply.focus, reply.target)
+                == (last.english, last.composing, &last.preedit, last.cursor, &last.clauses, last.focus, last.target)
     }
 
     fn apply(&self, cookie: u32, reply: &Reply) -> bool {
@@ -494,17 +631,46 @@ impl TextService_Impl {
             self.host_focused.set(false);
             return false;
         }
-        self.english.set(reply.english);
+        // A commit that leaves only a list (聯想詞) ended the composition: the list goes at the caret after the
+        // commit, not where the key was typed.
+        if !self.secure.get() && reply.preedit.is_empty() && !reply.commit.is_empty() {
+            let (rect, scale, _) = composition::caret(&context, cookie);
+            self.rect.set(rect);
+            self.scale.set(scale);
+        }
+        let switched = self.english.replace(reply.english) != reply.english;
         self.composing.set(reply.composing);
+        let mut quick = reply.quick.unwrap_or(self.quick.get());
+        quick.english = reply.english;
+        quick.simplified = reply.simplified;
+        quick.learning_paused = reply.learning_paused;
+        self.quick.set(quick);
+        if let Some(claims) = &reply.claims
+            && let Ok(mut claimed) = self.claimed.try_borrow_mut()
+        {
+            claimed.clone_from(claims);
+        }
+        // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
+        if let Some(button) = self.button() {
+            button.set_state(reply.english, reply.simplified, reply.learning_paused);
+        }
+        let window = self.window.get();
+        if reply.quick_panel && !self.secure.get() && !window.is_invalid() {
+            self.quick_wait.set(0);
+            // SAFETY: our own window.
+            let _ = unsafe { PostMessageW(Some(window), WM_QUICK, WPARAM(0), LPARAM(0)) };
+        }
         if self.secure.get() {
             self.panel.hide();
         } else {
             self.panel.apply(&reply.panel, reply.boundary, reply.toast.as_deref(), self.rect.get(), self.scale.get());
+            self.panel.announce_mode(switched.then_some(reply.english), reply.toast.as_deref());
         }
         self.caps_at_reply.set(caps_lock_on());
-        if let Some(button) = self.button() {
-            button.set_english(reply.english);
+        if let Ok(mut last) = self.last_reply.try_borrow_mut() {
+            *last = Some(reply.clone());
         }
+        self.follow_list();
         true
     }
 
@@ -532,29 +698,20 @@ impl TextService_Impl {
         }
     }
 
-    /// The right-click menu of the 中/英 button, the usual place for an input method's settings on Windows.
+    /// The right-click menu of the 中/英 button, the usual place for an input method's settings on Windows: 快速設定's
+    /// switches (quick_menu.rs), then the settings.
     fn show_menu(&self, point: POINT) {
         let _ = guard(|| {
-            if self.menu_owner.get().is_invalid() {
-                let owner = self.new_window(WS_EX_TOOLWINDOW, WS_POPUP, None)?;
-                self.menu_owner.set(owner);
+            let owner = self.menu_owner()?;
+            let switches = self.can_toggle();
+            if switches {
+                // The switches as they are now (punctuation width is not in every reply).
+                self.host_request("quick", Map::new());
             }
-            let owner = self.menu_owner.get();
+            let items = quick_menu::items(&self.quick.get(), switches, true);
             // SAFETY: a menu created, shown and destroyed here, owned by our window.
-            unsafe {
-                let menu = CreatePopupMenu()?;
-                let toggle = if self.can_toggle() { MF_STRING } else { MF_STRING | MF_GRAYED };
-                let label = if self.english.get() { w!("切換成中文") } else { w!("切換成英文") };
-                let _ = AppendMenuW(menu, toggle, 1, label);
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                // The macOS input menu's items.
-                let _ = AppendMenuW(menu, MF_STRING, 2, w!("ZhuyinType 設定…"));
-                let _ = AppendMenuW(menu, MF_STRING, 3, w!("自訂詞與學到的詞…"));
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                let _ = AppendMenuW(menu, MF_STRING, 4, w!("設定嚮導…"));
-                let _ = AppendMenuW(menu, MF_STRING, 5, w!("新功能導覽…"));
-                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
-                let _ = AppendMenuW(menu, MF_STRING, 6, w!("關於 ZhuyinType"));
+            let command = unsafe {
+                let menu = build_menu(&items)?;
                 let _ = SetForegroundWindow(owner);
                 let command = TrackPopupMenu(
                     menu,
@@ -567,41 +724,115 @@ impl TextService_Impl {
                 );
                 let _ = PostMessageW(Some(owner), WM_NULL, WPARAM(0), LPARAM(0));
                 let _ = DestroyMenu(menu);
-                match command.0 {
-                    1 => self.toggle_mode(),
-                    2 => self.open_settings(None),
-                    3 => self.open_settings(Some("words")),
-                    4 => self.open_settings(Some("wizard")),
-                    5 => self.open_settings(Some("tour")),
-                    6 => self.open_settings(Some("about")),
-                    _ => {}
-                }
-            }
+                command.0
+            };
+            self.run_command(command);
             Ok(())
         });
     }
 
+    /// The `quickSettings` shortcut (`WM_QUICK`): the same switches in a menu at the caret.  The menu's owner is our
+    /// hidden window on the application's thread, never activated, so the field keeps the focus and its composition.
+    fn show_quick_menu(&self) {
+        let _ = guard(|| {
+            let window = self.window.get();
+            if window.is_invalid() || !self.can_toggle() {
+                return Ok(());
+            }
+            // SAFETY: our own window.
+            let _ = unsafe { KillTimer(Some(window), QUICK_TIMER) };
+            if modifiers_down() && self.quick_wait.get() < QUICK_WAIT_TRIES {
+                self.quick_wait.set(self.quick_wait.get() + 1);
+                // SAFETY: our own window.
+                unsafe { SetTimer(Some(window), QUICK_TIMER, QUICK_WAIT_MS, None) };
+                return Ok(());
+            }
+            let owner = self.menu_owner()?;
+            self.host_request("quick", Map::new());
+            if !self.can_toggle() {
+                return Ok(());
+            }
+            let items = quick_menu::items(&self.quick.get(), true, false);
+            let caret = self.rect.get();
+            // The menu's hidden owner may take the activation; the field gets it back afterwards.
+            let focus = crate::focus::Remembered::now();
+            // SAFETY: a menu created, shown and destroyed here; coordinates are physical pixels, as the caret is.
+            let command = unsafe {
+                let menu = build_menu(&items)?;
+                let command = composition::per_monitor(|| {
+                    let mut at = POINT { x: caret.left, y: caret.bottom };
+                    if caret.right <= caret.left && caret.bottom <= caret.top {
+                        // No caret from the application: where the pointer is.
+                        let _ = GetCursorPos(&mut at);
+                    }
+                    let params = TPMPARAMS { cbSize: size_of::<TPMPARAMS>() as u32, rcExclude: caret };
+                    TrackPopupMenuEx(
+                        menu,
+                        (TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL).0,
+                        at.x,
+                        at.y,
+                        owner,
+                        Some(&params),
+                    )
+                });
+                let _ = DestroyMenu(menu);
+                command.0
+            };
+            self.run_command(command);
+            focus.restore(owner);
+            Ok(())
+        });
+    }
+
+    /// The hidden window that owns our menus (a menu needs a real window).
+    fn menu_owner(&self) -> Result<HWND> {
+        if self.menu_owner.get().is_invalid() {
+            let owner = self.new_window(WS_EX_TOOLWINDOW, WS_POPUP, None)?;
+            self.menu_owner.set(owner);
+        }
+        Ok(self.menu_owner.get())
+    }
+
+    /// What a picked menu item does: a `quick` op for a switch, `show-settings` for a place.
+    fn run_command(&self, id: i32) {
+        let Some(command) = u32::try_from(id).ok().and_then(Command::from_id) else { return };
+        match command.effect(&self.quick.get()) {
+            Effect::Quick(key, value) => {
+                let mut fields = Map::new();
+                fields.insert(key.into(), Value::from(value));
+                self.host_request("quick", fields);
+            }
+            Effect::Settings(place) => self.open_settings(place),
+        }
+    }
+
     /// A click on the 中/英 button: switches the focused field's mode (IPC `mode`), not while composing or secure.
     fn toggle_mode(&self) {
+        let mut fields = Map::new();
+        fields.insert("english".into(), Value::from(!self.english.get()));
+        self.host_request("mode", fields);
+    }
+
+    /// Sends `op` for the focused field from outside a key event (the 中/英 button, a menu) in an edit session, and
+    /// applies the reply like a key's.  Nothing while the field is secure or has no host.
+    fn host_request(&self, op: &'static str, fields: Map<String, Value>) {
         if self.broker.busy() || !self.thread_focused.get() || !self.host_focused.get() || self.secure.get() {
             return;
         }
         let Some(context) = load(&self.context) else { return };
         let generation = self.generation.get();
         let this = self.to_object();
-        let document = context.clone();
         let _ = composition::edit(&context, self.client.get(), false, move |cookie| {
             if generation != this.generation.get() || !this.host_focused.get() || this.secure.get() {
                 return S_OK;
             }
-            // Where the caret is now (the badge goes there, or nowhere), not where it was at the last key.
-            let (rect, scale, owner) = composition::caret(&document, cookie);
-            this.rect.set(rect);
-            this.scale.set(scale);
-            this.panel.set_owner(owner);
-            let mut fields = Map::new();
-            fields.insert("english".into(), Value::from(!this.english.get()));
-            let reply = this.broker.request(&this.name(), "mode", fields);
+            // Where the caret is now (the badge goes there, or nowhere), not where it was at the last key; and the
+            // app again if it restarted since.
+            if !this.prepare(cookie, false) || generation != this.generation.get() || this.secure.get() {
+                this.recover_deferred();
+                return S_OK;
+            }
+            let reply = this.broker.request(&this.name(), op, fields);
             if generation == this.generation.get()
                 && let Some(reply) = reply
             {
@@ -610,6 +841,16 @@ impl TextService_Impl {
             this.recover_deferred();
             S_OK
         });
+    }
+
+    /// A character the text service types itself; the badge keeps what the host last reported.
+    fn local_commit(&self, typed: u16) -> Reply {
+        let quick = self.quick.get();
+        Reply {
+            simplified: quick.simplified,
+            learning_paused: quick.learning_paused,
+            ..Reply::commit_only(vec![typed], self.english.get())
+        }
     }
 
     fn recover_deferred(&self) {
@@ -704,6 +945,9 @@ impl TextService_Impl {
         match reply {
             Some(reply) if self.apply(cookie, &reply) => {
                 handled.set(reply.handled);
+                if reply.selection && !release {
+                    self.send_selection(cookie, generation);
+                }
                 // A typed character the host declined (the mode changed in between): put it in the document here
                 // rather than lose it.
                 if !reply.handled
@@ -711,7 +955,7 @@ impl TextService_Impl {
                     && !release
                     && !self.composing.get()
                     && let Some(typed) = typed_character(vk, flags)
-                    && self.apply(cookie, &Reply::commit_only(vec![typed], self.english.get()))
+                    && self.apply(cookie, &self.local_commit(typed))
                 {
                     handled.set(true);
                 }
@@ -722,6 +966,24 @@ impl TextService_Impl {
                 self.applying.set(false);
                 self.host_focused.set(false);
             }
+        }
+    }
+
+    /// 選取的字加入自訂詞: the field's selected text (at most 32 UTF-16 units, as macOS reads) to the host, which
+    /// opens the 加入自訂詞 form with it.  Never from a secure or private field.
+    fn send_selection(&self, cookie: u32, generation: u64) {
+        if self.secure.get() || self.private.get() {
+            return;
+        }
+        let Some(context) = load(&self.context) else { return };
+        let text = composition::selected_text(&context, cookie, 32).unwrap_or_default();
+        let mut fields = Map::new();
+        fields.insert("text".into(), Value::from(text));
+        let reply = self.broker.request(&self.name(), "selection", fields);
+        if generation == self.generation.get()
+            && let Some(reply) = reply
+        {
+            self.apply(cookie, &reply);
         }
     }
 
@@ -752,19 +1014,29 @@ impl TextService_Impl {
         if load(&self.context).is_none() || !self.thread_focused.get() {
             return;
         }
-        if !self.prepare(cookie, false) {
+        // The field's first session focuses it.  Later ones only ask whether an open list changed: no caret, input
+        // scope or document text is read, and an unchanged reply is not written back into the document (each of
+        // those makes an application such as Notepad lay out its text again).
+        if !self.host_focused.get() || !self.broker.connected() || self.secure.get() {
+            if !self.prepare(cookie, false) {
+                self.kill_timer();
+                self.recover_deferred();
+                return;
+            }
+        } else {
+            self.broker.check();
+        }
+        if !self.panel.shows_list() || !self.broker.connected() {
             self.kill_timer();
-            self.recover_deferred();
             return;
         }
-        let mut fields = Map::new();
-        composition::put_rect(&mut fields, self.rect.get(), self.scale.get());
-        let reply = self.broker.request(&self.name(), "poll", fields);
+        let reply = self.broker.request(&self.name(), "poll", Map::new());
         if generation != self.generation.get() {
             self.recover_deferred();
             return;
         }
         match reply {
+            Some(reply) if self.unchanged(&reply) => {}
             Some(reply) => {
                 self.apply(cookie, &reply);
             }
@@ -809,9 +1081,10 @@ impl TextService_Impl {
     }
 
     fn on_timer(&self, window: HWND) {
-        if self.broker.connected() {
+        if self.broker.connected() && self.polling.get() && self.panel.shows_list() {
             self.schedule();
         } else {
+            self.polling.set(false);
             // SAFETY: our own window.
             let _ = unsafe { KillTimer(Some(window), POLL_TIMER) };
         }
@@ -873,6 +1146,38 @@ impl TextService_Impl {
     }
 }
 
+/// A modifier key is held (by the queue's key state: its release has not been handled yet).
+fn modifiers_down() -> bool {
+    [VK_MENU, VK_CONTROL, VK_SHIFT, VK_LWIN, VK_RWIN]
+        .into_iter()
+        // SAFETY: no preconditions.
+        .any(|key| unsafe { GetKeyState(i32::from(key.0)) } < 0)
+}
+
+/// A popup menu of `items` (quick_menu.rs); the caller destroys it.
+fn build_menu(items: &[quick_menu::Item]) -> Result<HMENU> {
+    // SAFETY: a new menu; AppendMenuW copies each label.
+    unsafe {
+        let menu = CreatePopupMenu()?;
+        for item in items {
+            let Some(command) = item.command else {
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+                continue;
+            };
+            let mut flags: MENU_ITEM_FLAGS = MF_STRING;
+            if item.checked {
+                flags |= MF_CHECKED;
+            }
+            if !item.enabled {
+                flags |= MF_GRAYED;
+            }
+            let label: Vec<u16> = item.label.encode_utf16().chain([0]).collect();
+            let _ = AppendMenuW(menu, flags, command.id() as usize, PCWSTR(label.as_ptr()));
+        }
+        Ok(menu)
+    }
+}
+
 /// The poll timer and the menu owner.  The window's user data points at the text service while the window exists.
 unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     // SAFETY: Windows calls this with valid arguments; the user data is cleared before the service goes away.
@@ -885,6 +1190,20 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
             let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
             if !service.is_null() {
                 let _ = catch_unwind(AssertUnwindSafe(|| (*service).on_timer(window)));
+            }
+            return LRESULT(0);
+        }
+        if message == WM_WARM {
+            let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
+            if !service.is_null() {
+                let _ = catch_unwind(AssertUnwindSafe(|| (*service).warm()));
+            }
+            return LRESULT(0);
+        }
+        if message == WM_QUICK || (message == WM_TIMER && wparam.0 == QUICK_TIMER) {
+            let service = GetWindowLongPtrW(window, GWLP_USERDATA) as *const TextService_Impl;
+            if !service.is_null() {
+                let _ = catch_unwind(AssertUnwindSafe(|| (*service).show_quick_menu()));
             }
             return LRESULT(0);
         }
@@ -921,11 +1240,15 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
-            self.activated.set(SWITCHED_AWAY.load(std::sync::atomic::Ordering::Relaxed));
+            self.activated.set(SWITCHED_AWAY.swap(false, std::sync::atomic::Ordering::Relaxed));
             self.atoms.set(display_attributes::atoms());
             // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
             self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
+            // The message window and the 中/英 button come first: advising the key sink already reports the focus
+            // (`OnSetFocus`), and handling it starts the poll timer on that window and shows the field's 中/英.
             let sinks = || -> Result<()> {
+                self.create_window()?;
+                self.add_mode_button(&manager);
                 let source = manager.cast::<ITfSource>()?;
                 store(&self.source, Some(source.clone()));
                 let events: ITfThreadMgrEventSink = self.to_interface();
@@ -939,13 +1262,12 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
                     let sink: ITfKeyEventSink = self.to_interface();
                     keys.AdviseKeyEventSink(client, &sink, true)?;
                 }
-                self.create_window()
+                Ok(())
             };
             if let Err(error) = sinks() {
                 self.deactivate();
                 return Err(error);
             }
-            self.add_mode_button(&manager);
             // SAFETY: no preconditions.
             self.thread_focused.set(!unsafe { GetFocus() }.is_invalid());
             self.refresh_focus();
@@ -1047,6 +1369,7 @@ impl ITfCompositionSink_Impl for TextService_Impl {
         guard(|| {
             if !ended.is_null() && same(load(&self.composition).as_ref(), ended.as_ref()) {
                 store(&self.composition, None);
+                self.forget_reply();
                 if !self.applying.get() && self.broker.connected() && !self.name().is_empty() {
                     if self.broker.busy() {
                         self.reset_deferred.set(true);

@@ -223,6 +223,8 @@ typedef struct {
   uint32_t punctuation_keys;
   // 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
   size_t early_commit_syllables;
+  // The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting.
+  bool undo_correction_with_backspace;
 } ZtComposerOptions;
 
 // What a key did (Swift's `KeyResult`).
@@ -281,6 +283,10 @@ typedef struct {
   int8_t tolerant;
   // Only the one character at the target.
   bool single_character;
+  // Next-word suggestions after a commit (聯想詞), not conversions: the window marks them.
+  bool associated;
+  // 聯想詞 shown but not entered (↓ enters): no highlight; `selection` means nothing.
+  bool passive;
 } ZtCandidateList;
 
 // What to draw (Swift's `Presentation`).  Offsets are UTF-16 units.
@@ -303,6 +309,16 @@ typedef struct {
   char *notice;
   // Standard plain Zhuyin for the highlighted span, or NULL.
   char *zhuyin_hint;
+  // The ranges of `text` shown through an automatic correction.
+  ZtRange *corrections;
+  // How many corrections.
+  size_t correction_count;
+  // Plain Zhuyin as typed for the corrections in the open window's span, or NULL.
+  char *typed_reading;
+  // ⌫ now converts the last correction as typed instead of deleting.
+  bool backspace_reverts;
+  // The last key or call converted a correction as typed.
+  bool reverted;
 } ZtPresentation;
 
 // The reranker hook (Swift's `Composer.reranker`).
@@ -598,6 +614,13 @@ void zt_composer_reset(ZtComposer *composer);
 // `composer` is a live handle.
 void zt_composer_toggle_corrections(ZtComposer *composer);
 
+// Converts the automatic correction at the cursor as typed (the open window's span, the correction the last key
+// made, or the character ↓ would change); false when there is none.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_revert_correction(ZtComposer *composer);
+
 // The text before the insertion point, read from the app when a composition starts.
 //
 // # Safety
@@ -655,6 +678,12 @@ void zt_composer_set_character_scores_in_list(ZtComposer *composer, bool in_list
 // # Safety
 // `composer` is a live handle.
 void zt_composer_set_freezes_on_pick(ZtComposer *composer, bool freezes);
+
+// Next-word suggestions (聯想詞) after each commit: on or off (the default).
+//
+// # Safety
+// `composer` is a live handle.
+void zt_composer_set_associated_phrases(ZtComposer *composer, bool on);
 
 // The current presentation (free with [`zt_presentation_free`]).
 //
@@ -1040,6 +1069,84 @@ size_t zt_strings_count(const ZtStrings *strings);
 // # Safety
 // `strings` is a view passed to the running callback.
 char *zt_strings_get(const ZtStrings *strings, size_t index);
+
+// Whether `action` (0 block, 1 forget, 2 add a custom word) applies to candidate `index` of the open list; a
+// negative `index` is the highlighted candidate, or with no list open the whole composition (adding only).
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_candidate_action_available(ZtComposer *composer,
+                                            uint32_t action,
+                                            ptrdiff_t index);
+
+// Does `action` on candidate `index` (as for `zt_composer_candidate_action_available`) and returns the notice the
+// candidate window shows (free with `zt_string_free`), or NULL when the action does not apply.
+//
+// # Safety
+// `composer` is a live handle.
+char *zt_composer_perform_candidate_action(ZtComposer *composer,
+                                           uint32_t action,
+                                           ptrdiff_t index);
+
+// Whether the last word action can be undone.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_can_undo_candidate_action(ZtComposer *composer);
+
+// Undoes the last word action; false when there is none.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_undo_candidate_action(ZtComposer *composer);
+
+// The words never suggested (不要再推薦), sorted; free with `zt_phrase_list_free`.
+//
+// # Safety
+// `engine` is a live handle.
+ZtPhraseList *zt_engine_blocked_entries(const ZtEngine *engine);
+
+// Suggests a blocked word again.
+//
+// # Safety
+// `engine` is a live handle; the strings are C strings.
+void zt_engine_unblock(const ZtEngine *engine, const char *word, const char *reading);
+// `text` in simplified characters (`zhuyin_core::simplified`): the same length in UTF-16 units, so offsets into
+// the traditional text stay valid.  NULL for NULL or invalid UTF-8; free the result with `zt_string_free`.
+//
+// # Safety
+// `text` is NULL or a NUL-terminated string.
+char *zt_to_simplified(const char *text);
+
+// Every category of the picker except 最近使用, as JSON:
+// `[{"id":"punctuation","title":"常用標點","symbols":[{"text":"，","name":"逗號"},…]},…]`.  Free with
+// [`zt_string_free`](crate::zt_string_free).
+char *zt_symbols_categories_json(void);
+
+// The symbols matching `query` (raw standard-layout keys, Zhuyin, Chinese or English), best first, at most
+// `limit`, as a JSON array of `{"text","name"}`.  NULL `query` is empty.
+//
+// # Safety
+// `query` is NULL or a NUL-terminated string.
+char *zt_symbols_search_json(const char *query,
+                             size_t limit);
+
+// How `query` is shown in the picker: Zhuyin when the keys decode, otherwise as typed.
+//
+// # Safety
+// `query` is NULL or a NUL-terminated string.
+char *zt_symbols_display_query(const char *query);
+
+// The recent list's stored text (`stored`, NULL for none) after `symbol` was inserted: one symbol per line, newest
+// first, at most [`zt_symbols_recent_capacity`].
+//
+// # Safety
+// `stored` and `symbol` are NULL or NUL-terminated strings.
+char *zt_symbols_recent_push(const char *stored,
+                             const char *symbol);
+
+// The most symbols the recent list keeps.
+size_t zt_symbols_recent_capacity(void);
 
 #ifdef __cplusplus
 }  // extern "C"

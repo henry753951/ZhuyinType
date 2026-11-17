@@ -10,6 +10,8 @@ mod app;
 mod assets;
 mod candidate;
 mod card_window;
+mod health;
+mod motion;
 mod pages;
 mod platform;
 mod shell;
@@ -51,6 +53,8 @@ struct Args {
     popup: Option<String>,
     /// `--wizard SPEC` (or `ZT_WIZARD=SPEC`): only the setup wizard, still (screenshots; `wizard::open_preview`).
     wizard: Option<String>,
+    /// `--after-crash`: started by a copy whose UI thread panicked; wait for it to end, then take over.
+    after_crash: bool,
 }
 
 fn parse_args() -> Args {
@@ -69,6 +73,7 @@ fn parse_args() -> Args {
         panel: None,
         popup: None,
         wizard: std::env::var("ZT_WIZARD").ok().filter(|spec| !spec.is_empty()),
+        after_crash: false,
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -99,6 +104,7 @@ fn parse_args() -> Args {
             "--panel" => args.panel = iter.next(),
             "--popup" => args.popup = iter.next(),
             "--wizard" => args.wizard = iter.next(),
+            "--after-crash" => args.after_crash = true,
             _ => {}
         }
     }
@@ -110,13 +116,21 @@ fn main() {
     if let Some(code) = updater_mode() {
         std::process::exit(code);
     }
+    let mut arguments = std::env::args().skip(1);
+    if arguments.next().as_deref() == Some("--health") {
+        let fix = (arguments.next().as_deref() == Some("--fix")).then(|| arguments.next()).flatten();
+        std::process::exit(health::command_line(fix.as_deref()));
+    }
     let args = parse_args();
     let config = ServiceConfig {
         data_dir: args.data_dir.clone(),
         endpoint: args.endpoint.clone(),
         settings_file: args.settings_file.clone(),
         broker: !args.no_broker && args.popover.is_none() && args.wizard.is_none(),
+        // Sign-in and the Fcitx5 addon start `--background`; a second one ends quietly (packaging/linux/README.md).
+        quiet_if_running: args.background,
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        wait_for_endpoint: args.after_crash.then_some(std::time::Duration::from_secs(10)),
         ..ServiceConfig::default()
     };
     let (service, events, service_error) = match Service::start(config) {
@@ -128,15 +142,29 @@ fn main() {
             (None, None, Some(format!("{error:#}")))
         }
     };
-    #[cfg(target_os = "linux")]
+    if let Some(service) = service.as_ref().filter(|_| !args.no_broker) {
+        save_statistics_when_quiet(service.stats().clone());
+    }
+    // A standard user who installed with an administrator's password got ZhuyinType in that administrator's input
+    // method list, not their own; Active Setup adds it at their next sign-in, this at once.
+    #[cfg(windows)]
     if service.is_some() && !args.no_broker {
-        std::thread::spawn(linux_enable_fcitx);
+        std::thread::spawn(|| {
+            if let Err(error) = zt_core::update::windows::enable_input_method_for_user() {
+                log::warn!("input method list: {error:#}");
+            }
+        });
     }
     // GPUI connects to the input method (XIM, the Wayland text-input) once, when it starts; at login autostart may
-    // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.
+    // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.  Adding ZhuyinType
+    // to Fcitx's input methods waits as well: a profile edited while Fcitx starts is lost when it saves its own.
     #[cfg(target_os = "linux")]
     if args.background {
         wait_for_fcitx(std::time::Duration::from_secs(15));
+    }
+    #[cfg(target_os = "linux")]
+    if service.is_some() && !args.no_broker {
+        std::thread::spawn(linux_enable_fcitx);
     }
     let settings = service.as_ref().map_or_else(
         || Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file)),
@@ -144,6 +172,7 @@ fn main() {
     );
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        motion::init(cx);
         theme::load_fonts(cx);
         // The copy that serves the input method runs until the session ends: closing the settings window or the
         // wizard must not end it.  GPUI otherwise quits when the last window closes, and on Windows the app has no
@@ -151,10 +180,16 @@ fn main() {
         let serves = service.is_some() && !args.no_broker && args.popover.is_none() && args.wizard.is_none();
         if serves {
             cx.set_quit_mode(gpui_kit::QuitMode::Explicit);
+            relaunch_after_panic();
         }
         cx.set_global(app::AppState { settings, service, service_error });
+        follow_system_appearance(cx);
         if let Some(events) = events {
             candidate::popup::run(events, cx);
+        }
+        #[cfg(target_os = "linux")]
+        if serves {
+            candidate::popup::prewarm(cx);
         }
         if let Some(id) = &args.popover {
             card_window::open(id, args.dark, args.size, cx).expect("the card window opens");
@@ -181,10 +216,19 @@ fn main() {
         if args.background {
             return;
         }
-        shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
+        // A window that cannot open (no usable GPU, say) must not take the input method down with it.
+        if let Err(error) = shell::open(args.page, args.dark, args.size, cx) {
+            log::error!("opening the settings window: {error:#}");
+            if serves {
+                return;
+            }
+            panic!("the settings window opens: {error:#}");
+        }
         // Screenshots and second copies for development (a settings file, no broker, a forced theme) never do.
         if args.settings_file.is_none() && !args.no_broker && args.dark.is_none() {
             wizard::show_on_first_use(cx);
+            #[cfg(target_os = "linux")]
+            platform::linux::check(cx);
         }
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
@@ -198,6 +242,70 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+/// 使用統計 are written at most every ten minutes of typing, and nothing writes them when the session ends (the
+/// process is ended at sign-out, or by the installer, without a chance to): also write them once typing has stopped
+/// for a minute.
+fn save_statistics_when_quiet(stats: zt_core::stats::UsageStats) {
+    const QUIET: std::time::Duration = std::time::Duration::from_secs(60);
+    let spawned = std::thread::Builder::new().name("zt-stats".into()).spawn(move || {
+        loop {
+            std::thread::sleep(QUIET);
+            if let Err(error) = stats.save_if_quiet(QUIET) {
+                log::warn!("{error:#}");
+            }
+        }
+    });
+    if let Err(error) = spawned {
+        log::warn!("{error}");
+    }
+}
+
+/// A panic on the UI thread ends the process (on Windows it cannot unwind out of the window procedure), and with it
+/// the input method until the next sign-in.  Start a new copy in the background; it waits for this one to end
+/// (`--after-crash`).  Not within the first minute, so a copy that panics at start does not loop.
+fn relaunch_after_panic() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RELAUNCHED: AtomicBool = AtomicBool::new(false);
+    let started = std::time::Instant::now();
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        if std::thread::current().name() != Some("main")
+            || started.elapsed() < std::time::Duration::from_secs(60)
+            || RELAUNCHED.swap(true, Ordering::SeqCst)
+        {
+            return;
+        }
+        let Ok(exe) = std::env::current_exe() else { return };
+        let args = std::env::args().skip(1).filter(|arg| arg != "--background" && arg != "--after-crash");
+        match std::process::Command::new(exe).args(args).args(["--background", "--after-crash"]).spawn() {
+            Ok(_) => log::error!("the UI thread panicked; started a new copy"),
+            Err(error) => log::error!("the UI thread panicked; could not start a new copy: {error}"),
+        }
+    }));
+}
+
+/// Draws every window again when a system setting behind 「主題」 or 「透明效果」 changes (Windows' 透明效果 and
+/// light or dark, or the desktop's own setting on Linux without the portal); GPUI itself follows the system's light or
+/// dark where it can.
+fn follow_system_appearance(cx: &mut gpui_kit::App) {
+    let (changed, changes) = async_channel::bounded::<()>(1);
+    let look_changed = changed.clone();
+    zt_core::appearance::watch(move || {
+        let _ = changed.try_send(());
+    });
+    // The accent colour, high contrast and the screen reader (`zt_core::system_look`).
+    zt_core::system_look::watch(move || {
+        let _ = look_changed.try_send(());
+    });
+    cx.spawn(async move |cx| {
+        while changes.recv().await.is_ok() {
+            cx.update(|cx| cx.refresh_windows());
+        }
+    })
+    .detach();
 }
 
 /// The system's updater (`zt_core::update`), run as the administrator or root, never with a window:
@@ -244,25 +352,44 @@ fn system_update() -> i32 {
     }
 }
 
-/// Adds ZhuyinType to the user's Fcitx 5 input methods when it is not there yet, with the helper the package installs
-/// (`packaging/linux/fcitx5-setup`).  Runs as the signed-in user, off the UI thread; keeps every existing entry.
+/// Adds ZhuyinType to the user's Fcitx 5 input methods once, with the helper the package installs
+/// (`packaging/linux/fcitx5-setup`).  Runs as the signed-in user, off the UI thread; keeps every existing entry.  Once
+/// it is there a marker in the personal data folder says so: someone who later removes ZhuyinType from Fcitx's input
+/// methods keeps it removed.
 #[cfg(target_os = "linux")]
 fn linux_enable_fcitx() {
-    let exe = std::env::current_exe().ok();
-    let candidates = [
-        exe.as_ref().and_then(|exe| exe.parent()).map(|bin| bin.join("../lib/zhuyintype/fcitx5-setup")),
-        Some(std::path::PathBuf::from("/usr/lib/zhuyintype/fcitx5-setup")),
-    ];
-    let Some(helper) = candidates.into_iter().flatten().find(|path| path.is_file()) else { return };
-    let Ok(status) = std::process::Command::new(&helper).arg("status").output() else { return };
-    let status = String::from_utf8_lossy(&status.stdout);
-    if status.lines().any(|line| line == "profile=added") || status.lines().any(|line| line == "fcitx5=missing") {
+    let marker = zt_core::paths::data_dir().map(|dir| dir.join("fcitx5-added"));
+    if marker.as_ref().is_some_and(|marker| marker.exists()) {
         return;
     }
-    match std::process::Command::new(&helper).arg("enable").status() {
-        Ok(code) if code.success() => log::info!("added ZhuyinType to the Fcitx 5 input methods"),
-        Ok(code) => log::warn!("fcitx5-setup enable: {code}"),
-        Err(error) => log::warn!("fcitx5-setup: {error}"),
+    let Some(helper) = platform::linux::fcitx_helper() else { return };
+    let Ok(status) = std::process::Command::new(&helper).arg("status").output() else { return };
+    let status = String::from_utf8_lossy(&status.stdout);
+    if status.lines().any(|line| line == "fcitx5=missing") {
+        return;
+    }
+    let added = status.lines().any(|line| line == "profile=added")
+        || match std::process::Command::new(&helper).arg("enable").status() {
+            Ok(code) if code.success() => {
+                log::info!("added ZhuyinType to the Fcitx 5 input methods");
+                true
+            }
+            Ok(code) => {
+                log::warn!("fcitx5-setup enable: {code}");
+                false
+            }
+            Err(error) => {
+                log::warn!("fcitx5-setup: {error}");
+                false
+            }
+        };
+    if let (true, Some(marker)) = (added, marker) {
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(error) = std::fs::write(&marker, b"") {
+            log::warn!("{}: {error}", marker.display());
+        }
     }
 }
 
@@ -296,6 +423,10 @@ fn env_logger_init() {
         }
         fn log(&self, record: &log::Record<'_>) {
             eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+            // 回報問題 lists the recent warnings and errors (zt_core::health::recent; never typed text).
+            if record.level() <= log::Level::Warn {
+                zt_core::health::recent::record(&format!("{} {}: {}", record.level(), record.target(), record.args()));
+            }
         }
         fn flush(&self) {}
     }

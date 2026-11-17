@@ -24,7 +24,15 @@ fn resolve(shortcuts: &Shortcuts, key: i32, modifiers: u32) -> Option<&'static s
 #[test]
 fn defaults_and_normalization() {
     let (_, shortcuts) = fresh();
-    assert_eq!(Shortcuts::commands().len(), 13, "the macOS commands, with 標點全半形 and 插入空白");
+    assert_eq!(
+        Shortcuts::commands().len(),
+        19,
+        "the macOS commands, with 標點全半形, 插入空白, 快速設定 and 符號與 Emoji"
+    );
+    assert_eq!(resolve(&shortcuts, i32::from(b'/'), modifier::CONTROL | modifier::SHIFT), Some("symbolPicker"));
+    // The key as Windows and Fcitx report it: the shifted symbol.
+    assert_eq!(resolve(&shortcuts, i32::from(b'?'), modifier::CONTROL | modifier::SHIFT), Some("symbolPicker"));
+    assert_eq!(shortcuts.active_label("symbolPicker"), "Ctrl+⇧/");
     assert!(shortcuts.error().is_none());
     assert!(!shortcuts.any_customised());
     assert_eq!(resolve(&shortcuts, code::TAB, 0), Some("nextPage"));
@@ -112,6 +120,7 @@ fn reserved_keys_and_invalid_inputs() {
     for &(key, modifiers) in invalid {
         assert!(shortcuts.record("typeZhuyin", key, modifiers, Some(0)).is_err(), "{key:#x} {modifiers:#x}");
         assert!(shortcuts.error().is_some());
+        assert!(shortcuts.storage_error().is_none(), "a refused key is not a storage problem");
         assert_eq!(shortcuts.all(), original);
     }
     let reason = |key, modifiers| shortcuts.record("typeZhuyin", key, modifiers, Some(0)).unwrap_err().to_string();
@@ -226,4 +235,5 @@ fn failed_write_does_not_publish() {
     assert_eq!(shortcuts.all(), before);
     assert_eq!(settings.revision(), revision);
     assert!(shortcuts.error().is_some());
+    assert!(shortcuts.storage_error().is_some());
 }

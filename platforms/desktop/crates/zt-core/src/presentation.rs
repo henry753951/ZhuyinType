@@ -2,7 +2,7 @@
 //! list.  The candidate window, the 視窗與提示 preview, the 介紹 typing demo and the wizard all draw a
 //! [`Presentation`]; observers (usage statistics, the correction log) compare the one before a key with the one after.
 //!
-//! Offsets (`cursor`, `clauses`) are UTF-16 code units, as the engine and the broker protocol report them.
+//! Offsets (`cursor`, `clauses`, `corrected`) are UTF-16 code units, as the engine and the broker protocol report them.
 
 use std::ops::Range;
 
@@ -62,6 +62,27 @@ pub struct Presentation {
     pub notice: Option<String>,
     /// The engine's reading channel (「接受常見的其他讀法」) is loaded and on.
     pub reading_channel_active: bool,
+    /// The word actions each row of the page offers (`zt_panel::model::Row::actions`), in row order.
+    pub row_actions: Vec<u8>,
+    /// The notice reports a word action that 「復原」 or Ctrl+Z can still undo.
+    pub undo: bool,
+    /// The word actions' tip under the list, the first few times a list opens.
+    pub tip: Option<String>,
+    /// The list is next-word suggestions after a commit (聯想詞): no composition; ↓ enters it.  While it is not
+    /// entered (passive) nothing is highlighted: `selection` and `selected` are `None`.
+    pub associated: bool,
+    /// UTF-16 ranges of `composition` shown through an automatic typing correction or fuzzy sound (「標示自動修正」
+    /// marks them); empty when that setting is off.
+    pub corrected: Vec<Range<usize>>,
+    /// The Zhuyin as typed for the corrections in the window's span, while the window is open on one (the footer
+    /// 「你打的是 ㄊㄜˇ」); `None` when 「標示自動修正」 is off.
+    pub typed_reading: Option<String>,
+    /// ⌫ in the window puts the correction back (「⌫ 還原自動修正」 on): the footer says so.
+    pub undo_hint: bool,
+    /// The next ⌫ puts back the keys as typed instead of deleting.
+    pub backspace_reverts: bool,
+    /// The last key put a correction back to the keys as typed (counted in the usage statistics).
+    pub reverted: bool,
 }
 
 impl Presentation {
@@ -84,6 +105,10 @@ impl Presentation {
             page_size: page_size.max(1),
             notice: p.notice.clone(),
             reading_channel_active,
+            corrected: p.corrections.clone(),
+            typed_reading: p.typed_reading.clone(),
+            backspace_reverts: p.backspace_reverts,
+            reverted: p.reverted,
             ..Self::default()
         };
         if let Some(list) = &p.candidates {
@@ -92,12 +117,36 @@ impl Presentation {
         result
     }
 
+    /// As the settings show corrections: `show` 「標示自動修正」 (off: no marks, no typed-reading footer), `undo`
+    /// 「⌫ 還原自動修正」 (the footer names ⌫).
+    #[must_use]
+    pub fn with_correction_marks(mut self, show: bool, undo: bool) -> Self {
+        if !show {
+            self.corrected.clear();
+            self.typed_reading = None;
+        }
+        self.undo_hint = undo && self.typed_reading.is_some();
+        self
+    }
+
+    /// The candidate window's footer for a corrected span: 「你打的是 ㄊㄜˇ」, with 「 · ⌫ 還原」 when ⌫ puts it back.
+    #[must_use]
+    pub fn typed_footer(&self) -> Option<String> {
+        let reading = self.typed_reading.as_deref().filter(|reading| !reading.is_empty())?;
+        Some(if self.undo_hint {
+            format!("你打的是 {reading} · ⌫ 還原")
+        } else {
+            format!("你打的是 {reading}")
+        })
+    }
+
     fn fill_list(&mut self, list: &CandidateList, selection_keys: &[char]) {
         self.page_size = list.page_size();
         self.count = list.items().len();
         self.single = list.single_character();
         self.tolerant = list.tolerant();
         self.corrections = list.tolerant() == Some(true);
+        self.associated = list.associated();
         if self.count == 0 {
             return;
         }
@@ -106,6 +155,10 @@ impl Presentation {
         self.page_count = list.page_count();
         let range = list.page_range();
         self.selected = Some(list.selection() - range.start);
+        if list.passive() {
+            self.selection = None;
+            self.selected = None;
+        }
         self.rows = list.items()[range.clone()]
             .iter()
             .zip(range)
@@ -117,6 +170,20 @@ impl Presentation {
                 key: selection_keys.get(row).copied(),
             })
             .collect();
+    }
+
+    /// The presentation with its texts in 簡體 (繁／簡): the composition and every candidate.  The conversion keeps
+    /// the length in UTF-16 units, so the cursor and clauses stay valid; readings, annotations and notices are not
+    /// characters to send and stay as they are.
+    #[must_use]
+    pub fn simplified(&self) -> Self {
+        use zhuyin_core::simplified::to_simplified;
+        let mut p = self.clone();
+        p.composition = to_simplified(&p.composition);
+        for row in &mut p.rows {
+            row.text = to_simplified(&row.text);
+        }
+        p
     }
 
     /// Nothing composed.
@@ -147,10 +214,12 @@ impl Presentation {
             rows: self
                 .rows
                 .iter()
-                .map(|row| zt_panel::model::Row {
+                .enumerate()
+                .map(|(n, row)| zt_panel::model::Row {
                     key: row.key,
                     text: row.text.clone(),
                     annotation: row.annotation.clone(),
+                    actions: self.row_actions.get(n).copied().unwrap_or(0),
                 })
                 .collect(),
             count: self.count,
@@ -164,6 +233,16 @@ impl Presentation {
             tolerant: self.tolerant,
             focused_clause: self.focused_clause,
             preview: preview.filter(|text| !text.is_empty()).map(str::to_owned),
+            undo: self.undo,
+            tip: self.tip.clone(),
+            menu: None,
+            associated: self.associated,
+            typed: self.typed_footer(),
+            preview_corrected: if preview.is_some_and(|text| text == self.composition) {
+                self.corrected.clone()
+            } else {
+                Vec::new()
+            },
         }
     }
 

@@ -8,7 +8,7 @@ import ZhuyinEngine
 
 /// Pages one level down from a sidebar page.
 enum SettingsSubpage: String, CaseIterable, Identifiable {
-    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources
+    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources, health
     var id: String { rawValue }
 
     var pane: SettingsPane {
@@ -18,7 +18,7 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .learnedWords, .phrases: return .words
         case .performance: return .analytics
         case .apps: return .advanced
-        case .sources: return .about
+        case .sources, .health: return .about
         }
     }
 
@@ -33,6 +33,7 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .performance: return "效能"
         case .apps: return "在候選字視窗顯示組字的 App"
         case .sources: return "授權與資料來源"
+        case .health: return "檢查輸入法"
         }
     }
 }
@@ -58,6 +59,9 @@ enum SettingsRow {
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
     static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin", otherReadings = "otherReadings"
     static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
+    static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
+    static let associatedPhrases = "associatedPhrases"
+    static let symbolPicker = "symbolPicker"
 }
 
 /// Where each feature with keys is set.
@@ -75,6 +79,7 @@ extension KeyFeature {
         case .optionSymbols: return SettingsPlace(.typing, subpage: .punctuation, row: SettingsRow.optionSymbols)
         case .capsLockEnglish: return SettingsPlace(.typing, row: SettingsRow.capsLock)
         case .deleteAfterCommit: return SettingsPlace(.choosing, row: SettingsRow.deleteAfterCommit)
+        case .symbolPicker: return SettingsPlace(.typing, row: SettingsRow.symbolPicker)
         }
     }
 }
@@ -88,7 +93,7 @@ extension ShortcutCommand {
         var place: SettingsPlace = {
             switch self {
             case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
-            case .togglePunctuationWidth, .insertSpace: return SettingsPlace(.typing)
+            case .togglePunctuationWidth, .insertSpace, .quickSettings: return SettingsPlace(.typing)
             default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
             }
         }()
@@ -195,6 +200,7 @@ struct SettingsPaneView: View {
         case .performance: PerformancePage()
         case .apps: AppsPage(model: model)
         case .sources: SourcesPane()
+        case .health: HealthPage()
         }
     }
 }
@@ -362,6 +368,10 @@ private struct TypingPane: View {
                 RegistryRow("keys.togglePunctuationWidth", preferences,
                             accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
                 RegistryRow("keys.insertSpace", preferences)
+                if SymbolSources.isAvailable {
+                    FeatureRow(preferences: preferences, title: "符號與 Emoji", subtitle: "開啟面板，用注音或英文搜尋符號與 Emoji",
+                               feature: .symbolPicker, commands: [.symbolPicker], anchor: SettingsRow.symbolPicker)
+                }
                 DrillRow(model: model, title: "標點與符號的按鍵與說明", subtitle: "中文預設全形；英數與空白維持半形",
                          value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
             }
@@ -382,6 +392,7 @@ private struct TypingPane: View {
                     SettingsWindowController.shared.open(SettingsPlace(.candidates, row: SettingsRow.modeToast))
                 }
                 RegistryRow("startInEnglish", preferences)
+                RegistryRow("keys.quickSettings", preferences)
             }
             SettingsSection("編輯組字") {
                 FeatureRow(preferences: preferences, title: "送出並換行", subtitle: "送出組字，App 再換行",
@@ -483,6 +494,7 @@ private struct ChoosingPane: View {
             SettingsSection("轉換") {
                 RegistryRow("candidateAnchor", preferences, accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor))))
                 RegistryRow("characterForms", preferences, segmented: true)
+                RegistryRow("outputScript", preferences, segmented: true)
             }
             SettingsSection("按錯鍵") {
                 RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
@@ -490,12 +502,17 @@ private struct ChoosingPane: View {
                 RegistryRow("readingChannel", preferences)
                 FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
                            feature: .correctionsList, commands: [.correctionsList], anchor: SettingsRow.corrections)
+                RegistryRow("showCorrections", preferences)
+                RegistryRow("undoCorrectionWithBackspace", preferences)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
                          value: fuzzy == 0 ? "關閉" : "已開啟 \(fuzzy) 項", subpage: .fuzzy, anchor: SettingsRow.fuzzy)
             }
             SettingsSection("前文") {
                 DrillRow(model: model, title: "參考游標前的文字", subtitle: "依前文選字；只在記憶體中",
                          value: preferences.usesPrecedingText ? "開啟" : "關閉", subpage: .context)
+            }
+            SettingsSection("聯想詞") {
+                RegistryRow("associatedPhrases", preferences)
             }
             SettingsSection("改字") {
                 FeatureRow(preferences: preferences, title: "打出注音本身", subtitle: "緊接著再按一次或按 Esc 恢復",
@@ -574,7 +591,7 @@ struct CandidatesPane: View {
                 CommandKeyRows(preferences: preferences, commands: [.previousCharacter, .nextCharacter])
                 SettingRow(title: "字級", value: "\(Int(preferences.candidateFontSize)) pt") {
                     Slider(value: Binding(get: { preferences.candidateFontSize },
-                                          set: { preferences.candidateFontSize = $0.rounded() }), in: 13...28) {
+                                          set: { preferences.candidateFontSize = $0.rounded() }), in: Preferences.candidateFontSizes) {
                         Text("字級")
                     } minimumValueLabel: {
                         Text("字").font(.system(size: 11))
@@ -610,6 +627,7 @@ struct CandidatesPane: View {
             }
             SettingsSection("外觀") {
                 RegistryRow("panelAppearance", preferences)
+                RegistryRow("accentColor", preferences)
             }
             SettingsSection("動畫") {
                 RegistryRow("panelAnimation", preferences)
@@ -742,8 +760,10 @@ private struct WordListPage: View {
                         } else {
                             FooterText("自訂詞在選字時優先列出。")
                         }
+                        FooterText(wordActionsFooter(keys, phrases: true))
                     } else {
                         FooterText("選過的字詞下次排在前面；設為「不記住」的字詞之後不再學。")
+                        FooterText(wordActionsFooter(keys, phrases: false))
                     }
                 }
                 .padding(.horizontal, RowMetrics.cardInset)
@@ -751,6 +771,19 @@ private struct WordListPage: View {
             }
         }
     }
+}
+
+/// How the candidate window's word actions reach these lists, with the keys as they are bound now.
+private func wordActionsFooter(_ keys: CurrentKeys, phrases: Bool) -> String {
+    if phrases {
+        let selected = keys.text(.addSelectedText).map { "；在 App 裡選取文字再按 \($0)，也會打開加入自訂詞的視窗" } ?? ""
+        let add = keys.text(.addCandidatePhrase).map { "（\($0)）" } ?? ""
+        return "在候選字上按右鍵選「加入自訂詞」\(add)，把反白的字詞加入\(selected)。"
+    }
+    let block = keys.text(.blockCandidate).map { "（\($0)）" } ?? ""
+    let forget = keys.text(.forgetCandidate).map { "（\($0)）" } ?? ""
+    return "在候選字上按右鍵：「不要再推薦」\(block)之後不再自動選用這個字詞，列在這裡並標示「不推薦」，移除後恢復；"
+        + "「忘記這個選字」\(forget)忘記選過它。5 秒內按 ⌃Z 或點候選字視窗的提示可以復原。"
 }
 
 // MARK: - 進階

@@ -4,8 +4,11 @@
 //! the conversion is the engine's lattice decoding, optionally reranked by a sentence model and adjusted by a
 //! character model, both supplied by the client as callbacks.
 
+mod association;
 mod candidates;
 mod scoring;
+mod word_actions;
+pub use word_actions::CandidateAction;
 #[cfg(test)]
 mod tests;
 
@@ -230,6 +233,17 @@ pub struct Composer {
     /// Text committed by the key being handled before what it composes (a full composition's head).
     sent: String,
     commit_listener: Option<CommitListener>,
+    /// The tokens of the correction the last key made appear: ⌫ next converts them as typed
+    /// (`undo_correction_with_backspace`).
+    correction_undo: Option<Range<usize>>,
+    /// The last key or call put a correction back to the keys as typed.
+    reverted: bool,
+    /// 聯想詞 on (`association`).
+    associated_phrases: bool,
+    /// The next-word suggestions shown after a commit, if any.  Never non-empty while composing.
+    predictions: Option<association::Suggestions>,
+    /// The last word action from the candidate window, until undone or replaced by the next.
+    word_undo: Option<crate::engine::WordUndo>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -318,9 +332,14 @@ impl Composer {
             freezes_on_pick: true,
             learning_suspended: false,
             character_scores: None,
+            word_undo: None,
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,
+            correction_undo: None,
+            reverted: false,
+            associated_phrases: false,
+            predictions: None,
         }
     }
 
@@ -523,11 +542,30 @@ impl Composer {
         self.cursor <= self.tokens.len()
             && self.fixed.iter().all(|word| word.range.start <= word.range.end && word.range.end <= self.tokens.len())
             && (self.candidate_window.is_closed() || (self.candidate_window.valid_for(self.tokens.len())))
+            && (self.predictions.is_none() || !self.has_composition())
     }
 
     /// Handles a key.
     pub fn handle(&mut self, key: KeyInput) -> KeyResult {
-        let mut result = self.process(key);
+        if let Some(result) = self.prediction_key(key) {
+            debug_assert!(self.invariants_hold());
+            return result;
+        }
+        self.reverted = false;
+        let undo = self.correction_undo.take();
+        let tracks = self.options.undo_correction_with_backspace;
+        let before = if tracks { self.corrected_words() } else { vec![] };
+        let mut result = match undo {
+            Some(range) if key == KeyInput::Backspace && self.revert_on_backspace(&range) => KeyResult::CONSUMED,
+            _ => self.process(key),
+        };
+        if tracks && !self.reverted && key != KeyInput::Backspace {
+            // The correction this key made appear, the last if several did.
+            self.correction_undo =
+                self.corrected_words().into_iter().filter(|w| !before.contains(w)).map(|(range, _)| range).next_back();
+        }
+        self.presentation.backspace_reverts = self.correction_undo.is_some();
+        self.presentation.reverted = self.reverted;
         // A full composition sent its head first: that text goes before anything else the key commits.
         let sent = std::mem::take(&mut self.sent);
         if !sent.is_empty() {
@@ -537,6 +575,7 @@ impl Composer {
         if !result.handled && (key != KeyInput::Backspace || !self.follow_deletion()) {
             self.forget_context();
         }
+        self.offer_predictions(&result);
         debug_assert!(self.invariants_hold());
         result
     }
@@ -935,6 +974,9 @@ impl Composer {
 
     /// Picks candidate `index` of the open list.
     pub fn select_candidate(&mut self, index: usize) -> KeyResult {
+        if let Some(result) = self.select_prediction(index) {
+            return result;
+        }
         let Some(choice) = self.candidate_window.get(index).cloned() else {
             debug_assert!(self.invariants_hold());
             return KeyResult::CONSUMED;
@@ -1151,6 +1193,7 @@ impl Composer {
 
     /// Clears the composition without committing or learning.
     pub fn reset(&mut self) {
+        self.correction_undo = None;
         self.settle_run();
         self.tokens.clear();
         self.cursor = 0;
@@ -1162,6 +1205,7 @@ impl Composer {
         self.notice = None;
         self.conversion_dirty = true;
         self.close_candidates();
+        self.predictions = None;
         self.presentation = Presentation::default();
     }
 
@@ -1296,12 +1340,24 @@ impl Composer {
             // The head is sent: split the run again after it.
             return self.apply_run(false);
         }
-        if self.run_tokens > 0 {
-            let count = self.tokens.len();
-            self.delete(count - self.run_tokens..count);
-        }
-        for syllable in &decoded.syllables {
-            self.insert(CompositionToken::syllable(&syllable.reading, &syllable.keys, syllable.implicit));
+        // Most keys only add to the unfinished syllable: the split's syllables are the run's tokens as they are.
+        // Replacing them with equal ones would change nothing but mark the conversion stale, and the next refresh
+        // would decode the same lattice again; a pick on them would be dropped, so that case still replaces them.
+        let count = self.tokens.len();
+        let run = count - self.run_tokens..count;
+        let unchanged = self.tokens[run.clone()].len() == decoded.syllables.len()
+            && self.tokens[run.clone()].iter().zip(&decoded.syllables).all(|(token, syllable)| {
+                matches!(token, CompositionToken::Syllable { reading, keys, implicit }
+                    if **reading == *syllable.reading && **keys == *syllable.keys && *implicit == syllable.implicit)
+            })
+            && !self.fixed.iter().any(|word| overlaps(&word.range, &run));
+        if !unchanged {
+            if self.run_tokens > 0 {
+                self.delete(run);
+            }
+            for syllable in &decoded.syllables {
+                self.insert(CompositionToken::syllable(&syllable.reading, &syllable.keys, syllable.implicit));
+            }
         }
         self.run_tokens = decoded.syllables.len();
         self.buffer = decoded.buffer;
@@ -1507,6 +1563,8 @@ impl Composer {
             KeyInput::ShiftDown => self.candidate_toggle_single(),
             KeyInput::ShiftUp if self.candidate_toggle_corrections() => return Some(KeyResult::CONSUMED),
             KeyInput::Char('`') | KeyInput::ShiftUp => {}
+            KeyInput::Backspace if self.options.undo_correction_with_backspace && self.revert_selected_correction() => {
+            }
             KeyInput::Escape | KeyInput::Backspace => self.close_candidates(),
             KeyInput::Left if vertical => self.move_list_target(false),
             KeyInput::Right if vertical => self.move_list_target(true),
@@ -1642,6 +1700,86 @@ impl Composer {
             components: parts,
             frozen: false,
         }
+    }
+
+    /// The words shown through an automatic correction, as (tokens, text).  Picks are never among them.
+    fn corrected_words(&self) -> Vec<(Range<usize>, Arc<str>)> {
+        self.conversion.iter().filter(|w| w.corrected).map(|w| (w.range.clone(), w.text.clone())).collect()
+    }
+
+    /// ⌫ right after a correction appeared: its keys as typed, when it is still shown and nothing is being typed.
+    fn revert_on_backspace(&mut self, range: &Range<usize>) -> bool {
+        self.options.undo_correction_with_backspace
+            && self.candidate_window.is_closed()
+            && !self.has_buffer()
+            && self.selection_anchor.is_none()
+            && self.revert_corrections(range)
+            && {
+                self.refresh();
+                true
+            }
+    }
+
+    /// The open window's span holds a correction: it is converted as typed and the window closes.
+    fn revert_selected_correction(&mut self) -> bool {
+        let Some(range) = self.candidate_window.selected().map(|c| c.range.clone()) else { return false };
+        if !self.revert_corrections(&range) {
+            return false;
+        }
+        self.close_candidates();
+        true
+    }
+
+    /// Converts the automatic corrections overlapping `range` as typed: the lattice is decoded again with no
+    /// correction or fuzzy sound over their tokens, and the words it puts there stay as shown (frozen, not picks:
+    /// nothing is learnt).  False when no correction overlaps `range`.
+    fn revert_corrections(&mut self, range: &Range<usize>) -> bool {
+        let spans: Vec<Range<usize>> =
+            self.corrected_words().into_iter().map(|(r, _)| r).filter(|r| overlaps(r, range)).collect();
+        let (Some(first), Some(last)) = (spans.first(), spans.last()) else { return false };
+        let span = first.start..last.end;
+        self.settle_run();
+        self.fixed.retain(|f| !(f.frozen && overlaps(&f.range, &span)));
+        let mut request = self.request(&self.tokens);
+        request.characters = self.character_scores.as_ref();
+        request.literal = Some(span.clone());
+        let words = self.engine.convert(&request, &mut None);
+        for word in words.iter().filter(|w| overlaps(&w.range, &span) && !w.reading.is_empty()) {
+            if self.fixed.iter().any(|f| overlaps(&f.range, &word.range)) {
+                continue;
+            }
+            let mut pinned = self.choice(&word.range, &word.text, &word.reading, Some(&words));
+            pinned.frozen = true;
+            self.fixed.push(pinned);
+        }
+        self.correction_undo = None;
+        self.conversion_dirty = true;
+        self.reverted = true;
+        true
+    }
+
+    /// Converts the automatic correction at the cursor as typed: the open candidate window's span, else the
+    /// correction the last key made appear, else the character ↓ would change.  False when there is none.
+    pub fn revert_correction(&mut self) -> bool {
+        self.reverted = false;
+        let reverted = if self.candidate_window.is_open() {
+            self.revert_selected_correction()
+        } else if let Some(range) = self.correction_undo.clone()
+            && self.revert_corrections(&range)
+        {
+            true
+        } else if !self.has_buffer() && !self.tokens.is_empty() {
+            let forward = self.cursor == 0
+                || (self.options.candidate_anchor == CandidateAnchor::AfterCursor && self.cursor < self.tokens.len());
+            let target = if forward { self.cursor } else { self.cursor - 1 };
+            self.revert_corrections(&(target..target + 1))
+        } else {
+            false
+        };
+        if reverted {
+            self.refresh();
+        }
+        reverted
     }
 
     /// Switches the open candidate window between words for the keys as typed and typing corrections.
@@ -1842,6 +1980,8 @@ impl Composer {
             self.notice = Some(format!("Enter 加入自訂詞：{}", self.shown(&range)));
         }
         self.presentation = self.present();
+        // Anything that redraws the composition (a setting, a model) ends the 聯想詞 list it replaced.
+        self.predictions = None;
     }
 
     /// Words the user picked in this place before stay: the reranker chooses among the sentences that keep them.
@@ -1853,7 +1993,13 @@ impl Composer {
             })
             .map(|i| self.conversion[i].clone())
             .collect();
-        let sentences = self.reranking_sentences(&remembered, self.n_best(self.reranking_count.max(1)));
+        // The N best of the lattice `refresh` just decoded: its words and language-model scores are reused.
+        let mut cache = self.conversion_cache.take();
+        let mut request = self.request(&self.tokens);
+        request.characters = self.character_scores.as_ref();
+        let best = self.engine.sentences_reusing(&request, self.reranking_count.max(1), &mut cache);
+        self.conversion_cache = cache;
+        let sentences = self.reranking_sentences(&remembered, best);
         if sentences.is_empty() {
             return;
         }
@@ -1886,9 +2032,9 @@ impl Composer {
                     reading: word.reading.as_str().into(),
                     word_id,
                     history: Some(history),
-                    corrected: false,
+                    corrected: word.corrected,
                     channel: None,
-                    reading_corrected: false,
+                    reading_corrected: word.reading_corrected,
                 }
             })
             .collect();
@@ -2049,7 +2195,28 @@ impl Composer {
                     .then(|| keyboard::plain(&parts.into_iter().flatten().collect::<Vec<_>>().join(" ")))
             })
             .flatten();
+        let corrections: Vec<Range<usize>> = self
+            .conversion
+            .iter()
+            .filter(|w| w.corrected)
+            .map(|w| offsets[w.range.start]..offsets[w.range.end])
+            .filter(|r| !r.is_empty())
+            .collect();
+        let typed_reading =
+            self.candidate_window.selected().filter(|_| self.candidate_window.is_open()).and_then(|c| {
+                let typed: Vec<&str> = self
+                    .conversion
+                    .iter()
+                    .filter(|w| w.corrected && overlaps(&w.range, &c.range))
+                    .map(|w| &*w.reading)
+                    .collect();
+                (!typed.is_empty()).then(|| keyboard::plain(&typed.join(" ")))
+            });
         Presentation {
+            corrections,
+            typed_reading,
+            backspace_reverts: self.correction_undo.is_some(),
+            reverted: self.reverted,
             text,
             cursor: caret,
             focused_clause: focus.and_then(|f| clauses.iter().position(|c| *c == f)),

@@ -235,6 +235,7 @@ final class PracticeSession {
         core.shortcuts = Dictionary(p.activeBindings.flatMap { command, list in list.map { ($0, command) } },
                                     uniquingKeysWith: { first, _ in first })
         core.disabledFeatures = p.disabledKeyFeatures
+        core.showCorrections = p.showCorrections
         core.stats = p.recordsUsageStats ? core.stats ?? UsageStatsObserver(store: data.stats) : nil
         data.engine?.fuzzySounds = p.fuzzySounds
         core.update(options: p.composerOptions, shiftToggle: p.shiftToggle, popupCompositionApps: p.popupCompositionApps)

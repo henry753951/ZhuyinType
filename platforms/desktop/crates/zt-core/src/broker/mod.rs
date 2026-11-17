@@ -118,8 +118,8 @@ impl Broker {
 impl Drop for Broker {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
-        // Wake the accepting thread so it sees the flag.
-        let _ = platform::connect(&self.endpoint);
+        // Wake the accepting threads so they see the flag.
+        platform::wake(&self.endpoint);
     }
 }
 

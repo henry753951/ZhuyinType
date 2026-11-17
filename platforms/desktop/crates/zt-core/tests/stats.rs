@@ -141,6 +141,31 @@ fn periods_and_retention() {
 }
 
 #[test]
+fn counts_reach_the_disk_once_typing_stops() {
+    // Nothing writes the statistics when the session ends (the process is killed at sign-out, by the installer):
+    // they are written once typing has stopped for a while, not only every ten minutes of typing.
+    let dir = TempDir::new();
+    let path = dir.join("stats.json");
+    let (stats, clocks) = store(Some(path.clone()), local(2026, 10, 25, 9, 30));
+    stats.set_enabled(true);
+    stats.record(&commit(3));
+    let writes = stats.writes();
+    *clocks.uptime.lock() += 20_000;
+    stats.save_if_quiet(std::time::Duration::from_secs(60)).unwrap();
+    assert_eq!(stats.writes(), writes, "still typing");
+    stats.record(&commit(2));
+    *clocks.uptime.lock() += 60_000;
+    stats.save_if_quiet(std::time::Duration::from_secs(60)).unwrap();
+    assert_eq!(stats.writes(), writes + 1);
+    let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved["totals"]["characters"], 5);
+    // Nothing new: no write.
+    *clocks.uptime.lock() += 60_000;
+    stats.save_if_quiet(std::time::Duration::from_secs(60)).unwrap();
+    assert_eq!(stats.writes(), writes + 1);
+}
+
+#[test]
 fn caller_measured_rhythm() {
     let (stats, clocks) = store(None, Local::now());
     stats.set_enabled(true);

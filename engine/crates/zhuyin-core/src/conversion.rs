@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::api::{ScoredSentence, SentenceWord, TypoTolerance};
 use crate::engine::{DECODING_BEAM_WIDTH, Engine, EngineModel};
+use crate::fast_hash::FastMap;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
 use crate::lexicon::WordEntry;
 use crate::reading_channel::ChannelUse;
@@ -162,15 +163,18 @@ struct DecodingEdge {
     entry: Option<WordEntry>,
     values: Option<(f64, f64)>,
     components: Vec<Component>,
-    /// The character model's weighted score for this word here (0 without one).
+    /// The character model's weighted score for this word here (0 without one): refreshed whenever the edge is
+    /// reused for a decode with other character scores.
     characters: f64,
-    transitions: HashMap<LanguageModelHistory, (f64, LanguageModelHistory)>,
+    /// Per history: the language-model part of the transition (everything but `characters`) and the history after
+    /// the word.  It does not depend on the character scores, so it carries over to later decodes.
+    transitions: FastMap<LanguageModelHistory, (f64, LanguageModelHistory)>,
 }
 
 impl DecodingEdge {
     fn transition(&mut self, history: LanguageModelHistory, model: &EngineModel) -> (f64, LanguageModelHistory) {
-        if let Some(&cached) = self.transitions.get(&history) {
-            return cached;
+        if let Some(&(value, next)) = self.transitions.get(&history) {
+            return (value + self.characters, next);
         }
         let mut value = match (self.values, &self.entry) {
             (Some((unigram, adjustment)), entry) => {
@@ -193,15 +197,14 @@ impl DecodingEdge {
                 next = next.appending(part.entry.word_id, model.order());
             }
         }
-        value += self.characters;
         self.transitions.insert(history, (value, next));
-        (value, next)
+        (value + self.characters, next)
     }
 }
 
 struct DecodingPosition {
     edges: Vec<DecodingEdge>,
-    best: HashMap<LanguageModelHistory, Vec<usize>>,
+    best: FastMap<LanguageModelHistory, Vec<usize>>,
 }
 
 #[derive(Clone, Copy)]
@@ -270,9 +273,29 @@ pub struct ConversionCache {
     revision: u64,
     group: Option<Range<usize>>,
     start: LanguageModelHistory,
+    /// Decoded with character scores: the nodes' scores include them, so no node carries over (the edges do).
+    characters: bool,
     nodes: Vec<PathNode>,
     states: Vec<Vec<u32>>,
     edges: Vec<Option<DecodingPosition>>,
+}
+
+impl ConversionCache {
+    /// Decoded from this very request (the character scores aside, which reused edges take afresh).
+    fn decoded(&self, request: &Request<'_>) -> bool {
+        self.tokens == request.tokens
+            && self.fixed == request.fixed
+            && self.typo == request.typo
+            && self.group == request.group
+            && self.start == request.start
+            && self.characters == request.characters.is_some()
+            && request.literal.is_none()
+    }
+}
+
+/// The character model's weighted score for `word` at its place (0 without scores, and for literals).
+fn character_score(characters: Option<&CharacterScores>, word: &ConvertedWord) -> f64 {
+    if word.reading.is_empty() { 0.0 } else { characters.map_or(0.0, |c| c.score(&word.text, word.range.start)) }
 }
 
 /// The inputs of one decode.
@@ -289,13 +312,24 @@ pub struct Request<'a> {
     pub start: LanguageModelHistory,
     /// Character-model scores.
     pub characters: Option<&'a CharacterScores>,
+    /// No word over these tokens may be a typing correction or fuzzy sound: the keys there are converted as typed
+    /// (undoing an automatic correction).  Decode such a request without a cache.
+    pub literal: Option<Range<usize>>,
 }
 
 impl<'a> Request<'a> {
     /// A request with no group, the sentence start and no character scores.
     #[must_use]
     pub fn new(tokens: &'a [CompositionToken], fixed: &'a [FixedWord], typo: TypoTolerance) -> Self {
-        Self { tokens, fixed, typo, group: None, start: LanguageModelHistory::default(), characters: None }
+        Self {
+            tokens,
+            fixed,
+            typo,
+            group: None,
+            start: LanguageModelHistory::default(),
+            characters: None,
+            literal: None,
+        }
     }
 }
 
@@ -313,12 +347,48 @@ impl Engine {
 
     /// The `k` best distinct sentences.
     pub fn sentences(&self, request: &Request<'_>, k: usize) -> Vec<ScoredSentence> {
+        self.sentences_in(request, k, &mut None)
+    }
+
+    /// [`sentences`](Self::sentences) for the request the composer's `cache` was just decoded from: the N-best decode
+    /// uses that lattice's words and the language-model scores already computed for them (and adds its own), instead
+    /// of building them again.  The cache keeps its decoded nodes for the next [`convert`](Self::convert).
+    pub(crate) fn sentences_reusing(
+        &self,
+        request: &Request<'_>,
+        k: usize,
+        cache: &mut Option<ConversionCache>,
+    ) -> Vec<ScoredSentence> {
+        let revision = self.conversion_revision();
+        if k == 0 || !cache.as_ref().is_some_and(|c| c.decoded(request) && c.revision == revision) {
+            return self.sentences(request, k);
+        }
+        let (nodes, states) =
+            cache.as_mut().map(|c| (std::mem::take(&mut c.nodes), std::mem::take(&mut c.states))).unwrap_or_default();
+        let sentences = self.sentences_in(request, k, cache);
+        // The nodes belong to the lattice as it was at `revision`; if the engine changed meanwhile (another session
+        // learned), the next conversion starts over.
+        match cache.as_mut() {
+            Some(cache) if cache.revision == revision => {
+                cache.nodes = nodes;
+                cache.states = states;
+            }
+            _ => *cache = None,
+        }
+        sentences
+    }
+
+    fn sentences_in(
+        &self,
+        request: &Request<'_>,
+        k: usize,
+        cache: &mut Option<ConversionCache>,
+    ) -> Vec<ScoredSentence> {
         if k == 0 {
             return vec![];
         }
-        let mut cache = None;
-        let ends = self.decode(request, &mut cache, k);
-        let Some(cache) = cache else { return vec![] };
+        let ends = self.decode(request, cache, k);
+        let Some(cache) = cache.as_ref() else { return vec![] };
         let mut seen = std::collections::HashSet::new();
         ends.iter()
             .filter_map(|&end| {
@@ -354,10 +424,9 @@ impl Engine {
         if tokens.is_empty() {
             return vec![];
         }
-        // Character scores depend on every syllable (the model reads both directions): nothing carries over.
-        if request.characters.is_some() {
-            *cache = None;
-        }
+        // Character scores depend on every syllable (the model reads both directions): no decoded node carries over.
+        // The lattice's words and their language-model scores do, with each word's character score taken afresh.
+        let characters = request.characters.is_some();
         let distinct = k > 1;
         let width = DECODING_BEAM_WIDTH.max(k);
         let revision = self.conversion_revision();
@@ -366,7 +435,10 @@ impl Engine {
         let group = request.group.clone();
         let mut reused = 0;
         if !distinct
+            && !characters
+            && request.literal.is_none()
             && let Some(old) = cache.as_ref()
+            && !old.characters
             && old.fixed == fixed
             && old.typo == request.typo
             && old.revision == revision
@@ -383,7 +455,7 @@ impl Engine {
         let mut nodes: Vec<PathNode> = Vec::new();
         let mut states: Vec<Vec<u32>> = vec![Vec::new(); tokens.len() + 1];
         let mut edge_cache: Vec<Option<DecodingPosition>> = (0..tokens.len()).map(|_| None).collect();
-        let old = cache.take();
+        let old = cache.take().filter(|_| request.literal.is_none());
         if let Some(mut old) = old {
             if old.fixed == fixed && old.typo == request.typo && old.revision == revision {
                 if old.tokens == tokens {
@@ -396,10 +468,19 @@ impl Engine {
                         *slot = old.take();
                     }
                 }
+                if characters || old.characters {
+                    for position in edge_cache.iter_mut().flatten() {
+                        // Expansions rank with the character scores.
+                        position.best.clear();
+                        for edge in &mut position.edges {
+                            edge.characters = character_score(request.characters, &edge.word);
+                        }
+                    }
+                }
             }
             if reused > 0 {
                 // Copy the reused positions' nodes; every node's predecessor is in an earlier reused position.
-                let mut remap: HashMap<u32, u32> = HashMap::new();
+                let mut remap: FastMap<u32, u32> = FastMap::default();
                 for (state, old_state) in states.iter_mut().zip(&old.states).take(reused + 1) {
                     for &id in old_state {
                         let mut node = old.nodes[id as usize].clone();
@@ -442,18 +523,20 @@ impl Engine {
                 };
                 for edge_index in expansions {
                     let edge = &mut position.edges[edge_index];
-                    let word = edge.word.clone();
+                    let range = &edge.word.range;
                     if let Some(group) = &group
-                        && [group.start, group.end].iter().any(|&b| word.range.start < b && b < word.range.end)
+                        && [group.start, group.end].iter().any(|&b| range.start < b && b < range.end)
                     {
                         continue;
                     }
-                    let end = word.range.end;
+                    let end = range.end;
                     if end <= reused {
                         continue;
                     }
                     let is_literal = edge.entry.is_none();
                     let (value, state_key) = edge.transition(previous.history, model);
+                    // Borrowed until a node keeps it: most expansions are pruned.
+                    let word = &position.edges[edge_index].word;
                     let total = previous.score + value;
                     let rank = total + if end == tokens.len() { model.end(state_key) } else { 0.0 };
                     if states[end].len() == width
@@ -495,7 +578,7 @@ impl Engine {
                     let node = PathNode {
                         score: total,
                         has_last_word: !word.reading.is_empty(),
-                        word: Some(word),
+                        word: Some(word.clone()),
                         previous: Some(previous_id),
                         history: state_key,
                         beam_score: rank,
@@ -522,6 +605,7 @@ impl Engine {
             revision,
             group,
             start: request.start,
+            characters,
             nodes,
             states,
             edges: edge_cache,
@@ -581,6 +665,9 @@ impl Engine {
                 } else {
                     for m in self.matches(tokens, start, request.typo) {
                         let corrected = m.annotation.is_some();
+                        if corrected && request.literal.as_ref().is_some_and(|literal| overlaps(literal, &m.range)) {
+                            continue;
+                        }
                         edges.push((
                             ConvertedWord {
                                 range: m.range.clone(),
@@ -630,11 +717,7 @@ impl Engine {
                         Component { entry: part, unigram, adjustment }
                     })
                     .collect();
-                let characters = if word.reading.is_empty() {
-                    0.0
-                } else {
-                    request.characters.map_or(0.0, |c| c.score(&word.text, word.range.start))
-                };
+                let characters = character_score(request.characters, &word);
                 word.word_id =
                     components.last().and_then(|c| c.entry.word_id).or_else(|| entry.as_ref().and_then(|e| e.word_id));
                 DecodingEdge {
@@ -643,11 +726,11 @@ impl Engine {
                     values,
                     components,
                     characters,
-                    transitions: HashMap::new(),
+                    transitions: FastMap::default(),
                 }
             })
             .collect();
-        DecodingPosition { edges, best: HashMap::new() }
+        DecodingPosition { edges, best: FastMap::default() }
     }
 }
 

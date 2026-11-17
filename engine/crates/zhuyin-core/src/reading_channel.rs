@@ -626,7 +626,8 @@ pub(crate) struct RowRef<'a> {
     pub word: &'a str,
     pub logp: f64,
     pub reading_prior: f64,
-    pub word_id: Option<u32>,
+    /// The word's ID, looked up only for the rows the index keeps (a few of the lexicon's).
+    pub word_id: &'a dyn Fn() -> Option<u32>,
 }
 
 /// The lexicon as the index reads it: every row, each word's best reading and its readings.
@@ -720,20 +721,15 @@ impl ChannelIndex {
             cost: f64,
             score: f64,
         }
-        // A first pass counts, so every buffer is allocated once at its final size.
-        let (mut variant_count, mut word_count, mut text_size) = (0usize, 0usize, 0usize);
-        Self::for_each_variant(table, settings, lexicon, |row, _, _, _, variants, _| {
-            variant_count += variants.len();
-            word_count += 1;
-            text_size += row.word.len() + row.reading.len();
-        });
-        let mut rows: Vec<OptionRow> = Vec::with_capacity(variant_count);
+        // One pass (a counting pass first cost as much again, at every engine load): the buffers grow as large
+        // blocks, the temporary ones are dropped below, and the kept text is shrunk to its size.
+        let mut rows: Vec<OptionRow> = Vec::new();
         // (reading span, word); the word's index in `found` keys its exclusions.
-        let mut found: Vec<((u32, u32), IndexedWord)> = Vec::with_capacity(word_count);
+        let mut found: Vec<((u32, u32), IndexedWord)> = Vec::new();
         let mut excluded_found: Vec<(u32, Arc<str>)> = Vec::new();
         let mut lexicon_syllables: Vec<Arc<str>> = Vec::new();
         let mut lexicon_ids: HashMap<Arc<str>, u32> = HashMap::new();
-        let mut text = String::with_capacity(text_size);
+        let mut text = String::new();
         let mut last_reading: Option<(u32, u32)> = None;
         let span = |text: &mut String, value: &str| -> (u32, u32) {
             let start = u32::try_from(text.len()).unwrap_or(u32::MAX);
@@ -779,7 +775,7 @@ impl ChannelIndex {
                     word,
                     logp: row.logp,
                     reading_prior: row.reading_prior,
-                    word_id: row.word_id.unwrap_or(u32::MAX),
+                    word_id: (row.word_id)().unwrap_or(u32::MAX),
                     character,
                     position: u8::try_from(position).unwrap_or(u8::MAX),
                     single,

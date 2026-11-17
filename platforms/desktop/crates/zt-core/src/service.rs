@@ -4,11 +4,13 @@
 //! service directly for settings, personal data, statistics and candidate-window clicks.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Result, anyhow};
 use parking_lot::Mutex;
 use serde_json::{Map, Value};
+use zhuyin_core::composer::CandidateAction;
 use zhuyin_core::engine::Engine;
 
 use crate::broker::host::{Effect, Host};
@@ -16,6 +18,7 @@ use crate::broker::{self, Broker, ConnectionId, Handler, ReserveError};
 use crate::controller::{InputController, UsageSink};
 use crate::corrections::CorrectionLog;
 use crate::engine::{DataFiles, EngineData, EngineSession, Phrase};
+use crate::phrase_draft::PhraseDraft;
 use crate::practice::PracticeSession;
 use crate::presentation::{Presentation, Rect};
 use crate::settings::Settings;
@@ -37,8 +40,14 @@ pub struct ServiceConfig {
     pub endpoint: Option<String>,
     /// Serve the native adapters.  Off for renders and tests that only need the UI's side.
     pub broker: bool,
+    /// When another instance already serves this user, end without asking it for its settings window
+    /// (`zhuyintype --background`: sign-in and the Fcitx5 addon start it, and must never open a window).
+    pub quiet_if_running: bool,
     /// The app's version, recorded in correction records.
     pub app_version: String,
+    /// Another copy may hold the endpoint while it ends (this one was started after it crashed): wait this long for
+    /// it to go instead of asking it for its settings window.
+    pub wait_for_endpoint: Option<std::time::Duration>,
 }
 
 /// The candidate window's content and where it goes.
@@ -49,6 +58,8 @@ pub struct PopupState {
     pub caret: Rect,
     /// The app shows the composition itself; false: the window shows it above the list.
     pub inline_preedit: bool,
+    /// 符號與 Emoji is open: the window shows its grid instead of `presentation` (its highlighted row as a list).
+    pub picker: Option<crate::symbols::PickerView>,
 }
 
 /// What the UI is asked to do.
@@ -64,6 +75,34 @@ pub enum UiEvent {
     ShowSettings(Option<&'static str>),
     /// A page turn or highlight move stopped at the list's end (1 past the last, -1 before the first).
     Boundary(i32),
+    /// The 開啟快速設定 shortcut: show the 快速設定 panel by the caret (screen logical pixels), without taking focus.
+    QuickPanel { anchor: Rect },
+    /// The next key, or the field changed: the 快速設定 panel closes.
+    HideQuickPanel,
+    /// 選取的字加入自訂詞: open the 加入自訂詞 form (字詞 › 自訂詞) filled in with the field's selected text.
+    AddPhrase(PhraseDraft),
+}
+
+/// The 快速設定 switches as they are now (IPC `quick`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct QuickSwitches {
+    pub english: bool,
+    pub full_width: bool,
+    pub simplified: bool,
+    pub learning_paused: bool,
+}
+
+/// One check item of 快速設定.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuickSwitch {
+    /// 英文.
+    English,
+    /// 半形標點.
+    HalfWidth,
+    /// 簡體.
+    Simplified,
+    /// 暫停學習.
+    PauseLearning,
 }
 
 /// A click or control in the candidate window.
@@ -81,6 +120,30 @@ pub enum PopupAction {
     ToggleCorrections,
     /// Types the highlighted span's Zhuyin (the footer's ` action).
     TypeReading,
+    /// A word action (不要再推薦, 忘記這個選字, 加入自訂詞) on row `n` of the current page (the right-click menu).
+    Word(CandidateAction, usize),
+    /// The notice's 「復原」: undoes the last word action.
+    UndoWordAction,
+    /// Inserts item `n` of the symbol picker's list.
+    PickSymbol(usize),
+    /// Switches the symbol picker to tab `n`.
+    SymbolTab(usize),
+}
+
+/// Writes the personal data on a thread of its own: a blur's reply goes out at once and the service's lock is not
+/// held while the disk works.  Written all the same (the engine's writer also writes 150 ms after any change, and
+/// the app writes everything when it quits).
+fn flush_in_background(engine: Arc<Engine>) {
+    fn write(engine: &Engine) {
+        if let Err(error) = engine.flush_personal_data() {
+            log::warn!("blur: personal data not written: {error}");
+        }
+    }
+    let worker = engine.clone();
+    if std::thread::Builder::new().name("zt-flush".into()).spawn(move || write(&worker)).is_err() {
+        // No thread to spare: write here rather than not at all.
+        write(&engine);
+    }
 }
 
 /// The settings key of 在候選字視窗顯示組字的 App (a list of executable names).
@@ -112,6 +175,8 @@ struct Shared {
     practice_engine: Mutex<Weak<Engine>>,
     broker: Mutex<Option<Broker>>,
     app_version: String,
+    /// The app shows the 快速設定 panel ([`UiEvent::QuickPanel`]) until the next key.
+    quick_open: AtomicBool,
 }
 
 /// Returned by [`Service::start`] when another instance serves this user; it was asked to show its settings.
@@ -158,20 +223,30 @@ impl Service {
     /// ready.
     ///
     /// # Errors
-    /// [`AlreadyRunning`] when another instance serves this user (it was asked to show its settings); otherwise
-    /// when the endpoint cannot be reserved or served.  A missing lexicon is not an error: the service runs without
-    /// an engine and [`Service::engine_error`] says why.
+    /// [`AlreadyRunning`] when another instance serves this user (it was asked to show its settings, unless
+    /// `quiet_if_running` or `wait_for_endpoint`); otherwise when the endpoint cannot be reserved or served.  A
+    /// missing lexicon is not an error: the service runs without an engine and [`Service::engine_error`] says why.
     pub fn start(config: ServiceConfig) -> Result<(Service, async_channel::Receiver<UiEvent>)> {
         let reservation = if config.broker {
             let endpoint =
                 config.endpoint.clone().or_else(broker::endpoint).ok_or_else(|| anyhow!("無法取得使用者通訊端。"))?;
-            match broker::reserve(&endpoint) {
-                Ok(reservation) => Some(reservation),
-                Err(ReserveError::AlreadyRunning) => {
-                    let _ = broker::show_settings(&endpoint);
-                    return Err(AlreadyRunning.into());
+            let deadline = config.wait_for_endpoint.map(|wait| std::time::Instant::now() + wait);
+            loop {
+                match broker::reserve(&endpoint) {
+                    Ok(reservation) => break Some(reservation),
+                    Err(ReserveError::AlreadyRunning)
+                        if deadline.is_some_and(|deadline| std::time::Instant::now() < deadline) =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(ReserveError::AlreadyRunning) => {
+                        if deadline.is_none() && !config.quiet_if_running {
+                            let _ = broker::show_settings(&endpoint);
+                        }
+                        return Err(AlreadyRunning.into());
+                    }
+                    Err(ReserveError::Failed(error)) => return Err(error),
                 }
-                Err(ReserveError::Failed(error)) => return Err(error),
             }
         } else {
             None
@@ -192,6 +267,7 @@ impl Service {
         let data = DataFiles::find(config.data_dir.as_deref()).map(EngineData::new);
         match &data {
             Some(data) => {
+                data.load_models_in_background();
                 if let Err(error) = session.open(data, user_dir.as_deref()) {
                     log::error!("engine: {error:#}");
                     engine_error = Some(format!("{error:#}"));
@@ -200,6 +276,7 @@ impl Service {
             None => engine_error = Some("找不到詞庫資料（lexicon.bin 或 lexicon.tsv）。".to_owned()),
         }
         let mut controller = InputController::new(session, settings.clone(), shortcuts.clone());
+        controller.set_recent_symbols_dir(user_dir.as_deref());
         controller.refresh_settings();
         controller.pause_threshold = stats.pause_threshold();
         let sink_stats = stats.clone();
@@ -229,6 +306,7 @@ impl Service {
                 practice_engine: Mutex::new(Weak::new()),
                 broker: Mutex::new(None),
                 app_version: config.app_version.clone(),
+                quick_open: AtomicBool::new(false),
             }),
         };
         // A changed setting reaches the composition at once (a list open with the old page size, English mode turned
@@ -258,12 +336,21 @@ impl Service {
             core.host.popup_apps = popup_apps(&self.inner.settings);
             let result = work(&mut core);
             let Core { controller, host, popup, .. } = &mut *core;
-            let effects = host.drain(controller);
+            controller.sync_word_overlay();
+            let mut effects = host.drain(controller);
+            if host.adapter_draws_panel() {
+                // Its adapter shows the badge and the list's bounce itself, in the field's application; the app
+                // drawing them too would show two.  The word actions' tip is only counted, never shown.
+                effects.retain(|effect| {
+                    matches!(effect, Effect::ShowSettings(_) | Effect::WordActionTip | Effect::AddSelectedText(_))
+                });
+            }
             // An adapter that draws the window itself gets it in its replies; the app's own window stays hidden.
             let next = (host.visible(controller) && !host.draws_panel()).then(|| PopupState {
-                presentation: controller.presentation().clone(),
+                presentation: controller.output_presentation().into_owned(),
                 caret: host.anchor(),
                 inline_preedit: host.inline_preedit(),
+                picker: controller.picker_view(),
             });
             let changed = (*popup != next).then(|| next.clone());
             *popup = next;
@@ -279,6 +366,27 @@ impl Service {
             let event = match effect {
                 Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
+                // Only an adapter's reply can ask it for the selection.
+                Effect::SelectionWanted => continue,
+                Effect::AddSelectedText(text) => {
+                    let added = |word: &str, reading: &str| {
+                        self.user_phrases().iter().any(|p| p.word == word && p.reading == reading)
+                    };
+                    UiEvent::AddPhrase(crate::phrase_draft::draft(&text, |word| self.readings(word), added))
+                }
+                Effect::WordActionTip => {
+                    // Outside the service's lock: setting a value calls the service's settings observer.
+                    let key = crate::controller::WORD_ACTION_TIP_KEY;
+                    let count = self.inner.settings.number(key).max(0.0) + 1.0;
+                    if let Err(error) = self.inner.settings.set(key, Value::from(count as i64)) {
+                        log::warn!("{key}: {error}");
+                    }
+                    continue;
+                }
+                Effect::QuickPanel => {
+                    self.inner.quick_open.store(true, Ordering::Release);
+                    UiEvent::QuickPanel { anchor }
+                }
                 Effect::Toast { text } => {
                     if !self.inner.settings.bool("showModeToast") {
                         continue;
@@ -300,26 +408,39 @@ impl Service {
     /// that stopped at the list's end in `boundary`, instead of the app showing them (`IPC.md` §候選字視窗).
     #[must_use]
     pub fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
+        // The panel the app shows closes at the next key or when the field changes.
+        let op = request.get("op").and_then(Value::as_str).unwrap_or_default();
+        let press = op == "key" && request.get("release") == Some(&Value::Bool(false));
+        if (press || matches!(op, "focus" | "blur" | "secure" | "reset"))
+            && self.inner.quick_open.swap(false, Ordering::AcqRel)
+        {
+            let _ = self.inner.events.try_send(UiEvent::HideQuickPanel);
+        }
         let mut effects = Vec::new();
         let mut draws = false;
+        let mut own_badge = false;
+        let mut flush = None;
+        let context = request.get("context").and_then(Value::as_str).unwrap_or_default();
+        let mut script = None;
         let mut reply = self.with_core(|core| {
             let (mut reply, found) = core.host.dispatch(&mut core.controller, connection, request);
+            core.controller.sync_word_overlay();
             effects = found;
-            draws = core.host.draws_panel() && reply.get("ok") == Some(&Value::Bool(true));
+            effects.extend(core.host.drain(&mut core.controller));
+            if core.host.take_flush() {
+                flush = core.controller.session().engine().cloned();
+            }
+            own_badge = core.host.adapter_draws_panel();
+            script = core.host.take_pending_script();
+            draws = core.host.draws_panel()
+                && core.host.owns(connection, context)
+                && reply.get("ok") == Some(&Value::Bool(true));
             if draws {
-                let panel = if core.host.visible(&core.controller) {
-                    let shortcuts = &self.inner.shortcuts;
-                    let panel = crate::panel::panel(
-                        &self.inner.settings,
-                        |command| shortcuts.active_label(command),
-                        core.controller.presentation(),
-                        core.host.inline_preedit(),
-                    );
-                    serde_json::to_value(panel).unwrap_or(Value::Null)
-                } else {
-                    Value::Null
-                };
+                let panel = self.panel_value(core);
                 let focus = request.get("op").and_then(Value::as_str) == Some("focus");
+                if focus && core.host.panel_for_screen_reader() {
+                    reply.insert("fcitxPanel".into(), Value::Bool(true));
+                }
                 if focus || core.sent_panel.as_ref() != Some(&panel) {
                     reply.insert("panel".into(), panel.clone());
                     core.sent_panel = Some(panel);
@@ -328,6 +449,14 @@ impl Service {
                 core.sent_panel = None;
             }
             reply
+        });
+        // 選取的字加入自訂詞: the adapter sends the field's selected text next (op `selection`).
+        effects.retain(|effect| {
+            let wanted = *effect == Effect::SelectionWanted;
+            if wanted {
+                reply.insert("selection".into(), Value::Bool(true));
+            }
+            !wanted
         });
         if draws {
             effects.retain(|effect| match effect {
@@ -341,11 +470,113 @@ impl Service {
                     reply.insert("boundary".into(), Value::from(*direction));
                     false
                 }
-                Effect::ShowSettings(_) => true,
+                // The adapter shows its own quick menu (the reply's `quickPanel`).
+                Effect::QuickPanel => false,
+                Effect::ShowSettings(_) | Effect::WordActionTip | Effect::AddSelectedText(_) => true,
+                Effect::SelectionWanted => false,
+            });
+        } else if own_badge {
+            // A blur's, say: that adapter draws its badge itself, never the app (the tip is only counted).
+            effects.retain(|effect| {
+                matches!(effect, Effect::ShowSettings(_) | Effect::WordActionTip | Effect::AddSelectedText(_))
             });
         }
+        if let Some(simplified) = script {
+            self.set_script(simplified, connection, context, draws, &mut reply);
+        }
         self.emit(effects, None);
+        if let Some(engine) = flush {
+            flush_in_background(engine);
+        }
         reply
+    }
+
+    /// The candidate window for an adapter that draws it (`IPC.md` §候選字視窗), or null when hidden.
+    fn panel_value(&self, core: &Core) -> Value {
+        if !core.host.visible(&core.controller) {
+            return Value::Null;
+        }
+        let shortcuts = &self.inner.shortcuts;
+        let mut panel = crate::panel::panel(
+            &self.inner.settings,
+            |command| shortcuts.active_label(command),
+            &core.controller.output_presentation(),
+            core.host.inline_preedit(),
+        );
+        if core.controller.picker_open() {
+            // 符號與 Emoji: the grid, which the text service draws; and for one that does not know it, the
+            // highlighted row of the grid, across like the grid's rows.
+            panel.style.layout = zt_panel::style::Layout::Horizontal;
+            panel.style.shows_list_switches = false;
+            panel.picker = core.controller.picker_view();
+        }
+        serde_json::to_value(panel).unwrap_or(Value::Null)
+    }
+
+    /// 繁／簡 from `op: "quick"`: the `outputScript` setting, set after the request with the service's lock released
+    /// (the settings' observer takes it); the requesting field's composition and window in `reply` follow.
+    fn set_script(
+        &self,
+        simplified: bool,
+        connection: ConnectionId,
+        context: &str,
+        draws: bool,
+        reply: &mut Map<String, Value>,
+    ) {
+        let script = if simplified { "simplified" } else { "traditional" };
+        if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
+            log::warn!("quick: {error}");
+        }
+        let mut core = self.inner.core.lock();
+        if !core.host.owns(connection, context) {
+            return;
+        }
+        // The conversion keeps the length, so `cursor` and `clauses` stay valid.
+        if reply.get("preedit").and_then(Value::as_str).is_some_and(|preedit| !preedit.is_empty()) {
+            let preedit = core.controller.output_presentation().composition.clone();
+            reply.insert("preedit".into(), preedit.into());
+        }
+        if draws {
+            let panel = self.panel_value(&core);
+            reply.insert("panel".into(), panel.clone());
+            core.sent_panel = Some(panel);
+        }
+    }
+
+    /// The 快速設定 switches now (for the app's panel).
+    #[must_use]
+    pub fn quick_switches(&self) -> QuickSwitches {
+        let core = self.inner.core.lock();
+        let c = &core.controller;
+        QuickSwitches {
+            english: c.english(),
+            full_width: c.full_width(),
+            simplified: c.simplified(),
+            learning_paused: c.learning_paused(),
+        }
+    }
+
+    /// Flips one 快速設定 check item (a click in the app's panel), as `op: "quick"` would.
+    pub fn toggle_quick(&self, switch: QuickSwitch) {
+        self.inner.quick_open.store(false, Ordering::Release);
+        if switch == QuickSwitch::Simplified {
+            let script = if self.quick_switches().simplified { "traditional" } else { "simplified" };
+            if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
+                log::warn!("quick: {error}");
+            }
+            return;
+        }
+        self.with_controller(|c| match switch {
+            QuickSwitch::English => c.set_english(!c.english()),
+            QuickSwitch::HalfWidth => c.set_full_width(!c.full_width()),
+            QuickSwitch::PauseLearning => c.set_learning_paused(!c.learning_paused()),
+            QuickSwitch::Simplified => {}
+        });
+    }
+
+    /// The app closed its 快速設定 panel (a click in it, or Esc).
+    pub fn quick_panel_closed(&self) {
+        self.inner.quick_open.store(false, Ordering::Release);
     }
 
     /// Runs `work` on the input controller under the service's lock (advanced use and tests); the popup follows.
@@ -354,6 +585,11 @@ impl Service {
     }
 
     /// What the composer shows now.
+    /// Forgets the recent symbols of 符號與 Emoji and removes their file (回復預設設定, deleting personal data).
+    pub fn clear_recent_symbols(&self) {
+        self.with_controller(InputController::clear_recent_symbols);
+    }
+
     #[must_use]
     pub fn presentation(&self) -> Presentation {
         self.inner.core.lock().controller.presentation().clone()
@@ -376,6 +612,14 @@ impl Service {
                 PopupAction::ToggleSingle => host.toggle_single(controller),
                 PopupAction::ToggleCorrections => host.toggle_corrections(controller),
                 PopupAction::TypeReading => host.type_reading(controller),
+                PopupAction::Word(action, row) => host.word_action(controller, action, row),
+                PopupAction::UndoWordAction => host.undo_word_action(controller),
+                PopupAction::PickSymbol(index) => {
+                    if host.visible(controller) {
+                        controller.pick_symbol(index);
+                    }
+                }
+                PopupAction::SymbolTab(index) => controller.select_symbol_tab(index),
             }
         });
     }
@@ -489,6 +733,18 @@ impl Service {
     #[must_use]
     pub fn excluded_entries(&self) -> Vec<Phrase> {
         self.session(|s| s.excluded_entries())
+    }
+
+    /// Words never suggested (不要再推薦).
+    #[must_use]
+    pub fn blocked_entries(&self) -> Vec<Phrase> {
+        self.session(|s| s.blocked_entries())
+    }
+
+    /// # Errors
+    /// See [`EngineSession::unblock`].
+    pub fn unblock(&self, word: &str, reading: &str) -> Result<()> {
+        self.session(|s| s.unblock(word, reading))
     }
 
     /// The readings of `word` the lexicon knows.

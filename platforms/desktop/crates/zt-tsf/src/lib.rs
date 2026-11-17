@@ -9,16 +9,24 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+mod announce;
 mod coordinates;
 mod keys;
+mod marks;
 mod protocol;
+mod quick_menu;
+mod system_look;
 
+#[cfg(windows)]
+mod accessible;
 #[cfg(windows)]
 mod broker;
 #[cfg(windows)]
 mod composition;
 #[cfg(windows)]
 mod display_attributes;
+#[cfg(windows)]
+mod focus;
 #[cfg(windows)]
 mod keyboard;
 #[cfg(windows)]
@@ -29,6 +37,8 @@ mod module;
 mod panel_draw;
 #[cfg(windows)]
 mod panel_window;
+#[cfg(windows)]
+mod picker_draw;
 #[cfg(windows)]
 mod registration;
 #[cfg(windows)]

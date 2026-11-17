@@ -10,7 +10,10 @@
 //!   (`DWMSBT_TRANSIENTWINDOW`) behind the content, in the window's light or dark appearance.  Elsewhere (Windows 10,
 //!   a virtual machine's basic display adapter, which Windows 11 never rounds) the window is layered and draws all of
 //!   that itself: rounded corners, the hairline and a soft shadow around a solid surface, so it is rounded
-//!   everywhere.  The content is Direct2D (`panel_draw`), with the app's geometry and colours (`zt_panel`).
+//!   everywhere.  The content is Direct2D (`panel_draw`), with the app's geometry and colours (`zt_panel`), the
+//!   system's accent colour and high contrast (`system_look`, `zt_panel::a11y`): high contrast is always solid, with
+//!   the system colours and a 2 px border.
+//! - **Screen readers.**  Both windows are UI Automation elements and announce what changed (`accessible`).
 //! - **Focus.**  The windows never activate (`WS_EX_NOACTIVATE`, `MA_NOACTIVATE`); clicks post to the text service's
 //!   message window, which sends them to the host inside an edit session.
 //! - **DPI.**  Created and moved per-monitor aware: sizes are the logical layout times the caret's monitor scale.
@@ -20,7 +23,9 @@ use std::time::Instant;
 
 use std::sync::OnceLock;
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Foundation::{
+    COLORREF, ERROR_CLASS_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
+};
 use windows::Win32::Graphics::Direct2D::Common::{
     D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
 };
@@ -36,9 +41,9 @@ use windows::Win32::Graphics::Dwm::{
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
 use windows::Win32::Graphics::Gdi::{
-    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, CreateCompatibleDC,
-    CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC, InvalidateRect,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint, ClientToScreen,
+    CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, GetMonitorInfoW, HDC,
+    InvalidateRect, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, SelectObject, UpdateWindow,
 };
 use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
@@ -46,25 +51,35 @@ use windows::Win32::System::Registry::{
 use windows::Win32::UI::Controls::{MARGINS, WM_MOUSELEAVE};
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CS_IME, CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GWLP_USERDATA, GetAncestor,
-    GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW, IsWindowVisible, KillTimer, LoadCursorW,
-    MA_NOACTIVATE, PostMessageW, RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SetCursor, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow, ULW_ALPHA, UnregisterClassW, UpdateLayeredWindow,
-    WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST,
-    WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
-    WS_THICKFRAME,
+    AppendMenuW, CREATESTRUCTW, CS_IME, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
+    GA_ROOT, GWLP_USERDATA, GetAncestor, GetWindowLongPtrW, GetWindowRect, HTCLIENT, HWND_TOP, IDC_ARROW,
+    IsWindowVisible, KillTimer, LoadCursorW, MA_NOACTIVATE, MF_GRAYED, MF_STRING, PostMessageW, RegisterClassW,
+    SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetCursor, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    SystemParametersInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenuEx, ULW_ALPHA, UnregisterClassW,
+    UpdateLayeredWindow, WM_APP, WM_DWMCOLORIZATIONCOLORCHANGED, WM_ERASEBKGND, WM_GETOBJECT, WM_LBUTTONDOWN,
+    WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_RBUTTONUP, WM_SETCURSOR,
+    WM_SETTINGCHANGE, WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
 use windows_numerics::Matrix3x2;
+use zt_panel::a11y::{self, AccentChoice};
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
+use zt_panel::model::WORD_ACTIONS;
+use zt_panel::picker::{self, PickerHit, PickerLayout};
 use zt_panel::position::{Rect, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
-use zt_panel::tokens::{self, motion};
+use zt_panel::tokens::{self, Colors, motion};
 
+use crate::accessible::{Accessible, Role};
+use crate::announce::{self, Shown};
 use crate::composition::per_monitor;
 use crate::module::instance;
 use crate::panel_draw::{self, Control, DirectWriteMeasure, Hit, Motion, Painter, graphics};
+use crate::picker_draw;
 use crate::protocol::PanelUpdate;
+use crate::system_look;
 
 /// Posted to the text service's message window for a click: `wparam` the action (`ACTION_*`), `lparam` its value.
 pub(crate) const WM_PANEL_ACTION: u32 = WM_APP + 0x31;
@@ -73,6 +88,12 @@ pub(crate) const ACTION_PAGE: usize = 2;
 pub(crate) const ACTION_SINGLE: usize = 3;
 pub(crate) const ACTION_CORRECTIONS: usize = 4;
 pub(crate) const ACTION_ZHUYIN: usize = 5;
+pub(crate) const ACTION_UNDO: usize = 6;
+/// A word action on a row: `ACTION_WORD + n` is `zt_panel::model::WORD_ACTIONS[n]`.
+pub(crate) const ACTION_WORD: usize = 7;
+/// 符號與 Emoji: a cell of the grid (`lparam` the item's index in the whole list) and a category tab.
+pub(crate) const ACTION_SYMBOL: usize = 32;
+pub(crate) const ACTION_SYMBOL_TAB: usize = 33;
 
 /// The broker's name for an action.
 pub(crate) fn action_name(action: usize) -> Option<&'static str> {
@@ -82,12 +103,22 @@ pub(crate) fn action_name(action: usize) -> Option<&'static str> {
         ACTION_SINGLE => "single",
         ACTION_CORRECTIONS => "corrections",
         ACTION_ZHUYIN => "zhuyin",
+        ACTION_UNDO => "undo",
+        ACTION_SYMBOL => "symbol",
+        ACTION_SYMBOL_TAB => "symbolTab",
+        word if (ACTION_WORD..ACTION_WORD + WORD_ACTIONS.len()).contains(&word) => WORD_ACTIONS[word - ACTION_WORD].0,
         _ => return None,
     })
 }
 
+/// The corner radius the system draws for a rounded popup (DWMWCP_ROUND).
+const SYSTEM_RADIUS: f32 = 8.;
+
 const ANIMATION_TIMER: usize = 1;
 const TOAST_TIMER: usize = 2;
+/// The notice's 「復原」 goes after this long (as Ctrl+Z stops working).
+const UNDO_TIMER: usize = 3;
+const UNDO_MS: u32 = 5000;
 const FRAME_MS: u32 = 8;
 
 /// Which of the two windows a window procedure call is for.
@@ -154,6 +185,21 @@ fn system_rounds() -> bool {
     })
 }
 
+/// Whether Windows' 「動畫效果」 (Settings › Accessibility › Visual effects) is off: the system asks for less motion.
+fn reduced_motion() -> bool {
+    let mut enabled = BOOL(1);
+    // SAFETY: SPI_GETCLIENTAREAANIMATION writes one BOOL through the pointer, which outlives the call.
+    let read = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some((&raw mut enabled).cast()),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    };
+    read.is_ok() && !enabled.as_bool()
+}
+
 /// The apps' light or dark choice (Settings › Personalization › Colors).
 fn system_dark() -> bool {
     let mut value: u32 = 1;
@@ -198,10 +244,12 @@ struct Surface {
     /// Physical size and the scale it was laid out at.
     size: Cell<(i32, i32)>,
     scale: Cell<f32>,
+    /// The window for screen readers.
+    accessible: Accessible,
 }
 
 impl Surface {
-    fn new() -> Self {
+    fn new(role: Role) -> Self {
         Self {
             window: Cell::new(HWND::default()),
             target: RefCell::new(None),
@@ -213,6 +261,7 @@ impl Surface {
             dark: Cell::new(None),
             size: Cell::new((0, 0)),
             scale: Cell::new(1.),
+            accessible: Accessible::new(role),
         }
     }
 
@@ -221,6 +270,7 @@ impl Surface {
         self.dark.set(None);
         let window = self.window.replace(HWND::default());
         if !window.is_invalid() {
+            self.accessible.disconnect(window);
             // SAFETY: our own window; the back pointer is cleared first.
             unsafe {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
@@ -288,12 +338,8 @@ impl Surface {
         });
     }
 
-    /// Draws with `paint` in logical pixels, inside WM_PAINT (`dc` is the paint DC).
-    ///
-    /// A hardware render target on the window first.  Some sandboxed applications (the Start menu's search) may not
-    /// create one at all (DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, software included); there Direct2D draws in software
-    /// into the paint DC instead, with alpha for the backdrop if it can, else opaque (the window then draws its own
-    /// surface).
+    /// Draws with `paint` in logical pixels, inside WM_PAINT (`dc` is the paint DC), on the window's render target
+    /// (`target`).
     fn render(&self, dc: HDC, paint: impl FnOnce(&ID2D1RenderTarget)) {
         if self.layered.get() {
             self.render_layered(paint);
@@ -304,56 +350,8 @@ impl Surface {
         if window.is_invalid() || width <= 0 || height <= 0 {
             return;
         }
-        let Some(g) = graphics() else { return };
+        let Some(target) = self.target() else { return };
         let pixels = D2D_SIZE_U { width: width as u32, height: height as u32 };
-        let properties = |kind, alpha| D2D1_RENDER_TARGET_PROPERTIES {
-            r#type: kind,
-            pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: alpha },
-            dpiX: 0.,
-            dpiY: 0.,
-            usage: D2D1_RENDER_TARGET_USAGE_NONE,
-            minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
-        };
-        let existing = self.target.borrow().clone();
-        let target = match existing {
-            Some(target) => target,
-            None => {
-                let hwnd_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
-                    hwnd: window,
-                    pixelSize: pixels,
-                    presentOptions: D2D1_PRESENT_OPTIONS_NONE,
-                };
-                // SAFETY: a valid factory and window.
-                let made = unsafe {
-                    g.d2d
-                        .CreateHwndRenderTarget(
-                            &properties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_ALPHA_MODE_PREMULTIPLIED),
-                            &hwnd_properties,
-                        )
-                        .map(|target| (Target::Window(target), false))
-                        .or_else(|_| {
-                            g.d2d
-                                .CreateDCRenderTarget(&properties(
-                                    D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                                    D2D1_ALPHA_MODE_PREMULTIPLIED,
-                                ))
-                                .map(|target| (Target::Dc(target), false))
-                        })
-                        .or_else(|_| {
-                            g.d2d
-                                .CreateDCRenderTarget(&properties(
-                                    D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                                    D2D1_ALPHA_MODE_IGNORE,
-                                ))
-                                .map(|target| (Target::Dc(target), true))
-                        })
-                };
-                let Ok((target, opaque)) = made else { return };
-                self.opaque.set(opaque);
-                *self.target.borrow_mut() = Some(target.clone());
-                target
-            }
-        };
         let scale = self.scale.get();
         // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
         let result = unsafe {
@@ -381,6 +379,136 @@ impl Surface {
         }
     }
 
+    /// The window's render target, made on first use: for a framed window a hardware target on the window itself,
+    /// or (where the application cannot make one) a software target for its paint DC; for a layered window a
+    /// software target for a memory DC (`render_layered`).
+    ///
+    /// Some sandboxed applications (the Start menu's search) may not create a window target at all
+    /// (DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, software included); there Direct2D draws in software into the paint DC
+    /// instead, with alpha for the backdrop if it can, else opaque (the window then draws its own surface).
+    fn target(&self) -> Option<Target> {
+        let existing = self.target.borrow().clone();
+        if let Some(target) = existing {
+            return Some(target);
+        }
+        let window = self.window.get();
+        if window.is_invalid() {
+            return None;
+        }
+        let g = graphics()?;
+        let properties = |kind, alpha| D2D1_RENDER_TARGET_PROPERTIES {
+            r#type: kind,
+            pixelFormat: D2D1_PIXEL_FORMAT { format: DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode: alpha },
+            dpiX: 0.,
+            dpiY: 0.,
+            usage: D2D1_RENDER_TARGET_USAGE_NONE,
+            minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
+        };
+        let software = |alpha| {
+            // SAFETY: a valid factory.
+            unsafe { g.d2d.CreateDCRenderTarget(&properties(D2D1_RENDER_TARGET_TYPE_SOFTWARE, alpha)) }
+        };
+        let (target, opaque) = if self.layered.get() {
+            (Target::Dc(software(D2D1_ALPHA_MODE_PREMULTIPLIED).ok()?), false)
+        } else {
+            // Made at the window's size, or at a badge's before it was ever placed (`prime`); resized when drawn.
+            let (width, height) = self.size.get();
+            let hwnd_properties = D2D1_HWND_RENDER_TARGET_PROPERTIES {
+                hwnd: window,
+                pixelSize: D2D_SIZE_U { width: width.max(64) as u32, height: height.max(64) as u32 },
+                presentOptions: D2D1_PRESENT_OPTIONS_NONE,
+            };
+            // SAFETY: a valid factory and window.
+            unsafe {
+                g.d2d
+                    .CreateHwndRenderTarget(
+                        &properties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_ALPHA_MODE_PREMULTIPLIED),
+                        &hwnd_properties,
+                    )
+                    .map(|target| (Target::Window(target), false))
+                    .or_else(|_| software(D2D1_ALPHA_MODE_PREMULTIPLIED).map(|target| (Target::Dc(target), false)))
+                    .or_else(|_| software(D2D1_ALPHA_MODE_IGNORE).map(|target| (Target::Dc(target), true)))
+                    .ok()?
+            }
+        };
+        self.opaque.set(opaque);
+        *self.target.borrow_mut() = Some(target.clone());
+        Some(target)
+    }
+
+    /// Makes the render target and draws `texts` once off screen, so the first time the window shows, Direct3D (for
+    /// a hardware target), the glyph rasteriser and the fonts are already loaded.  Nothing is shown.
+    fn prime(&self, texts: &[&str], dark: bool) {
+        if self.target.borrow().is_some() {
+            return;
+        }
+        let Some(g) = graphics() else { return };
+        let Some(target) = self.target() else { return };
+        let draw = |base: &ID2D1RenderTarget| {
+            // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
+            unsafe {
+                base.BeginDraw();
+                base.Clear(Some(&D2D1_COLOR_F { r: 0., g: 0., b: 0., a: 0. }));
+                if let Some(painter) = Painter::new(&g, base, tokens::colors(dark)) {
+                    for text in texts {
+                        panel_draw::badge(&painter, text, BADGE_W);
+                    }
+                }
+                base.EndDraw(None, None).is_ok()
+            }
+        };
+        let drawn = match &target {
+            Target::Window(window_target) => {
+                let base: ID2D1RenderTarget = window_target.clone().into();
+                // Then cleared again, so the window never shows these glyphs if it appears before its first paint.
+                // SAFETY: a valid target, drawn between BeginDraw and EndDraw.
+                draw(&base)
+                    && unsafe {
+                        base.BeginDraw();
+                        base.Clear(Some(&D2D1_COLOR_F { r: 0., g: 0., b: 0., a: 0. }));
+                        base.EndDraw(None, None).is_ok()
+                    }
+            }
+            Target::Dc(dc_target) => {
+                // SAFETY: a memory DC with a small DIB section, drawn into and freed here.
+                unsafe {
+                    let memory = CreateCompatibleDC(None);
+                    let side = 64;
+                    let info = BITMAPINFO {
+                        bmiHeader: BITMAPINFOHEADER {
+                            biSize: size_of::<BITMAPINFOHEADER>() as u32,
+                            biWidth: side,
+                            biHeight: -side,
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: BI_RGB.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    let mut bits = std::ptr::null_mut();
+                    let drawn = match CreateDIBSection(Some(memory), &info, DIB_RGB_COLORS, &mut bits, None, 0) {
+                        Ok(bitmap) => {
+                            let previous = SelectObject(memory, bitmap.into());
+                            let drawn =
+                                dc_target.BindDC(memory, &RECT { left: 0, top: 0, right: side, bottom: side }).is_ok()
+                                    && draw(&dc_target.clone().into());
+                            SelectObject(memory, previous);
+                            let _ = DeleteObject(bitmap.into());
+                            drawn
+                        }
+                        Err(_) => false,
+                    };
+                    let _ = DeleteDC(memory);
+                    drawn
+                }
+            }
+        };
+        if !drawn {
+            self.target.borrow_mut().take();
+        }
+    }
+
     /// The shadow margin of a layered window, physical pixels (0 for a framed one).
     fn margin(&self) -> i32 {
         if self.layered.get() { (SHADOW_MARGIN * self.scale.get()).ceil() as i32 } else { 0 }
@@ -394,31 +522,10 @@ impl Surface {
         if window.is_invalid() || width <= 0 || height <= 0 {
             return;
         }
-        let Some(g) = graphics() else { return };
         let margin = self.margin();
         let (full_w, full_h) = (width + margin * 2, height + margin * 2);
         let scale = self.scale.get();
-        let existing = self.target.borrow().clone();
-        let target = match existing {
-            Some(Target::Dc(target)) => target,
-            _ => {
-                let properties = D2D1_RENDER_TARGET_PROPERTIES {
-                    r#type: D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-                    pixelFormat: D2D1_PIXEL_FORMAT {
-                        format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
-                    },
-                    dpiX: 0.,
-                    dpiY: 0.,
-                    usage: D2D1_RENDER_TARGET_USAGE_NONE,
-                    minLevel: D2D1_FEATURE_LEVEL_DEFAULT,
-                };
-                // SAFETY: a valid factory.
-                let Ok(target) = (unsafe { g.d2d.CreateDCRenderTarget(&properties) }) else { return };
-                *self.target.borrow_mut() = Some(Target::Dc(target.clone()));
-                target
-            }
-        };
+        let Some(Target::Dc(target)) = self.target() else { return };
         // SAFETY: a memory DC with a top-down 32-bit DIB section, drawn into, handed to UpdateLayeredWindow and freed.
         unsafe {
             let memory = CreateCompatibleDC(None);
@@ -489,8 +596,9 @@ impl Surface {
     }
 
     /// The surface under the content: the system's backdrop with a tint, or the panel colour; the hairline where
-    /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.
-    fn base(&self, painter: &Painter<'_>, size: (f32, f32)) {
+    /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.  High
+    /// contrast (`stroke` above 1) draws its wider border even where the system draws an edge.
+    fn base(&self, painter: &Painter<'_>, size: (f32, f32), solid: bool) {
         let whole = Frame::new(0., 0., size.0, size.1);
         let c = painter.c;
         if self.layered.get() {
@@ -503,13 +611,16 @@ impl Surface {
                 painter.fill(f, tokens::RADIUS + grow, ink);
             }
             painter.fill(whole, tokens::RADIUS, c.surface);
-            painter.outline(whole, tokens::RADIUS, c.border);
+            painter.outline(whole, tokens::RADIUS, c.border, c.stroke);
             return;
         }
-        let translucent = self.backdrop.get() && !self.opaque.get();
+        let translucent = self.backdrop.get() && !self.opaque.get() && !solid;
         painter.fill(whole, 0., if translucent { c.backdrop_tint } else { c.surface });
         if !self.system_edge.get() {
-            painter.outline(whole, 0., c.border);
+            painter.outline(whole, 0., c.border, c.stroke);
+        } else if c.stroke > 1. {
+            // Inside the system's rounded corners (8 px on Windows 11).
+            painter.outline(whole, SYSTEM_RADIUS, c.border, c.stroke);
         }
     }
 }
@@ -527,7 +638,12 @@ struct State {
     old_label: Option<String>,
     turn: Option<(i32, Instant)>,
     bounce: Option<(i32, Instant)>,
+    /// Windows' 「動畫效果」 is off: a page turn only cross-fades and the bounce dims the page instead of moving it.
+    reduced: bool,
     hover: Option<Hit>,
+    /// 符號與 Emoji is open: its grid's geometry (drawn instead of the list), and the cell or tab under the mouse.
+    picker: Option<PickerLayout>,
+    picker_hover: Option<PickerHit>,
     /// The caret of the last placement and the window's x then (it keeps its x while the caret stays on the line).
     last_caret: Option<RECT>,
     last_x: i32,
@@ -535,13 +651,27 @@ struct State {
     /// The last list's appearance and placement, which the 中/英 badge follows after the list closed.
     appearance: Appearance,
     above: bool,
+    /// 「透明效果」 off: the surface is solid even over the system's backdrop.
+    solid: bool,
+    /// 「強調色」 of the last list, which the badge follows too.
+    accent: AccentChoice,
+    /// What screen readers were last told about the list.
+    announced: Shown,
 }
 
 impl State {
     fn forget(&mut self) {
-        let (toast, appearance, above) = (self.toast.take(), self.appearance, self.above);
-        *self = Self { toast, appearance, above, ..Self::default() };
+        let (toast, appearance, above, solid, accent) =
+            (self.toast.take(), self.appearance, self.above, self.solid, self.accent);
+        *self = Self { toast, appearance, above, solid, accent, ..Self::default() };
     }
+}
+
+/// The window's colours: light or dark, the accent and high contrast (`a11y::resolve`), and whether the surface
+/// must be solid (high contrast never lets the backdrop through).
+fn colors(appearance: Appearance, accent: AccentChoice) -> (Colors, bool) {
+    let look = system_look::look();
+    (a11y::resolve(appearance.dark(system_dark()), accent, &look), a11y::opaque(&look))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -587,6 +717,8 @@ pub(crate) struct PanelWindow {
     panel: Surface,
     badge: Surface,
     state: RefCell<State>,
+    /// The owner `warm` last ran for (it runs once per owner, whether or not it could make everything).
+    warmed: Cell<HWND>,
 }
 
 impl PanelWindow {
@@ -595,9 +727,10 @@ impl PanelWindow {
             class: RefCell::new(Vec::new()),
             owner: Cell::new(HWND::default()),
             notify: Cell::new(HWND::default()),
-            panel: Surface::new(),
-            badge: Surface::new(),
+            panel: Surface::new(Role::List),
+            badge: Surface::new(Role::Badge),
             state: RefCell::new(State::default()),
+            warmed: Cell::new(HWND::default()),
         }
     }
 
@@ -617,6 +750,34 @@ impl PanelWindow {
         }
     }
 
+    /// The candidate window is shown: the one thing the host can change between keys (a changed setting reaches
+    /// an open list at once).
+    pub(crate) fn shows_list(&self) -> bool {
+        self.state.try_borrow().is_ok_and(|state| state.panel.is_some()) && self.panel.visible()
+    }
+
+    /// Whether `warm` has not run yet for the current owner.
+    pub(crate) fn cold(&self) -> bool {
+        self.warmed.get() != self.owner.get()
+    }
+
+    /// Makes ahead of time what the first 中/英 badge would otherwise make while the user waits for it: the
+    /// graphics (factories, the bundled fonts), the badge's window for the current owner (hidden) and its render
+    /// target, with both glyphs drawn once off screen.  On a hardware target that loads Direct3D and the display
+    /// driver, which takes a noticeable moment the first time in a process.  Called after a field got focus.
+    pub(crate) fn warm(&self) {
+        if !self.cold() {
+            return;
+        }
+        self.warmed.set(self.owner.get());
+        if graphics().is_none() || self.ensure(Kind::Badge).is_none() {
+            return;
+        }
+        let appearance = self.state.borrow().appearance;
+        self.badge.set_dark(appearance.dark(system_dark()));
+        self.badge.prime(&["中", "英"], appearance.dark(system_dark()));
+    }
+
     /// Hides both windows and forgets the list (focus left the field).
     pub(crate) fn hide(&self) {
         self.panel.hide();
@@ -630,6 +791,7 @@ impl PanelWindow {
     pub(crate) fn destroy(&self) {
         self.panel.destroy();
         self.badge.destroy();
+        self.warmed.set(HWND::default());
         let class = std::mem::take(&mut *self.class.borrow_mut());
         if !class.is_empty() {
             // SAFETY: the class registered by this instance.
@@ -650,8 +812,11 @@ impl PanelWindow {
                 lpszClassName: PCWSTR(name.as_ptr()),
                 ..Default::default()
             };
-            // SAFETY: the class name outlives the class (kept until unregistered).
-            if unsafe { RegisterClassW(&klass) } == 0 {
+            // SAFETY: the class name outlives the class (kept until unregistered).  A class of this name left by an
+            // earlier panel at the same address is this module's own, with this window procedure.
+            if unsafe { RegisterClassW(&klass) } == 0
+                && windows::core::Error::from_thread().code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult()
+            {
                 return None;
             }
             *class = name;
@@ -670,8 +835,12 @@ impl PanelWindow {
         } else {
             let window = surface.window.get();
             if !window.is_invalid() {
+                // Painted now rather than at the next WM_PAINT, so a window just shown never shows its old picture.
                 // SAFETY: our own window.
-                let _ = unsafe { InvalidateRect(Some(window), None, false) };
+                unsafe {
+                    let _ = InvalidateRect(Some(window), None, false);
+                    let _ = UpdateWindow(window);
+                }
             }
         }
     }
@@ -769,6 +938,7 @@ impl PanelWindow {
             PanelUpdate::Hidden => {
                 self.panel.hide();
                 self.state.borrow_mut().forget();
+                self.panel.accessible.set_name(|| announce::name(&Default::default()));
             }
             PanelUpdate::Show(panel) => self.show(panel, caret, scale),
         }
@@ -787,7 +957,9 @@ impl PanelWindow {
         }
         self.panel.set_dark(panel.appearance.dark(system_dark()));
         let visible = self.panel.visible();
+        let reduced = reduced_motion();
         let mut state = self.state.borrow_mut();
+        state.reduced = reduced;
         // A new page of the same list turns; anything else starts over at its own size.
         let identity = Identity::of(panel);
         let model = &panel.model;
@@ -797,6 +969,10 @@ impl PanelWindow {
             && *page != model.page
         {
             direction = if *page + 1 == model.page_count && model.page == 0 || model.page > *page { 1 } else { -1 };
+        }
+        // The grid never slides: its rows are the picker's, not pages of a list.
+        if panel.picker.is_some() {
+            direction = 0;
         }
         if identity.is_none()
             || identity.as_ref() != state.shown.as_ref().map(|(identity, _)| identity)
@@ -809,8 +985,9 @@ impl PanelWindow {
         let max_width = ((screen.right - screen.left) as f32 / scale - 16.).max(100.);
         let layout = panel_layout::compute(model, &panel.style, max_width, state.steady, &mut DirectWriteMeasure(&g));
         if layout.list_open {
-            state.steady = (layout.width, layout.height);
+            state.steady = (layout.width, layout.height - layout.transient_height);
         }
+        let undo_appears = model.undo && !state.panel.as_ref().is_some_and(|shown| shown.model.undo);
         let previous = state.layout.take();
         if direction != 0 && panel.animates && visible {
             state.outgoing = previous.as_ref().map(|previous| previous.rows.clone());
@@ -823,14 +1000,22 @@ impl PanelWindow {
             state.outgoing = None;
             state.old_label = None;
         }
-        let width = (layout.width * scale).ceil() as i32;
-        let height = (layout.height * scale).ceil() as i32;
+        let grid = panel.picker.as_ref().map(PickerLayout::compute);
+        let (logical_w, logical_h, inset) =
+            grid.as_ref().map_or((layout.width, layout.height, layout.text_inset), |grid| {
+                (grid.width, grid.height, picker::TEXT_INSET)
+            });
+        if grid.is_none() || state.picker.is_none() {
+            state.picker_hover = None;
+        }
+        let width = (logical_w * scale).ceil() as i32;
+        let height = (logical_h * scale).ceil() as i32;
         let (x, y) = popup_position_with_gap(
             to_rect(caret),
             f64::from(width),
             f64::from(height),
             panel.above,
-            f64::from(layout.text_inset * scale),
+            f64::from(inset * scale),
             to_rect(screen),
             f64::from(4. * scale),
         );
@@ -847,16 +1032,57 @@ impl PanelWindow {
         state.last_caret = Some(caret);
         state.last_x = x;
         let animating = state.turn.is_some();
+        state.picker = grid;
         state.layout = Some(layout);
         state.panel = Some(panel.clone());
         state.appearance = panel.appearance;
         state.above = panel.above;
+        state.solid = !panel.translucent;
+        state.accent = panel.accent;
         drop(state);
         self.panel.place(x, y as i32, width, height, scale);
         self.redraw(Kind::Panel);
+        self.announce_list(&panel.model);
+        if undo_appears {
+            // SAFETY: our own window.
+            unsafe { SetTimer(Some(self.panel.window.get()), UNDO_TIMER, UNDO_MS, None) };
+        }
         if animating {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(self.panel.window.get()), ANIMATION_TIMER, FRAME_MS, None) };
+        }
+    }
+
+    /// Tells screen readers what changed in the list (only while one listens), and keeps the window's name.
+    fn announce_list(&self, model: &zt_panel::model::PanelModel) {
+        let accessible = &self.panel.accessible;
+        accessible.set_name(|| announce::name(model));
+        if !accessible.listening() {
+            self.state.borrow_mut().announced = Shown::default();
+            return;
+        }
+        let said = announce::announcement(model, &self.state.borrow().announced);
+        self.state.borrow_mut().announced = Shown::of(model);
+        if let Some(text) = said {
+            accessible.announce(self.panel.window.get(), &text, "ZhuyinType.Candidate");
+        }
+    }
+
+    /// Tells screen readers the new mode: `english` when 中/英 changed, else the badge's word (全形/半形標點).
+    /// From the badge's window (made if need be, hidden), so the list's own announcements are not replaced.
+    pub(crate) fn announce_mode(&self, english: Option<bool>, toast: Option<&str>) {
+        let text = match (english, toast) {
+            (Some(english), _) => announce::mode(english).to_owned(),
+            (None, Some(toast)) => announce::badge(toast),
+            (None, None) => return,
+        };
+        let accessible = &self.badge.accessible;
+        accessible.set_name(|| text.clone());
+        if !accessible.listening() {
+            return;
+        }
+        if let Some(window) = self.ensure(Kind::Badge) {
+            accessible.announce(window, &text, "ZhuyinType.Mode");
         }
     }
 
@@ -867,6 +1093,7 @@ impl PanelWindow {
         if window.is_invalid()
             || !state.panel.as_ref().is_some_and(|panel| panel.animates)
             || !state.layout.as_ref().is_some_and(|layout| layout.list_open)
+            || state.picker.is_some()
         {
             return;
         }
@@ -911,7 +1138,7 @@ impl PanelWindow {
             let elapsed = started.elapsed().as_secs_f32() * 1000.;
             if elapsed < motion::DURATION {
                 frames.running = true;
-                let travel = motion::OFFSET * direction as f32;
+                let travel = if state.reduced { 0. } else { motion::OFFSET * direction as f32 };
                 let t = elapsed / motion::DURATION;
                 let (x, y) = along(travel * (1. - motion::ease_out(t)));
                 let fade = (elapsed - motion::IN_DELAY) / (motion::DURATION - motion::IN_DELAY);
@@ -933,9 +1160,13 @@ impl PanelWindow {
                 } else {
                     1. - motion::ease_in_out((elapsed - motion::BOUNCE_OUT) / motion::BOUNCE_BACK)
                 };
-                let (x, y) = along(motion::BOUNCE * direction as f32 * amount);
-                frames.incoming = (x, y, 1.);
-                frames.highlight = (x, y);
+                if state.reduced {
+                    frames.incoming = (0., 0., 1. - (1. - motion::BOUNCE_DIM) * amount);
+                } else {
+                    let (x, y) = along(motion::BOUNCE * direction as f32 * amount);
+                    frames.incoming = (x, y, 1.);
+                    frames.highlight = (x, y);
+                }
             }
         }
         frames
@@ -945,6 +1176,18 @@ impl PanelWindow {
         let Some(g) = graphics() else { return };
         let state = self.state.borrow();
         let (Some(layout), Some(panel)) = (state.layout.clone(), state.panel.clone()) else { return };
+        if let (Some(grid), Some(view)) = (state.picker.clone(), panel.picker.as_ref()) {
+            let hover = state.picker_hover;
+            drop(state);
+            let (colors, opaque) = colors(panel.appearance, panel.accent);
+            let surface = &self.panel;
+            surface.render(dc, |target| {
+                let Some(painter) = Painter::new(&g, target, colors) else { return };
+                surface.base(&painter, (grid.width, grid.height), !panel.translucent || opaque);
+                picker_draw::content(&painter, view, &grid, hover);
+            });
+            return;
+        }
         let frames = Self::frames(&state, &layout);
         let (hover, hover_control) = match state.hover {
             Some(Hit::Row(index)) => (Some(index), None),
@@ -954,11 +1197,11 @@ impl PanelWindow {
         let outgoing_rows = state.outgoing.clone();
         let old_label = state.old_label.clone();
         drop(state);
-        let colors = tokens::colors(panel.appearance.dark(system_dark()));
+        let (colors, opaque) = colors(panel.appearance, panel.accent);
         let surface = &self.panel;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (layout.width, layout.height));
+            surface.base(&painter, (layout.width, layout.height), !panel.translucent || opaque);
             let motion = Motion {
                 incoming: frames.incoming,
                 outgoing: outgoing_rows.as_deref().zip(frames.outgoing).map(|(rows, (x, y, a))| (rows, x, y, a)),
@@ -987,21 +1230,67 @@ impl PanelWindow {
         let Some(g) = graphics() else { return };
         let state = self.state.borrow();
         let Some(text) = state.toast.clone() else { return };
-        let appearance = state.appearance;
+        let (appearance, solid, accent) = (state.appearance, state.solid, state.accent);
         drop(state);
-        let colors = tokens::colors(appearance.dark(system_dark()));
+        let (colors, opaque) = colors(appearance, accent);
         let surface = &self.badge;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (BADGE_W, BADGE_H));
+            surface.base(&painter, (BADGE_W, BADGE_H), solid || opaque);
             panel_draw::badge(&painter, &text, BADGE_W);
         });
+    }
+
+    /// A right-click on a row: the word actions as a menu (the row's unavailable ones greyed), sent like a click.
+    /// The window stays inactive (the field keeps focus and its composition); the menu returns the chosen command.
+    fn row_menu(&self, window: HWND, x: i32, y: i32) {
+        let scale = self.panel.scale.get().max(0.25);
+        let margin = self.panel.margin();
+        let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
+        let (hit, actions) = {
+            let state = self.state.borrow();
+            if state.picker.is_some() {
+                return;
+            }
+            let hit = state.layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
+            let Some(Hit::Row(row)) = hit else { return };
+            let bits = state.panel.as_ref().and_then(|panel| panel.model.rows.get(row)).map_or(0, |r| r.actions);
+            (row, bits)
+        };
+        let mut point = POINT { x, y };
+        // SAFETY: a menu created, shown and destroyed here, owned by our window.
+        let command = unsafe {
+            let _ = ClientToScreen(window, &mut point);
+            let Ok(menu) = CreatePopupMenu() else { return };
+            for (n, (_, title)) in WORD_ACTIONS.iter().enumerate() {
+                let flags = if actions & (1 << n) != 0 { MF_STRING } else { MF_STRING | MF_GRAYED };
+                let title: Vec<u16> = title.encode_utf16().chain([0]).collect();
+                let _ = AppendMenuW(menu, flags, n + 1, PCWSTR(title.as_ptr()));
+            }
+            let command = TrackPopupMenuEx(
+                menu,
+                (TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON).0,
+                point.x,
+                point.y,
+                window,
+                None,
+            );
+            let _ = DestroyMenu(menu);
+            command.0
+        };
+        if let Some(n) = usize::try_from(command).ok().filter(|n| (1..=WORD_ACTIONS.len()).contains(n)) {
+            self.post_action(ACTION_WORD + n - 1, hit as isize);
+        }
     }
 
     fn mouse(&self, x: i32, y: i32, click: bool) {
         let scale = self.panel.scale.get().max(0.25);
         let margin = self.panel.margin();
         let (lx, ly) = ((x - margin) as f32 / scale, (y - margin) as f32 / scale);
+        if self.state.borrow().picker.is_some() {
+            self.picker_mouse(lx, ly, click);
+            return;
+        }
         let hit = self.state.borrow().layout.as_ref().and_then(|layout| panel_draw::hit(layout, lx, ly));
         if self.state.borrow().hover != hit {
             self.state.borrow_mut().hover = hit;
@@ -1017,8 +1306,30 @@ impl PanelWindow {
             Some(Hit::Control(Control::Single)) => (ACTION_SINGLE, 0),
             Some(Hit::Control(Control::Corrections)) => (ACTION_CORRECTIONS, 0),
             Some(Hit::Control(Control::Zhuyin)) => (ACTION_ZHUYIN, 0),
+            Some(Hit::Control(Control::Undo)) => (ACTION_UNDO, 0),
             None => return,
         };
+        self.post_action(action, value);
+    }
+
+    /// The mouse over 符號與 Emoji's grid: a cell or tab lights up; a click inserts the symbol or switches the tab.
+    fn picker_mouse(&self, x: f32, y: f32, click: bool) {
+        let hit = self.state.borrow().picker.as_ref().and_then(|grid| grid.hit(x, y));
+        if self.state.borrow().picker_hover != hit {
+            self.state.borrow_mut().picker_hover = hit;
+            self.redraw(Kind::Panel);
+        }
+        if !click {
+            return;
+        }
+        match hit {
+            Some(PickerHit::Symbol(index)) => self.post_action(ACTION_SYMBOL, index as isize),
+            Some(PickerHit::Tab(index)) => self.post_action(ACTION_SYMBOL_TAB, index as isize),
+            None => {}
+        }
+    }
+
+    fn post_action(&self, action: usize, value: isize) {
         let notify = self.notify.get();
         if !notify.is_invalid() {
             // SAFETY: the text service's own message window.
@@ -1042,6 +1353,27 @@ impl PanelWindow {
             }
             WM_TIMER if wparam.0 == ANIMATION_TIMER => {
                 self.redraw(kind);
+                Some(LRESULT(0))
+            }
+            WM_TIMER if wparam.0 == UNDO_TIMER => {
+                // SAFETY: our own window.
+                let _ = unsafe { KillTimer(Some(window), UNDO_TIMER) };
+                let shown = {
+                    let state = self.state.borrow();
+                    state.panel.clone().filter(|panel| panel.model.undo).zip(state.last_caret)
+                };
+                if let Some((mut panel, caret)) = shown
+                    && self.panel.visible()
+                {
+                    panel.model.undo = false;
+                    self.show(&panel, caret, self.panel.scale.get().max(0.25));
+                }
+                Some(LRESULT(0))
+            }
+            WM_RBUTTONUP if kind == Kind::Panel => {
+                let x = i32::from(lparam.0 as u32 as u16 as i16);
+                let y = i32::from((lparam.0 as u32 >> 16) as u16 as i16);
+                self.row_menu(window, x, y);
                 Some(LRESULT(0))
             }
             WM_TIMER if wparam.0 == TOAST_TIMER => {
@@ -1068,11 +1400,22 @@ impl PanelWindow {
                 Some(LRESULT(0))
             }
             WM_MOUSELEAVE => {
-                if self.state.borrow().hover.is_some() {
+                if self.state.borrow().hover.is_some() || self.state.borrow().picker_hover.is_some() {
                     self.state.borrow_mut().hover = None;
+                    self.state.borrow_mut().picker_hover = None;
                     self.redraw(kind);
                 }
                 Some(LRESULT(0))
+            }
+            WM_GETOBJECT => self.surface(kind).accessible.get_object(window, wparam, lparam),
+            // Broadcast to every top-level window, owned ones too: high contrast, the system colours, the theme or
+            // the accent colour changed.
+            WM_SETTINGCHANGE | WM_SYSCOLORCHANGE | WM_THEMECHANGED | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                system_look::refresh();
+                if self.surface(kind).visible() {
+                    self.redraw(kind);
+                }
+                None
             }
             _ => None,
         }

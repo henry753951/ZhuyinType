@@ -296,6 +296,39 @@ impl PersonalLanguageModel {
         if changed { swift_max(p, 5e-324).ln() } else { base }
     }
 
+    /// The words the user wrote right after `history` (its previous word, or its last two words), with their
+    /// texts and how strongly each is remembered there, strongest first, at most `limit` (聯想詞).
+    #[must_use]
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String, f64)> {
+        let usable = |id: u32| id > 2 && id != NO_CONTEXT;
+        if !usable(history.previous) {
+            return vec![];
+        }
+        let state = self.lock();
+        let now = (state.clock)();
+        let older = history.older.filter(|&o| usable(o));
+        let mut found: HashMap<u32, (String, f64)> = HashMap::new();
+        for (key, entry) in &state.entries {
+            let follows = match key.as_slice() {
+                [previous, _] => *previous == history.previous,
+                [first, previous, _] => Some(*first) == older && *previous == history.previous,
+                _ => false,
+            };
+            let (Some(&word), Some(text)) = (key.last(), entry.texts.last()) else { continue };
+            if !follows || word <= 2 {
+                continue;
+            }
+            let strength = value(&state.options, entry, now);
+            let slot = found.entry(word).or_insert_with(|| (text.clone(), 0.0));
+            slot.1 = swift_max(slot.1, strength);
+        }
+        let mut followers: Vec<(u32, String, f64)> =
+            found.into_iter().map(|(word, (text, strength))| (word, text, strength)).collect();
+        followers.sort_by(|a, b| b.2.total_cmp(&a.2).then(a.0.cmp(&b.0)));
+        followers.truncate(limit);
+        followers
+    }
+
     /// Learns one committed stretch of words (no literals inside).  The first `context` words were committed
     /// earlier: they are history only, so n-grams ending in them are not counted again.
     pub fn learn(&self, words: &[Word], context: usize) {
@@ -359,6 +392,34 @@ impl PersonalLanguageModel {
     pub fn forget(&self, id: u32) {
         let mut state = self.lock();
         state.entries.retain(|key, _| !key.contains(&id));
+        rebuild_totals(&mut state);
+        self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
+    }
+
+    /// Whether the user picked `id` anywhere.
+    #[must_use]
+    pub fn picked(&self, id: u32) -> bool {
+        self.lock().entries.iter().any(|(key, entry)| key.last() == Some(&id) && entry.picks > 0)
+    }
+
+    /// Removes every n-gram containing `id` and returns them, for [`restore`](Self::restore).
+    pub fn take(&self, id: u32) -> Vec<(Key, Entry)> {
+        let mut state = self.lock();
+        let keys: Vec<Key> = state.entries.keys().filter(|key| key.contains(&id)).cloned().collect();
+        let rows: Vec<(Key, Entry)> =
+            keys.into_iter().filter_map(|key| state.entries.remove(&key).map(|entry| (key, entry))).collect();
+        rebuild_totals(&mut state);
+        self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
+        rows
+    }
+
+    /// Puts back n-grams returned by [`take`](Self::take).
+    pub fn restore(&self, rows: Vec<(Key, Entry)>) {
+        if rows.is_empty() {
+            return;
+        }
+        let mut state = self.lock();
+        state.entries.extend(rows);
         rebuild_totals(&mut state);
         self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
     }

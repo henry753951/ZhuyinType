@@ -553,6 +553,7 @@ version = "0.1.0"
 dependencies = [
  "zhuyin-core",
  "zhuyin-models",
+ "zhuyin-symbols",
 ]
 
 [[package]]
@@ -562,6 +563,13 @@ dependencies = [
  "memmap2",
  "ort",
  "serde_json",
+ "zhuyin-core",
+]
+
+[[package]]
+name = "zhuyin-symbols"
+version = "0.1.0"
+dependencies = [
  "zhuyin-core",
 ]
 

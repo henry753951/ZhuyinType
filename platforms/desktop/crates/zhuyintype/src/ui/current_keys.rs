@@ -36,10 +36,16 @@ pub enum Command {
     NextCharacter,
     TogglePunctuationWidth,
     InsertSpace,
+    BlockCandidate,
+    ForgetCandidate,
+    AddCandidatePhrase,
+    QuickSettings,
+    AddSelectedText,
+    SymbolPicker,
 }
 
 impl Command {
-    pub const ALL: [Command; 13] = [
+    pub const ALL: [Command; 19] = [
         Command::SingleCharacterList,
         Command::CorrectionsList,
         Command::TypeZhuyin,
@@ -53,6 +59,12 @@ impl Command {
         Command::NextCharacter,
         Command::TogglePunctuationWidth,
         Command::InsertSpace,
+        Command::BlockCandidate,
+        Command::ForgetCandidate,
+        Command::AddCandidatePhrase,
+        Command::QuickSettings,
+        Command::AddSelectedText,
+        Command::SymbolPicker,
     ];
 
     /// The id in settings, links and `settings.json` `commands`.
@@ -71,6 +83,12 @@ impl Command {
             Command::NextCharacter => "nextCharacter",
             Command::TogglePunctuationWidth => "togglePunctuationWidth",
             Command::InsertSpace => "insertSpace",
+            Command::BlockCandidate => "blockCandidate",
+            Command::ForgetCandidate => "forgetCandidate",
+            Command::AddCandidatePhrase => "addCandidatePhrase",
+            Command::QuickSettings => "quickSettings",
+            Command::AddSelectedText => "addSelectedText",
+            Command::SymbolPicker => "symbolPicker",
         }
     }
 
@@ -94,6 +112,12 @@ impl Command {
             Command::NextCharacter => "改後一個字",
             Command::TogglePunctuationWidth => "標點全半形",
             Command::InsertSpace => "插入空白",
+            Command::BlockCandidate => "不要再推薦",
+            Command::ForgetCandidate => "忘記這個選字",
+            Command::AddCandidatePhrase => "加入自訂詞",
+            Command::QuickSettings => "快速設定",
+            Command::AddSelectedText => "選取的字加入自訂詞",
+            Command::SymbolPicker => "符號與 Emoji",
         }
     }
 

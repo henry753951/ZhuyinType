@@ -35,6 +35,8 @@ enum UIPreviewRenderer {
         Preferences.shared = Preferences(defaults: defaults)
         UsageStatsStore.shared = sampleStats()
         SettingsWindowController.isPreview = true
+        // 檢查輸入法 shows made-up facts, never this Mac's.
+        HealthMonitor.shared.pinned = .sample()
         DemoPinning.still = true
         DemoPinning.context = 0
         DemoPinning.intro = 12
@@ -66,6 +68,16 @@ enum UIPreviewRenderer {
                         try capture(swiftUI: WizardStoryboard(frame: frame, preferences: Preferences.shared), width: 720,
                                     to: directory.appendingPathComponent("storyboard/\(frame.rawValue)-\(name).png"), settle: 0.3)
                     }
+                }
+            }
+            if only == "health" {
+                // 關於 › 檢查輸入法 and 回報問題, with everything in place and with problems.
+                try renderHealth(settings, to: directory.appendingPathComponent("health"))
+            }
+            if only == "symbols" {
+                for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearanceName)
+                    try renderSymbolPicker(to: directory.appendingPathComponent("panels"), suffix: name)
                 }
             }
             if only == "practice" {
@@ -154,12 +166,27 @@ enum UIPreviewRenderer {
                                         tolerant: corrections.tolerant, singleCharacter: corrections.singleCharacter)
         try capturePanel(list: fivePerPage, keys: Array("asdfg"), style: minimal, zhuyinHint: hint,
                          to: directory.appendingPathComponent("candidate-minimal-\(suffix).png"))
+        // Accessibility (UI/Accessibility): ZhuyinType 藍, Increase Contrast, Reduce Transparency and the largest 字級.
+        let display = DisplayOptions.override
+        defer { DisplayOptions.override = display }
+        for (name, contrast, transparency, accent, size) in [
+            ("accent-zhuyintype", false, false, AccentColorSetting.zhuyintype, 18.0), ("increase-contrast", true, false, .system, 18),
+            ("reduce-transparency", false, true, .system, 18), ("36pt", false, false, .system, 36),
+        ] {
+            DisplayOptions.override = (contrast, transparency)
+            var style = CandidateStyle(layout: .vertical, fontSize: size)
+            style.accentColor = accent
+            try capturePanel(list: corrections, keys: keys, style: style, zhuyinHint: hint,
+                             to: directory.appendingPathComponent("candidate-a11y-\(name)-\(suffix).png"))
+        }
+        DisplayOptions.override = display
         for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字")] {
             try capturePanel(list: nil, keys: [], style: CandidateStyle(layout: .horizontal), notice: notice,
                              to: directory.appendingPathComponent("notice-\(file)-\(suffix).png"))
         }
         let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))
+        try renderSymbolPicker(to: directory, suffix: suffix)
         // Turning pages and the end of the list, frame by frame (the animation's own easing, drawn still).
         let many = CandidateList(items: (words + ["瞑", "洺", "螟蛉", "明明", "名命"]).map { Candidate(text: $0) }, selection: 0,
                                  pageSize: 9, tolerant: false)
@@ -180,6 +207,28 @@ enum UIPreviewRenderer {
                         "paging/\(layout.rawValue)-\(name)-\(Int(progress * 100))-\(suffix).png"))
                 }
             }
+        }
+    }
+
+    /// 符號與 Emoji: a category with the second row highlighted, recent symbols first, and a Zhuyin search.
+    private static func renderSymbolPicker(to directory: URL, suffix: String) throws {
+        let source = EngineSymbolSource()
+        let browsing = SymbolPicker(source: source, recent: ["😂", "，", "→", "❤️"])
+        browsing.selectTab(browsing.tabs.firstIndex { $0.id == "smileys" } ?? 0)
+        for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
+        let searching = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
+        let prefilled = SymbolPicker(source: source, recent: [], prefill: "笑")
+        let english = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [4, 14, 0, 15, 17] { _ = english.handle(keyCode: key, modifiers: []) } // heart
+        let empty = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [6, 6, 6, 7, 7] { _ = empty.handle(keyCode: key, modifiers: []) } // zzzxx
+        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("english", english), ("no-results", empty)] {
+            let view = SymbolPickerView(frame: .zero)
+            view.hoverEnabled = false
+            view.update(picker)
+            try capture(view: Backdrop(content: InputSurface(content: view)),
+                        to: directory.appendingPathComponent("symbols-\(name)-\(suffix).png"))
         }
     }
 
@@ -409,7 +458,7 @@ enum UIPreviewRenderer {
         (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
         (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
         (.words, .learnedWords, 620), (.words, .phrases, 620),
-        (.analytics, .performance, 760), (.advanced, .apps, 460),
+        (.analytics, .performance, 760), (.advanced, .apps, 460), (.about, .health, 900),
     ]
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
@@ -604,6 +653,48 @@ enum UIPreviewRenderer {
                 window.orderOut(nil)
                 window.contentView = nil
                 window.close()
+            }
+        }
+        settings.model.subpage = nil
+    }
+
+    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet: everything in place, then problems
+    /// (secure input on, the input source not added, a model missing, per-document input sources).
+    private static func renderHealth(_ settings: SettingsWindowController, to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let monitor = HealthMonitor.shared
+        let saved = monitor.pinned
+        defer { monitor.pinned = saved }
+        var problems = HealthFacts.sample()
+        problems.secureInput = .on(owner: "鑰匙圈存取")
+        problems.inputSource = .registered(enabled: false, selectable: false)
+        problems.perDocumentInputSource = true
+        problems.missingModels = [.reranker]
+        let errors = [HealthReport.LogLine(date: problems.now.addingTimeInterval(-600),
+                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened.")]
+        for (state, facts) in [("ok", HealthFacts.sample()), ("problems", problems)] {
+            monitor.pinned = facts
+            for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                NSApp.appearance = NSAppearance(named: appearanceName)
+                for subpage in [nil, SettingsSubpage.health] {
+                    settings.model.subpage = nil
+                    let window = settings.makeWindow(pane: .about)
+                    window.setContentSize(NSSize(width: 760, height: 600))
+                    window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                    window.alphaValue = 0
+                    window.orderFrontRegardless()
+                    settings.model.subpage = subpage
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+                    try capture(window: window, to: directory.appendingPathComponent(
+                        "\(subpage == nil ? "about" : "health")-\(state)-\(name).png"))
+                    retire(window)
+                }
+                try renderPages(settings, [(.about, .health, 900)], to: directory, label: "-\(state)", suffix: name)
+                let text = HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts),
+                                             errors: state == "ok" ? [] : errors)
+                try capture(swiftUI: HealthReportSheet(text: text).frame(width: 620, height: 520)
+                                .background(Color(nsColor: .windowBackgroundColor)), width: 620,
+                            to: directory.appendingPathComponent("report-\(state)-\(name).png"), settle: 0.3)
             }
         }
         settings.model.subpage = nil

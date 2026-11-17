@@ -5,11 +5,13 @@
 //!
 //! Hosts own focus, secure-input detection and inserting [`ControllerEvent::Commit`] into the app.
 
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 
 use zhuyin_core::api::{KeyInput, PunctuationWidth};
+use zhuyin_core::composer::CandidateAction;
 
 use crate::corrections::{CandidateDetails, CorrectionLog, CorrectionRecorder, ObservedInput, correction_settings};
 use crate::engine::EngineSession;
@@ -18,6 +20,7 @@ use crate::presentation::Presentation;
 use crate::settings::Settings;
 use crate::shortcuts::{Action, Shortcuts, is_command_input};
 use crate::stats::{PickList, UsageEvent};
+use crate::symbols::{self, Picker, PickerView, Recent};
 
 /// Receives every usage event while 記錄使用統計 is on.
 pub type UsageSink = Arc<dyn Fn(&UsageEvent) + Send + Sync>;
@@ -37,7 +40,20 @@ pub enum ControllerEvent {
     Boundary(i32),
     /// A candidate was picked by a click.
     CandidateChosen { elapsed_ms: f64 },
+    /// 選取的字加入自訂詞 while not composing: the adapter is asked for the field's selected text (IPC `selection`).
+    SelectionWanted,
+    /// A list opened with the word actions' tip: the host counts it in [`WORD_ACTION_TIP_KEY`] (outside the lock).
+    WordActionTip,
+    /// The 開啟快速設定 shortcut: the host shows the 快速設定 panel at the caret.
+    QuickPanel,
 }
+
+/// The settings key counting the lists that showed the word actions' tip (macOS uses the same name).
+pub const WORD_ACTION_TIP_KEY: &str = "wordActionHintCount";
+/// How many lists show the tip.
+pub const WORD_ACTION_TIP_LISTS: f64 = 5.0;
+/// How long a word action can be undone (「復原」, Ctrl+Z), in seconds.
+pub const WORD_UNDO_SECONDS: f64 = 5.0;
 
 /// The characters read before the insertion point.
 pub const CONTEXT_READ: usize = 128;
@@ -116,6 +132,8 @@ pub struct InputController {
     secure: bool,
     /// A private field (a browser's private window): typing works, nothing is learned, read or remembered.
     private: bool,
+    /// 暫停學習 (快速設定): every field behaves as a private one.  Never stored: a new controller starts unpaused.
+    learning_paused: bool,
     held_shifts: BTreeSet<ShiftSide>,
     shift_tap: Option<(ShiftSide, f64)>,
     recent_text: String,
@@ -129,9 +147,20 @@ pub struct InputController {
     events: Vec<ControllerEvent>,
     clock: Box<dyn Fn() -> f64 + Send>,
     now: Box<dyn Fn() -> i64 + Send>,
+    /// When the last word action was done (the clock's seconds).
+    word_action_at: Option<f64>,
+    /// A list is open, and whether it shows the word actions' tip.
+    list_seen: bool,
+    list_tip: bool,
     /// The gap that ends a burst of typing (four times the usual key interval, at least 2 s); the statistics store
     /// may set it from the user's rhythm.
     pub pause_threshold: f64,
+    /// 符號與 Emoji: the symbols, the recent list, and the picker while it is open (with its list as the candidate
+    /// windows of the native adapters draw it).
+    symbols: Arc<dyn symbols::Source>,
+    recent_symbols: Recent,
+    picker: Option<Picker>,
+    picker_presentation: Presentation,
 }
 
 impl InputController {
@@ -149,6 +178,7 @@ impl InputController {
             caps_lock: false,
             secure: false,
             private: false,
+            learning_paused: false,
             held_shifts: BTreeSet::new(),
             shift_tap: None,
             recent_text: String::new(),
@@ -162,7 +192,14 @@ impl InputController {
             events: Vec::new(),
             clock: Box::new(move || started.elapsed().as_secs_f64()),
             now: Box::new(|| chrono::Utc::now().timestamp_millis()),
+            word_action_at: None,
+            list_seen: false,
+            list_tip: false,
             pause_threshold: 2.0,
+            symbols: Arc::new(symbols::CoreSource),
+            recent_symbols: Recent::open(&symbols::CoreSource, None),
+            picker: None,
+            picker_presentation: Presentation::default(),
         };
         controller.sync_settings();
         controller.events.clear();
@@ -189,10 +226,116 @@ impl InputController {
         &self.shortcuts
     }
 
-    /// What the composer shows now.
+    /// What the composer shows now (while the symbol picker is open: its highlighted row as a candidate list).
     #[must_use]
     pub fn presentation(&self) -> &Presentation {
+        if self.picker.is_some() {
+            return &self.picker_presentation;
+        }
         self.session.presentation()
+    }
+
+    // MARK: 符號與 Emoji
+
+    /// Keeps the recent symbols in `dir` (`None`: in memory only).
+    pub fn set_recent_symbols_dir(&mut self, dir: Option<&std::path::Path>) {
+        self.recent_symbols = Recent::open(self.symbols.as_ref(), dir);
+    }
+
+    /// Uses `source` for the picker's symbols (tests).
+    pub fn set_symbol_source(&mut self, source: Arc<dyn symbols::Source>) {
+        self.symbols = source;
+    }
+
+    /// The recent symbols, newest first.
+    #[must_use]
+    pub fn recent_symbols(&self) -> &[String] {
+        self.recent_symbols.items()
+    }
+
+    /// Forgets the recent symbols and removes their file (回復預設設定, deleting personal data).
+    pub fn clear_recent_symbols(&mut self) {
+        self.recent_symbols.clear();
+    }
+
+    /// The symbol picker is open.
+    #[must_use]
+    pub fn picker_open(&self) -> bool {
+        self.picker.is_some()
+    }
+
+    /// What the picker's grid shows, while it is open.
+    #[must_use]
+    pub fn picker_view(&self) -> Option<PickerView> {
+        self.picker.as_ref().map(Picker::view)
+    }
+
+    /// Opens the picker: the composition's text becomes the search, and the composition is dropped (not sent).
+    fn open_picker(&mut self) -> bool {
+        let prefill =
+            if self.session.composing() { self.session.presentation().composition.clone() } else { String::new() };
+        if self.session.composing() {
+            let _ = self.session.reset();
+        }
+        self.picker = Some(Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill));
+        self.sync_picker();
+        true
+    }
+
+    /// Closes the picker without inserting.
+    pub fn close_picker(&mut self) {
+        self.picker = None;
+        self.picker_presentation = Presentation::default();
+    }
+
+    fn sync_picker(&mut self) {
+        self.picker_presentation = self.picker.as_ref().map(Picker::presentation).unwrap_or_default();
+    }
+
+    /// Sends `text` like a picked candidate, remembers it, closes the picker.
+    fn insert_symbol(&mut self, text: &str) {
+        self.close_picker();
+        self.committed(text);
+        let _ = self.session.break_context();
+        if let Some(recorder) = &mut self.recorder {
+            recorder.break_context();
+        }
+        let source = self.symbols.clone();
+        self.recent_symbols.push(source.as_ref(), text);
+    }
+
+    /// A key while the picker is open: it takes every key (the picker's key again closes it).
+    fn picker_key(&mut self, key: &Key) -> bool {
+        if self.shortcuts.resolve(key.code, key.modifiers).is_some_and(|command| command.action == Action::SymbolPicker)
+        {
+            self.close_picker();
+            return true;
+        }
+        let Some(picker) = &mut self.picker else { return false };
+        match picker.key(key) {
+            symbols::Outcome::Handled => self.sync_picker(),
+            symbols::Outcome::Insert(text) => self.insert_symbol(&text),
+            symbols::Outcome::Close => self.close_picker(),
+        }
+        true
+    }
+
+    /// A click on item `index` of the picker's list.
+    pub fn pick_symbol(&mut self, index: usize) -> bool {
+        let Some(text) = self.picker.as_ref().and_then(|picker| picker.item(index)).map(|item| item.text.clone())
+        else {
+            return false;
+        };
+        self.insert_symbol(&text);
+        true
+    }
+
+    /// A click on the picker's tab `index`.
+    pub fn select_symbol_tab(&mut self, index: usize) {
+        if let Some(picker) = &mut self.picker {
+            picker.select_tab(index);
+            self.sync_picker();
+        }
     }
 
     /// Applies the settings to the engine again (after `open`, or to pick up a change before the next key).
@@ -260,8 +403,8 @@ impl InputController {
         if text.is_empty() {
             return;
         }
-        self.events.push(ControllerEvent::Commit(text.to_owned()));
-        if self.secure || self.private {
+        self.events.push(ControllerEvent::Commit(self.output(text).into_owned()));
+        if self.secure || self.unlearned() {
             return;
         }
         self.recent_text.push_str(text);
@@ -269,7 +412,7 @@ impl InputController {
     }
 
     fn remember(&mut self) {
-        if self.secure || self.private || !self.settings.bool("usesPrecedingText") {
+        if self.secure || self.unlearned() || !self.settings.bool("usesPrecedingText") {
             self.recent_text.clear();
             self.app_context.remove(&self.app);
             return;
@@ -284,9 +427,9 @@ impl InputController {
     fn prepare_context(&mut self) {
         // Secure input and private fields: no text is read or remembered, and nothing is learned from this
         // composition.
-        if self.secure || self.private {
+        if self.secure || self.unlearned() {
             self.recent_text.clear();
-            if self.private && self.session.ready() {
+            if self.unlearned() && self.session.ready() {
                 let _ = self.session.set_preceding_text("");
             }
             return;
@@ -337,7 +480,7 @@ impl InputController {
 
     fn candidate_details(&self, input: &ObservedInput, before: &Presentation) -> Option<CandidateDetails> {
         let recorder = self.recorder.as_ref()?;
-        if self.secure || self.private || !self.settings.bool("recordsCorrections") {
+        if self.secure || self.unlearned() || !self.settings.bool("recordsCorrections") {
             return None;
         }
         let index = recorder.candidate_index(input, before)?;
@@ -373,7 +516,7 @@ impl InputController {
         let commit = self.preserving_visible(outcome.commit, &before);
         self.committed(&commit);
         self.observe(observed, &before, &commit, outcome.handled, outcome.elapsed_ms, candidate, time);
-        if !outcome.handled && !self.secure && !self.private {
+        if !outcome.handled && !self.secure && !self.unlearned() {
             // Keys the app receives extend or trim the text before the insertion point.
             match input {
                 KeyInput::Backspace => {
@@ -423,10 +566,35 @@ impl InputController {
         if self.secure || !self.session.ready() {
             return false;
         }
+        if self.picker.is_some() {
+            return self.picker_key(key);
+        }
+        let command = self.shortcuts.resolve(key.code, key.modifiers);
+        // 符號與 Emoji opens in English too.
+        if let Some(command) = command
+            && command.action == Action::SymbolPicker
+            && self.shortcuts.is_enabled(command.id)
+        {
+            return self.open_picker();
+        }
+        // 快速設定 opens in English too: it is how to switch back.
+        if command
+            .is_some_and(|c| c.action == Action::QuickSettings && self.english() && self.shortcuts.is_enabled(c.id))
+        {
+            self.events.push(ControllerEvent::QuickPanel);
+            return true;
+        }
         if self.english() {
             return self.pass_through();
         }
-        if let Some(command) = self.shortcuts.resolve(key.code, key.modifiers) {
+        // Ctrl+Z undoes a word action for a few seconds while still composing (a fixed key, not a command).
+        if crate::shortcuts::Binding::normalized(key.code, key.modifiers)
+            == Some(crate::shortcuts::Binding { key: i32::from(b'Z'), modifiers: modifier::CONTROL })
+            && self.word_undo_offered()
+        {
+            return self.undo_word_action();
+        }
+        if let Some(command) = command {
             if !self.shortcuts.is_enabled(command.id) {
                 return self.pass_through();
             }
@@ -455,6 +623,25 @@ impl InputController {
 
     fn dispatch(&mut self, id: &str, action: Action, key: &Key, time: f64) -> bool {
         match action {
+            // Only when not composing (with a composition the key does nothing); never from a private field.
+            Action::AddSelectedText => {
+                if self.session.composing() {
+                    return true;
+                }
+                if self.private {
+                    return false;
+                }
+                self.events.push(ControllerEvent::SelectionWanted);
+                true
+            }
+            // Only while composing; a word action that does not apply here keeps the composition (no commit).
+            Action::Word(action) => {
+                if !self.session.composing() {
+                    return self.pass_through();
+                }
+                self.word_action(action, None);
+                true
+            }
             Action::Neighbour(delta) => {
                 let arrow = if delta < 0 { KeyInput::Left } else { KeyInput::Right };
                 let p = self.session.presentation().clone();
@@ -474,14 +661,10 @@ impl InputController {
                 }
                 true
             }
-            Action::TogglePunctuationWidth => {
-                let Ok(width) = self.session.toggle_punctuation_width() else { return false };
-                self.events.push(ControllerEvent::WidthSwitched { full: width != PunctuationWidth::Half });
-                let after = self.session.presentation().clone();
-                let secure = self.secure;
-                if let Some(recorder) = &mut self.recorder {
-                    recorder.punctuation_width_changed(width, &after, secure, time);
-                }
+            Action::SymbolPicker => self.open_picker(),
+            Action::TogglePunctuationWidth => self.toggle_punctuation_width(time),
+            Action::QuickSettings => {
+                self.events.push(ControllerEvent::QuickPanel);
                 true
             }
             Action::Input(input) => {
@@ -536,6 +719,9 @@ impl InputController {
         }
         let time = self.clock();
         let tap = self.shift_tap.take();
+        if self.picker.is_some() {
+            return;
+        }
         let toggle = tap
             .is_some_and(|(side, at)| side == key.shift_side && time >= at && time - at <= SHIFT_TAP_SECONDS)
             && self.held_shifts.is_empty()
@@ -567,7 +753,11 @@ impl InputController {
     /// Sets 中/英 from outside the keyboard (the taskbar indicator), like a Shift tap: not while composing.
     pub fn set_english(&mut self, english: bool) {
         self.sync_settings();
-        if self.secure || english == self.english || (self.session.ready() && self.session.composing()) {
+        if self.secure
+            || english == self.english
+            || self.picker.is_some()
+            || (self.session.ready() && self.session.composing())
+        {
             return;
         }
         self.switch_mode(english);
@@ -576,10 +766,13 @@ impl InputController {
     /// Picks candidate `index` of the whole list (a click).
     pub fn choose(&mut self, index: usize) -> bool {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() {
+        if self.secure || (self.english() && self.picker.is_none()) || !self.session.ready() {
             return false;
         }
         self.shift_tap = None;
+        if self.picker.is_some() {
+            return self.pick_symbol(index);
+        }
         let before = self.session.presentation().clone();
         let observed = ObservedInput::Click { index };
         let candidate = self.candidate_details(&observed, &before);
@@ -598,19 +791,100 @@ impl InputController {
     /// A key from the candidate window's own controls (page buttons, list switches), observed like keys.
     pub fn feed(&mut self, key: &Key) -> bool {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() {
+        if self.secure || (self.english() && self.picker.is_none()) || !self.session.ready() {
             return false;
         }
         self.shift_tap = None;
+        if self.picker.is_some() {
+            return self.picker_key(key);
+        }
         let Some(input) = key.input() else { return false };
         let time = self.clock();
         self.engine_input(input, time)
     }
 
+    // MARK: Word actions
+
+    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one; adding with no list open
+    /// takes the whole composition).  False when it does not apply.
+    pub fn word_action(&mut self, action: CandidateAction, index: Option<usize>) -> bool {
+        self.sync_settings();
+        if self.secure || self.english() || !self.session.ready() || !self.session.composing() {
+            return false;
+        }
+        self.shift_tap = None;
+        let done = matches!(self.session.perform_word_action(action, index), Ok(Some(_)));
+        if done {
+            self.word_action_at = Some(self.clock());
+        }
+        done
+    }
+
+    /// Whether `action` applies to candidate `index` of the whole list (see [`InputController::word_action`]).
+    #[must_use]
+    pub fn word_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
+        !self.secure && self.session.ready() && self.session.word_action_available(action, index)
+    }
+
+    /// The last word action can still be undone: within [`WORD_UNDO_SECONDS`], still composing.
+    #[must_use]
+    pub fn word_undo_offered(&self) -> bool {
+        self.word_action_at.is_some_and(|at| (0.0..=WORD_UNDO_SECONDS).contains(&(self.clock() - at)))
+            && !self.secure
+            && self.session.ready()
+            && self.session.composing()
+            && self.session.can_undo_word_action()
+    }
+
+    /// Undoes the last word action (「復原」, Ctrl+Z) while it is offered.
+    pub fn undo_word_action(&mut self) -> bool {
+        if !self.word_undo_offered() {
+            return false;
+        }
+        self.word_action_at = None;
+        matches!(self.session.undo_word_action(), Ok(true))
+    }
+
+    /// Brings the notice's 「復原」 and the word actions' tip up to date with the composer (the host calls this after
+    /// every request, before drawing).  A list that opens while fewer than [`WORD_ACTION_TIP_LISTS`] lists have shown
+    /// the tip shows it until it closes.
+    pub fn sync_word_overlay(&mut self) {
+        if !self.session.ready() {
+            return;
+        }
+        let has_list = self.session.presentation().has_list();
+        if has_list && !self.list_seen {
+            self.list_tip = !self.secure && self.settings.number(WORD_ACTION_TIP_KEY) < WORD_ACTION_TIP_LISTS;
+            if self.list_tip {
+                self.events.push(ControllerEvent::WordActionTip);
+            }
+        }
+        self.list_seen = has_list;
+        self.list_tip &= has_list;
+        let undo = self.word_undo_offered() && self.session.presentation().notice.is_some();
+        let tip = self.list_tip.then(|| {
+            let key = self.shortcuts.active_label("blockCandidate");
+            if key.is_empty() {
+                "右鍵看更多".to_owned()
+            } else {
+                format!("{key} 不要再推薦・右鍵看更多")
+            }
+        });
+        let p = self.session.presentation();
+        if p.undo != undo || p.tip != tip {
+            self.session.set_word_overlay(undo, tip);
+        }
+    }
+
     /// The candidate window's corrections switch.
     pub fn toggle_corrections(&mut self) {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() || !self.session.presentation().has_list() {
+        if self.secure
+            || self.english()
+            || self.picker.is_some()
+            || !self.session.ready()
+            || !self.session.presentation().has_list()
+        {
             return;
         }
         let before = self.session.presentation().clone();
@@ -624,6 +898,9 @@ impl InputController {
         self.sync_settings();
         self.held_shifts.clear();
         self.shift_tap = None;
+        if secure {
+            self.close_picker();
+        }
         if secure || self.secure {
             self.discard_secure_composition();
         }
@@ -643,7 +920,7 @@ impl InputController {
             }
         }
         if self.session.ready() {
-            let _ = self.session.set_learning_suspended(secure || self.private);
+            let _ = self.session.set_learning_suspended(secure || self.unlearned());
         }
     }
 
@@ -666,13 +943,88 @@ impl InputController {
             return;
         }
         self.private = private;
-        if private {
+        self.unlearned_changed();
+    }
+
+    /// 暫停學習 on or off (快速設定): while on every field behaves as a private one ([`Self::set_private`]).  Kept only
+    /// in memory, so every new process starts learning again.
+    pub fn set_learning_paused(&mut self, paused: bool) {
+        if paused == self.learning_paused {
+            return;
+        }
+        self.learning_paused = paused;
+        self.unlearned_changed();
+    }
+
+    /// 暫停學習 is on.
+    #[must_use]
+    pub fn learning_paused(&self) -> bool {
+        self.learning_paused
+    }
+
+    /// Nothing is learned, read or remembered: a private field, or 暫停學習.
+    #[must_use]
+    pub fn unlearned(&self) -> bool {
+        self.private || self.learning_paused
+    }
+
+    fn unlearned_changed(&mut self) {
+        let unlearned = self.unlearned();
+        if unlearned {
             self.recent_text.clear();
             self.app_context.remove(&self.app);
         }
         if self.session.ready() {
-            let _ = self.session.set_learning_suspended(self.secure || private);
+            let _ = self.session.set_learning_suspended(self.secure || unlearned);
         }
+    }
+
+    /// 繁／簡 is 簡體 (`outputScript`): the composition, the candidates and what is sent are converted as they leave.
+    #[must_use]
+    pub fn simplified(&self) -> bool {
+        self.settings.string("outputScript") == "simplified"
+    }
+
+    /// `text` as it leaves for the app or a view: converted to 簡體 when 繁／簡 says so (length-preserving, so offsets
+    /// computed on the traditional text stay valid).
+    #[must_use]
+    pub fn output<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        if self.simplified() { Cow::Owned(zhuyin_core::simplified::to_simplified(text)) } else { Cow::Borrowed(text) }
+    }
+
+    /// What the views draw and the app shows: [`Self::presentation`] with its texts converted by [`Self::output`].
+    #[must_use]
+    pub fn output_presentation(&self) -> Cow<'_, Presentation> {
+        let p = self.presentation();
+        if self.simplified() { Cow::Owned(p.simplified()) } else { Cow::Borrowed(p) }
+    }
+
+    /// 中文標點 at full (true) or half width, as the 切換標點全半形 shortcut sets it (with its 全／半 badge).
+    pub fn set_full_width(&mut self, full: bool) {
+        self.sync_settings();
+        if self.secure || !self.session.ready() || full == (self.session.punctuation_width() != PunctuationWidth::Half)
+        {
+            return;
+        }
+        let time = self.clock();
+        self.toggle_punctuation_width(time);
+    }
+
+    /// 中文標點 is at full width.
+    #[must_use]
+    pub fn full_width(&self) -> bool {
+        self.session.punctuation_width() != PunctuationWidth::Half
+    }
+
+    fn toggle_punctuation_width(&mut self, time: f64) -> bool {
+        let Ok(width) = self.session.toggle_punctuation_width() else { return false };
+        self.events.push(ControllerEvent::WidthSwitched { full: width != PunctuationWidth::Half });
+        let after = self.session.presentation().clone();
+        let secure = self.secure;
+        if let Some(recorder) = &mut self.recorder {
+            recorder.punctuation_width_changed(width, &after, secure, time);
+        }
+        true
     }
 
     #[must_use]
@@ -700,6 +1052,7 @@ impl InputController {
         self.sync_settings();
         self.held_shifts.clear();
         self.shift_tap = None;
+        self.close_picker();
         if self.secure {
             self.discard_secure_composition();
         } else {
@@ -792,7 +1145,8 @@ impl InputController {
         }
         let after = self.session.presentation().clone();
         if recording {
-            let secure = self.secure;
+            // Private fields and 暫停學習 keep no correction log, as secure input.
+            let secure = self.secure || self.unlearned();
             let context = self.recent_text.clone();
             if let Some(recorder) = &mut self.recorder {
                 recorder.observe(&input, before, &after, commit, handled, secure, candidate, time, &move || {
@@ -861,6 +1215,13 @@ impl InputController {
             corrected = true;
         }
         let now = self.clock();
+        // ⌫ (or a command) put an automatic correction back to the keys as typed: counted on its own, not as a
+        // deletion.
+        let reverted = handled && after.reverted;
+        if reverted {
+            sink(&UsageEvent::CorrectionReverted);
+            corrected = true;
+        }
         match input {
             ObservedInput::Key { input: key, .. } => {
                 let u = &mut self.usage;
@@ -879,7 +1240,7 @@ impl InputController {
                 } else {
                     u.literal_before = None;
                     if matches!(key, KeyInput::Backspace | KeyInput::OptionBackspace) {
-                        if handled && !before.is_empty() && !before.has_list() {
+                        if handled && !reverted && !before.is_empty() && !before.has_list() {
                             sink(&UsageEvent::Backspace);
                             corrected = true;
                         } else if !handled

@@ -228,6 +228,14 @@ struct KeysPane: View {
                 KeyItem(id: "zhuyinRow", title: "點注音列打出注音", subtitle: "候選字視窗上方的注音", keys: .fixed(["點一下"]),
                         feature: .zhuyinRowClick),
                 KeyItem(id: "close", title: "關閉候選字視窗", subtitle: "固定", keys: .fixed(["Esc"])),
+                KeyItem(id: "blockCandidate", title: "不要再推薦", subtitle: "反白的字詞之後不再自動選用；也可以在候選字上按右鍵",
+                        keys: .command(.blockCandidate)),
+                KeyItem(id: "forgetCandidate", title: "忘記這個選字", subtitle: "忘記選過反白的字詞",
+                        keys: .command(.forgetCandidate)),
+                KeyItem(id: "addCandidatePhrase", title: "加入自訂詞", subtitle: "反白的字詞；沒有開清單時是整段組字",
+                        keys: .command(.addCandidatePhrase)),
+                KeyItem(id: "undoWordAction", title: "復原上一個動作", subtitle: "動作後 5 秒內，組字還在時",
+                        keys: .fixed(["⌃", "Z"])),
             ]
         case .editing:
             return [
@@ -237,13 +245,15 @@ struct KeysPane: View {
                         feature: .selectPhrase),
                 KeyItem(id: "selectRight", title: "往右選取", subtitle: "再按 Return 加入自訂詞", keys: .command(.selectRight),
                         feature: .selectPhrase),
+                KeyItem(id: "addSelectedText", title: "選取的字加入自訂詞", subtitle: "在 App 裡選取 1 到 6 個字再按；預設沒有按鍵",
+                        keys: .command(.addSelectedText)),
                 KeyItem(id: "deleteAfterCommit", title: "送出後刪掉重打",
                         subtitle: "送出後 30 秒內刪掉剛送出的字再打，算作改字並接著前文選字", keys: .fixed(["⌫"]),
                         feature: .deleteAfterCommit),
             ]
         case .punctuation:
             let windows = preferences.punctuationKeys == .windows
-            return [
+            return ([
                 KeyItem(id: "punctuationWidth", title: "切換標點全半形", subtitle: "中文預設全形，英數與空白維持半形",
                         keys: .command(.togglePunctuationWidth)),
                 KeyItem(id: "brackets", title: "「 」 、", subtitle: "固定", keys: .fixed(["[", "]", "'"])),
@@ -254,7 +264,9 @@ struct KeysPane: View {
                 KeyItem(id: "optionSymbols", title: "鍵上的符號：. / ; < >", subtitle: "兩種標點按法都能用",
                         keys: .fixed(["⌥", "數字或符號鍵"]), feature: .optionSymbols),
                 KeyItem(id: "punctuationList", title: "列出同類的標點", subtitle: "在標點上按", keys: .fixed(["↓"])),
-            ]
+                KeyItem(id: "symbolPicker", title: "開啟符號與 Emoji 面板", subtitle: "再按一次或按 Esc 關閉",
+                        keys: .command(.symbolPicker), feature: .symbolPicker),
+            ] as [KeyItem]).filter { $0.id != "symbolPicker" || SymbolSources.isAvailable }
         case .mode:
             return [
                 KeyItem(id: "shiftTap", title: "單按 Shift 切換中英", subtitle: "在可以打字的地方", keys: .shiftTap,

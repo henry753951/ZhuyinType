@@ -307,4 +307,33 @@ impl VocabularyLanguageModel for NGramLanguageModel {
         assert!((id as usize) < self.vocabulary_count, "word ID {id} outside the vocabulary");
         String::from_utf8_lossy(self.spelling_bytes(id as usize))
     }
+
+    /// The trigram group of (older, previous) when the model has one, and the bigram group of previous.
+    fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+        let v = self.vocabulary_count;
+        if history.previous as usize >= v {
+            return vec![];
+        }
+        let mut found: Vec<(u32, f64)> = Vec::new();
+        if self.order == 3
+            && let Some(older) = history.older
+            && let Some(context) = self.find(self.bigrams, v, older, history.previous)
+        {
+            let start = self.uint(self.trigrams + context * 4) as usize;
+            let end = self.uint(self.trigrams + (context + 1) * 4) as usize;
+            let ids = self.trigrams + (self.bigram_count + 1) * 4;
+            let scores = ids + self.trigram_count * 4;
+            found.extend((start..end).map(|i| (self.uint(ids + i * 4), self.float(scores + i * 4))));
+        }
+        let previous = history.previous as usize;
+        let start = self.uint(self.bigrams + previous * 4) as usize;
+        let end = self.uint(self.bigrams + (previous + 1) * 4) as usize;
+        let ids = self.bigrams + (v + 1) * 4;
+        let scores = ids + self.bigram_count * 4;
+        found.extend((start..end).map(|i| (self.uint(ids + i * 4), self.float(scores + i * 4))));
+        // A word in both groups keeps its better (trigram) score.
+        found.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
+        found.dedup_by_key(|f| f.0);
+        crate::language_model::best_by_score(found, limit)
+    }
 }

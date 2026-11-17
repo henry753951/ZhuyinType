@@ -3,6 +3,7 @@
 //! and Linux in the app's own style.  Sub-pages slide in from the trailing side with a back button in the bar.
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, TitleBar, window_border};
@@ -10,9 +11,9 @@ use gpui_kit::component::{Icon, TitleBar, window_border};
 use crate::ui::title_bar::title_bar;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyView, App, AppContext as _, Bounds, Context, Entity, InteractiveElement,
-    IntoElement, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Window, WindowBounds,
-    WindowDecorations, WindowOptions, div, ease_out_quint, img, px, relative, size,
+    AnyView, App, AppContext as _, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels,
+    Render, SharedString, StatefulInteractiveElement, Styled, Window, WindowBounds, WindowDecorations, WindowOptions,
+    div, ease_out_quint, img, px, relative, size,
 };
 
 use crate::app::{self, Direction, Navigation, Place};
@@ -23,33 +24,58 @@ use crate::ui::{h, v};
 /// The app's mark in the title bar.
 const MARK: Pixels = px(18.);
 const MARK_RADIUS: Pixels = px(5.);
-/// How far a page slides when a sub-page is pushed or popped.
-const PUSH_SHIFT: f32 = 28.;
+/// How far a page slides when a sub-page is pushed or popped (macOS: 24 pt).
+const PUSH_SHIFT: f32 = 24.;
 
 /// The settings window's state: the page views, created on first visit and kept.
 pub struct SettingsWindow {
     views: HashMap<Page, AnyView>,
     /// An appearance to force on the first frame (`--theme`).
     pending_appearance: Option<Option<bool>>,
+    _activation: gpui_kit::Subscription,
+    /// The window's own focus, so Tab has somewhere to start from before anything in it was clicked.
+    focus: gpui_kit::FocusHandle,
+    /// The navigation shown and when it arrived, for the page transition.
+    shown: Option<(usize, Instant)>,
 }
 
 impl SettingsWindow {
-    pub fn new(dark: Option<bool>, _window: &mut Window, _cx: &mut Context<Self>) -> Self {
-        Self { views: HashMap::new(), pending_appearance: dark.map(Some) }
+    pub fn new(dark: Option<bool>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The system's preference for less motion may have changed while the window was in the background.
+        let activation = cx.observe_window_activation(window, |_, window, cx| {
+            if window.is_window_active() {
+                crate::motion::refresh(cx);
+                // 檢查輸入法: something may have been changed in the system's settings meanwhile.
+                crate::health::refresh(cx);
+            }
+        });
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        crate::health::refresh(cx);
+        Self { views: HashMap::new(), pending_appearance: dark.map(Some), _activation: activation, focus, shown: None }
     }
 
     fn view(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) -> AnyView {
         self.views.entry(page).or_insert_with(|| pages::make_view(page, window, cx)).clone()
     }
 
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let selected = app::nav(cx).page;
+        // The selected row's fill fades over from the row before (a fade, kept under reduced motion).
+        let fills: HashMap<Page, f32> = Page::GROUPS
+            .iter()
+            .flat_map(|(_, pages)| pages.iter())
+            .map(|&page| {
+                let id = SharedString::from(format!("sidebar-fill-{}", page.id()));
+                (page, crate::motion::fade(id, page == selected, crate::motion::SELECT, window, cx))
+            })
+            .collect();
         v().id("sidebar")
             .w(sz::SIDEBAR)
             .h_full()
             .flex_shrink_0()
-            .bg(p.sidebar)
+            // The window's frame colour shows through: one continuous frame, also over a backdrop.
             .px(space::S12)
             .pt(space::S4)
             .pb(space::S12)
@@ -67,13 +93,19 @@ impl SettingsWindow {
                     )
                     .children(pages.iter().map(|&page| {
                         let active = page == selected;
+                        let fill = fills.get(&page).copied().unwrap_or(0.);
                         h().id(SharedString::from(format!("sidebar-{}", page.id())))
+                            .relative()
                             .h(sz::SIDEBAR_ROW)
                             .px(space::S12)
                             .gap(space::S12)
                             .rounded(sz::R_MD)
                             .cursor_pointer()
-                            .when(active, |this| this.bg(p.pressed))
+                            .tab_index(0)
+                            .focus_visible(|style| crate::motion::focus_ring(style, &p, p.sidebar))
+                            .when(fill > 0., |this| {
+                                this.child(div().absolute().inset_0().rounded(sz::R_MD).bg(p.pressed).opacity(fill))
+                            })
                             .when(!active, |this| {
                                 this.hover(|style| style.bg(p.hover)).active(|style| style.bg(p.pressed))
                             })
@@ -89,6 +121,11 @@ impl SettingsWindow {
                                     .text_color(if active { p.text } else { p.text_secondary })
                                     .child(page.title()),
                             )
+                            // 檢查輸入法 found something that needs attention.
+                            .when(page == Page::About && crate::health::has_problems(cx), |this| {
+                                this.child(div().flex_1())
+                                    .child(Icon::new(IconName::TriangleAlert).size(sz::ICON_SM).text_color(p.accent))
+                            })
                     }))
             }))
     }
@@ -98,7 +135,7 @@ impl SettingsWindow {
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         // The app's name small and quiet, as Discord's and Claude's bars carry it: the page has the large title.
-        title_bar(sz::TITLE_BAR, p.window).child(
+        title_bar(sz::TITLE_BAR, gpui_kit::transparent_black()).child(
             h().h_full()
                 .px(space::S24)
                 .gap(space::S8)
@@ -129,6 +166,8 @@ impl SettingsWindow {
                         .gap(space::S2)
                         .rounded(sz::R_SM)
                         .cursor_pointer()
+                        .tab_index(0)
+                        .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface))
                         .text_size(text::SUBTITLE)
                         .text_color(p.text_secondary)
                         .hover(|style| style.bg(p.hover).text_color(p.text))
@@ -157,6 +196,7 @@ impl Render for SettingsWindow {
             Some(forced) => theme::force(forced, window, cx),
             None => theme::sync(window, cx),
         }
+        crate::platform::backdrop::apply(window, cx);
         let p = theme::palette(cx);
         let nav = app::nav(cx);
         let (page, generation, direction, scroll) = (nav.page, nav.generation, nav.direction, nav.scroll.clone());
@@ -183,42 +223,52 @@ impl Render for SettingsWindow {
                         .child(SharedString::from(format!("輸入法服務沒有啟動，打字時不會使用 ZhuyinType：{error}"))),
                 )
             })
+            // Linux: Fcitx 5 is not this session's input method framework (IBus on GNOME).
+            .when_some(framework_notice(cx), |this, notice| this.child(notice))
             .child(self.page_header(cx))
-            .child(view)
-            .with_animation(
-                SharedString::from(format!("page-{generation}")),
-                Animation::new(if direction == Direction::Switch { motion::NORMAL } else { motion::PAGE })
-                    .with_easing(ease_out_quint()),
-                move |this, t| {
-                    let shift = match direction {
-                        Direction::Switch => 0.,
-                        Direction::Push => PUSH_SHIFT * (1. - t),
-                        Direction::Pop => -PUSH_SHIFT * (1. - t),
-                    };
-                    this.left(px(shift)).opacity(t)
-                },
-            );
+            .child(view);
+        // Another page cross-fades in; a sub-page slides in from the trailing side (back: from the leading side).
+        // Under reduced motion both only fade (DESIGN.md: 「減少動態效果」時只淡入淡出).
+        let started = match self.shown {
+            Some((shown, at)) if shown == generation => at,
+            _ => self.shown.insert((generation, Instant::now())).1,
+        };
+        let duration = if direction == Direction::Switch { motion::NORMAL } else { motion::PAGE };
+        let t = (started.elapsed().as_secs_f32() / duration.as_secs_f32()).min(1.);
+        if t < 1. {
+            window.request_animation_frame();
+        }
+        let eased = ease_out_quint()(t);
+        let shift = match direction {
+            _ if crate::motion::reduced(cx) => 0.,
+            Direction::Switch => 0.,
+            Direction::Push => PUSH_SHIFT * (1. - eased),
+            Direction::Pop => -PUSH_SHIFT * (1. - eased),
+        };
+        let content = content.left(px(shift)).opacity(eased);
         window_border().child(
-            v().size_full()
-                .bg(p.window)
+            v().track_focus(&self.focus)
+                .size_full()
+                .bg(p.frame)
                 .text_color(p.text)
                 .font(theme::font())
                 // CJK text needs room between lines.
                 .line_height(relative(1.5))
                 .child(self.title_bar(cx))
                 .child(
-                    h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(cx)).child(
+                    h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(window, cx)).child(
                         div().flex_1().min_w(px(0.)).h_full().pr(sz::SURFACE_INSET).pb(sz::SURFACE_INSET).child(
                             div()
                                 .id("page")
                                 .size_full()
                                 // Without this the page grows to its rows' unwrapped width in a narrow window.
                                 .min_w(px(0.))
-                                .bg(p.surface)
+                                .bg(p.page)
                                 .rounded(sz::R_XL)
                                 .border_1()
                                 .border_color(p.surface_border)
-                                .shadow_xs()
+                                // A shadow would show through a page tinted over a backdrop.
+                                .when(p.material == theme::Material::Opaque, |this| this.shadow_xs())
                                 .overflow_y_scroll()
                                 .track_scroll(&scroll)
                                 .child(content),
@@ -268,6 +318,16 @@ struct OpenSettings(Option<gpui_kit::AnyWindowHandle>);
 impl gpui_kit::Global for OpenSettings {}
 
 /// Brings the settings window to the front, opening it if it is closed (a second launch, the taskbar menu).
+#[cfg(target_os = "linux")]
+fn framework_notice(cx: &App) -> Option<gpui_kit::AnyElement> {
+    crate::platform::linux::notice(cx)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn framework_notice(_: &App) -> Option<gpui_kit::AnyElement> {
+    None
+}
+
 pub fn show(cx: &mut App) {
     let existing = cx.try_global::<OpenSettings>().and_then(|open| open.0);
     if let Some(handle) = existing
@@ -280,6 +340,8 @@ pub fn show(cx: &mut App) {
         log::error!("opening the settings window: {error:#}");
         return;
     }
+    #[cfg(target_os = "linux")]
+    crate::platform::linux::check(cx);
     // Started in the background at login, the first time the settings appear is the first use.
     crate::wizard::show_on_first_use(cx);
 }

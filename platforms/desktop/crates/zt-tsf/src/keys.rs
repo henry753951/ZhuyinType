@@ -77,6 +77,35 @@ pub(crate) fn host_wants_key(key: &Key, composing: bool, english: bool) -> bool 
     !letter && chord != (CONTROL | ALT)
 }
 
+/// A key the host listed in `claims` (IPC.md §攔截的按鍵: the keys of 開啟快速設定, 符號與 Emoji, 選取的字加入自訂詞 that
+/// can run in this field and mode): claimed whatever the composition, since the local rules above would give a chord
+/// such as Ctrl+Alt+Q, or any key in English mode, to the application.  Only the press; a letter matches in either
+/// case, and a shifted symbol as the key it is on (the claim names Ctrl+Shift+/, the key arrives as Ctrl+Shift+?).
+pub(crate) fn claimed_key(key: &Key, claims: &[(i32, i32)]) -> bool {
+    let chord = |modifiers: i32| modifiers & (SHIFT | CONTROL | ALT | META);
+    !key.release
+        && key.key != 0
+        && claims.iter().any(|&(code, modifiers)| {
+            chord(modifiers) == chord(key.modifiers) && unshifted(code, modifiers) == unshifted(key.key, key.modifiers)
+        })
+}
+
+/// The key a code names, the way the service's bindings store it: letters upper case, and with Shift a US-layout
+/// shifted symbol as its unshifted key (`zt_core::shortcuts::Binding::normalized`).
+fn unshifted(code: i32, modifiers: i32) -> i32 {
+    const SHIFTED: &[u8] = b"~!@#$%^&*()_+{}|:\"<>?";
+    const UNSHIFTED: &[u8] = b"`1234567890-=[]\\;',./";
+    if (i32::from(b'a')..=i32::from(b'z')).contains(&code) {
+        return code - 32;
+    }
+    if modifiers & SHIFT != 0
+        && let Some(index) = u8::try_from(code).ok().and_then(|c| SHIFTED.iter().position(|&s| s == c))
+    {
+        return i32::from(UNSHIFTED[index]);
+    }
+    code
+}
+
 /// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
 /// (送出後刪掉重打), Space and Return (they extend 前文).  The application still gets them; the text service only tells
 /// the host.
@@ -94,6 +123,29 @@ mod tests {
 
     fn key(key: i32, modifiers: i32) -> Key {
         Key { key, modifiers, ..Key::default() }
+    }
+
+    #[test]
+    fn claimed_keys_are_taken_in_any_state() {
+        let claims = [(i32::from(b'/'), CONTROL | SHIFT), ('Q' as i32, CONTROL | ALT), ('J' as i32, ALT)];
+        assert!(claimed_key(&key('?' as i32, CONTROL | SHIFT), &claims), "the shifted symbol Windows reports");
+        assert!(claimed_key(&key('/' as i32, CONTROL | SHIFT), &claims));
+        assert!(!claimed_key(&key('/' as i32, CONTROL), &claims));
+        assert!(!claimed_key(&key('?' as i32, SHIFT), &claims));
+        assert!(claimed_key(&key('Q' as i32, CONTROL | ALT), &claims));
+        assert!(claimed_key(&key('q' as i32, CONTROL | ALT | KEYPAD), &claims), "either case, keypad aside");
+        assert!(claimed_key(&key('J' as i32, ALT), &claims));
+        assert!(!claimed_key(&key(',' as i32, CONTROL), &claims));
+        assert!(!claimed_key(&key('.' as i32, CONTROL | ALT), &claims));
+        assert!(!claimed_key(&key('W' as i32, CONTROL | ALT), &claims));
+        assert!(!claimed_key(&key('J' as i32, ALT | SHIFT), &claims));
+        let mut release = key('?' as i32, CONTROL | SHIFT);
+        release.release = true;
+        assert!(!claimed_key(&release, &claims));
+        assert!(!claimed_key(&key('Q' as i32, CONTROL | ALT), &[]));
+        // Ctrl+Delete is no command's: with nothing composed it reaches the application.
+        assert!(!claimed_key(&key(KEY_DELETE, CONTROL), &claims));
+        assert!(!host_wants_key(&key(KEY_DELETE, CONTROL), false, false));
     }
 
     #[test]

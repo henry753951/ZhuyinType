@@ -133,7 +133,8 @@ fn punctuation_page(cx: &App) -> AnyElement {
         .child(
             section("可以關閉的按鍵")
                 .rows(feature_row("feature.controlPunctuation").rows(cx))
-                .rows(feature_row("feature.optionSymbols").rows(cx)),
+                .rows(feature_row("feature.optionSymbols").rows(cx))
+                .rows(feature_row("feature.symbolPicker").rows(cx)),
         )
         .child(
             section("固定的按鍵")

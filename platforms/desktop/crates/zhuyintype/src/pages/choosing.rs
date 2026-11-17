@@ -21,7 +21,7 @@ use crate::ui::demo::{
     DemoFrame, InfoContent, Segment, SegmentStyle, block, choice_demo, demo_line, field, mini_demo, play_pause,
     story_clock,
 };
-use crate::ui::feature::{drill_row, feature_row, keys_overview_link};
+use crate::ui::feature::{command_row, drill_row, feature_row, keys_overview_link};
 use crate::ui::{h, row, section, segmented, setting_row, v};
 
 pub struct ChoosingPage;
@@ -66,13 +66,16 @@ fn choosing_page(cx: &App) -> AnyElement {
         .child(
             section("轉換")
                 .row(setting_row("candidateAnchor", cx).info("游標在句中時改", |_, cx| anchor_info(cx)))
-                .row(setting_row("characterForms", cx).trailing(segments("characterForms", cx))),
+                .row(setting_row("characterForms", cx).trailing(segments("characterForms", cx)))
+                .row(setting_row("outputScript", cx).trailing(segments("outputScript", cx))),
         )
         .child(
             section("按錯鍵")
                 .row(setting_row("typoTolerance", cx).info("按錯鍵修正", |_, cx| typo_info(cx)))
                 .row(setting_row("readingChannel", cx))
                 .rows(feature_row("feature.correctionsList").rows(cx))
+                .row(setting_row("showCorrections", cx))
+                .row(setting_row("undoCorrectionWithBackspace", cx))
                 .row(
                     drill_row(
                         Page::Choosing,
@@ -91,12 +94,20 @@ fn choosing_page(cx: &App) -> AnyElement {
             "依前文選字；只在記憶體中",
             if settings.bool("usesPrecedingText") { "開啟" } else { "關閉" },
         )))
+        .child(section("聯想詞").row(setting_row("associatedPhrases", cx)))
         .child(
             section("改字")
                 .rows(feature_row("feature.typeZhuyin").rows(cx))
                 .rows(feature_row("feature.selectPhrase").rows(cx))
                 .rows(feature_row("feature.deleteAfterCommit").rows(cx))
+                .row(command_row(Command::AddSelectedText, "在 App 裡選取 1 到 6 個字再按；預設沒有按鍵", cx))
                 .footer(keys_overview_link(cx)),
+        )
+        .child(
+            section("候選字的右鍵選單")
+                .row(command_row(Command::BlockCandidate, "反白的字詞不再出現在清單；5 秒內按 Ctrl+Z 復原", cx))
+                .row(command_row(Command::ForgetCandidate, "忘記選過反白的字詞", cx))
+                .row(command_row(Command::AddCandidatePhrase, "反白的字詞；沒開清單時是整段組字", cx)),
         )
         .into_any_element()
 }

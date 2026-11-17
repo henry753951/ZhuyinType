@@ -1,6 +1,12 @@
 //! The 中/英 indicator in the taskbar's input indicator (`GUID_LBI_INPUTMODE`), like the built-in Bopomofo IME: a
-//! monochrome 中 or 英 in the taskbar's text colour.  A left click asks the host to switch modes; a right click opens
-//! the input method's menu (switch, settings).  The button keeps no state but what the host last reported.
+//! monochrome 中 or 英 (简 with 簡體 output) in the taskbar's text colour.  A left click asks the host to switch modes;
+//! a right click opens the input method's menu (快速設定 and the settings, quick_menu.rs).  The button keeps no state
+//! but what the host last reported.
+//!
+//! Where ZhuyinType cannot type Chinese — no text field has the focus (the desktop, a window without one), a password
+//! or input-method-disabled field, no answer from the app — the button shows 英, as Microsoft Bopomofo does there:
+//! keys reach the application as they are typed.  It is not marked disabled: Windows 11 then draws a crossed circle
+//! in place of the icon.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -14,16 +20,19 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::Ole::{CONNECT_E_ADVISELIMIT, CONNECT_E_CANNOTCONNECT, CONNECT_E_NOCONNECTION};
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
+use windows::Win32::UI::HiDpi::{
+    DPI_AWARENESS_CONTEXT_SYSTEM_AWARE, GetDpiForSystem, GetSystemMetricsForDpi, SetThreadDpiAwarenessContext,
+};
 use windows::Win32::UI::TextServices::{
     GUID_LBI_INPUTMODE, ITfLangBarItem_Impl, ITfLangBarItemButton, ITfLangBarItemButton_Impl, ITfLangBarItemSink,
-    ITfMenu, ITfSource, ITfSource_Impl, TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STATUS,
-    TF_LBI_STATUS_DISABLED, TF_LBI_STYLE_BTN_BUTTON, TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
+    ITfMenu, ITfSource, ITfSource_Impl, TF_LANGBARITEMINFO, TF_LBI_CLK_RIGHT, TF_LBI_ICON, TF_LBI_STYLE_BTN_BUTTON,
+    TF_LBI_STYLE_SHOWNINTRAY, TF_LBI_TEXT, TF_LBI_TOOLTIP, TfLBIClick,
 };
 use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HICON, ICONINFO, SM_CXSMICON};
 use windows::core::{BOOL, BSTR, GUID, IUnknown, Interface, Ref, Result, implement, w};
 
 use crate::module::{ObjectCount, SERVICE_ID, guard};
+use crate::quick_menu;
 
 /// What a click does: `(right_click, screen point)`.
 pub(crate) type Action = Rc<dyn Fn(bool, POINT)>;
@@ -35,7 +44,10 @@ pub(crate) struct ModeButton {
     action: RefCell<Option<Action>>,
     sink: RefCell<Option<ITfLangBarItemSink>>,
     english: Cell<bool>,
-    enabled: Cell<bool>,
+    simplified: Cell<bool>,
+    learning_paused: Cell<bool>,
+    /// A field that takes Chinese has the focus (`set_available`).
+    available: Cell<bool>,
     _count: ObjectCount,
 }
 
@@ -45,22 +57,30 @@ impl ModeButton {
             action: RefCell::new(Some(action)),
             sink: RefCell::new(None),
             english: Cell::new(false),
-            enabled: Cell::new(true),
+            simplified: Cell::new(false),
+            learning_paused: Cell::new(false),
+            // Until the text service has a field that takes Chinese.
+            available: Cell::new(false),
             _count: ObjectCount::new(),
         }
     }
 
-    /// Shows the host's mode; repaints the taskbar only when it changed.
-    pub(crate) fn set_english(&self, english: bool) {
-        if self.english.replace(english) != english {
-            self.notify(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
+    /// Shows the host's mode, 繁／簡 output and 暫停學習; repaints the taskbar only when something changed.
+    pub(crate) fn set_state(&self, english: bool, simplified: bool, learning_paused: bool) {
+        let glyph = self.glyph();
+        let before = (self.english.replace(english), self.simplified.replace(simplified));
+        let paused_before = self.learning_paused.replace(learning_paused);
+        if before != (english, simplified) || paused_before != learning_paused {
+            // 暫停學習 shows in the tooltip even without a field; 中/简 only with one.
+            let flags = if glyph == self.glyph() { TF_LBI_TOOLTIP } else { TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP };
+            self.notify(flags);
         }
     }
 
-    /// Greys the button out while the field cannot take Chinese input (secure, or no host).
-    pub(crate) fn set_enabled(&self, enabled: bool) {
-        if self.enabled.replace(enabled) != enabled {
-            self.notify(TF_LBI_STATUS);
+    /// Whether a field that takes Chinese has the focus; without one the button shows 英.
+    pub(crate) fn set_available(&self, available: bool) {
+        if self.available.replace(available) != available {
+            self.notify(TF_LBI_ICON | TF_LBI_TEXT | TF_LBI_TOOLTIP);
         }
     }
 
@@ -78,8 +98,13 @@ impl ModeButton {
         }
     }
 
+    /// What typing gives here: 英 when the host is in English or cannot take the keys at all.
+    fn shows_english(&self) -> bool {
+        self.english.get() || !self.available.get()
+    }
+
     fn glyph(&self) -> &'static str {
-        if self.english.get() { "英" } else { "中" }
+        quick_menu::glyph(self.shows_english(), self.simplified.get())
     }
 }
 
@@ -108,7 +133,7 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetStatus(&self) -> Result<u32> {
-        Ok(if self.enabled.get() { 0 } else { TF_LBI_STATUS_DISABLED })
+        Ok(0)
     }
 
     fn Show(&self, _show: BOOL) -> Result<()> {
@@ -116,11 +141,12 @@ impl ITfLangBarItem_Impl for ModeButton_Impl {
     }
 
     fn GetTooltipString(&self) -> Result<BSTR> {
-        Ok(BSTR::from(if self.english.get() {
-            "英文（按一下切換成中文）"
-        } else {
-            "中文（按一下切換成英文）"
-        }))
+        Ok(BSTR::from(quick_menu::tooltip(
+            self.available.get(),
+            self.english.get(),
+            self.simplified.get(),
+            self.learning_paused.get(),
+        )))
     }
 }
 
@@ -207,12 +233,27 @@ fn taskbar_is_light() -> bool {
     status.is_ok() && value != 0
 }
 
+/// The DPI the taskbar draws at.  An application that is not DPI aware is told 96 whatever the scaling, and its
+/// 16-pixel icon would then sit small (and thin) in a 150 % or 200 % taskbar; the question is asked as a
+/// system-aware thread instead.
+fn system_dpi() -> u32 {
+    // SAFETY: the thread's DPI awareness is changed only around the query and restored at once.
+    unsafe {
+        let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+        let dpi = GetDpiForSystem();
+        if !previous.0.is_null() {
+            SetThreadDpiAwarenessContext(previous);
+        }
+        dpi
+    }
+}
+
 /// Draws one character as a small icon in the taskbar's text colour: coverage first (white on black, no ClearType,
 /// so every channel carries it), then that colour premultiplied by the coverage.
 fn glyph_icon(glyph: &str) -> Result<HICON> {
     // SAFETY: GDI objects are created, used and deleted here; the DIB's bits stay valid while the bitmap lives.
     unsafe {
-        let dpi = GetDpiForSystem();
+        let dpi = system_dpi();
         let size = GetSystemMetricsForDpi(SM_CXSMICON, dpi).max(16);
         let info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -247,8 +288,10 @@ fn glyph_icon(glyph: &str) -> Result<HICON> {
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), count);
         pixels.fill(0);
         let old_bitmap = SelectObject(dc, color.into());
+        // Microsoft Bopomofo's 中 at 100 %: 13 by 15 pixels in the 16-pixel icon, one-pixel strokes; Microsoft
+        // JhengHei UI at 17/16 of the icon matches it (15/16 gave 11 by 13).
         let font = CreateFontW(
-            -(size * 15 / 16),
+            -(size * 17 / 16),
             0,
             0,
             0,
