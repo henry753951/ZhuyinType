@@ -49,8 +49,6 @@ enum Contrast {
         return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
     }
 
-    /// A fill against what is around it (WCAG 1.4.11, non-text contrast).
-    static let fill = 3.0
     /// Text against its fill (WCAG 1.4.3, normal text).
     static let text = 4.5
 
@@ -58,38 +56,28 @@ enum Contrast {
     struct Selection: Equatable {
         var fill: RGB
         var text: RGB
-        /// How many darkening or lightening steps the accent took; 0 when it passed as it is.
+        /// How many darkening steps the accent took; 0 when it passed as it is.
         var steps: Int
         /// The accent never passed and the fill is `fallback`.
         var usedFallback: Bool
     }
 
-    /// The fill steps darker (light appearance) or lighter (dark appearance) by this much of the way to black or white.
+    /// Each step darkens the fill by this much of the way to black.
     static let step = 0.08
-    /// At most this many steps (up to 48% of the way), then the fallback.
+    /// At most this many steps (48% of the way, the darkest shade that still reads as the accent), then the fallback.
     static let maxSteps = 6
 
-    /// The selection colours for `accent` on `background`: the accent itself when the fill has 3:1 against the
-    /// background and white or black text has 4.5:1 on it; otherwise the accent darker (light appearance) or lighter
-    /// (dark appearance) in steps until it does, else `fallback`.  White text is preferred (the platform's look); in
-    /// the light appearance the fill only darkens, so white is the text there; in the dark one black is used when
-    /// white does not pass.
-    static func selection(accent: RGB, background: RGB, dark: Bool, fallback: RGB) -> Selection {
+    /// The selection colours for `accent`: white text, as the system draws a selection, on the accent darkened in
+    /// steps until the text has 4.5:1 on it (in light and dark windows alike); else `fallback` with white text.  The
+    /// selection is told apart from the window by its fill and its text together, as natively, so the fill has no
+    /// contrast requirement against the window; under Increase Contrast an outline carries that.
+    static func selection(accent: RGB, fallback: RGB) -> Selection {
         for steps in 0...maxSteps {
-            let fill = accent.mixed(with: dark ? .white : .black, step * Double(steps))
-            if let text = text(on: fill, background: background, dark: dark) {
-                return Selection(fill: fill, text: text, steps: steps, usedFallback: false)
+            let fill = accent.mixed(with: .black, step * Double(steps))
+            if ratio(fill, .white) >= Self.text {
+                return Selection(fill: fill, text: .white, steps: steps, usedFallback: false)
             }
         }
-        let text = ratio(fallback, .white) >= ratio(fallback, .black) ? RGB.white : .black
-        return Selection(fill: fallback, text: text, steps: 0, usedFallback: true)
-    }
-
-    /// The text colour that passes on `fill`, or nil when the fill does not pass against `background` or no text does.
-    private static func text(on fill: RGB, background: RGB, dark: Bool) -> RGB? {
-        guard ratio(fill, background) >= Self.fill else { return nil }
-        if ratio(fill, .white) >= Self.text { return .white }
-        if dark, ratio(fill, .black) >= Self.text { return .black }
-        return nil
+        return Selection(fill: fallback, text: .white, steps: 0, usedFallback: true)
     }
 }

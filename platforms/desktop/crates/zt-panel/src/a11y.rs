@@ -2,9 +2,11 @@
 //!
 //! - **High contrast** (Windows' high contrast themes, GNOME's 高對比): the window uses the system's own colours,
 //!   solid (no backdrop), with 2 px borders and an outline around the selection.  It overrides 透明效果 and 強調色.
-//! - **強調色** `system` (the default): the selection is a solid fill of the system's accent colour, made darker
-//!   (light windows) or lighter (dark windows) until it stands out from the window by [`SELECTION_CONTRAST`] and the
-//!   text on it reads at [`TEXT_CONTRAST`]; an accent that cannot get there falls back to ZhuyinType's indigo.
+//! - **強調色** `system` (the default): the selection is a solid fill of the system's accent colour with white text,
+//!   as the systems draw a selection; the fill is darkened (in light and dark windows alike) until the white text
+//!   reads at [`TEXT_CONTRAST`], and an accent that cannot get there falls back to ZhuyinType's indigo.  Outside high
+//!   contrast the fill and its text together tell the selection apart, so the fill has no contrast requirement
+//!   against the window; [`SELECTION_CONTRAST`] applies in high contrast, where the outline also carries it.
 //!   `zhuyintype`, or a system without an accent colour: ZhuyinType's own look (a neutral selection).
 //!
 //! Contrast is WCAG 2's: relative luminance of sRGB, `(L1 + 0.05) / (L2 + 0.05)`.
@@ -13,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tokens::{self, Colors, Rgba};
 
-/// A selection fill against the window around it (WCAG 1.4.11, non-text contrast).
+/// A selection fill against the window around it in high contrast (WCAG 1.4.11, non-text contrast).
 pub const SELECTION_CONTRAST: f32 = 3.;
 /// Text against what it sits on (WCAG 1.4.3).
 pub const TEXT_CONTRAST: f32 = 4.5;
@@ -99,14 +101,13 @@ pub fn opaque(look: &Look) -> bool {
     look.high_contrast.is_some()
 }
 
-/// `base` with its selection, switches and focus in `accent` (adjusted for contrast; ZhuyinType's indigo when even
-/// that fails).
+/// `base` with its selection, switches and focus in `accent`: the selection darkened until white text reads on it
+/// (ZhuyinType's indigo when even that fails), focus and switches adjusted to read on the window.
 #[must_use]
 pub fn with_accent(base: Colors, accent: Rgba, dark: bool) -> Colors {
     let surface = base.surface;
-    let Some((fill, ink)) = selection(accent, surface, dark).or_else(|| selection(indigo(dark), surface, dark)) else {
-        return base;
-    };
+    let fill = selection(accent).unwrap_or(INDIGO);
+    let ink = WHITE;
     let ink_for_text = readable(accent, surface, dark).unwrap_or(base.accent);
     Colors {
         selection: fill,
@@ -144,45 +145,38 @@ pub fn high_contrast(system: SystemColors) -> Colors {
     }
 }
 
-/// ZhuyinType's indigo as a selection fill.
-fn indigo(dark: bool) -> Rgba {
-    Rgba::hex(if dark { 0x5f72e6 } else { 0x4257d8 }, 1.)
-}
+/// ZhuyinType's indigo as a selection fill (white text on it reads at 5.9:1).
+const INDIGO: Rgba = Rgba::hex(0x4257d8, 1.);
+const WHITE: Rgba = Rgba::hex(0xffffff, 1.);
 
-/// How many steps of [`STEP`] toward black (light) or white (dark) an accent may move.
-const STEPS: u8 = 8;
+/// How many steps of [`STEP`] an accent may move: up to 48 % of the way, the darkest shade that still reads as the
+/// accent.
+const STEPS: u8 = 6;
 const STEP: f32 = 0.08;
 
-/// The accent, `steps` steps darker (light windows) or lighter (dark windows).
-fn shifted(accent: Rgba, dark: bool, steps: u8) -> Rgba {
-    let target = if dark { 1. } else { 0. };
+/// The accent, `steps` steps darker.
+fn darker(accent: Rgba, steps: u8) -> Rgba {
+    let keep = 1. - f32::from(steps) * STEP;
+    Rgba { r: accent.r * keep, g: accent.g * keep, b: accent.b * keep, a: 1. }
+}
+
+/// The accent, `steps` steps lighter.
+fn lighter(accent: Rgba, steps: u8) -> Rgba {
     let t = f32::from(steps) * STEP;
-    let mix = |c: f32| c + (target - c) * t;
+    let mix = |c: f32| c + (1. - c) * t;
     Rgba { r: mix(accent.r), g: mix(accent.g), b: mix(accent.b), a: 1. }
 }
 
-/// The first shift of `accent` that stands out from `surface` and carries readable text (white or black, whichever
-/// reads better), with that text.
-fn selection(accent: Rgba, surface: Rgba, dark: bool) -> Option<(Rgba, Rgba)> {
-    (0..=STEPS).map(|steps| shifted(accent, dark, steps)).find_map(|fill| {
-        if contrast(fill, surface) < SELECTION_CONTRAST {
-            return None;
-        }
-        let ink = on(fill);
-        (contrast(ink, fill) >= TEXT_CONTRAST).then_some((fill, ink))
-    })
+/// The first darker shade of `accent` (the accent itself first) on which white text reads.
+fn selection(accent: Rgba) -> Option<Rgba> {
+    (0..=STEPS).map(|steps| darker(accent, steps)).find(|&fill| contrast(WHITE, fill) >= TEXT_CONTRAST)
 }
 
 /// The first shift of `accent` that reads as text on `surface`.
 fn readable(accent: Rgba, surface: Rgba, dark: bool) -> Option<Rgba> {
-    (0..=STEPS).map(|steps| shifted(accent, dark, steps)).find(|&ink| contrast(ink, surface) >= TEXT_CONTRAST)
-}
-
-/// White or black, whichever reads better on `fill`.
-#[must_use]
-pub fn on(fill: Rgba) -> Rgba {
-    let (white, black) = (Rgba::hex(0xffffff, 1.), Rgba::hex(0x000000, 1.));
-    if contrast(white, fill) >= contrast(black, fill) { white } else { black }
+    (0..=STEPS)
+        .map(|steps| if dark { lighter(accent, steps) } else { darker(accent, steps) })
+        .find(|&ink| contrast(ink, surface) >= TEXT_CONTRAST)
 }
 
 /// `top` over `below` (straight alpha).
@@ -239,20 +233,25 @@ mod tests {
 
     #[test]
     fn the_accent_is_adjusted_until_it_reads() {
+        let white = Rgba::hex(0xffffff, 1.);
         for dark in [false, true] {
             let surface = tokens::colors(dark).surface;
-            // Windows' blue, a pale yellow, and a grey close to the surface.
-            for accent in [0x0078d7, 0xffd700, 0x888888, 0xfefdfb, 0x2a2927] {
+            // Windows' blue, its dark-mode light blue, a pale yellow, a grey, red, the window colours themselves.
+            for accent in [0x0078d7, 0x4cc2ff, 0xffd700, 0x888888, 0xe62d42, 0xfefdfb, 0x2a2927] {
                 let c = with_accent(tokens::colors(dark), Rgba::hex(accent, 1.), dark);
-                assert!(contrast(c.selection, surface) >= SELECTION_CONTRAST, "{accent:06x} dark {dark}");
-                assert!(contrast(c.selection_text, c.selection) >= TEXT_CONTRAST, "{accent:06x} dark {dark}");
+                // White text, at 4.5:1, in light and dark windows alike; the fill is never lightened.
+                assert_eq!(c.selection_text, white, "{accent:06x} dark {dark}");
+                assert!(contrast(white, c.selection) >= TEXT_CONTRAST, "{accent:06x} dark {dark}");
+                assert!(luminance(c.selection) <= luminance(Rgba::hex(accent, 1.)) + 1e-6);
                 assert!(contrast(c.accent, surface) >= TEXT_CONTRAST || c.accent == tokens::colors(dark).accent);
             }
         }
-        // A dark accent on a light window is used as it is, with white text.
-        let c = with_accent(tokens::LIGHT, Rgba::hex(0x1a4a8a, 1.), false);
+        // A dark accent is used as it is, in a dark window too.
+        let c = with_accent(tokens::DARK, Rgba::hex(0x1a4a8a, 1.), true);
         assert_eq!(c.selection, Rgba::hex(0x1a4a8a, 1.));
-        assert_eq!(c.selection_text, Rgba::hex(0xffffff, 1.));
+        // White, even at its darkest usable shade (52 % grey, 3.7:1), falls back to the indigo.
+        assert_eq!(with_accent(tokens::LIGHT, white, false).selection, INDIGO);
+        assert_eq!(with_accent(tokens::DARK, Rgba::hex(0xfefdfb, 1.), true).selection, INDIGO);
     }
 
     #[test]

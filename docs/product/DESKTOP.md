@@ -34,9 +34,9 @@
 | 系統設定 | Linux | Windows | 候選字視窗 |
 |---|---|---|---|
 | 高對比 | XDG desktop portal `org.freedesktop.appearance` 的 `contrast`，或 GNOME 的 `org.gnome.desktop.a11y.interface high-contrast` | `SPI_GETHIGHCONTRAST`（`HCF_HIGHCONTRASTON`），顏色取自 `GetSysColor`（視窗、文字、醒目提示、醒目提示文字、灰色文字） | 系統的顏色（GNOME：白底黑字或黑底白字、藍色反白），不透明，不論透明效果與強調色；邊框與反白外框 2 px，所有字用文字色 |
-| 強調色 | portal 的 `accent-color`，或 GNOME 47 起的 `accent-color`（名稱對應 libadwaita 的顏色），或 KDE `kdeglobals` 的 `[General] AccentColor`（沒有時用配色的 `[Colors:Selection] BackgroundNormal`） | `HKCU\Software\Microsoft\Windows\DWM` 的 `AccentColor`，沒有時用 `DwmGetColorizationColor` | 「強調色」為「跟隨系統」時，反白是強調色的實心圓角矩形，上面的字用白色或黑色中對比較高的一個 |
+| 強調色 | portal 的 `accent-color`，或 GNOME 47 起的 `accent-color`（名稱對應 libadwaita 的顏色），或 KDE `kdeglobals` 的 `[General] AccentColor`（沒有時用配色的 `[Colors:Selection] BackgroundNormal`） | `HKCU\Software\Microsoft\Windows\DWM` 的 `AccentColor`，沒有時用 `DwmGetColorizationColor` | 「強調色」為「跟隨系統」時，反白是強調色的實心圓角矩形，上面是白字 |
 
-- **強調色的對比**：反白和視窗背景至少 3:1，反白上的字至少 4.5:1（WCAG 2 的相對亮度）。不夠時淺色視窗逐步加深、深色視窗逐步變淺（每步 8%，最多 8 步），仍不夠就改用 ZhuyinType 藍（淺色 #4257D8、深色 #5F72E6）。深色視窗的反白上因此是黑字。下方開著的開關底色是淡淡的強調色。
+- **強調色的對比**：反白上的字一律是白色，和反白至少 4.5:1（WCAG 2 的相對亮度）。強調色不夠深時，淺色與深色視窗都逐步加深（每步 8%，最多 6 步），仍不夠就改用 ZhuyinType 藍（#4257D8）。反白靠底色和白字一起和其他列區分，所以只在高對比時要求反白和視窗背景至少 3:1（高對比另有外框）。下方開著的開關底色是淡淡的強調色；設定視窗的連結與焦點外框用調整到和背景 4.5:1 的強調色。
 - **設定視窗**：「跟隨系統」時開關、焦點外框、連結與到達提示也用系統強調色（同樣調整到看得清楚）。
 - **「ZhuyinType 藍」**或系統沒有強調色時，候選字視窗維持原本的中性灰反白，設定視窗的強調色是 ZhuyinType 藍。
 - **跟著系統改變**：TSF DLL 在候選字視窗收到 `WM_SETTINGCHANGE`、`WM_SYSCOLORCHANGE`、`WM_THEMECHANGED` 或 `WM_DWMCOLORIZATIONCOLORCHANGED` 時重新讀取並重畫，所以改 Windows 的強調色或高對比時，開著的清單立即換色。Linux 每 3 秒讀一次（`zt_core::system_look`），改變時重畫所有視窗。設定視窗在 Windows 上讀登錄檔的 `AccentColor` 與 `Control Panel\Accessibility\HighContrast`（設定預覽用）。
