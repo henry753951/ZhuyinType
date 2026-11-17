@@ -25,6 +25,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
 | `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`、`block`、`forget`、`addPhrase`、`undo`）與 `value`（`pick`、`block`、`forget`、`addPhrase` 的列，`page` 的 ±1）；原生端自己畫的候選字視窗上的點選：`block`「不要再推薦」、`forget`「忘記這個選字」、`addPhrase`「加入自訂詞」是某一列的右鍵選單，`undo` 是提示列的「復原」（見〈候選字視窗〉） |
+| `selection` | `text` 字串（最多 32 個 UTF-16 單位，沒選取時是空字串）；回應裡有 `selection: true` 時才送：欄位中選取的文字，服務以它開啟填好的「加入自訂詞」（見〈選取的字加入自訂詞〉）。安全或私人欄位不送，服務也不接受 |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
 | `show-settings` | 顯示既有設定視窗；可選 `place`：`words`（自訂詞與學到的詞）、`about`、`wizard`（設定嚮導）、`tour`（新功能導覽）。輸入法選單用 |
 
@@ -44,6 +45,8 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 `panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview`）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`；`system` 表示跟隨系統，「候選字視窗」與「主題」都跟隨時才是 `system`）、`translucent`（「透明效果」：有系統的背景材質時讓它透出來；沒有這個欄位時當成 `true`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中` 或 `英`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
 
 原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。
+
+選取的字加入自訂詞：沒在組字時按下 `addSelectedText` 的鍵，`key` 的回應多一個 `selection: true`，原生端接著送 `selection`（TSF 以 `ITfContext::GetSelection` 與 `ITfRange::GetText` 讀，Fcitx 5 以 surrounding text 的 `selectedText()`）。這個指令預設沒有按鍵；Windows 的文字服務沒在組字時不攔 Ctrl／Alt 加字母，所以 `focus` 的回應帶 `idleKeys: [[key, modifiers], …]`，原生端沒在組字時也攔這些鍵。
 
 字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「復原」，原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
 
