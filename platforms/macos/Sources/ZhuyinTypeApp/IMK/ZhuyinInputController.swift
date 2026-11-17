@@ -362,6 +362,14 @@ final class ZhuyinInputController: IMKInputController {
             guard let self, self.active, Self.activeController === self else { return }
             self.core?.selectCandidate(at: index)
         }
+        CandidatePanelController.shared.onMenu = { [weak self] index, event, view in
+            guard let self, self.active, Self.activeController === self, let core = self.core else { return }
+            WordActionMenu.show(for: core, index: index, event: event, view: view)
+        }
+        CandidatePanelController.shared.onNotice = { [weak self] in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.undoWordAction()
+        }
         CandidatePanelController.shared.onPage = { [weak self] direction in
             guard let self, self.active, Self.activeController === self else { return }
             _ = self.core?.handle(direction < 0 ? .pageUp : .pageDown)

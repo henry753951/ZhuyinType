@@ -228,6 +228,14 @@ struct KeysPane: View {
                 KeyItem(id: "zhuyinRow", title: "點注音列打出注音", subtitle: "候選字視窗上方的注音", keys: .fixed(["點一下"]),
                         feature: .zhuyinRowClick),
                 KeyItem(id: "close", title: "關閉候選字視窗", subtitle: "固定", keys: .fixed(["Esc"])),
+                KeyItem(id: "blockCandidate", title: "不要再推薦", subtitle: "反白的字詞之後不再自動選用；也可以在候選字上按右鍵",
+                        keys: .command(.blockCandidate)),
+                KeyItem(id: "forgetCandidate", title: "忘記這個選字", subtitle: "忘記選過反白的字詞",
+                        keys: .command(.forgetCandidate)),
+                KeyItem(id: "addCandidatePhrase", title: "加入自訂詞", subtitle: "反白的字詞；沒有開清單時是整段組字",
+                        keys: .command(.addCandidatePhrase)),
+                KeyItem(id: "undoWordAction", title: "復原上一個動作", subtitle: "動作後 5 秒內，組字還在時",
+                        keys: .fixed(["⌃", "Z"])),
             ]
         case .editing:
             return [

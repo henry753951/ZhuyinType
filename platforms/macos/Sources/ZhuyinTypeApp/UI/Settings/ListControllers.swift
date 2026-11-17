@@ -118,6 +118,7 @@ final class LearnedListController: NSObject {
         return formatter
     }()
     private static let excludedPrefix = "excluded\t"
+    private static let blockedPrefix = "blocked\t"
 
     init(model: SettingsModel) {
         self.model = model
@@ -149,14 +150,20 @@ final class LearnedListController: NSObject {
             ListItem(id: Self.excludedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
                      meta: "不記住", count: -1, marked: true)
         }
-        list.set(learned + excluded)
+        // 「不要再推薦」 from the candidate window: removing the row suggests the word again.
+        let blocked = engine.blockedEntries().map { entry in
+            ListItem(id: Self.blockedPrefix + "\(entry.reading)\t\(entry.word)", title: entry.word, detail: entry.reading,
+                     meta: "不推薦", count: -1, marked: true)
+        }
+        list.set(learned + excluded + blocked)
     }
 
-    /// Removing a learned word forgets it; removing an excluded one lets it be learned again.
+    /// Removing a learned word forgets it; removing an excluded one lets it be learned again, a blocked one suggested.
     private func remove(_ rows: [ListItem]) {
         guard let engine = model?.engine else { return }
         for row in rows {
-            if row.marked { engine.includeInLearning(word: row.title, reading: row.detail ?? "") }
+            if row.id.hasPrefix(Self.blockedPrefix) { engine.unblock(word: row.title, reading: row.detail ?? "") }
+            else if row.marked { engine.includeInLearning(word: row.title, reading: row.detail ?? "") }
             else { engine.forgetLearned(word: row.title, reading: row.detail ?? "") }
         }
         reload()

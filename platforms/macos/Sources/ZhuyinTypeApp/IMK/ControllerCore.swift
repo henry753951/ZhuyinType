@@ -37,6 +37,11 @@ final class ControllerCore {
     var disabledFeatures: Set<KeyFeature> = []
     /// The sentence shown has a typing correction (as last chosen by the reranker).
     private(set) var shownCorrected = false
+    /// When the last word action from the candidate window was done; ⌃Z and a click on the notice undo it for
+    /// `wordUndoSeconds` while the composition is still there (ControllerCore+WordActions.swift).
+    var wordActionTime: Date?
+    /// Whether the list was open at the last render, to count list openings for the word-action hint.
+    var listWasOpen = false
 
     private struct Mark: Equatable {
         var text: String
@@ -144,10 +149,12 @@ final class ControllerCore {
             return false
         }
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
+            if let action = command.candidateAction { return wordAction(action) }
             if let input = command.input { return handle(input, time: time) }
             if command == .togglePunctuationWidth { return togglePunctuationWidth() }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
+        if isUndoKey(keyCode: keyCode, modifiers: modifiers), wordUndoOffered { return undoWordAction() }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
         guard let key = KeyMapping.input(keyCode: keyCode, modifiers: modifiers),
               !ShortcutCommand.commandInputs.contains(key), !turnedOff(key) else {
@@ -484,7 +491,8 @@ final class ControllerCore {
             }
         }
         if !p.text.isEmpty, p.candidates != nil || popup || p.notice != nil {
-            showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor), p.notice, p.zhuyinHint)
+            showPanel?(p.candidates, popup ? p.text : nil, client.caretRect(cursorIndex: p.cursor),
+                       wordActionNotice(p.notice, listOpen: p.candidates != nil), p.zhuyinHint)
         } else {
             hidePanel?()
         }
