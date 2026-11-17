@@ -115,6 +115,8 @@ pub struct CandidateList {
     single_character: bool,
     /// Next-word suggestions after a commit (聯想詞), not conversions of the composition.
     associated: bool,
+    /// 聯想詞 shown but not entered (↓ enters): nothing is highlighted and keys go on as if there were no list.
+    passive: bool,
 }
 
 impl CandidateList {
@@ -134,13 +136,15 @@ impl CandidateList {
             tolerant,
             single_character,
             associated: false,
+            passive: false,
         }
     }
 
-    /// The same list marked as next-word suggestions (聯想詞).
+    /// The same list marked as next-word suggestions (聯想詞), `passive` when not entered.
     #[must_use]
-    pub fn as_associated(mut self) -> Self {
+    pub fn as_associated(mut self, passive: bool) -> Self {
         self.associated = true;
+        self.passive = passive;
         self
     }
 
@@ -170,10 +174,16 @@ impl CandidateList {
         self.single_character
     }
 
-    /// Next-word suggestions after a commit (聯想詞): the window marks them, and ⇧ with a selection key picks one.
+    /// Next-word suggestions after a commit (聯想詞): the window marks them; ↓ enters the list.
     #[must_use]
     pub fn associated(&self) -> bool {
         self.associated
+    }
+
+    /// 聯想詞 shown but not entered: draw no highlight; `selection` means nothing.
+    #[must_use]
+    pub fn passive(&self) -> bool {
+        self.passive
     }
 
     /// The page of the highlighted candidate.

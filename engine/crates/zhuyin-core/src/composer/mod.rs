@@ -20,7 +20,7 @@ use crate::api::{
     KeyResult, Presentation, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use crate::conversion::{CharacterScores, CompositionToken, ConversionCache, ConvertedWord, FixedWord, Request};
-use crate::engine::{CommittedWord, Engine, Match, Prediction};
+use crate::engine::{CommittedWord, Engine, Match};
 use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder, Syllable};
 use crate::keyboard;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
@@ -233,8 +233,8 @@ pub struct Composer {
     commit_listener: Option<CommitListener>,
     /// 聯想詞 on (`association`).
     associated_phrases: bool,
-    /// The next-word suggestions shown after a commit; empty when none are shown.  Never non-empty while composing.
-    predictions: Vec<Prediction>,
+    /// The next-word suggestions shown after a commit, if any.  Never non-empty while composing.
+    predictions: Option<association::Suggestions>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -327,7 +327,7 @@ impl Composer {
             sent: String::new(),
             commit_listener: None,
             associated_phrases: false,
-            predictions: vec![],
+            predictions: None,
         }
     }
 
@@ -530,7 +530,7 @@ impl Composer {
         self.cursor <= self.tokens.len()
             && self.fixed.iter().all(|word| word.range.start <= word.range.end && word.range.end <= self.tokens.len())
             && (self.candidate_window.is_closed() || (self.candidate_window.valid_for(self.tokens.len())))
-            && (self.predictions.is_empty() || !self.has_composition())
+            && (self.predictions.is_none() || !self.has_composition())
     }
 
     /// Handles a key.
@@ -1178,7 +1178,7 @@ impl Composer {
         self.notice = None;
         self.conversion_dirty = true;
         self.close_candidates();
-        self.predictions.clear();
+        self.predictions = None;
         self.presentation = Presentation::default();
     }
 
@@ -1872,7 +1872,7 @@ impl Composer {
         }
         self.presentation = self.present();
         // Anything that redraws the composition (a setting, a model) ends the 聯想詞 list it replaced.
-        self.predictions.clear();
+        self.predictions = None;
     }
 
     /// Words the user picked in this place before stay: the reranker chooses among the sentences that keep them.
