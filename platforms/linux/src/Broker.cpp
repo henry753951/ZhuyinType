@@ -84,6 +84,7 @@ bool Broker::connect() {
         getsockopt(fd_, SOL_SOCKET, SO_PEERCRED, &peer, &peerLength) || peer.uid != getuid()) {
         disconnect(); return false;
     }
+    ++generation_;
     return true;
 }
 std::optional<nlohmann::json> Broker::request(const std::string &context, const char *op, nlohmann::json fields) {

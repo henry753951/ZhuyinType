@@ -39,7 +39,7 @@ cmake --build build-addon
 - 預設端點沒有服務時，addon 啟動 `/usr/bin/zhuyintype --background`（CMake 的 `ZT_HOST_EXECUTABLE`），最多每 3 秒一次，以 `fcitx::startProcess` 脫離 Fcitx 的行程。這一次的按鍵照常放行，下一次按鍵連上服務。`ZT_IME_SOCKET` 指定的端點（測試）不啟動服務。
 - 使用 newline-delimited UTF-8 JSON，每框上限 256 KiB，驗證版本、id、context、欄位型別、UTF-8 與 UTF-16 游標邊界。透過 `SO_PEERCRED` 檢查服務的 UID。
 - 非阻塞 socket 的連線與單次請求各有 80 ms 的總時限；失敗關閉連線並放行目前按鍵。下一次按鍵重新連線，使用新 context，失敗的請求不重送。addon 在記憶體保留最後成功回應的組字；同一個仍聚焦且非安全的欄位遇到中斷時，先提交這份已知文字一次，再放行目前按鍵。secure、reset 與欄位銷毀直接丟棄快取。未確認的目前按鍵可能已被服務處理，其結果不重送。
-- Fcitx event loop 只在欄位有焦點且已連線時，每 20 ms 送 `poll`；滑鼠選字的結果由下一次 `poll` 或按鍵回應送達。每個回應只套用到發出請求的 context。
+- Fcitx event loop 只在服務的候選字視窗開著時（回應的 `candidates` 為真，且不是由 Fcitx 顯示清單），每 20 ms 送 `poll`；滑鼠選字的結果由下一次 `poll` 或按鍵回應送達。其他時候不定時喚醒，閒置的欄位不耗電。連線閒置時 addon 監看它：服務結束時（連線關閉）立刻像請求失敗一樣處理，欄位保留已知的組字一次。每個回應只套用到發出請求的 context。
 - 送出 Qt 公開 key enum 與 modifier flags（協定沿用的數值），包含 Shift 左右、放開與重複事件；焦點後首個一般按鍵的 lock 狀態透過同 context 的 `focus.capsLock` 同步，Caps Lock 鍵本身由服務切換一次。Fcitx client preedit 游標從 UTF-16 轉成 UTF-8 位移；`focus.inlinePreedit` 回報欄位能力，未支援行內組字時由服務的候選字視窗顯示組字。Fcitx 原生面板保持空白，候選字一律由服務的視窗顯示。
 - 密碼、敏感、Disable 欄位先通知服務清除組字與待提交文字、暫停學習，隨後放行按鍵。這些欄位的按鍵與文字不序列化。addon 只在欄位支援 SurroundingText 時讀取游標前的文字（〈前文〉），不記錄輸入內容。
 

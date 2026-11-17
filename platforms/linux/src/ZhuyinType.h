@@ -31,6 +31,10 @@ private:
     fcitx::FactoryFor<State> factory_;
     fcitx::TrackableObjectReference<fcitx::InputContext> active_;
     std::unique_ptr<fcitx::EventSourceTime> timer_;
+    // The host never writes unasked: the connection becoming readable means it closed (the host ended).
+    std::unique_ptr<fcitx::EventSourceIO> hangup_;
+    uint64_t watched_ = 0;
+    void watchConnection();
     std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>> capabilityWatcher_;
     std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>> destroyWatcher_;
     bool focus(fcitx::InputContext &, State &);

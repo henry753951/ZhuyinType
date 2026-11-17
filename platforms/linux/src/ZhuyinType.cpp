@@ -130,6 +130,8 @@ struct ZhuyinType::State final : fcitx::InputContextProperty {
     // Fcitx draws the candidate list (fcitxDrawsPanel); `panel` is the host's last one (null: hidden).
     bool drawsPanel = false;
     nlohmann::json panel;
+    // The host shows its candidate window, where a click can change the composition: poll for it.
+    bool polls = false;
 };
 ZhuyinType::ZhuyinType(fcitx::Instance &instance)
     : instance_(instance), factory_([](fcitx::InputContext &) { return new State; }) {
@@ -153,6 +155,7 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
             if (active_.get() != destroy.inputContext()) return;
             destroy.inputContext()->propertyFor(&factory_)->preedit.clear();
             broker_.disconnect(); // Host discards the destroyed context on socket close.
+            watchConnection();
             active_.unwatch();
             timer_->setEnabled(false);
         });
@@ -171,7 +174,8 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
         [this](fcitx::EventSourceTime *source, uint64_t) {
             poll();
             source->setNextInterval(20000);
-            source->setEnabled(active_.get() && broker_.connected());
+            auto *ic = active_.get();
+            source->setEnabled(ic && broker_.connected() && ic->propertyFor(&factory_)->polls);
             return true;
         });
     timer_->setEnabled(false);
@@ -191,9 +195,18 @@ void ZhuyinType::recover(fcitx::InputContext &ic, State &state) {
 bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op, nlohmann::json fields,
                           std::string_view delivered) {
     const auto response = broker_.request(state.context, op, std::move(fields));
+    watchConnection();
     if (!response) { recover(ic, state); timer_->setEnabled(false); return false; }
     // Synchronous exchange and tracked focus bind every result to its originating context.
-    if (active_.get() != &ic || state.secure) { clear(ic); return false; }
+    if (active_.get() != &ic || state.secure) { state.polls = false; clear(ic); return false; }
+    // Only a click in the host's own window changes anything between keys (IPC `poll`): no wake-ups otherwise.
+    state.polls = (*response)["candidates"].get<bool>() && !state.drawsPanel;
+    if (state.polls && !timer_->isEnabled()) {
+        timer_->setNextInterval(20000);
+        timer_->setEnabled(true);
+    } else if (!state.polls) {
+        timer_->setEnabled(false);
+    }
     if (const bool english = (*response)["english"].get<bool>(); english != state.english) {
         state.english = english;
         ic.updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
@@ -243,8 +256,6 @@ bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     if (std::exchange(state.activated, false)) fields["activated"] = true;
     if (!state.secure && !privateField(ic.capabilityFlags())) addContext(ic, fields);
     exchange(ic, state, "focus", fields);
-    timer_->setNextInterval(20000);
-    timer_->setEnabled(broker_.connected() && ic.hasFocus());
     return broker_.connected();
 }
 void ZhuyinType::secure(fcitx::InputContext &ic, State &state, bool next) {
@@ -324,6 +335,23 @@ void ZhuyinType::showSettings(const char *place) {
     if (place) fields["place"] = place;
     if (!broker_.connected() && !broker_.connect()) { Broker::launchHost(); return; }
     broker_.request("settings", "show-settings", fields);
+    watchConnection();
+}
+void ZhuyinType::watchConnection() {
+    if (!broker_.connected()) { hangup_.reset(); watched_ = 0; return; }
+    if (hangup_ && watched_ == broker_.generation()) return;
+    watched_ = broker_.generation();
+    hangup_.reset(); // Before the new socket is watched: it may have the old one's number.
+    hangup_ = instance_.eventLoop().addIOEvent(broker_.fd(),
+        fcitx::IOEventFlags{fcitx::IOEventFlag::In, fcitx::IOEventFlag::Hup, fcitx::IOEventFlag::Err},
+        [this](fcitx::EventSourceIO *source, int, fcitx::IOEventFlags) {
+            // As a failed request: the field keeps the composition it showed, once (recover).
+            source->setEnabled(false);
+            broker_.disconnect();
+            timer_->setEnabled(false);
+            if (auto *ic = active_.get()) recover(*ic, *ic->propertyFor(&factory_));
+            return true;
+        });
 }
 void ZhuyinType::deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();
@@ -376,7 +404,7 @@ void ZhuyinType::keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &even
 }
 void ZhuyinType::poll() {
     auto *ic = active_.get();
-    if (!ic) { broker_.disconnect(); timer_->setEnabled(false); return; }
+    if (!ic) { broker_.disconnect(); watchConnection(); timer_->setEnabled(false); return; }
     if (!ic->hasFocus()) { blur(*ic, *ic->propertyFor(&factory_)); return; }
     if (!broker_.connected()) { timer_->setEnabled(false); return; }
     auto &state = *ic->propertyFor(&factory_);
