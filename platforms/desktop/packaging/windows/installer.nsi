@@ -349,6 +349,10 @@ FunctionEnd
 !macro ProtectInstallDir
   nsExec::Exec '"$SYSDIR\icacls.exe" "$INSTDIR" /setowner *S-1-5-32-544 /C /Q'
   Pop $0
+  ; /reset first: /grant:r replaces only the entries of the accounts it names, and a folder made beforehand may carry
+  ; its own entries for others.
+  nsExec::Exec '"$SYSDIR\icacls.exe" "$INSTDIR" /reset /C /Q'
+  Pop $0
   nsExec::Exec '"$SYSDIR\icacls.exe" "$INSTDIR" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F *S-1-5-32-545:(OI)(CI)RX *S-1-15-2-1:(OI)(CI)RX *S-1-15-2-2:(OI)(CI)RX /C /Q'
   Pop $0
   ; What an earlier version installed takes these permissions too (only ZhuyinType's own files: a folder that an

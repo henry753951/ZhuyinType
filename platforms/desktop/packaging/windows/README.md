@@ -123,4 +123,20 @@ GPUI 的 Windows 後端只在 Windows 主機上以 `fxc.exe` 編譯 HLSL，在 L
 | 解除安裝 | COM、TSF 設定檔、Run、Active Setup、捷徑、「設定 › 應用程式」項目與輸入法清單都已移除；個人資料保留；只剩仍被載入、排定開機刪除的 DLL |
 | 重新安裝 | 安裝後立即可以打字 |
 
-尚未驗證：一般使用者帳號經 UAC 提升的安裝（測試帳號是內建 Administrator，不會出現 UAC 視窗）、勾選刪除個人資料的互動解除安裝、多螢幕與混合 DPI、Windows 10。
+尚未驗證（2026-11-16）：一般使用者帳號經 UAC 提升的安裝、勾選刪除個人資料的互動解除安裝、多螢幕與混合 DPI、Windows 10。
+
+2026-11-18，同一台 VM。一般使用者的測試以本機標準帳號自動登入工作階段 1；「一般使用者輸入系統管理員密碼」以 SYSTEM 在該工作階段執行安裝程式模擬（安裝程式的身分不是螢幕前的使用者，HKCU 寫到別的帳號，與實際情況相同；沒有真的經過 UAC 視窗）。
+
+| 項目 | 結果 |
+|---|---|
+| 0.6.1，非螢幕前帳號安裝 | 標準帳號的清單沒有 ZhuyinType（只有微軟注音），Win＋空白鍵選不到，要等下次登入的 Active Setup；完成頁經 Explorer 開啟的 App 確實以標準帳號身分執行 |
+| 新版，同樣安裝（安靜、第一次） | 更新服務以標準帳號身分在背景啟動 App；App 把 ZhuyinType 加入標準帳號的清單並寫下 Active Setup 版本；Notepad 選得到 ZhuyinType、打出「你好」，Shift 切換成英文打出「su」 |
+| 標準帳號對更新服務 | `sc start ZhuyinTypeUpdate relaunch` 可以（沒有要求時什麼都不做）；`sc config`、`sc stop` 存取被拒；不能寫 `HKLM\Software\ZhuyinType` 與安裝資料夾 |
+| 更新安裝（App 執行中、Notepad 載入 DLL） | 0.6.1 正式版 → 新版：App 在原工作階段以 `--background` 重新啟動；Notepad 用舊 DLL 繼續打出「你好」；舊 DLL 改名為 `*.old` |
+| 自動更新（本機測試清單，測試用金鑰簽章） | 服務取得清單與安裝程式、驗證後以 `/S /UPDATE` 安裝；App 在原工作階段重新啟動；`RelaunchSessions` 用完即刪除 |
+| 0.6.0 → 0.6.1 自動更新（正式清單） | 42 秒完成；Notepad 用舊 DLL 繼續打字，新開的 Notepad 用新 DLL |
+| 解除安裝後重新安裝 | 安裝資料夾只剩仍被載入的 `*.old` 時照常安裝（結束代碼 0） |
+| 安裝位置 | `C:\Users\Public`、`C:\Windows` 拒絕（結束代碼 3）；`/D=C:\` 由 NSIS 改用先前的位置，`C:\` 的權限不變；`C:\ZtCustom` 的權限只剩 SYSTEM、Administrators 完全控制與 Users、Store App 讀取執行，擁有者 Administrators |
+| 可被修改的安裝資料夾 | 給 Authenticated Users 修改權限後啟動服務：取得清單但不下載、不安裝，App 不受影響 |
+
+尚未驗證：真正經過 UAC 視窗的安裝（UAC 是安全桌面，無法以程式操作）與它的完成頁（`OpenSession` 以 `sc start … relaunch` 直接驗證：設定視窗以該工作階段的使用者開啟）、Windows 10、ARM 版 Windows 的拒絕訊息。
