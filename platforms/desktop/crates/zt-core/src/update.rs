@@ -247,7 +247,24 @@ fn install(asset_key: &str, package: &Path) -> Result<()> {
         ["/usr/bin", "/bin", "/usr/sbin", "/sbin"].iter().any(|dir| Path::new(dir).join(program).exists())
     };
     let (program, args): (&str, Vec<&str>) = match asset_key {
-        "linux-deb" => ("apt-get", vec!["install", "-y", "--no-install-recommends", &package]),
+        // Waits while another package manager holds the lock (unattended-upgrades, a software center) rather than
+        // failing at once.  A conffile the administrator changed (the autostart entry) is kept without a question:
+        // the updater has no terminal, and dpkg would fail at the prompt.
+        "linux-deb" => (
+            "apt-get",
+            vec![
+                "-o",
+                "DPkg::Lock::Timeout=600",
+                "-o",
+                "Dpkg::Options::=--force-confdef",
+                "-o",
+                "Dpkg::Options::=--force-confold",
+                "install",
+                "-y",
+                "--no-install-recommends",
+                &package,
+            ],
+        ),
         "linux-rpm" if have("dnf") => ("dnf", vec!["install", "-y", &package]),
         "linux-rpm" if have("zypper") => {
             ("zypper", vec!["--non-interactive", "install", "--allow-unsigned-rpm", &package])
@@ -259,7 +276,10 @@ fn install(asset_key: &str, package: &Path) -> Result<()> {
         .args(&args)
         .env("DEBIAN_FRONTEND", "noninteractive")
         .output()
-        .with_context(|| program.to_owned())?;
+        .with_context(|| program.to_owned());
+    // The package is installed (or was refused): it is not kept (about 110 MB in /var/cache).
+    let _ = std::fs::remove_file(&package);
+    let output = output?;
     if !output.status.success() {
         bail!("{program}：{}", String::from_utf8_lossy(&output.stderr).trim());
     }

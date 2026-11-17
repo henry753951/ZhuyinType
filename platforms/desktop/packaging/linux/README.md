@@ -57,7 +57,14 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 
 ## 維護腳本
 
-只有一個：移除（不是升級）前結束執行 `/usr/bin/zhuyintype` 的行程（`scripts/preremove.sh`，只看 `/proc/*/exe`，不需要其他工具）。安裝時不執行任何指令，也不修改使用者的設定；圖示與應用程式選單的快取由發行版的觸發程序更新。
+兩個，都只在移除（不是升級）時執行：
+
+- `scripts/preremove.sh`：移除前結束執行 `/usr/bin/zhuyintype` 的行程（只看 `/proc/*/exe`，不需要其他工具）。
+- `scripts/postremove.sh`：移除後刪除更新程式的下載資料夾 `/var/cache/zhuyintype`（套件管理員不知道它）。更新程式裝完後也會刪除下載的套件。
+
+安裝時不執行任何指令，也不修改使用者的設定；圖示與應用程式選單的快取由發行版的觸發程序更新。
+
+更新程式用 apt 安裝時，等候其他套件管理員釋放鎖定（最多 10 分鐘），並保留管理員改過的設定檔（`--force-confdef --force-confold`）：它沒有終端機，dpkg 在設定檔的詢問處會失敗，套件停在「unpacked」。
 
 ## 加入 Fcitx 5 輸入方式（`fcitx5-setup`）
 
@@ -103,7 +110,7 @@ platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop
 platforms/desktop/scripts/remote.sh packaging/linux/verify.sh ../../dist/desktop --typing   # 先 scripts/build.sh linux --test
 ```
 
-`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件，確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。`--typing [BUILD]` 用安裝好的套件與真實資料，經 Fcitx 5 在 Qt 測試程式與設定視窗中實際打字（測試程式來自 `build.sh linux --test` 的建置目錄）。主機離 `deb.debian.org` 較遠時，`ZT_DEBIAN_MIRROR` 也套用到 Debian 容器（例如 `remote.sh env ZT_DEBIAN_MIRROR=http://free.nchc.org.tw/debian packaging/linux/verify.sh …`）。結果記錄在 [VALIDATION.md](VALIDATION.md)。
+`verify.sh` 在乾淨的容器（Debian 13、Ubuntu 26.04、Fedora、openSUSE Tumbleweed）中安裝套件（deb 照更新程式的方式：沒有終端機、保留改過的設定檔），確認相依都裝得起來、檔案位置正確、執行檔與 addon 沒有缺少的函式庫、`fcitx5-setup` 能把 ZhuyinType 加入執行中的 Fcitx 5；移除後確認沒有留下任何檔案，包括更新程式的下載資料夾。`ZT_VERIFY_FROM=舊的 dist` 先裝舊版再升級，並確認改過的登入啟動設定保留。`--lint` 執行 lintian 與 rpmlint；`--gui OUT` 在 Xvfb 與 Mesa lavapipe 上啟動設定視窗截圖，再移除套件，確認執行中的程式隨之結束。`--typing [BUILD]` 用安裝好的套件與真實資料，經 Fcitx 5 在 Qt 測試程式與設定視窗中實際打字（測試程式來自 `build.sh linux --test` 的建置目錄）。主機離 `deb.debian.org` 較遠時，`ZT_DEBIAN_MIRROR` 也套用到 Debian 容器（例如 `remote.sh env ZT_DEBIAN_MIRROR=http://free.nchc.org.tw/debian packaging/linux/verify.sh …`）。結果記錄在 [VALIDATION.md](VALIDATION.md)。
 
 ## 發布
 

@@ -137,6 +137,7 @@ contents:
 
 scripts:
   preremove: ${ZT_PACKAGING}/scripts/preremove.sh
+  postremove: ${ZT_PACKAGING}/scripts/postremove.sh
 
 deb:
   compression: xz

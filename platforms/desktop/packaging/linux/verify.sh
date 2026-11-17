@@ -2,6 +2,8 @@
 # Installs the packages in clean containers and checks them; runs on a Linux machine with docker or podman.
 #
 #   packaging/linux/verify.sh DIST_DIR [image ...]      (default: every image below)
+#   ZT_VERIFY_FROM=OLD_DIST packaging/linux/verify.sh DIST_DIR [image ...]
+#                                                       the same, upgrading from the packages in OLD_DIST first
 #   packaging/linux/verify.sh DIST_DIR --lint           lintian (Debian 13) and rpmlint (Fedora) only
 #   packaging/linux/verify.sh DIST_DIR --typing [BUILD] typing through Fcitx 5 into a Qt application and the
 #                                                       settings window, with the installed package and its data
@@ -17,7 +19,13 @@ runtime=${ZT_CONTAINER:-$(command -v podman || command -v docker || true)}
 [[ -n $runtime ]] || { echo "verify.sh：需要 docker 或 podman" >&2; exit 1; }
 deb=$(ls "$dist"/zhuyintype_*_amd64.deb | tail -1)
 rpm=$(ls "$dist"/zhuyintype-*.x86_64.rpm | tail -1)
-run() { "$runtime" run --rm -v "$dist:/dist:ro" -e ZT_DEBIAN_MIRROR "$@"; }
+old_deb= old_rpm= from=()
+if [[ -n ${ZT_VERIFY_FROM:-} ]]; then
+    from=(-v "$(realpath "$ZT_VERIFY_FROM"):/from:ro")
+    old_deb=$(basename "$(ls "$ZT_VERIFY_FROM"/zhuyintype_*_amd64.deb | tail -1)")
+    old_rpm=$(basename "$(ls "$ZT_VERIFY_FROM"/zhuyintype-*.x86_64.rpm | tail -1)")
+fi
+run() { "$runtime" run --rm -v "$dist:/dist:ro" "${from[@]}" -e ZT_DEBIAN_MIRROR "$@"; }
 # ZT_DEBIAN_MIRROR (as for build.sh): a nearer mirror for the debian:13 containers.
 mirror='if [ -n "${ZT_DEBIAN_MIRROR:-}" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then
     sed -i "s|^URIs: http://deb.debian.org/debian$|URIs: $ZT_DEBIAN_MIRROR|" /etc/apt/sources.list.d/debian.sources; fi'
@@ -41,10 +49,18 @@ libraries() {
 }
 leftovers() {
     left=$(for path in $(cat /tmp/files); do [ -e "$path" ] && [ ! -d "$path" ] && echo "$path"; done; \
-        for dir in /usr/share/zhuyintype /usr/lib/zhuyintype /usr/share/licenses/zhuyintype /usr/share/doc/zhuyintype; do \
+        for dir in /usr/share/zhuyintype /usr/lib/zhuyintype /usr/share/licenses/zhuyintype /usr/share/doc/zhuyintype \
+            /var/cache/zhuyintype; do \
             [ -e "$dir" ] && echo "$dir"; done; true)
     # A Debian conffile stays after `remove` until `purge`; we purge, so nothing may remain.
     if [ -n "$left" ]; then echo "FAIL left behind:"; echo "$left"; exit 1; fi
+}
+# What the updater leaves (zt_core::update downloads into /var/cache/zhuyintype): removal takes it away too.
+downloaded() { mkdir -p /var/cache/zhuyintype && : > /var/cache/zhuyintype/zhuyintype_0.0.0_amd64.deb; }
+# An upgrade from OLD (ZT_VERIFY_FROM) keeps an administrator's change to the autostart entry (a conffile).
+upgraded() {
+    grep -q '^Hidden=true' /etc/xdg/autostart/zhuyintype.desktop || { echo "FAIL autostart change lost on upgrade"; exit 1; }
+    sed -i '/^Hidden=true/d' /etc/xdg/autostart/zhuyintype.desktop
 }
 SH
 
@@ -74,13 +90,23 @@ debian() {
         addon=/usr/lib/x86_64-linux-gnu/fcitx5/libzhuyintype.so
         $mirror
         apt-get update -qq
-        apt-get install -y -qq --no-install-recommends /dist/$(basename "$deb") >/tmp/apt.log 2>&1 \
+        if [ -n \"$old_deb\" ]; then
+            apt-get install -y -qq --no-install-recommends /from/$old_deb >/tmp/apt.log 2>&1 \
+                || { tail -30 /tmp/apt.log; echo FAIL install $old_deb; exit 1; }
+            echo Hidden=true >> /etc/xdg/autostart/zhuyintype.desktop
+            echo \"upgrading from \$(dpkg-query -W -f='\${Version}' zhuyintype)\"
+        fi
+        # As the updater installs it (zt_core::update): no terminal, changed conffiles kept.
+        apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold install -y -qq \
+            --no-install-recommends /dist/$(basename "$deb") </dev/null >/tmp/apt.log 2>&1 \
             || { tail -30 /tmp/apt.log; echo FAIL install; exit 1; }
+        [ -z \"$old_deb\" ] || upgraded
         dpkg -L zhuyintype > /tmp/files
         echo \"installed: \$(dpkg-query -W -f='\${Version} \${Installed-Size} KiB' zhuyintype)\"
         expect present; libraries
         apt-get install -y -qq --no-install-recommends dbus-daemon systemd >/dev/null 2>&1 || apt-get install -y -qq dbus systemd >/dev/null
         fcitx_setup
+        downloaded
         apt-get purge -y -qq zhuyintype >/dev/null
         leftovers
         echo PASS $image"
@@ -89,16 +115,24 @@ debian() {
 redhat() {
     local image=$1 install remove
     echo "== $image"
+    local old=
     if [[ $image == *suse* ]]; then
-        install="zypper --non-interactive --quiet install --allow-unsigned-rpm --no-recommends /dist/$(basename "$rpm")"
+        install="zypper --non-interactive --quiet install --allow-unsigned-rpm --no-recommends"
         remove="zypper --non-interactive --quiet remove zhuyintype"
     else
-        install="dnf install -y -q --setopt=install_weak_deps=False /dist/$(basename "$rpm")"
+        install="dnf install -y -q --setopt=install_weak_deps=False"
         remove="dnf remove -y -q zhuyintype"
     fi
+    if [[ -n $old_rpm ]]; then
+        old="$install /from/$old_rpm >/tmp/install.log 2>&1 || [ \$? = 107 ]
+            echo Hidden=true >> /etc/xdg/autostart/zhuyintype.desktop
+            echo \"upgrading from \$(rpm -q --qf '%{VERSION}' zhuyintype)\""
+    fi
+    install="$install /dist/$(basename "$rpm")"
     run "$image" bash -c "set -e
         $files_check
         addon=/usr/lib64/fcitx5/libzhuyintype.so
+        $old
         # zypper ends with 107 when another package's scriptlet fails in a container (systemd, dbus-broker); the
         # transaction is complete, and the checks below decide.
         status=0; $install >/tmp/install.log 2>&1 || status=\$?
@@ -108,6 +142,8 @@ redhat() {
         rpm -ql zhuyintype > /tmp/files
         echo \"installed: \$(rpm -q --qf '%{VERSION}-%{RELEASE} %{SIZE} bytes' zhuyintype)\"
         expect present; libraries
+        [ -z \"$old_rpm\" ] || upgraded
+        downloaded
         $remove >/dev/null
         leftovers
         echo PASS $image"
