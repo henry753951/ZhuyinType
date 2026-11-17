@@ -43,6 +43,12 @@ impl std::fmt::Debug for NeuralModels {
     }
 }
 
+/// Intra-op threads per model session: two where the machine has four cores or more.  Each model call then takes
+/// about a fifth less time for about a sixth more processor time; the outputs are the same (`zhuyin_models::onnx`).
+fn model_threads() -> usize {
+    if std::thread::available_parallelism().map_or(1, std::num::NonZero::get) >= 4 { 2 } else { 1 }
+}
+
 /// Where ONNX Runtime may be, in order.
 fn runtime_candidates() -> Vec<PathBuf> {
     let mut paths = Vec::new();
@@ -76,7 +82,8 @@ fn runtime() -> Result<(), String> {
         .clone()
 }
 
-/// The models in `reranker` and `character` (directories), whichever are given.
+/// The models in `reranker` and `character` (directories), whichever are given, each run once on a small input
+/// (`warm_up`) so the first key does not pay for ONNX Runtime's first run and for reading the mapped weights in.
 #[must_use]
 pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
     let mut models = NeuralModels::default();
@@ -90,10 +97,13 @@ pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
     }
     if let Some(directory) = reranker {
         let started = Instant::now();
-        match OnnxReranker::new(directory).and_then(|model| NeuralReranker::configured(directory, Box::new(model))) {
+        match OnnxReranker::with_threads(directory, model_threads())
+            .and_then(|model| NeuralReranker::configured(directory, Box::new(model)))
+        {
             Ok(model) => {
-                models.reranker = Some(Arc::new(model));
                 models.reranker_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+                model.warm_up();
+                models.reranker = Some(Arc::new(model));
             }
             Err(error) => {
                 log::warn!("reranker: {error}");
@@ -103,10 +113,13 @@ pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
     }
     if let Some(directory) = character {
         let started = Instant::now();
-        match OnnxSyllableModel::new(directory).and_then(|model| SyllableScorer::new(directory, Box::new(model))) {
+        match OnnxSyllableModel::with_threads(directory, model_threads())
+            .and_then(|model| SyllableScorer::new(directory, Box::new(model)))
+        {
             Ok(model) => {
-                models.character = Some(Arc::new(model));
                 models.character_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+                model.warm_up();
+                models.character = Some(Arc::new(model));
             }
             Err(error) => {
                 log::warn!("character model: {error}");

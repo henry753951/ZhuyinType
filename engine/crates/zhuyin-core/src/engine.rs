@@ -2023,17 +2023,18 @@ impl LexiconRows for EngineRows<'_> {
             Some(mapped) => {
                 for reading in mapped.reading_strs() {
                     for entry in mapped.entry_refs(reading) {
-                        let word_id = self
-                            .engine
-                            .model
-                            .word_id(entry.word)
-                            .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32));
+                        let word_id = || {
+                            self.engine
+                                .model
+                                .word_id(entry.word)
+                                .or_else(|| mapped.word_index(entry.word).map(|i| FIRST_PERSONAL_ID + i as u32))
+                        };
                         each(&RowRef {
                             reading,
                             word: entry.word,
                             logp: entry.logp,
                             reading_prior: entry.reading_prior,
-                            word_id,
+                            word_id: &word_id,
                         });
                     }
                 }
@@ -2046,7 +2047,7 @@ impl LexiconRows for EngineRows<'_> {
                             word: &entry.word,
                             logp: entry.logp,
                             reading_prior: entry.reading_prior,
-                            word_id: entry.word_id,
+                            word_id: &|| entry.word_id,
                         });
                     }
                 }

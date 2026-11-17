@@ -1296,12 +1296,24 @@ impl Composer {
             // The head is sent: split the run again after it.
             return self.apply_run(false);
         }
-        if self.run_tokens > 0 {
-            let count = self.tokens.len();
-            self.delete(count - self.run_tokens..count);
-        }
-        for syllable in &decoded.syllables {
-            self.insert(CompositionToken::syllable(&syllable.reading, &syllable.keys, syllable.implicit));
+        // Most keys only add to the unfinished syllable: the split's syllables are the run's tokens as they are.
+        // Replacing them with equal ones would change nothing but mark the conversion stale, and the next refresh
+        // would decode the same lattice again; a pick on them would be dropped, so that case still replaces them.
+        let count = self.tokens.len();
+        let run = count - self.run_tokens..count;
+        let unchanged = self.tokens[run.clone()].len() == decoded.syllables.len()
+            && self.tokens[run.clone()].iter().zip(&decoded.syllables).all(|(token, syllable)| {
+                matches!(token, CompositionToken::Syllable { reading, keys, implicit }
+                    if **reading == *syllable.reading && **keys == *syllable.keys && *implicit == syllable.implicit)
+            })
+            && !self.fixed.iter().any(|word| overlaps(&word.range, &run));
+        if !unchanged {
+            if self.run_tokens > 0 {
+                self.delete(run);
+            }
+            for syllable in &decoded.syllables {
+                self.insert(CompositionToken::syllable(&syllable.reading, &syllable.keys, syllable.implicit));
+            }
         }
         self.run_tokens = decoded.syllables.len();
         self.buffer = decoded.buffer;
@@ -1853,7 +1865,13 @@ impl Composer {
             })
             .map(|i| self.conversion[i].clone())
             .collect();
-        let sentences = self.reranking_sentences(&remembered, self.n_best(self.reranking_count.max(1)));
+        // The N best of the lattice `refresh` just decoded: its words and language-model scores are reused.
+        let mut cache = self.conversion_cache.take();
+        let mut request = self.request(&self.tokens);
+        request.characters = self.character_scores.as_ref();
+        let best = self.engine.sentences_reusing(&request, self.reranking_count.max(1), &mut cache);
+        self.conversion_cache = cache;
+        let sentences = self.reranking_sentences(&remembered, best);
         if sentences.is_empty() {
             return;
         }
