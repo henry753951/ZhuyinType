@@ -1,4 +1,5 @@
-//! The floating windows: the candidate window and the 中/英 badge (macOS `CandidatePanelController`, `ModeToast`).
+//! The floating windows: the candidate window and the 中/英 badge (macOS `CandidatePanelController`, `ModeToast`);
+//! the 快速設定 panel is in `quick`.
 //!
 //! Each is one borderless GPUI `WindowKind::PopUp` window, opened once and kept: shown, moved and hidden as the
 //! service's `UiEvent`s arrive, never activated and never given focus (see `platform`).  The window is the surface
@@ -50,6 +51,11 @@ fn popups(cx: &mut App) -> &mut Popups {
     cx.global_mut::<Popups>()
 }
 
+/// Transparent windows show what is behind them (the floating windows' margin for a shadow).
+pub(super) fn transparent(cx: &mut App) -> bool {
+    popups(cx).transparent
+}
+
 /// Drains the service's events on the foreground executor for as long as the app runs.  Call once.
 #[allow(dead_code, reason = "main.rs calls it once Service::start is ported")]
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
@@ -70,7 +76,7 @@ pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
 fn in_logical_pixels(event: UiEvent, cx: &mut App) -> UiEvent {
     let caret = match &event {
         UiEvent::Popup(Some(state)) => state.caret,
-        UiEvent::Toast { anchor, .. } => *anchor,
+        UiEvent::Toast { anchor, .. } | UiEvent::QuickPanel { anchor } => *anchor,
         _ => return event,
     };
     // GPUI's X11 scale is one for every window: the candidate window's (opened once and kept anyway).
@@ -85,6 +91,7 @@ fn in_logical_pixels(event: UiEvent, cx: &mut App) -> UiEvent {
     match event {
         UiEvent::Popup(Some(state)) => UiEvent::Popup(Some(PopupState { caret: logical, ..state })),
         UiEvent::Toast { text, .. } => UiEvent::Toast { text, anchor: logical },
+        UiEvent::QuickPanel { .. } => UiEvent::QuickPanel { anchor: logical },
         other => other,
     }
 }
@@ -136,7 +143,8 @@ pub fn handle(event: UiEvent, cx: &mut App) {
             }
         }
         UiEvent::ShowSettings(place) => show_settings(place, cx),
-        UiEvent::QuickPanel { .. } => {}
+        UiEvent::QuickPanel { anchor } => super::quick::show(anchor, cx),
+        UiEvent::HideQuickPanel => super::quick::hide(cx),
     }
 }
 
@@ -161,7 +169,7 @@ fn show_settings(place: Option<&'static str>, cx: &mut App) {
 }
 
 /// The visible area of the screen with `caret` on it (logical pixels).
-fn screen_at(caret: Rect, cx: &App) -> Rect {
+pub(super) fn screen_at(caret: Rect, cx: &App) -> Rect {
     let to_rect = |bounds: Bounds<Pixels>| {
         Rect::new(
             f64::from(f32::from(bounds.origin.x)),
@@ -181,7 +189,7 @@ fn screen_at(caret: Rect, cx: &App) -> Rect {
         .unwrap_or(Rect::new(0., 0., 1440., 900.))
 }
 
-fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
+pub(super) fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
@@ -207,7 +215,7 @@ fn options(bounds: Bounds<Pixels>, transparent: bool) -> WindowOptions {
 /// Far outside every screen: where a window waits before its first show on platforms that cannot hide it.
 const OFFSCREEN: f32 = -10000.;
 
-fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
+pub(super) fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
     DeviceRect {
         x: (rect.0 * scale).round() as i32,
         y: (rect.1 * scale).round() as i32,
@@ -218,7 +226,7 @@ fn device(rect: (f32, f32, f32, f32), scale: f32) -> DeviceRect {
 
 /// The floating windows' edge: their own (rounded, shadowed) with a transparent margin around them, the system's
 /// (Windows), or square with a hairline (no compositor).
-fn popup_chrome(margin: f32) -> Chrome {
+pub(super) fn popup_chrome(margin: f32) -> Chrome {
     if platform::system_frames_popups() {
         Chrome::System
     } else if margin > 0. {

@@ -36,10 +36,11 @@ pub enum Command {
     NextCharacter,
     TogglePunctuationWidth,
     InsertSpace,
+    QuickSettings,
 }
 
 impl Command {
-    pub const ALL: [Command; 13] = [
+    pub const ALL: [Command; 14] = [
         Command::SingleCharacterList,
         Command::CorrectionsList,
         Command::TypeZhuyin,
@@ -53,6 +54,7 @@ impl Command {
         Command::NextCharacter,
         Command::TogglePunctuationWidth,
         Command::InsertSpace,
+        Command::QuickSettings,
     ];
 
     /// The id in settings, links and `settings.json` `commands`.
@@ -71,6 +73,7 @@ impl Command {
             Command::NextCharacter => "nextCharacter",
             Command::TogglePunctuationWidth => "togglePunctuationWidth",
             Command::InsertSpace => "insertSpace",
+            Command::QuickSettings => "quickSettings",
         }
     }
 
@@ -94,6 +97,7 @@ impl Command {
             Command::NextCharacter => "改後一個字",
             Command::TogglePunctuationWidth => "標點全半形",
             Command::InsertSpace => "插入空白",
+            Command::QuickSettings => "快速設定",
         }
     }
 

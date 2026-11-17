@@ -2,7 +2,8 @@
 //! UI renderer's `panels/` show it, for screenshots.  `--popup demo` drives the real floating windows instead.
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
-//! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
+//! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, `quick-settings` (the
+//! 快速設定 panel), and the paging frames
 //! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage).
 
 use std::rc::Rc;
@@ -30,6 +31,8 @@ struct Showcase {
     panel: CandidatePanel,
     dark: bool,
     sized: bool,
+    /// `quick-settings`: the 快速設定 panel instead of a list.
+    quick: bool,
 }
 
 /// The settings every variant sets (so one variant's choices never leak into the next: screenshots share one
@@ -136,7 +139,7 @@ impl Showcase {
             panel.update(&presentation, Extras::default(), &style, 4000., true, &mut WindowMeasure(window));
             panel.pinned = Some(pinned);
         }
-        Self { presentation, preview, badge, panel, dark, sized: false }
+        Self { presentation, preview, badge, panel, dark, sized: false, quick: variant == "quick-settings" }
     }
 }
 
@@ -146,6 +149,7 @@ impl Render for Showcase {
         let settings = app::settings(cx).clone();
         let style = style::style_from_settings(&settings, &CurrentKeys::new(&settings, None));
         let (width, height) = match self.badge {
+            _ if self.quick => (super::quick::WIDTH, super::quick::height()),
             Some(_) => (super::layout::BADGE_W, super::layout::BADGE_H),
             None if self.panel.pinned.is_some() => self.panel.layout().map_or((0., 0.), |l| (l.width, l.height)),
             None => self.panel.update(
@@ -176,7 +180,15 @@ impl Render for Showcase {
                 .rounded_full()
                 .bg(bar)
         });
+        // An example: 簡體 output, learning paused.
+        let switches = zt_core::service::QuickSwitches {
+            english: false,
+            full_width: true,
+            simplified: true,
+            learning_paused: true,
+        };
         let content = match self.badge {
+            _ if self.quick => super::quick::quick_panel(switches, &palette, super::panel::Chrome::Floating, None),
             Some(text) => mode_badge(text, &palette, true),
             None => self.panel.render(&palette, None, window),
         };

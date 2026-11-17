@@ -173,6 +173,29 @@ fn the_shortcut_asks_for_the_panel() {
     assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::QuickPanel { .. })));
     // Other replies do not carry it.
     assert!(f.request("poll", json!({})).get("quickPanel").is_none());
+    // The app's panel closes at the next key.
+    f.request("focus", json!({"secure": false, "rect": [100, 200, 2, 20]}));
+    f.key('Q' as i32, modifier::ALT);
+    f.ui_events();
+    f.key('S' as i32, 0);
+    assert!(f.ui_events().contains(&UiEvent::HideQuickPanel));
+    f.key('U' as i32, 0);
+    assert!(!f.ui_events().contains(&UiEvent::HideQuickPanel), "once");
+}
+
+#[test]
+fn the_app_panel_flips_switches() {
+    use zt_core::service::{QuickSwitch, QuickSwitches};
+    let mut f = Fixture::new();
+    f.request("focus", json!({"secure": false}));
+    let off = QuickSwitches { english: false, full_width: true, simplified: false, learning_paused: false };
+    assert_eq!(f.service.quick_switches(), off);
+    for switch in [QuickSwitch::English, QuickSwitch::HalfWidth, QuickSwitch::Simplified, QuickSwitch::PauseLearning] {
+        f.service.toggle_quick(switch);
+    }
+    let on = QuickSwitches { english: true, full_width: false, simplified: true, learning_paused: true };
+    assert_eq!(f.service.quick_switches(), on);
+    assert_eq!(f.request("poll", json!({}))["simplified"], true);
 }
 
 #[test]

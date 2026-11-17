@@ -4,6 +4,7 @@
 //! service directly for settings, personal data, statistics and candidate-window clicks.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 
 use anyhow::{Result, anyhow};
@@ -72,6 +73,30 @@ pub enum UiEvent {
     Boundary(i32),
     /// The 開啟快速設定 shortcut: show the 快速設定 panel by the caret (screen logical pixels), without taking focus.
     QuickPanel { anchor: Rect },
+    /// The next key, or the field changed: the 快速設定 panel closes.
+    HideQuickPanel,
+}
+
+/// The 快速設定 switches as they are now (IPC `quick`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct QuickSwitches {
+    pub english: bool,
+    pub full_width: bool,
+    pub simplified: bool,
+    pub learning_paused: bool,
+}
+
+/// One check item of 快速設定.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuickSwitch {
+    /// 英文.
+    English,
+    /// 半形標點.
+    HalfWidth,
+    /// 簡體.
+    Simplified,
+    /// 暫停學習.
+    PauseLearning,
 }
 
 /// A click or control in the candidate window.
@@ -120,6 +145,8 @@ struct Shared {
     practice_engine: Mutex<Weak<Engine>>,
     broker: Mutex<Option<Broker>>,
     app_version: String,
+    /// The app shows the 快速設定 panel ([`UiEvent::QuickPanel`]) until the next key.
+    quick_open: AtomicBool,
 }
 
 /// Returned by [`Service::start`] when another instance serves this user; it was asked to show its settings.
@@ -248,6 +275,7 @@ impl Service {
                 practice_engine: Mutex::new(Weak::new()),
                 broker: Mutex::new(None),
                 app_version: config.app_version.clone(),
+                quick_open: AtomicBool::new(false),
             }),
         };
         // A changed setting reaches the composition at once (a list open with the old page size, English mode turned
@@ -298,7 +326,10 @@ impl Service {
             let event = match effect {
                 Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
-                Effect::QuickPanel => UiEvent::QuickPanel { anchor },
+                Effect::QuickPanel => {
+                    self.inner.quick_open.store(true, Ordering::Release);
+                    UiEvent::QuickPanel { anchor }
+                }
                 Effect::Toast { text } => {
                     if !self.inner.settings.bool("showModeToast") {
                         continue;
@@ -321,6 +352,14 @@ impl Service {
     #[must_use]
     pub fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
         self.quick_script(connection, request);
+        // The panel the app shows closes at the next key or when the field changes.
+        let op = request.get("op").and_then(Value::as_str).unwrap_or_default();
+        let press = op == "key" && request.get("release") == Some(&Value::Bool(false));
+        if (press || matches!(op, "focus" | "blur" | "secure" | "reset"))
+            && self.inner.quick_open.swap(false, Ordering::AcqRel)
+        {
+            let _ = self.inner.events.try_send(UiEvent::HideQuickPanel);
+        }
         let mut effects = Vec::new();
         let mut draws = false;
         let mut reply = self.with_core(|core| {
@@ -387,6 +426,42 @@ impl Service {
         if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
             log::warn!("quick: {error}");
         }
+    }
+
+    /// The 快速設定 switches now (for the app's panel).
+    #[must_use]
+    pub fn quick_switches(&self) -> QuickSwitches {
+        let core = self.inner.core.lock();
+        let c = &core.controller;
+        QuickSwitches {
+            english: c.english(),
+            full_width: c.full_width(),
+            simplified: c.simplified(),
+            learning_paused: c.learning_paused(),
+        }
+    }
+
+    /// Flips one 快速設定 check item (a click in the app's panel), as `op: "quick"` would.
+    pub fn toggle_quick(&self, switch: QuickSwitch) {
+        self.inner.quick_open.store(false, Ordering::Release);
+        if switch == QuickSwitch::Simplified {
+            let script = if self.quick_switches().simplified { "traditional" } else { "simplified" };
+            if let Err(error) = self.inner.settings.set("outputScript", script.into()) {
+                log::warn!("quick: {error}");
+            }
+            return;
+        }
+        self.with_controller(|c| match switch {
+            QuickSwitch::English => c.set_english(!c.english()),
+            QuickSwitch::HalfWidth => c.set_full_width(!c.full_width()),
+            QuickSwitch::PauseLearning => c.set_learning_paused(!c.learning_paused()),
+            QuickSwitch::Simplified => {}
+        });
+    }
+
+    /// The app closed its 快速設定 panel (a click in it, or Esc).
+    pub fn quick_panel_closed(&self) {
+        self.inner.quick_open.store(false, Ordering::Release);
     }
 
     /// Runs `work` on the input controller under the service's lock (advanced use and tests); the popup follows.

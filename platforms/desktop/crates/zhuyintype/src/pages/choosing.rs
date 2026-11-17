@@ -66,7 +66,8 @@ fn choosing_page(cx: &App) -> AnyElement {
         .child(
             section("轉換")
                 .row(setting_row("candidateAnchor", cx).info("游標在句中時改", |_, cx| anchor_info(cx)))
-                .row(setting_row("characterForms", cx).trailing(segments("characterForms", cx))),
+                .row(setting_row("characterForms", cx).trailing(segments("characterForms", cx)))
+                .row(setting_row("outputScript", cx).trailing(segments("outputScript", cx))),
         )
         .child(
             section("按錯鍵")
