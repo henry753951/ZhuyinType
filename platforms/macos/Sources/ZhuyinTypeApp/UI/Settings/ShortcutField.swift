@@ -447,7 +447,7 @@ extension ShortcutCommand {
         case .commitWithNewline, .deleteWord: return .composing
         case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
         case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return .list
-        case .typeZhuyin, .selectLeft, .selectRight: return .editing
+        case .typeZhuyin, .selectLeft, .selectRight, .addSelectedText: return .editing
         case .togglePunctuationWidth: return .punctuation
         case .insertSpace: return .other
         }

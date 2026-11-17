@@ -61,3 +61,19 @@ extension ControllerCore {
         return (key.map { "\($0) 不要再推薦・" } ?? "") + "右鍵看更多"
     }
 }
+
+extension ControllerCore {
+    /// The longest selection read for 「選取的字加入自訂詞」, in UTF-16 units (a custom word has at most 6 characters;
+    /// more is read so the form can say why it is too long).
+    static let selectionLimit = 32
+
+    /// 「選取的字加入自訂詞」: with nothing being composed, the app's selected text goes to the 加入自訂詞 form.  While
+    /// composing the key does nothing; in a secure field nothing is read.
+    @discardableResult
+    func addSelectedText() -> Bool {
+        guard !composer.isComposing else { return true }
+        let text = secureInput() ? nil : client.selectedText(maxLength: Self.selectionLimit)
+        addPhraseForm?(text?.trimmingCharacters(in: .whitespacesAndNewlines))
+        return true
+    }
+}

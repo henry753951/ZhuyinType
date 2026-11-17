@@ -245,6 +245,8 @@ struct KeysPane: View {
                         feature: .selectPhrase),
                 KeyItem(id: "selectRight", title: "往右選取", subtitle: "再按 Return 加入自訂詞", keys: .command(.selectRight),
                         feature: .selectPhrase),
+                KeyItem(id: "addSelectedText", title: "選取的字加入自訂詞", subtitle: "在 App 裡選取 1 到 6 個字再按；預設沒有按鍵",
+                        keys: .command(.addSelectedText)),
                 KeyItem(id: "deleteAfterCommit", title: "送出後刪掉重打",
                         subtitle: "送出後 30 秒內刪掉剛送出的字再打，算作改字並接著前文選字", keys: .fixed(["⌫"]),
                         feature: .deleteAfterCommit),
