@@ -361,9 +361,10 @@ impl<C: VocabularyLanguageModel, E: VocabularyLanguageModel> MixtureLanguageMode
         ((chat_id as usize) < self.chat.vocabulary_count()).then(|| self.chat.word(chat_id))
     }
 
-    /// The words either model stores after `history`'s previous word, as mixture IDs, scored by the mixture, best
-    /// first, at most `limit` (see [`VocabularyLanguageModel::followers`]).
-    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, f64)> {
+    /// The words either model stores after `history`'s previous word, as mixture IDs, scored by the mixture with
+    /// the chat share `chat_weight` (not the current one), best first, at most `limit` (see
+    /// [`VocabularyLanguageModel::followers`]).
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize, chat_weight: f64) -> Vec<(u32, f64)> {
         let mut ids: Vec<u32> = Vec::new();
         if let Some(previous) = self.encyclopedia_id(Some(history.previous)) {
             let followers = self.encyclopedia.followers(LanguageModelHistory::new(None, previous), limit);
@@ -377,8 +378,15 @@ impl<C: VocabularyLanguageModel, E: VocabularyLanguageModel> MixtureLanguageMode
         }
         ids.sort_unstable();
         ids.dedup();
-        let history = LanguageModelHistory::new(None, history.previous);
-        best_by_score(ids.into_iter().map(|id| (id, self.score(Some(id), history, -30.0))).collect(), limit)
+        let weight = swift_min(1.0, swift_max(0.0, chat_weight));
+        let scored = ids
+            .into_iter()
+            .map(|id| {
+                let (chat, encyclopedia) = self.scores(Some(id), history.previous, -30.0);
+                (id, mix(chat, encyclopedia, weight))
+            })
+            .collect();
+        best_by_score(scored, limit)
     }
 
     /// log P under each model (chat, encyclopedia), for the domain posterior.
@@ -408,18 +416,23 @@ impl<C: VocabularyLanguageModel, E: VocabularyLanguageModel> LanguageModel for M
 
     fn score(&self, word_id: Option<u32>, history: LanguageModelHistory, unigram: f64) -> f64 {
         let (chat, encyclopedia) = self.scores(word_id, history.previous, unigram);
-        let weight = self.chat_weight();
-        if weight <= 0.0 {
-            return encyclopedia;
-        }
-        if weight >= 1.0 {
-            return chat;
-        }
-        let chat_term = weight.ln() + chat;
-        let encyclopedia_term = (1.0 - weight).ln() + encyclopedia;
-        let top = swift_max(chat_term, encyclopedia_term);
-        top + ((chat_term - top).exp() + (encyclopedia_term - top).exp()).ln()
+        mix(chat, encyclopedia, self.chat_weight())
     }
+}
+
+/// log(λ·exp(chat) + (1 − λ)·exp(encyclopedia)), the two-domain mixture's score.
+#[inline]
+fn mix(chat: f64, encyclopedia: f64, weight: f64) -> f64 {
+    if weight <= 0.0 {
+        return encyclopedia;
+    }
+    if weight >= 1.0 {
+        return chat;
+    }
+    let chat_term = weight.ln() + chat;
+    let encyclopedia_term = (1.0 - weight).ln() + encyclopedia;
+    let top = swift_max(chat_term, encyclopedia_term);
+    top + ((chat_term - top).exp() + (encyclopedia_term - top).exp()).ln()
 }
 
 /// Treats a composition as a stretch of a sentence rather than a whole one: what would be scored after `<s>` is

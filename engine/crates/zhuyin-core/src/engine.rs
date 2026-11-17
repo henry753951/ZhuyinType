@@ -279,27 +279,29 @@ impl EngineModel {
         self.end_score(history, self.end_share)
     }
 
-    /// The words the base model stores after `history`, with their spellings, best first, at most `limit`
-    /// (聯想詞; [`VocabularyLanguageModel::followers`]).
+    /// The words the base model stores after `history`, with their spellings and log P(word | history), best
+    /// first, at most `limit` (聯想詞; [`VocabularyLanguageModel::followers`]).
     #[must_use]
-    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String)> {
+    pub fn followers(&self, history: LanguageModelHistory, limit: usize) -> Vec<(u32, String, f64)> {
         match &self.base {
             BaseModel::Unigram(_) => vec![],
-            BaseModel::Vocabulary(m) => {
-                m.followers(history, limit).into_iter().map(|(id, _)| (id, m.word(id).into_owned())).collect()
-            }
-            BaseModel::Mixture(m) => m
+            BaseModel::Vocabulary(m) => m
                 .followers(history, limit)
                 .into_iter()
-                .filter_map(|(id, _)| Some((id, m.word(id)?.into_owned())))
+                .map(|(id, _)| (id, m.word(id).into_owned(), m.score(Some(id), history, f64::NEG_INFINITY)))
+                .collect(),
+            BaseModel::Mixture(m) => m
+                .followers(history, limit, m.chat_weight())
+                .into_iter()
+                .filter_map(|(id, score)| Some((id, m.word(id)?.into_owned(), score)))
                 .collect(),
         }
     }
 
-    /// log P(word | history) under the base model alone, without the user's statistics.
+    /// `base` (a base-model log probability of `word_id` after `history`) adapted to the user's statistics.
     #[must_use]
-    pub fn base_score(&self, word_id: Option<u32>, history: LanguageModelHistory, unigram: f64) -> f64 {
-        self.base.score(word_id, history, unigram)
+    pub fn adapted(&self, base: f64, word_id: Option<u32>, history: LanguageModelHistory) -> f64 {
+        self.personal.adapt(base, word_id, history)
     }
 }
 

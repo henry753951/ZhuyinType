@@ -68,6 +68,9 @@ pub struct PanelModel {
     /// text service shows a system menu instead).  Not sent.
     #[serde(skip)]
     pub menu: Option<usize>,
+    /// The list is next-word suggestions after a commit (聯想詞), not conversions: the window says so.
+    #[serde(default)]
+    pub associated: bool,
 }
 
 impl PanelModel {

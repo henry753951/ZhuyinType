@@ -14,6 +14,7 @@
 //!
 //! [`Engine::predict_after`]: crate::engine::Engine::predict_after
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::{Composer, trailing_words};
@@ -76,11 +77,14 @@ impl Composer {
             return;
         }
         let count = self.options.selection_keys.len();
-        let predictions = self.engine.predict_after(self.leading_history, count, self.options.learning_enabled);
+        let mut predictions = self.engine.predict_after(self.leading_history, count, self.options.learning_enabled);
+        // 台灣 and 臺灣 are one suggestion once written in the user's forms.
+        let forms = self.options.character_forms;
+        let mut shown: HashSet<String> = HashSet::new();
+        predictions.retain(|p| shown.insert(forms.apply(&p.text)));
         if predictions.is_empty() {
             return;
         }
-        let forms = self.options.character_forms;
         let items: Vec<Candidate> =
             predictions.iter().map(|p| Candidate { text: forms.apply(&p.text), annotation: None }).collect();
         self.presentation = Presentation {

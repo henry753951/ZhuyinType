@@ -73,6 +73,8 @@ const ANNOTATION_GAP: f32 = 8.;
 const NOTICE_X: f32 = 12.;
 /// A notice row above candidates.
 const NOTICE_ROW: f32 = 24.;
+/// The reading row's text above 聯想詞 (next-word suggestions), which have no reading.
+pub const ASSOCIATION_LABEL: &str = "聯想詞・Shift 加選字鍵";
 
 /// A key cap's width for `key` at the key caps' font: the label and 5 on each side, never narrower than tall.
 pub fn keycap_width(measure: &mut dyn Measure, key: &str) -> f32 {
@@ -288,6 +290,7 @@ fn compute_fitted(
     let has_pages = p.page_count > 1 && list_open;
     let readable = p.reading.as_deref().is_some_and(|reading| !reading.is_empty()) && list_open;
     let has_hint = readable && style.shows_zhuyin_hint;
+    let association = p.associated && list_open && !has_hint;
     let has_toggle = p.tolerant.is_some()
         && list_open
         && !keys.corrections.is_empty()
@@ -366,6 +369,10 @@ fn compute_fitted(
         let key_room =
             if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
+        y += hint_height;
+    } else if association {
+        let label_w = measure.width(ASSOCIATION_LABEL, SMALL_FONT, false) + 4.;
+        width = width.max(ceil(padding * 2. + key_inset * 2. + label_w));
         y += hint_height;
     }
 
@@ -528,6 +535,20 @@ fn compute_fitted(
         key_label_w: hint_label_w,
         keycap_right: hint_keycap_right,
         clickable: keys.zhuyin_clickable,
+    });
+    // 聯想詞 take the reading row's place with a quiet label and no key.
+    let hint = hint.or_else(|| {
+        association.then(|| HintLayout {
+            frame: Frame::new(padding, hint_y, width - padding * 2., hint_height - 2.),
+            text_x: key_inset,
+            key: String::new(),
+            hint: ASSOCIATION_LABEL.to_owned(),
+            keycap_w: 0.,
+            key_label: "",
+            key_label_w: 0.,
+            keycap_right: hint_keycap_right,
+            clickable: false,
+        })
     });
     let footer_x = if vertical { padding + footer_lead } else { width - padding - footer_width + footer_lead };
     let single = (has_footer && has_single).then(|| {
@@ -819,6 +840,19 @@ mod tests {
         style.keys.zhuyin.clear();
         let layout = compute(&list(9), &style, 4000., (0., 0.), &mut Fixed);
         assert_eq!(layout.hint.expect("a reading row").keycap_w, 0.);
+    }
+
+    #[test]
+    fn associated_list_is_labelled() {
+        let mut p = list(9);
+        p.reading = None;
+        p.associated = true;
+        let layout = compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        let hint = layout.hint.expect("the 聯想詞 label");
+        assert_eq!((hint.hint.as_str(), hint.keycap_w, hint.clickable), (ASSOCIATION_LABEL, 0., false));
+        assert_eq!(layout.rows_area.y, hint.frame.y + hint.frame.h + 2.);
+        p.associated = false;
+        assert!(compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed).hint.is_none());
     }
 
     #[test]

@@ -68,6 +68,8 @@ pub struct Presentation {
     pub undo: bool,
     /// The word actions' tip under the list, the first few times a list opens.
     pub tip: Option<String>,
+    /// The list is next-word suggestions after a commit (聯想詞): no composition, ⇧ + a selection key picks.
+    pub associated: bool,
 }
 
 impl Presentation {
@@ -104,6 +106,7 @@ impl Presentation {
         self.single = list.single_character();
         self.tolerant = list.tolerant();
         self.corrections = list.tolerant() == Some(true);
+        self.associated = list.associated();
         if self.count == 0 {
             return;
         }
@@ -175,6 +178,7 @@ impl Presentation {
             undo: self.undo,
             tip: self.tip.clone(),
             menu: None,
+            associated: self.associated,
         }
     }
 
