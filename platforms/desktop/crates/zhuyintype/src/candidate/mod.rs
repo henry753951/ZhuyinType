@@ -4,6 +4,7 @@
 
 pub mod layout;
 pub mod panel;
+pub mod picker;
 pub mod platform;
 pub mod popup;
 pub mod preview;

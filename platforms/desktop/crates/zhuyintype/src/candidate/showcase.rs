@@ -3,7 +3,9 @@
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`,
 //! `minimal`, `composing`, `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`, and the paging frames
-//! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage).
+//! `vertical-next-35`, `horizontal-previous-20`, `vertical-end-50` … (`next`, `previous` or `end` at a percentage),
+//! and 符號與 Emoji: `picker` (the grid with recent symbols), `picker-emoji` (a later category, a row down),
+//! `picker-search` (a search typed), `picker-native` (the highlighted row as the native adapters' list).
 
 use std::rc::Rc;
 
@@ -30,6 +32,7 @@ struct Showcase {
     panel: CandidatePanel,
     dark: bool,
     sized: bool,
+    picker: Option<zt_core::symbols::PickerView>,
 }
 
 /// The settings every variant sets (so one variant's choices never leak into the next: screenshots share one
@@ -49,8 +52,10 @@ fn configure(variant: &str, cx: &mut App) {
     for key in SHAPED {
         app::reset_setting(key, cx);
     }
-    let mut values: Vec<(&str, Value)> =
-        vec![("candidateLayout", if variant.starts_with("horizontal") { "horizontal" } else { "vertical" }.into())];
+    let mut values: Vec<(&str, Value)> = vec![(
+        "candidateLayout",
+        if variant.starts_with("horizontal") || variant == "picker-native" { "horizontal" } else { "vertical" }.into(),
+    )];
     values.push(("candidateDensity", if variant.contains("compact") { "compact" } else { "standard" }.into()));
     if variant == "minimal" {
         values.extend([
@@ -136,7 +141,16 @@ impl Showcase {
             panel.update(&presentation, Extras::default(), &style, 4000., true, &mut WindowMeasure(window));
             panel.pinned = Some(pinned);
         }
-        Self { presentation, preview, badge, panel, dark, sized: false }
+        let mut picker = None;
+        if variant.starts_with("picker") {
+            let (open, sample) = sample_picker(variant);
+            if variant == "picker-native" {
+                presentation = open.presentation();
+            } else {
+                picker = Some(sample);
+            }
+        }
+        Self { presentation, preview, badge, panel, dark, sized: false, picker }
     }
 }
 
@@ -146,6 +160,7 @@ impl Render for Showcase {
         let settings = app::settings(cx).clone();
         let style = style::style_from_settings(&settings, &CurrentKeys::new(&settings, None));
         let (width, height) = match self.badge {
+            _ if self.picker.is_some() => super::picker::size(),
             Some(_) => (super::layout::BADGE_W, super::layout::BADGE_H),
             None if self.panel.pinned.is_some() => self.panel.layout().map_or((0., 0.), |l| (l.width, l.height)),
             None => self.panel.update(
@@ -176,9 +191,10 @@ impl Render for Showcase {
                 .rounded_full()
                 .bg(bar)
         });
-        let content = match self.badge {
-            Some(text) => mode_badge(text, &palette, true),
-            None => self.panel.render(&palette, None, window),
+        let content = match (self.badge, &self.picker) {
+            (_, Some(picker)) => super::picker::render(picker, &palette, super::panel::Chrome::Floating, None),
+            (Some(text), None) => mode_badge(text, &palette, true),
+            (None, None) => self.panel.render(&palette, None, window),
         };
         div()
             .relative()
@@ -188,6 +204,30 @@ impl Render for Showcase {
             .children(lines)
             .child(div().absolute().left(px(inset_x)).top(px(inset_y)).child(content))
     }
+}
+
+/// A picker for the screenshots: recent symbols, then the variant's keys.
+fn sample_picker(variant: &str) -> (zt_core::symbols::Picker, zt_core::symbols::PickerView) {
+    use zt_core::keys::{Key, code};
+    let recent: Vec<String> = ["😂", "👍", "→", "★", "。", "❤️", "✔", "※"].iter().map(|s| (*s).to_owned()).collect();
+    let mut picker = zt_core::symbols::Picker::open(std::sync::Arc::new(zt_core::symbols::CoreSource), &recent, "");
+    let keys: Vec<Key> = match variant {
+        "picker-emoji" => {
+            let mut keys: Vec<Key> = Vec::new();
+            for _ in 0..picker.tabs().iter().position(|tab| tab.id == "smileys").unwrap_or(1) {
+                keys.push(Key::new(code::TAB, 0));
+            }
+            keys.extend([Key::new(code::DOWN, 0), Key::new(code::RIGHT, 0), Key::new(code::RIGHT, 0)]);
+            keys
+        }
+        "picker-search" => "vul".chars().filter_map(Key::typing).collect(),
+        _ => vec![Key::new(code::RIGHT, 0)],
+    };
+    for key in &keys {
+        picker.key(key);
+    }
+    let view = picker.view();
+    (picker, view)
 }
 
 /// Opens the showcase window for `variant`.
