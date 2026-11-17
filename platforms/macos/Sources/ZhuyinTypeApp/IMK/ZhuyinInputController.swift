@@ -296,7 +296,8 @@ final class ZhuyinInputController: IMKInputController {
             guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
             CandidatePanelController.shared.show(list: list, preview: preview, caret: caret,
                                                 keys: self.core?.composer.options.selectionKeys ?? [],
-                                                windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint)
+                                                windowLevel: client.windowLevel, notice: notice, zhuyinHint: zhuyinHint,
+                                                typedReading: self.core?.composer.presentation.typedReading)
         }
         core.listEdge = { [weak self] direction in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.bounce(direction: direction) }
@@ -327,6 +328,7 @@ final class ZhuyinInputController: IMKInputController {
         core?.shortcuts = Dictionary(p.activeBindings.flatMap { command, list in list.map { ($0, command) } },
                                      uniquingKeysWith: { first, _ in first })
         core?.disabledFeatures = p.disabledKeyFeatures
+        core?.showCorrections = p.showCorrections
         if let core, p.recordsUsageStats {
             core.stats = core.stats ?? UsageStatsObserver(store: UsageStatsStore.shared)
         } else {

@@ -94,6 +94,8 @@ struct AnalyticsPane: View {
                 ])
                 SettingRow(title: "自動修正", subtitle: "整句中有按錯修正的字：送出的組字 / 出現過的組字",
                            value: "\(summary.counters.correctedCommitted.formatted()) / \(summary.counters.correctedShown.formatted())")
+                SettingRow(title: "還原自動修正", subtitle: "按 ⌫ 改回你打的注音",
+                           value: "\(summary.counters.correctionsReverted.formatted()) 次")
             }
             SettingsSection("你的字詞") {
                 SettingRow(title: "自訂詞", value: words.map { "\($0.phrases.formatted()) 個" } ?? "—")

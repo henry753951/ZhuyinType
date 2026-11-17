@@ -58,6 +58,7 @@ enum SettingsRow {
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
     static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin", otherReadings = "otherReadings"
     static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
+    static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
 }
 
 /// Where each feature with keys is set.
@@ -490,6 +491,8 @@ private struct ChoosingPane: View {
                 RegistryRow("readingChannel", preferences)
                 FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
                            feature: .correctionsList, commands: [.correctionsList], anchor: SettingsRow.corrections)
+                RegistryRow("showCorrections", preferences)
+                RegistryRow("undoCorrectionWithBackspace", preferences)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
                          value: fuzzy == 0 ? "關閉" : "已開啟 \(fuzzy) 項", subpage: .fuzzy, anchor: SettingsRow.fuzzy)
             }

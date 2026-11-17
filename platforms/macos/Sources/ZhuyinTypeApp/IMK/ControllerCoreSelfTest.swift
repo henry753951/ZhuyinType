@@ -1770,6 +1770,9 @@ enum ControllerCoreSelfTest {
             try expect(original.spaceAction == .openCandidates && original.typoTolerance == .standard, "套用 did not write the changes")
         }
 
+        // 標示自動修正 and ⌫ 還原自動修正 (IMK/CorrectionUndoSelfTest.swift).
+        CorrectionUndoSelfTest.run(test: test)
+
         // The setup wizard's practice field (UI/Wizard/Practice).
         PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
 
