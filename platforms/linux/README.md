@@ -67,6 +67,8 @@ platforms/desktop/scripts/remote.sh scripts/build.sh linux --test
 
 ## 平台範圍
 
-本階段以 X11 驗證。Wayland 的原生候選視窗需要 compositor 提供的輸入法 popup 介面與座標轉換，應先確認 Fcitx frontend 和 compositor 的協定接合方式；一般頂層視窗的可見性不能證明定位、層級與焦點正確。GTK、瀏覽器與沙箱應用程式須另外驗證。
+本階段以 X11 驗證。Wayland 上一般程式不能決定自己視窗的位置（GPUI 的浮動視窗在 Wayland 是一般的頂層視窗，由合成器擺放，也可能取得焦點），Wayland 欄位回報的游標位置也是相對於它自己的視窗。所以在 Wayland 工作階段（Fcitx 的環境有 `WAYLAND_DISPLAY`，或欄位來自 Fcitx 的 Wayland frontend），addon 在 `focus` 送 `panel: true`：服務不開自己的視窗，回應帶 `panel`（[IPC.md](../desktop/IPC.md)〈候選字視窗〉），addon 把它換成 Fcitx 的候選字清單（目前這一頁、選取的列、上下頁）、注音（aux 上方）、提示（aux 下方）與無法內嵌時的組字（Fcitx 的 preedit），由 Fcitx 的介面畫在游標旁；在清單上點選或翻頁經 `action` 送回服務。中／英提示以 Fcitx 的輸入法資訊顯示。`ZT_FCITX_PANEL=1` 或 `0` 可強制選擇（測試）。
+
+實際的 GNOME、KDE Wayland 工作階段、GTK 4、瀏覽器與沙箱應用程式須另外驗證。
 
 框架介面依 [Fcitx5 官方開發文件](https://fcitx-im.org/wiki/Develop_an_simple_input_method)、[Wayland 說明](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland) 與已安裝的公開標頭實作。

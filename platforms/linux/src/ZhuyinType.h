@@ -41,6 +41,12 @@ private:
     void recover(fcitx::InputContext &, State &);
     bool exchange(fcitx::InputContext &, State &, const char *, nlohmann::json = nlohmann::json::object(),
                   std::string_view delivered = {});
+    // What every `focus` says about the field: caret, secure, private, inline composition, who draws the list.
+    nlohmann::json focusFields(fcitx::InputContext &, const State &) const;
+    // The host's candidate window (IPC `panel`) as Fcitx's own candidate list, where Fcitx draws it.
+    void showPanel(fcitx::InputContext &, const State &);
+    // A click in Fcitx's candidate list (IPC `action`): `pick` a row, or `page` by -1 or 1.
+    void action(fcitx::InputContext &, const char *, int);
     void poll();
 };
 }

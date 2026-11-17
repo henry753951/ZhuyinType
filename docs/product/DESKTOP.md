@@ -47,7 +47,7 @@
 
 ## 尚未完成
 
-- Wayland 的候選字視窗位置（需要合成器的輸入法 popup 介面）；目前由 Fcitx 5 顯示自己的候選字視窗。
+- Wayland 上 ZhuyinType 自己的候選字視窗（需要合成器的輸入法 popup 介面）。Wayland 工作階段中候選字清單、注音、提示與中／英提示改由 Fcitx 5 顯示（它的 classicui，或 KDE、GNOME 的輸入法面板），樣式是 Fcitx 的。
 - 程式碼簽章。
 - 引擎載入期間（登入後的頭一兩秒）打的鍵直接交給程式；macOS 會先保留最多 64 個鍵。
 - 替換用的資料夾（macOS 的 `Models/`）與資料更新時自動重新載入。
