@@ -94,6 +94,7 @@ final class Preferences: ObservableObject {
             Key.readingChannel: true,
             Key.usesPrecedingText: true,
             Key.characterForms: CharacterForms.common.rawValue,
+            Key.outputScript: OutputScript.traditional.rawValue,
             Key.punctuationKeys: PunctuationKeys.windows.rawValue,
             Key.recordsCorrections: false,
             Key.recordsCorrectionContext: false,
@@ -148,6 +149,8 @@ final class Preferences: ObservableObject {
         /// 「到頁底時 ↓ 翻到下一頁」 (`ComposerOptions.pageAtListEdge`).  On by default.
         static let pageAtListEdge = "pageAtListEdge"
         static let characterForms = "characterForms"
+        /// 「繁／簡」: 簡體 converts the composition, the candidates and the commits (`ZhuyinEngine.simplified`).
+        static let outputScript = "outputScript"
         static let punctuationKeys = "punctuationKeys"
         /// 「記錄改字」: compositions with a correction go to corrections.jsonl (CorrectionRecorder).  Off by default.
         static let recordsCorrections = "recordsCorrections"
@@ -167,7 +170,7 @@ final class Preferences: ObservableObject {
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
                           popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, readingChannel, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
-                          characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
+                          characterForms, outputScript, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
                           recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace,
@@ -304,6 +307,10 @@ final class Preferences: ObservableObject {
     var characterForms: CharacterForms {
         get { CharacterForms(rawValue: defaults.string(forKey: Key.characterForms) ?? "") ?? .common }
         set { defaults.set(newValue.rawValue, forKey: Key.characterForms); changed() }
+    }
+    var outputScript: OutputScript {
+        get { OutputScript(rawValue: defaults.string(forKey: Key.outputScript) ?? "") ?? .traditional }
+        set { defaults.set(newValue.rawValue, forKey: Key.outputScript); changed() }
     }
     var punctuationKeys: PunctuationKeys {
         get { PunctuationKeys(rawValue: defaults.string(forKey: Key.punctuationKeys) ?? "") ?? .windows }

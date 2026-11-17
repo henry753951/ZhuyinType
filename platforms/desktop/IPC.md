@@ -75,7 +75,9 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 - `simplified`：設定 `outputScript`（`traditional`／`simplified`），會寫入設定檔。簡體時組字、候選字與送出的字在離開服務時換成簡體（`zhuyin_core::simplified::to_simplified`，字數與 UTF-16 長度不變，`cursor` 與 `clauses` 照用）；引擎、詞庫、學習與改字記錄仍用繁體。中文模式的提示與標示從「中」換成「简」。
 - `learningPaused`：暫停學習，只存在服務的記憶體裡，不寫入任何檔案；服務每次啟動都恢復學習。暫停時每個欄位都當成私人欄位：照常打字，但不學習、不讀取也不保留前文、不記錄改字。
 
-回應是一般的輸入回應，再加上 `quick: {"english", "fullWidth", "simplified", "learningPaused", "symbols"}`，`symbols` 表示有沒有符號表（目前都是 `false`，「符號…」不顯示）。
+回應是一般的輸入回應，再加上 `quick: {"english", "fullWidth", "simplified", "learningPaused", "symbols"}`，`symbols` 表示有沒有符號表（目前都是 `false`，「符號…」不顯示）。`quick` 也可以從沒有焦點的連線或欄位送（例如欄位外的選單）：四個開關是整個服務的，照樣套用，但回應不帶任何欄位的文字（`commit`、`preedit` 為空、沒有 `panel`），取得焦點的欄位在下一個回應看到新的狀態。`simplified` 寫入設定檔的時機在服務處理完請求、放開鎖之後，同一個回應裡的組字與 `panel` 已經換好。
+
+原生端只把確定服務要的按鍵交給服務時（TSF 沒有組字、英文模式時不攔按鍵），需要知道使用者給「開啟快速設定」設的按鍵：`focus` 的回應與按鍵改變後的第一個回應帶 `hotkeys: [{"key": Qt 鍵碼, "modifiers": Qt 修飾鍵}…]`（沒有按鍵時是空陣列，沒變時省略）。原生端在任何模式下都把這些按鍵交給服務。
 
 按下「開啟快速設定」快捷鍵時（英文模式也有效），回應含 `handled: true` 與 `quickPanel: true`。自己畫視窗的原生端（`panel: true`）在游標旁顯示自己的快速設定選單；App 畫視窗時，服務另送 `UiEvent::QuickPanel { anchor }`，GPUI 在游標旁開一個不取得焦點的小視窗，點視窗外、按下一個鍵或 Esc 就關閉。
 

@@ -148,6 +148,9 @@ enum SettingsRegistry {
                [(AnchorSetting.after, "游標右邊的字"), (.before, "游標左邊的字")], demo: "anchor", detail: { _ in "要改的字以底線標出" }),
         choice("characterForms", "台／臺", place(.choosing), \.characterForms, [(CharacterForms.common, "台"), (.standard, "臺")],
                detail: { _ in "顯示與送出的寫法" }),
+        choice("outputScript", "繁／簡", place(.choosing), \.outputScript, [(OutputScript.traditional, "繁體"), (.simplified, "簡體")],
+               detail: { $0.outputScript == .simplified ? "組字、候選字與送出的字換成簡體字；詞庫與學習仍用繁體" : "顯示與送出正體字" },
+               keywords: ["簡體", "繁體", "簡繁", "繁簡"]),
         choice("typoTolerance", "按錯鍵修正", place(.choosing, SettingsRow.typo), \.typoTolerance,
                [(TypoSetting.off, "關閉"), (.standard, "標準"), (.aggressive, "積極")], preview: .corrections, demo: "typo",
                detail: { OptionDemos.typoSubtitle($0.typoTolerance) }, keywords: ["按錯", "容錯"]),
@@ -243,6 +246,7 @@ enum SettingsRegistry {
                               switch command {
                               case .togglePunctuationWidth: return "中文預設全形標點；英數、空白與英文模式維持半形"
                               case .insertSpace: return "在組字中插入半形空白，繼續打字"
+                              case .quickSettings: return "在游標旁切換中／英、全形／半形、繁／簡與暫停學習"
                               default: return nil
                               }
                           },

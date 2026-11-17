@@ -89,6 +89,11 @@ pub struct Host {
     flush: bool,
     /// 在候選字視窗顯示組字的 App (executable names, compared without case).
     pub popup_apps: Vec<String>,
+    /// 繁／簡 asked for by `op: "quick"`, for the service to set once its lock is released (a setting's observer
+    /// takes that lock).
+    pending_script: Option<bool>,
+    /// The 開啟快速設定 keys last sent in `hotkeys` (IPC.md §快速設定).
+    sent_hotkeys: Option<Vec<(i32, u32)>>,
 }
 
 impl Default for Host {
@@ -105,6 +110,8 @@ impl Default for Host {
             anchor: Rect::default(),
             flush: false,
             popup_apps: Vec::new(),
+            pending_script: None,
+            sent_hotkeys: None,
         }
     }
 }
@@ -410,6 +417,13 @@ impl Host {
             return Err("輸入引擎尚未就緒。");
         }
         let same = self.active == Some(connection) && self.context == context;
+        if op == "quick" && !same {
+            // Another connection (a menu outside the field): the switches are the service's, so they apply, but the
+            // reply carries nothing of the focused field.
+            self.quick(controller, &flag);
+            let effects = self.drain(controller);
+            return Ok((self.foreign_quick_reply(controller), effects));
+        }
         if op == "focus" {
             if !same {
                 self.discard(controller);
@@ -456,7 +470,7 @@ impl Host {
                 }
             }
             "mode" if !self.secure => controller.set_english(flag("english") == Some(true)),
-            "quick" => Self::quick(controller, &flag),
+            "quick" => self.quick(controller, &flag),
             // Never from a secure or private field.
             "selection" if !self.secure && !controller.private() => {
                 found.push(Effect::AddSelectedText(selection.expect("validated")));
@@ -486,7 +500,22 @@ impl Host {
             reply.insert("handled".into(), true.into());
         }
         if op == "quick" {
-            reply.insert("quick".into(), Self::quick_state(controller));
+            reply.insert("quick".into(), self.quick_state(controller));
+            reply.insert("simplified".into(), self.simplified(controller).into());
+        }
+        // The keys of 開啟快速設定, for adapters that pass on only the keys they know the service takes (TSF):
+        // at focus, and when they change.
+        let hotkeys: Vec<(i32, u32)> = controller
+            .shortcuts()
+            .bindings("quickSettings")
+            .iter()
+            .map(|label| (label.binding.key, label.binding.modifiers))
+            .collect();
+        if op != "blur" && (op == "focus" || self.sent_hotkeys.as_ref() != Some(&hotkeys)) {
+            let list: Vec<Value> =
+                hotkeys.iter().map(|(key, modifiers)| json!({"key": key, "modifiers": modifiers})).collect();
+            reply.insert("hotkeys".into(), list.into());
+            self.sent_hotkeys = Some(hotkeys);
         }
         if op == "blur" {
             self.active = None;
@@ -502,10 +531,43 @@ impl Host {
         self.active == Some(connection) && self.context == context
     }
 
+    /// 繁／簡 that `op: "quick"` asked for, for the service to set now that its lock is released.
+    pub fn take_pending_script(&mut self) -> Option<bool> {
+        self.pending_script.take()
+    }
+
+    /// 簡體, counting a change waiting to be set.
+    fn simplified(&self, controller: &InputController) -> bool {
+        self.pending_script.unwrap_or_else(|| controller.simplified())
+    }
+
+    /// The reply to `op: "quick"` from a connection whose field does not have focus: the switches, no text.
+    fn foreign_quick_reply(&self, controller: &InputController) -> Map<String, Value> {
+        let mut object = Map::new();
+        object.insert("ok".into(), true.into());
+        object.insert("handled".into(), false.into());
+        object.insert("commit".into(), "".into());
+        object.insert("preedit".into(), "".into());
+        object.insert("cursor".into(), 0.into());
+        object.insert("candidates".into(), false.into());
+        object.insert("english".into(), controller.english().into());
+        object.insert("simplified".into(), self.simplified(controller).into());
+        object.insert("learningPaused".into(), controller.learning_paused().into());
+        object.insert("fullWidth".into(), controller.full_width().into());
+        object.insert("composing".into(), false.into());
+        object.insert("quick".into(), self.quick_state(controller));
+        object
+    }
+
     /// `op: "quick"`: applies the switches present, as their own controls do (中／英 not while composing or in a
-    /// secure field; 暫停學習 is kept only in memory).  `simplified` is the `outputScript` setting, which the
-    /// service sets before the request reaches here: nothing sets a setting under the service's lock.
-    fn quick(controller: &mut InputController, flag: &dyn Fn(&str) -> Option<bool>) {
+    /// secure field; 暫停學習 is kept only in memory).  `simplified` is the `outputScript` setting: it waits in
+    /// [`Self::take_pending_script`] for the service, since nothing sets a setting under the service's lock.
+    fn quick(&mut self, controller: &mut InputController, flag: &dyn Fn(&str) -> Option<bool>) {
+        if let Some(simplified) = flag("simplified")
+            && simplified != controller.simplified()
+        {
+            self.pending_script = Some(simplified);
+        }
         if let Some(english) = flag("english") {
             controller.set_english(english);
         }
@@ -519,11 +581,11 @@ impl Host {
 
     /// The reply's `quick` object: the 快速設定 switches as they are now.
     #[must_use]
-    pub fn quick_state(controller: &InputController) -> Value {
+    pub fn quick_state(&self, controller: &InputController) -> Value {
         json!({
             "english": controller.english(),
             "fullWidth": controller.full_width(),
-            "simplified": controller.simplified(),
+            "simplified": self.simplified(controller),
             "learningPaused": controller.learning_paused(),
             // A 符號 picker: none yet (the 「符號…」 item stays hidden).
             "symbols": false,

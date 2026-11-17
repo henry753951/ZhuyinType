@@ -15,6 +15,13 @@ func take(_ pointer: UnsafeMutablePointer<CChar>?) -> String? {
     return String(cString: pointer)
 }
 
+/// `text` in simplified characters (OpenCC's `t2s`, one character at a time; `zhuyin_core::simplified`).  The
+/// length in UTF-16 units never changes, so cursor and clause offsets of the traditional text stay valid.
+public func simplified(_ text: String) -> String {
+    guard !text.isEmpty else { return text }
+    return take(zt_to_simplified(text)) ?? text
+}
+
 /// Runs `body` with an error slot and throws the library's message when it reports one.
 func checked<T>(_ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> T?) throws -> T {
     var error: UnsafeMutablePointer<CChar>?

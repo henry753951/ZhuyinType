@@ -449,7 +449,7 @@ extension ShortcutCommand {
         case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return .list
         case .typeZhuyin, .selectLeft, .selectRight, .addSelectedText: return .editing
         case .togglePunctuationWidth: return .punctuation
-        case .insertSpace: return .other
+        case .insertSpace, .quickSettings: return .other
         }
     }
 }

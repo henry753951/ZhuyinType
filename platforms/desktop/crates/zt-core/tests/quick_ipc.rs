@@ -206,3 +206,55 @@ fn a_new_service_learns() {
     let again = Fixture::new();
     assert!(!again.service.with_controller(|c| c.learning_paused()), "every start learns");
 }
+
+#[test]
+fn quick_from_another_connection_applies_without_the_fields_text() {
+    let mut f = Fixture::new();
+    f.request("focus", json!({"secure": false, "panel": true}));
+    f.keys("cj84");
+    f.key(code::DOWN, 0);
+    // A menu outside the field: its own connection and context.
+    let mut menu = Client::connect(&f.service.endpoint().unwrap()).unwrap();
+    let reply = menu.request("quick", json!({"context": "menu", "simplified": true, "learningPaused": true})).unwrap();
+    assert_eq!(reply["ok"], true);
+    assert_eq!((&reply["preedit"], &reply["commit"]), (&json!(""), &json!("")), "nothing of the focused field");
+    assert!(reply.get("panel").is_none());
+    assert_eq!(reply["quick"]["simplified"], true);
+    assert_eq!(reply["quick"]["learningPaused"], true);
+    assert_eq!(f.service.settings().string("outputScript"), "simplified");
+    // The focused field sees it at its next reply.
+    let poll = f.request("poll", json!({}));
+    assert_eq!((&poll["preedit"], &poll["simplified"]), (&json!("话"), &json!(true)));
+    assert!(serde_json::to_string(&poll["panel"]).unwrap().contains("话"));
+}
+
+#[test]
+fn quick_from_the_field_converts_its_own_reply() {
+    let mut f = Fixture::new();
+    f.request("focus", json!({"secure": false, "panel": true}));
+    f.keys("cj84");
+    f.key(code::DOWN, 0);
+    let reply = f.request("quick", json!({"simplified": true}));
+    assert_eq!(
+        (&reply["preedit"], &reply["simplified"], &reply["quick"]["simplified"]),
+        (&json!("话"), &json!(true), &json!(true))
+    );
+    let panel = serde_json::to_string(&reply["panel"]).unwrap();
+    assert!(panel.contains("话") && !panel.contains('話'), "{panel}");
+    let back = f.request("quick", json!({"simplified": false}));
+    assert_eq!(back["preedit"], "話");
+}
+
+#[test]
+fn hotkeys_carry_the_quick_settings_keys() {
+    let mut f = Fixture::new();
+    let focus = f.request("focus", json!({"secure": false}));
+    assert_eq!(focus["hotkeys"], json!([]), "no key by default, sent at focus");
+    assert!(f.request("poll", json!({})).get("hotkeys").is_none(), "unchanged: left out");
+    f.service.shortcuts().record("quickSettings", 'Q' as i32, modifier::ALT, None).unwrap();
+    let changed = f.request("poll", json!({}));
+    assert_eq!(changed["hotkeys"], json!([{"key": 'Q' as i32, "modifiers": modifier::ALT}]));
+    assert!(f.request("poll", json!({})).get("hotkeys").is_none());
+    let again = f.request("focus", json!({"secure": false}));
+    assert_eq!(again["hotkeys"], json!([{"key": 'Q' as i32, "modifiers": modifier::ALT}]));
+}
