@@ -44,6 +44,8 @@ pub enum Action {
     Neighbour(i32),
     /// 標點全半形.
     TogglePunctuationWidth,
+    /// 符號與 Emoji: opens (or closes) the symbol picker.
+    SymbolPicker,
 }
 
 /// One rebindable command.
@@ -96,7 +98,7 @@ const fn b(key: i32, modifiers: u32) -> Binding {
 }
 
 static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
-    use modifier::{ALT, SHIFT};
+    use modifier::{ALT, CONTROL, SHIFT};
     let command = |id, label, title, page, feature, required, defaults: &[Binding], action| Command {
         id,
         label,
@@ -237,6 +239,16 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             false,
             &[b(code::SPACE, ALT)],
             Action::Input(KeyInput::ShiftSpace),
+        ),
+        command(
+            "symbolPicker",
+            "符號與 Emoji",
+            "開啟符號與 Emoji 面板",
+            "typing",
+            Some("feature.symbolPicker"),
+            false,
+            &[b(i32::from(b','), CONTROL | ALT)],
+            Action::SymbolPicker,
         ),
     ]
 });

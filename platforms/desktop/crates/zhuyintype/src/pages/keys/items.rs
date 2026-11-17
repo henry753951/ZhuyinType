@@ -81,6 +81,7 @@ pub fn feature_place(feature: &str) -> Place {
         "feature.deleteWord" => Place::row(Page::Typing, "deleteWord"),
         "feature.controlPunctuation" => Place::row(Page::Typing, "controlPunctuation").in_subpage("punctuation"),
         "feature.optionSymbols" => Place::row(Page::Typing, "optionSymbols").in_subpage("punctuation"),
+        "feature.symbolPicker" => Place::row(Page::Typing, "symbolPicker").in_subpage("punctuation"),
         "feature.capsLockEnglish" => Place::row(Page::Typing, "capsLock"),
         "feature.deleteAfterCommit" => Place::row(Page::Choosing, "deleteAfterCommit"),
         _ => Place::page(Page::Keys),
@@ -339,6 +340,9 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
                     .sub("兩種標點按法都能用")
                     .feature("feature.optionSymbols"),
                 KeyItem::new("punctuationList", "列出同類的標點", fixed(&["↓"])).sub("在標點上按"),
+                KeyItem::new("symbolPicker", "開啟符號與 Emoji 面板", Keys::Command("symbolPicker"))
+                    .sub("方向鍵移動，Tab 換類別，打注音或英文搜尋")
+                    .feature("feature.symbolPicker"),
             ]
         }
         KeySection::Mode => vec![

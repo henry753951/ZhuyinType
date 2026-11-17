@@ -119,7 +119,9 @@ impl Host {
     #[must_use]
     pub fn visible(&self, controller: &InputController) -> bool {
         let p = controller.presentation();
-        self.focused() && !p.is_empty() && (p.has_list() || p.notice.is_some() || !self.inline_preedit())
+        self.focused()
+            && (controller.picker_open()
+                || (!p.is_empty() && (p.has_list() || p.notice.is_some() || !self.inline_preedit())))
     }
 
     /// Takes the controller's events: commits go into the next reply (when a field has focus and is not secure);
@@ -198,6 +200,14 @@ impl Host {
         object.insert("cursor".into(), cursor.into());
         object.insert("candidates".into(), visible.into());
         object.insert("english".into(), controller.english().into());
+        // Keys the adapter sends even with nothing composed: 符號與 Emoji's (Ctrl+Alt is otherwise AltGr's).
+        let shortcuts = controller.shortcuts();
+        let claims: Vec<Value> = if self.secure || !shortcuts.is_enabled("symbolPicker") {
+            Vec::new()
+        } else {
+            shortcuts.bindings("symbolPicker").iter().map(|b| json!([b.binding.key, b.binding.modifiers])).collect()
+        };
+        object.insert("claims".into(), claims.into());
         // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
         object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible)).into());
         object
@@ -379,6 +389,7 @@ impl Host {
             },
             "reset" => {
                 self.commit.clear();
+                controller.close_picker();
                 let _ = controller.session_mut().reset();
                 controller.take_events();
             }

@@ -41,6 +41,9 @@ pub(crate) struct Reply {
     pub(crate) toast: Option<String>,
     /// A page turn stopped at the list's end (1 past the last, -1 before the first): the page nudges.
     pub(crate) boundary: Option<i32>,
+    /// Keys the host takes even with nothing composed (符號與 Emoji's): `(key, modifiers)`; `None`: left out (an
+    /// older host), keep the last ones.
+    pub(crate) claims: Option<Vec<(i32, i32)>>,
 }
 
 impl Reply {
@@ -155,6 +158,17 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         None => None,
         Some(value) => Some(value.as_i64().filter(|d| d.abs() == 1)? as i32),
     };
+    let claims = match object.get("claims") {
+        None => None,
+        Some(value) => {
+            let mut keys = Vec::new();
+            for pair in value.as_array().filter(|list| list.len() <= 16)? {
+                let pair = pair.as_array().filter(|pair| pair.len() == 2)?;
+                keys.push((i32::try_from(pair[0].as_i64()?).ok()?, i32::try_from(pair[1].as_i64()?).ok()?));
+            }
+            Some(keys)
+        }
+    };
     Some(Reply {
         handled: boolean("handled")?,
         candidates,
@@ -169,6 +183,7 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         panel,
         toast,
         boundary,
+        claims,
     })
 }
 
@@ -203,6 +218,16 @@ mod tests {
         let mut fields = Map::new();
         fields.insert("before".into(), Value::from("x".repeat(MAX_FRAME)));
         assert!(request_line(1, "c", "context", fields).is_none());
+    }
+
+    #[test]
+    fn claims_are_parsed() {
+        let mut value = good();
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, None);
+        value["claims"] = json!([[44, 0x0c00_0000]]);
+        assert_eq!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().claims, Some(vec![(44, 0x0c00_0000)]));
+        value["claims"] = json!([[44]]);
+        assert!(parse_reply(&line(value), 7, "{A}").is_none());
     }
 
     #[test]

@@ -297,6 +297,10 @@ fn confirm_reset(window: &mut Window, cx: &mut App) {
                     if let Err(error) = service.set_popup_composition_apps(&[]) {
                         log::warn!("resetting the app list: {error:#}");
                     }
+                    // 符號與 Emoji's recent symbols (recent-symbols.txt).
+                    service.clear_recent_symbols();
+                } else if let Some(dir) = zt_core::paths::data_dir() {
+                    zt_core::symbols::remove_recent_file(&dir);
                 }
                 cx.refresh_windows();
             })
