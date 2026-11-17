@@ -1,5 +1,3 @@
-// Compiled with ZT_SYMBOLS, with ZhuyinEngine/Symbols.swift; until then the picker uses SampleSymbolSource.
-#if ZT_SYMBOLS
 import Foundation
 import ZhuyinEngine
 
@@ -22,4 +20,3 @@ final class EngineSymbolSource: SymbolSource {
     func recentPush(stored: String, symbol: String) -> String { Symbols.recentPush(stored: stored, symbol: symbol) }
     func name(of text: String) -> String? { names[text] }
 }
-#endif

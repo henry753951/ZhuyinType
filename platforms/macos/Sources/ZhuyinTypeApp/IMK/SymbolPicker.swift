@@ -207,15 +207,11 @@ final class SymbolPicker {
 enum SymbolSources {
     /// The input method's symbols; nil when this build has none, which leaves the feature out (its key goes to the
     /// app and the settings do not show it).
-    #if ZT_SYMBOLS
     static let app: SymbolSource? = EngineSymbolSource()
-    #else
-    static let app: SymbolSource? = SampleSymbolSource()
-    #endif
     static var isAvailable: Bool { app != nil }
 }
 
-/// A small fixed set of symbols, for the UI previews and the self-tests (and until the engine provides them).
+/// A small fixed set of symbols, for the self-tests.
 final class SampleSymbolSource: SymbolSource {
     let categories: [SymbolCategory] = [
         SymbolCategory(id: "punctuation", title: "常用標點", symbols: [

@@ -192,16 +192,18 @@ enum UIPreviewRenderer {
 
     /// 符號與 Emoji: a category with the second row highlighted, recent symbols first, and a Zhuyin search.
     private static func renderSymbolPicker(to directory: URL, suffix: String) throws {
-        let source = SampleSymbolSource()
+        let source = EngineSymbolSource()
         let browsing = SymbolPicker(source: source, recent: ["😂", "，", "→", "❤️"])
-        browsing.selectTab(4)
+        browsing.selectTab(browsing.tabs.firstIndex { $0.id == "smileys" } ?? 0)
         for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
         let searching = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
         let prefilled = SymbolPicker(source: source, recent: [], prefill: "笑")
+        let english = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [4, 14, 0, 15, 17] { _ = english.handle(keyCode: key, modifiers: []) } // heart
         let empty = SymbolPicker(source: source, recent: [])
-        for key: UInt16 in [12, 12] { _ = empty.handle(keyCode: key, modifiers: []) }
-        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("no-results", empty)] {
+        for key: UInt16 in [6, 6, 6, 7, 7] { _ = empty.handle(keyCode: key, modifiers: []) } // zzzxx
+        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("english", english), ("no-results", empty)] {
             let view = SymbolPickerView(frame: .zero)
             view.hoverEnabled = false
             view.update(picker)

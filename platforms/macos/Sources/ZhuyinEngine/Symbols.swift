@@ -1,5 +1,3 @@
-// Compiled with ZT_SYMBOLS (the zhuyin-symbols C functions in zhuyin.h); remove the condition once the engine has them.
-#if ZT_SYMBOLS
 import CZhuyin
 import Foundation
 
@@ -41,4 +39,3 @@ public enum Symbols {
         return try? JSONDecoder().decode(T.self, from: data)
     }
 }
-#endif

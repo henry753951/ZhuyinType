@@ -165,13 +165,12 @@ enum SymbolPickerSelfTest {
             try expect(!FileManager.default.fileExists(atPath: recent.url.path) && recent.items.isEmpty, "clear left the file")
         }
 
-        #if ZT_SYMBOLS
         test("symbols: the engine's categories, Zhuyin search, display and recent list") {
             let engineSource = EngineSymbolSource()
             let ids = engineSource.categories.map(\.id)
             try expect(ids.first == "punctuation" && ids.contains("smileys") && ids.contains("flags") && !ids.contains("recent"),
                        "the categories are \(ids)")
-            try expect(engineSource.displayQuery("vul") == "ㄒㄧㄠ" && engineSource.displayQuery("heart") == "heart",
+            try expect(engineSource.displayQuery("vul") == "ㄒㄧㄠ" && engineSource.displayQuery("Hi!") == "Hi!",
                        "vul is shown as \(engineSource.displayQuery("vul"))")
             try expect(!engineSource.search("vul", limit: 20).isEmpty && !engineSource.search("heart", limit: 20).isEmpty,
                        "ㄒㄧㄠ or heart found nothing")
@@ -179,7 +178,6 @@ enum SymbolPickerSelfTest {
                        "recent push: \(engineSource.recentPush(stored: "", symbol: "😂").debugDescription)")
             try expect(engineSource.name(of: "😂")?.isEmpty == false, "😂 has no name")
         }
-        #endif
 
         test("symbols: the picker's window never becomes key and lays out a numbered row") {
             let picker = SymbolPicker(source: source, recent: [])
