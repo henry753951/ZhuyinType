@@ -53,12 +53,32 @@ fn popups(cx: &mut App) -> &mut Popups {
 /// Drains the service's events on the foreground executor for as long as the app runs.  Call once.
 #[allow(dead_code, reason = "main.rs calls it once Service::start is ported")]
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
+    // Open both windows (hidden) now rather than at the first key: opening one takes 50–90 ms, which the first
+    // candidate window and the first badge of the session would otherwise wait for.  Windows has no use for them
+    // (the text service draws its own).
+    #[cfg(target_os = "linux")]
+    cx.spawn(async move |cx| cx.update(prewarm)).detach();
     cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
             cx.update(|cx| handle(event, cx));
         }
     })
     .detach();
+}
+
+/// Opens the floating windows hidden and shapes some CJK text, which loads the system's fallback fonts (100 ms or
+/// more the first time).
+#[cfg(target_os = "linux")]
+fn prewarm(cx: &mut App) {
+    if let Some(handle) = candidate_window(cx) {
+        let _ = handle.update(cx, |_, window, _| {
+            let mut measure = WindowMeasure(window);
+            for medium in [false, true] {
+                super::layout::Measure::width(&mut measure, "候選字注音ㄓㄨˋㄧㄣ 中英 1234 Shift", 16., medium);
+            }
+        });
+    }
+    toast_window(cx);
 }
 
 /// Sends clicks somewhere else than the service (demos and screenshots).
@@ -432,6 +452,41 @@ impl Render for ToastWindow {
     }
 }
 
+/// The badge's window, opened (hidden, off screen) on first use.
+fn toast_window(cx: &mut App) -> Option<WindowHandle<ToastWindow>> {
+    if let Some(handle) = popups(cx).toast {
+        return Some(handle);
+    }
+    let transparent = popups(cx).transparent;
+    let margin = if transparent { SHADOW_MARGIN } else { 0. };
+    let bounds =
+        Bounds::new(point(px(OFFSCREEN), px(OFFSCREEN)), size(px(BADGE_W + margin * 2.), px(BADGE_H + margin * 2.)));
+    let opened = cx.open_window(options(bounds, transparent), |window, cx| {
+        platform::make_non_activating(window);
+        platform::set_input_region(window, None);
+        platform::set_visible(window, false);
+        cx.new(|_| ToastWindow {
+            text: "中",
+            margin,
+            shown_at: None,
+            appeared: None,
+            animates: true,
+            appearance: PanelAppearance::System,
+            visible: false,
+        })
+    });
+    match opened {
+        Ok(handle) => {
+            popups(cx).toast = Some(handle);
+            Some(handle)
+        }
+        Err(error) => {
+            log::warn!("opening the 中/英 badge: {error:#}");
+            None
+        }
+    }
+}
+
 fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     let settings = app::settings(cx).clone();
     // No caret reported (nothing to type into): no badge, rather than one in a corner of the screen.
@@ -439,40 +494,8 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     if !settings.bool("showModeToast") || unknown {
         return;
     }
-    let transparent = popups(cx).transparent;
-    let margin = if transparent { SHADOW_MARGIN } else { 0. };
-    let handle = match popups(cx).toast {
-        Some(handle) => handle,
-        None => {
-            let bounds = Bounds::new(
-                point(px(OFFSCREEN), px(OFFSCREEN)),
-                size(px(BADGE_W + margin * 2.), px(BADGE_H + margin * 2.)),
-            );
-            let opened = cx.open_window(options(bounds, transparent), |window, cx| {
-                platform::make_non_activating(window);
-                platform::set_input_region(window, None);
-                cx.new(|_| ToastWindow {
-                    text: "中",
-                    margin,
-                    shown_at: None,
-                    appeared: None,
-                    animates: true,
-                    appearance: PanelAppearance::System,
-                    visible: false,
-                })
-            });
-            match opened {
-                Ok(handle) => {
-                    popups(cx).toast = Some(handle);
-                    handle
-                }
-                Err(error) => {
-                    log::warn!("opening the 中/英 badge: {error:#}");
-                    return;
-                }
-            }
-        }
-    };
+    let Some(handle) = toast_window(cx) else { return };
+    let margin = if popups(cx).transparent { SHADOW_MARGIN } else { 0. };
     let screen = screen_at(anchor, cx);
     let above = settings.string("candidatePlacement") == "above";
     let animates = settings.bool("panelAnimation");
