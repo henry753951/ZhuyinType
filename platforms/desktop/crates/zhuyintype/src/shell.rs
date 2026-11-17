@@ -45,10 +45,13 @@ impl SettingsWindow {
         let activation = cx.observe_window_activation(window, |_, window, cx| {
             if window.is_window_active() {
                 crate::motion::refresh(cx);
+                // 檢查輸入法: something may have been changed in the system's settings meanwhile.
+                crate::health::refresh(cx);
             }
         });
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+        crate::health::refresh(cx);
         Self { views: HashMap::new(), pending_appearance: dark.map(Some), _activation: activation, focus, shown: None }
     }
 
@@ -118,6 +121,11 @@ impl SettingsWindow {
                                     .text_color(if active { p.text } else { p.text_secondary })
                                     .child(page.title()),
                             )
+                            // 檢查輸入法 found something that needs attention.
+                            .when(page == Page::About && crate::health::has_problems(cx), |this| {
+                                this.child(div().flex_1())
+                                    .child(Icon::new(IconName::TriangleAlert).size(sz::ICON_SM).text_color(p.accent))
+                            })
                     }))
             }))
     }

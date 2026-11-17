@@ -10,6 +10,7 @@ mod app;
 mod assets;
 mod candidate;
 mod card_window;
+mod health;
 mod motion;
 mod pages;
 mod platform;
@@ -412,6 +413,10 @@ fn env_logger_init() {
         }
         fn log(&self, record: &log::Record<'_>) {
             eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+            // 回報問題 lists the recent warnings and errors (zt_core::health::recent; never typed text).
+            if record.level() <= log::Level::Warn {
+                zt_core::health::recent::record(&format!("{} {}: {}", record.level(), record.target(), record.args()));
+            }
         }
         fn flush(&self) {}
     }
