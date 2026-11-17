@@ -281,7 +281,24 @@ fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Resu
         ["/usr/bin", "/bin", "/usr/sbin", "/sbin"].iter().any(|dir| Path::new(dir).join(program).exists())
     };
     let (program, args): (&str, Vec<&str>) = match asset_key {
-        "linux-deb" => ("apt-get", vec!["install", "-y", "--no-install-recommends", &package]),
+        // Waits while another package manager holds the lock (unattended-upgrades, a software center) rather than
+        // failing at once.  A conffile the administrator changed (the autostart entry) is kept without a question:
+        // the updater has no terminal, and dpkg would fail at the prompt.
+        "linux-deb" => (
+            "apt-get",
+            vec![
+                "-o",
+                "DPkg::Lock::Timeout=600",
+                "-o",
+                "Dpkg::Options::=--force-confdef",
+                "-o",
+                "Dpkg::Options::=--force-confold",
+                "install",
+                "-y",
+                "--no-install-recommends",
+                &package,
+            ],
+        ),
         "linux-rpm" if have("dnf") => ("dnf", vec!["install", "-y", &package]),
         "linux-rpm" if have("zypper") => {
             ("zypper", vec!["--non-interactive", "install", "--allow-unsigned-rpm", &package])
@@ -293,7 +310,10 @@ fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Resu
         .args(&args)
         .env("DEBIAN_FRONTEND", "noninteractive")
         .output()
-        .with_context(|| program.to_owned())?;
+        .with_context(|| program.to_owned());
+    // The package is installed (or was refused): it is not kept (about 110 MB in /var/cache).
+    let _ = std::fs::remove_file(&package);
+    let output = output?;
     if !output.status.success() {
         bail!("{program}：{}", String::from_utf8_lossy(&output.stderr).trim());
     }
@@ -301,19 +321,24 @@ fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Resu
 }
 
 /// Starts the system's updater from the signed-in user's app.  It installs the newest release itself; this only
-/// asks it to run.
-pub fn start_system_update() -> Result<()> {
+/// asks it to run.  `ask`: Linux may ask for a password when polkit's rule does not let this user start it (not at
+/// the computer: a remote session); an automatic install never asks, the user's 立即安裝 may.
+pub fn start_system_update(ask: bool) -> Result<()> {
     #[cfg(windows)]
     {
+        let _ = ask;
         windows::start_service()
     }
     #[cfg(not(windows))]
     {
-        let status = std::process::Command::new("systemctl")
-            // polkit lets the active user start it without a password; never wait on a password prompt instead.
-            .args(["start", "--no-block", "--no-ask-password", LINUX_UNIT])
-            .status()
-            .context("systemctl")?;
+        let mut command = std::process::Command::new("systemctl");
+        command.args(["start", "--no-block", LINUX_UNIT]);
+        // polkit lets the active user start it without a password; an automatic install never waits on a password
+        // prompt instead (it would hold the UI thread, which draws the candidate window).
+        if !ask {
+            command.arg("--no-ask-password");
+        }
+        let status = command.status().context("systemctl")?;
         ensure!(status.success(), "systemctl start {LINUX_UNIT}: {status}");
         Ok(())
     }

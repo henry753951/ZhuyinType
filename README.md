@@ -138,7 +138,7 @@ sudo zypper install ./ZhuyinType-Linux-x86_64.rpm    # openSUSE
 
 在檔案管理員中按兩下套件檔，也能以軟體中心安裝。相依套件（Fcitx 5、字型、繪圖函式庫）會一併安裝。安裝後：
 
-1. 目前的輸入法框架不是 Fcitx 5 時（例如 GNOME 預設的 IBus），執行 `/usr/lib/zhuyintype/fcitx5-setup framework` 把它設為 Fcitx 5。
+1. 目前的輸入法框架不是 Fcitx 5 時（例如 GNOME 預設的 IBus），在「ZhuyinType 設定」頁面上方按「改用 Fcitx 5」，或執行 `/usr/lib/zhuyintype/fcitx5-setup framework`，把它設為 Fcitx 5。
 2. 登出再登入一次。登入時輸入法服務會在背景啟動，並把 ZhuyinType 加入 Fcitx 5 的輸入方式，原有的輸入方式不變。
 3. 以 Fcitx 5 的切換鍵（預設 Ctrl＋空白鍵）切換到 ZhuyinType。從應用程式選單開啟「ZhuyinType 設定」，設定嚮導會帶你選好打法並試打。
 

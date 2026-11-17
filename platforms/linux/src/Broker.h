@@ -13,6 +13,9 @@ public:
     Broker &operator=(const Broker &) = delete;
     bool connect();
     bool connected() const { return fd_ >= 0; }
+    int fd() const { return fd_; }
+    // Changes with every connection (a new socket may get the closed one's number).
+    uint64_t generation() const { return generation_; }
     void disconnect();
     std::optional<nlohmann::json> request(const std::string &context, const char *op,
                                          nlohmann::json fields = nlohmann::json::object());
@@ -23,5 +26,6 @@ public:
 private:
     int fd_ = -1;
     int64_t id_ = 0;
+    uint64_t generation_ = 0;
 };
 }

@@ -183,6 +183,8 @@ impl Render for SettingsWindow {
                         .child(SharedString::from(format!("輸入法服務沒有啟動，打字時不會使用 ZhuyinType：{error}"))),
                 )
             })
+            // Linux: Fcitx 5 is not this session's input method framework (IBus on GNOME).
+            .when_some(framework_notice(cx), |this, notice| this.child(notice))
             .child(self.page_header(cx))
             .child(view)
             .with_animation(
@@ -268,6 +270,16 @@ struct OpenSettings(Option<gpui_kit::AnyWindowHandle>);
 impl gpui_kit::Global for OpenSettings {}
 
 /// Brings the settings window to the front, opening it if it is closed (a second launch, the taskbar menu).
+#[cfg(target_os = "linux")]
+fn framework_notice(cx: &App) -> Option<gpui_kit::AnyElement> {
+    crate::platform::linux::notice(cx)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn framework_notice(_: &App) -> Option<gpui_kit::AnyElement> {
+    None
+}
+
 pub fn show(cx: &mut App) {
     let existing = cx.try_global::<OpenSettings>().and_then(|open| open.0);
     if let Some(handle) = existing
@@ -280,6 +292,8 @@ pub fn show(cx: &mut App) {
         log::error!("opening the settings window: {error:#}");
         return;
     }
+    #[cfg(target_os = "linux")]
+    crate::platform::linux::check(cx);
     // Started in the background at login, the first time the settings appear is the first use.
     crate::wizard::show_on_first_use(cx);
 }

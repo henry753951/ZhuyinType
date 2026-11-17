@@ -1,11 +1,15 @@
 #include "ZhuyinType.h"
 #include "Keys.h"
+#include <fcitx-utils/utf8.h>
+#include <fcitx/candidatelist.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/statusarea.h>
 #include <fcitx/userinterfacemanager.h>
 #include <fcitx/surroundingtext.h>
+#include <cstdlib>
+#include <functional>
 #include <unistd.h>
 #include <utility>
 
@@ -58,6 +62,60 @@ std::optional<size_t> index(const nlohmann::json &response, const char *key) {
     if (it == response.end() || !it->is_number_unsigned()) return std::nullopt;
     return it->get<size_t>();
 }
+// Fcitx draws the candidate list (IPC `panel: true`) where the app's own window cannot follow the caret: in a Wayland
+// session no client may place its own windows (the app's window would be an ordinary window wherever the compositor
+// puts it), and a Wayland field reports its caret relative to its own window.  ZT_FCITX_PANEL=1 or 0 decides (tests).
+bool fcitxDrawsPanel(fcitx::InputContext &ic) {
+    if (const char *forced = std::getenv("ZT_FCITX_PANEL"); forced && *forced) return std::string_view(forced) == "1";
+    if (ic.display().starts_with("wayland")) return true;
+    const char *wayland = std::getenv("WAYLAND_DISPLAY");
+    return wayland && *wayland;
+}
+std::string text(const nlohmann::json &object, const char *key) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_string() && fcitx::utf8::validate(it->get_ref<const std::string &>())
+        ? it->get<std::string>() : std::string();
+}
+size_t number(const nlohmann::json &object, const char *key) {
+    const auto it = object.find(key);
+    return it != object.end() && it->is_number_unsigned() ? it->get<size_t>() : 0;
+}
+class PanelWord final : public fcitx::CandidateWord {
+public:
+    PanelWord(fcitx::Text text, fcitx::Text comment, std::function<void(fcitx::InputContext *)> pick)
+        : fcitx::CandidateWord(std::move(text)), pick_(std::move(pick)) { setComment(std::move(comment)); }
+    void select(fcitx::InputContext *ic) const override { pick_(ic); }
+private:
+    std::function<void(fcitx::InputContext *)> pick_;
+};
+// One page of the host's list; paging asks the host (the list is rebuilt from its reply).
+class PanelList final : public fcitx::CandidateList, public fcitx::PageableCandidateList {
+public:
+    PanelList(fcitx::CandidateLayoutHint hint, int cursor, int page, int pages, std::function<void(int)> turn)
+        : hint_(hint), cursor_(cursor), page_(page), pages_(pages), turn_(std::move(turn)) { setPageable(this); }
+    void add(fcitx::Text label, std::unique_ptr<PanelWord> word) {
+        labels_.push_back(std::move(label));
+        words_.push_back(std::move(word));
+    }
+    const fcitx::Text &label(int idx) const override { return labels_.at(static_cast<size_t>(idx)); }
+    const fcitx::CandidateWord &candidate(int idx) const override { return *words_.at(static_cast<size_t>(idx)); }
+    int size() const override { return static_cast<int>(words_.size()); }
+    int cursorIndex() const override { return cursor_; }
+    fcitx::CandidateLayoutHint layoutHint() const override { return hint_; }
+    bool hasPrev() const override { return page_ > 0; }
+    bool hasNext() const override { return page_ + 1 < pages_; }
+    void prev() override { turn_(-1); }
+    void next() override { turn_(1); }
+    bool usedNextBefore() const override { return page_ > 0; }
+    int totalPages() const override { return pages_; }
+    int currentPage() const override { return page_; }
+private:
+    fcitx::CandidateLayoutHint hint_;
+    int cursor_, page_, pages_;
+    std::function<void(int)> turn_;
+    std::vector<fcitx::Text> labels_;
+    std::vector<std::unique_ptr<PanelWord>> words_;
+};
 }
 // A fresh focus epoch gets a fresh context token. Reconnection never replays input.
 struct ZhuyinType::State final : fcitx::InputContextProperty {
@@ -69,6 +127,11 @@ struct ZhuyinType::State final : fcitx::InputContextProperty {
     bool english = false;
     // The user switched to ZhuyinType from another input method: the next focus says so (IPC `activated`).
     bool activated = false;
+    // Fcitx draws the candidate list (fcitxDrawsPanel); `panel` is the host's last one (null: hidden).
+    bool drawsPanel = false;
+    nlohmann::json panel;
+    // The host shows its candidate window, where a click can change the composition: poll for it.
+    bool polls = false;
 };
 ZhuyinType::ZhuyinType(fcitx::Instance &instance)
     : instance_(instance), factory_([](fcitx::InputContext &) { return new State; }) {
@@ -84,11 +147,7 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
             const bool inlineChanged = state.inlinePreedit != inlinePreedit;
             state.inlinePreedit = inlinePreedit;
             secure(ic, state, protectedField(change.newFlags()));
-            if (inlineChanged && broker_.connected()) {
-                auto fields = geometry(ic);
-                fields.update({{"secure", state.secure}, {"inlinePreedit", state.inlinePreedit}});
-                exchange(ic, state, "focus", fields);
-            }
+            if (inlineChanged && broker_.connected()) exchange(ic, state, "focus", focusFields(ic, state));
         });
     destroyWatcher_ = instance.watchEvent(fcitx::EventType::InputContextDestroyed,
         fcitx::EventWatcherPhase::PreInputMethod, [this](fcitx::Event &event) {
@@ -96,6 +155,7 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
             if (active_.get() != destroy.inputContext()) return;
             destroy.inputContext()->propertyFor(&factory_)->preedit.clear();
             broker_.disconnect(); // Host discards the destroyed context on socket close.
+            watchConnection();
             active_.unwatch();
             timer_->setEnabled(false);
         });
@@ -114,7 +174,8 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
         [this](fcitx::EventSourceTime *source, uint64_t) {
             poll();
             source->setNextInterval(20000);
-            source->setEnabled(active_.get() && broker_.connected());
+            auto *ic = active_.get();
+            source->setEnabled(ic && broker_.connected() && ic->propertyFor(&factory_)->polls);
             return true;
         });
     timer_->setEnabled(false);
@@ -131,19 +192,36 @@ void ZhuyinType::recover(fcitx::InputContext &ic, State &state) {
         !protectedField(ic.capabilityFlags()) && !known.empty()) ic.commitString(known);
     clear(ic);
 }
-bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op, nlohmann::json fields) {
+bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op, nlohmann::json fields,
+                          std::string_view delivered) {
     const auto response = broker_.request(state.context, op, std::move(fields));
+    watchConnection();
     if (!response) { recover(ic, state); timer_->setEnabled(false); return false; }
     // Synchronous exchange and tracked focus bind every result to its originating context.
-    if (active_.get() != &ic || state.secure) { clear(ic); return false; }
+    if (active_.get() != &ic || state.secure) { state.polls = false; clear(ic); return false; }
+    // Only a click in the host's own window changes anything between keys (IPC `poll`): no wake-ups otherwise.
+    state.polls = (*response)["candidates"].get<bool>() && !state.drawsPanel;
+    if (state.polls && !timer_->isEnabled()) {
+        timer_->setNextInterval(20000);
+        timer_->setEnabled(true);
+    } else if (!state.polls) {
+        timer_->setEnabled(false);
+    }
     if (const bool english = (*response)["english"].get<bool>(); english != state.english) {
         state.english = english;
         ic.updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
     }
-    const auto &commit = (*response)["commit"].get_ref<const std::string &>();
+    if (state.drawsPanel) {
+        // Left out: unchanged since the last reply.
+        if (const auto it = response->find("panel"); it != response->end() && (it->is_object() || it->is_null()))
+            state.panel = *it;
+        // The 中/英 badge (「中英提示」).
+        if (const auto toast = text(*response, "toast"); !toast.empty()) instance_.showCustomInputMethodInformation(&ic, toast);
+    }
     const auto &preedit = (*response)["preedit"].get_ref<const std::string &>();
     state.preedit = preedit;
-    if (!commit.empty()) ic.commitString(commit);
+    if (const auto commit = undelivered((*response)["commit"].get_ref<const std::string &>(), delivered); !commit.empty())
+        ic.commitString(std::string(commit));
     auto &panel = ic.inputPanel();
     panel.reset();
     if (state.inlinePreedit) {
@@ -157,6 +235,7 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
         text.setCursor(*cursorBytes(preedit, (*response)["cursor"].get<size_t>()));
         panel.setClientPreedit(text);
     }
+    if (state.drawsPanel) showPanel(ic, state);
     ic.updatePreedit();
     ic.updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     return (*response)["handled"].get<bool>();
@@ -168,17 +247,15 @@ bool ZhuyinType::focus(fcitx::InputContext &ic, State &state) {
     state.preedit.clear();
     state.secure = protectedField(ic.capabilityFlags());
     state.inlinePreedit = ic.capabilityFlags().test(fcitx::CapabilityFlag::Preedit);
+    state.drawsPanel = fcitxDrawsPanel(ic);
+    state.panel = nullptr;
     static uint64_t serial = 0;
     state.context = "fcitx-" + std::to_string(getpid()) + "-" + std::to_string(++serial);
     if (!broker_.connect()) { Broker::launchHost(); clear(ic); return false; }
-    auto fields = geometry(ic);
-    const bool isPrivate = privateField(ic.capabilityFlags());
-    fields.update({{"secure", state.secure}, {"private", isPrivate}, {"inlinePreedit", state.inlinePreedit}});
+    auto fields = focusFields(ic, state);
     if (std::exchange(state.activated, false)) fields["activated"] = true;
-    if (!state.secure && !isPrivate) addContext(ic, fields);
+    if (!state.secure && !privateField(ic.capabilityFlags())) addContext(ic, fields);
     exchange(ic, state, "focus", fields);
-    timer_->setNextInterval(20000);
-    timer_->setEnabled(broker_.connected() && ic.hasFocus());
     return broker_.connected();
 }
 void ZhuyinType::secure(fcitx::InputContext &ic, State &state, bool next) {
@@ -186,11 +263,53 @@ void ZhuyinType::secure(fcitx::InputContext &ic, State &state, bool next) {
     state.secure = next;
     state.preedit.clear();
     state.capsSynced = false; // Lock keys are deliberately not forwarded while protected.
-    exchange(ic, state, "secure", {{"secure", next}});
+    exchange(ic, state, "secure", {{"secure", next}, {"private", privateField(ic.capabilityFlags())}});
     clear(ic);
 }
-void ZhuyinType::blur(fcitx::InputContext &ic, State &state) {
-    exchange(ic, state, "blur");
+nlohmann::json ZhuyinType::focusFields(fcitx::InputContext &ic, const State &state) const {
+    auto fields = geometry(ic);
+    fields.update({{"secure", state.secure}, {"private", privateField(ic.capabilityFlags())},
+        {"inlinePreedit", state.inlinePreedit}, {"panel", state.drawsPanel}});
+    return fields;
+}
+void ZhuyinType::showPanel(fcitx::InputContext &ic, const State &state) {
+    if (!state.panel.is_object() || !state.panel.contains("model") || !state.panel["model"].is_object()) return;
+    const auto &model = state.panel["model"];
+    auto &panel = ic.inputPanel();
+    // The composition, for a field that cannot show it (IPC `preview`).
+    if (const auto preview = text(model, "preview"); !preview.empty()) panel.setPreedit(fcitx::Text(preview));
+    if (const auto reading = text(model, "reading"); !reading.empty()) panel.setAuxUp(fcitx::Text(reading));
+    if (const auto notice = text(model, "notice"); !notice.empty()) panel.setAuxDown(fcitx::Text(notice));
+    const auto rows = model.find("rows");
+    if (rows == model.end() || !rows->is_array() || rows->empty()) return;
+    const bool horizontal = state.panel.contains("style") && state.panel["style"].is_object() &&
+        text(state.panel["style"], "layout") == "horizontal";
+    const auto selected = model.find("selected");
+    const int cursor = selected != model.end() && selected->is_number_unsigned() ? selected->get<int>() : -1;
+    const auto watched = ic.watch();
+    auto list = std::make_unique<PanelList>(
+        horizontal ? fcitx::CandidateLayoutHint::Horizontal : fcitx::CandidateLayoutHint::Vertical, cursor,
+        static_cast<int>(number(model, "page")), static_cast<int>(number(model, "page_count")),
+        [this, watched](int delta) { if (auto *ic = watched.get()) action(*ic, "page", delta); });
+    int row = 0;
+    for (const auto &item : *rows) {
+        if (!item.is_object()) continue;
+        const auto key = text(item, "key");
+        // A correction's reading as the candidate's comment.
+        auto word = std::make_unique<PanelWord>(fcitx::Text(text(item, "text")), fcitx::Text(text(item, "annotation")),
+            [this, row](fcitx::InputContext *ic) { if (ic) action(*ic, "pick", row); });
+        list->add(fcitx::Text(key.empty() ? std::string() : key + ". "), std::move(word));
+        ++row;
+    }
+    panel.setCandidateList(std::move(list));
+}
+void ZhuyinType::action(fcitx::InputContext &ic, const char *kind, int value) {
+    auto &state = *ic.propertyFor(&factory_);
+    if (active_.get() != &ic || !broker_.connected() || state.secure) return;
+    exchange(ic, state, "action", {{"action", kind}, {"value", value}});
+}
+void ZhuyinType::blur(fcitx::InputContext &ic, State &state, std::string_view delivered) {
+    exchange(ic, state, "blur", nlohmann::json::object(), delivered);
     clear(ic);
     state.context.clear();
     state.preedit.clear();
@@ -216,6 +335,23 @@ void ZhuyinType::showSettings(const char *place) {
     if (place) fields["place"] = place;
     if (!broker_.connected() && !broker_.connect()) { Broker::launchHost(); return; }
     broker_.request("settings", "show-settings", fields);
+    watchConnection();
+}
+void ZhuyinType::watchConnection() {
+    if (!broker_.connected()) { hangup_.reset(); watched_ = 0; return; }
+    if (hangup_ && watched_ == broker_.generation()) return;
+    watched_ = broker_.generation();
+    hangup_.reset(); // Before the new socket is watched: it may have the old one's number.
+    hangup_ = instance_.eventLoop().addIOEvent(broker_.fd(),
+        fcitx::IOEventFlags{fcitx::IOEventFlag::In, fcitx::IOEventFlag::Hup, fcitx::IOEventFlag::Err},
+        [this](fcitx::EventSourceIO *source, int, fcitx::IOEventFlags) {
+            // As a failed request: the field keeps the composition it showed, once (recover).
+            source->setEnabled(false);
+            broker_.disconnect();
+            timer_->setEnabled(false);
+            if (auto *ic = active_.get()) recover(*ic, *ic->propertyFor(&factory_));
+            return true;
+        });
 }
 void ZhuyinType::deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();
@@ -225,7 +361,12 @@ void ZhuyinType::deactivate(const fcitx::InputMethodEntry &, fcitx::InputContext
         static_cast<fcitx::InputContextSwitchInputMethodEvent &>(event).reason() == fcitx::InputMethodSwitchedReason::CapabilityChanged;
     // Fcitx deactivates before exposing new password capability flags.
     secure(ic, state, capabilityChange || protectedField(ic.capabilityFlags()));
-    blur(ic, state);
+    // When focus leaves, the composition shown in the field is already committed there: by Fcitx itself, or by the
+    // application's Fcitx module (ClientUnfocusCommit: GTK, Qt, Wayland) before it reported the focus change.  The
+    // host commits it on blur as well; sending that again would type it twice, or into the field focus moved to.
+    std::string delivered;
+    if (event.type() == fcitx::EventType::InputContextFocusOut) delivered = ic.inputPanel().clientPreedit().toStringForCommit();
+    blur(ic, state, delivered);
 }
 void ZhuyinType::reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();
@@ -244,14 +385,12 @@ void ZhuyinType::keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &even
     const auto key = translateKey(event.rawKey());
     if (!key) {
         exchange(ic, state, "blur");
-        auto fields = geometry(ic);
-        fields.update({{"secure", false}, {"inlinePreedit", state.inlinePreedit}});
-        exchange(ic, state, "focus", fields);
+        exchange(ic, state, "focus", focusFields(ic, state));
         return;
     }
     if (!state.capsSynced && key->key != 0x01000024) {
-        auto initial = geometry(ic);
-        initial.update({{"secure", false}, {"inlinePreedit", state.inlinePreedit}, {"capsLock", event.rawKey().states().test(fcitx::KeyState::CapsLock)}});
+        auto initial = focusFields(ic, state);
+        initial["capsLock"] = event.rawKey().states().test(fcitx::KeyState::CapsLock);
         exchange(ic, state, "focus", initial);
         if (!broker_.connected()) return;
     }
@@ -265,7 +404,7 @@ void ZhuyinType::keyEvent(const fcitx::InputMethodEntry &, fcitx::KeyEvent &even
 }
 void ZhuyinType::poll() {
     auto *ic = active_.get();
-    if (!ic) { broker_.disconnect(); timer_->setEnabled(false); return; }
+    if (!ic) { broker_.disconnect(); watchConnection(); timer_->setEnabled(false); return; }
     if (!ic->hasFocus()) { blur(*ic, *ic->propertyFor(&factory_)); return; }
     if (!broker_.connected()) { timer_->setEnabled(false); return; }
     auto &state = *ic->propertyFor(&factory_);

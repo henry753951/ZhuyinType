@@ -348,6 +348,16 @@ fn a_copy_started_after_a_crash_takes_over_once_the_old_one_is_gone() {
 }
 
 #[test]
+fn a_quiet_second_instance_opens_no_window() {
+    let f = Fixture::new();
+    let error =
+        Service::start(ServiceConfig { quiet_if_running: true, ..config(&f.dir) }).err().expect("a second instance");
+    assert!(error.downcast_ref::<zt_core::service::AlreadyRunning>().is_some());
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(!f.ui_events().contains(&UiEvent::ShowSettings(None)), "zhuyintype --background never opens settings");
+}
+
+#[test]
 fn refuses_occupied_file() {
     let dir = TempDir::new();
     let endpoint = dir.join("occupied");

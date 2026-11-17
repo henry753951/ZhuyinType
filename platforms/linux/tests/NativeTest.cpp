@@ -1,6 +1,7 @@
 #include "ZhuyinType.h"
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
+#include <fcitx/candidatelist.h>
 #include <fcitx/inputpanel.h>
 #include <iostream>
 #include <chrono>
@@ -90,7 +91,16 @@ int main() {
         CHECK(!key(b,FcitxKey_Caps_Lock,false,fcitx::KeyState::CapsLock));
         CHECK(!key(b,FcitxKey_Caps_Lock,true));
         type(b,"su3");
+        // Focus leaving: Fcitx (or the application's module) commits the composition the field shows, so the addon
+        // does not send it again (it would be typed twice, or into the field focus moved to).
+        CHECK(b.preedit()=="你");
         fcitx::FocusOutEvent blur(&b); addon.deactivate(entry,blur);
+        CHECK(b.commits.empty());
+        // Switching to another input method: nothing else commits, so the addon does.
+        activate(b);
+        type(b,"su3");
+        fcitx::InputContextSwitchInputMethodEvent switched(fcitx::InputMethodSwitchedReason::Trigger, "zhuyintype", &b);
+        addon.deactivate(entry,switched);
         CHECK(b.commits==std::vector<std::string>{"你"});
         // A private field (Sensitive: a private window) types Chinese; only learning and 前文 stop.
         activate(b);
@@ -113,6 +123,12 @@ int main() {
         type(a,"su3cl3");
         CHECK(a.preedit().empty()); CHECK(a.inputPanel().preedit().empty()); CHECK(!a.inputPanel().candidateList());
         CHECK(key(a,FcitxKey_Return)); CHECK(a.commits.back()=="你好");
+        // Without inline composition the field shows nothing that Fcitx could commit on focus out: the addon does.
+        type(a,"su3");
+        const auto beforeFocusOut = a.commits.size();
+        fcitx::FocusOutEvent leaveNoInline(&a); addon.deactivate(entry,leaveNoInline);
+        CHECK(a.commits.size()==beforeFocusOut+1); CHECK(a.commits.back()=="你");
+        activate(a);
         a.setCapabilityFlags(fcitx::CapabilityFlag::Preedit);
         type(a,"su3"); CHECK(!a.preedit().empty());
         a.setCapabilityFlags(fcitx::CapabilityFlags());
@@ -143,6 +159,29 @@ int main() {
         }
         activate(a);
         CHECK(a.preedit().empty()); CHECK(a.commits.size()==deliveredBeforeDestroy);
+        {
+            // Fcitx draws the list (a Wayland session): the host's list becomes Fcitx's candidate list, and a click
+            // in it picks through the host.
+            setenv("ZT_FCITX_PANEL", "1", 1);
+            Client drawn(instance.inputContextManager());
+            activate(drawn);
+            type(drawn,"su3");
+            CHECK(!drawn.inputPanel().candidateList());
+            CHECK(key(drawn,FcitxKey_Down));
+            const auto list = drawn.inputPanel().candidateList();
+            CHECK(list && list->size() >= 2 && list->cursorIndex() == 0);
+            CHECK(list->label(0).toString() == "1. ");
+            int other = -1;
+            for (int i = 0; i < list->size(); ++i) if (list->candidate(i).text().toString() == "妳") other = i;
+            CHECK(other > 0);
+            list->candidate(other).select(&drawn);
+            CHECK(drawn.preedit() == "妳"); CHECK(!drawn.inputPanel().candidateList());
+            CHECK(key(drawn,FcitxKey_Return)); CHECK(drawn.commits == std::vector<std::string>{"妳"});
+            // The 中/英 badge goes to Fcitx too (a short Shift tap).
+            CHECK(!key(drawn,FcitxKey_Shift_L,false,fcitx::KeyState::Shift));
+            CHECK(!key(drawn,FcitxKey_Shift_L,true));
+            unsetenv("ZT_FCITX_PANEL");
+        }
         std::cout << "PASS real host broker: Fcitx preedit/commit, reset, focus isolation, secure transition, Shift release, shortcuts\n";
     } catch(const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
 }
