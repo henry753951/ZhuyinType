@@ -310,6 +310,40 @@ fn mode_switch_from_the_indicator() {
     assert_eq!(f.request("mode", json!({"english": true}))["english"], false, "not in a secure field");
 }
 
+/// The addon connects the moment the socket answers (sign-in, an update restarting the service) and types at once:
+/// the endpoint is served only once the engine is open, so the very first keys compose and convert, and none goes
+/// on to the application as a raw letter or as its Zhuyin.
+#[test]
+fn the_first_keys_after_start_are_converted() {
+    let dir = TempDir::new();
+    write_lexicon(dir.path(), LEXICON);
+    let endpoint = config(&dir).endpoint.unwrap();
+    let typist = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut client = loop {
+            match Client::connect(&endpoint) {
+                Ok(client) => break client,
+                Err(_) if std::time::Instant::now() < deadline => std::thread::yield_now(),
+                Err(error) => panic!("the endpoint was never served: {error}"),
+            }
+        };
+        assert!(ok(&client.request("focus", json!({"secure": false})).unwrap()));
+        let mut replies = Vec::new();
+        for key in "SU3CL3".chars().map(|c| c as i32).chain([code::RETURN]) {
+            let reply =
+                client.request("key", json!({"secure": false, "key": key, "modifiers": 0, "release": false})).unwrap();
+            replies.push(reply);
+        }
+        replies
+    });
+    let (service, _events) = Service::start(config(&dir)).unwrap();
+    let replies = typist.join().unwrap();
+    assert!(replies.iter().all(|reply| ok(reply) && reply["handled"] == true), "{replies:?}");
+    let commits: String = replies.iter().map(|reply| reply["commit"].as_str().unwrap()).collect();
+    assert_eq!(commits, "你好");
+    drop(service);
+}
+
 #[test]
 fn show_settings_and_single_instance() {
     let f = Fixture::new();

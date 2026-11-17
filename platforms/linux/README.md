@@ -64,7 +64,7 @@ platforms/desktop/scripts/remote.sh scripts/build.sh linux --test
 
 `build.sh linux --test`（`tools/zt check desktop`）在 Debian 13 的測試映像（`packaging/linux/Dockerfile` 的 `tester` 階段）中執行，裡面有 Fcitx 5（含 Qt 與 GTK frontend）、Qt 6 Widgets、Xvfb、xdotool、`xwininfo`、D-Bus 與 Mesa lavapipe，七項都會登記並執行；`--native` 改在本機執行，缺少這些工具時不登記應用程式測試。`ZT_DELIVERY_CAPTURE_DIR` 可指定合成測試畫面的保存目錄。測試只結束自己建立的行程。
 
-應用程式測試先啟動 Fcitx 5，再啟動服務，和登入後 addon 啟動服務的順序相同：GPUI 只在啟動時尋找 XIM 伺服器，服務自己的文字欄位要在 Fcitx 已經執行時才會使用輸入法。GPUI 不送 XIM 的焦點通知，Fcitx 因此沒有「目前的輸入欄位」，`fcitx5-remote` 對 GPUI 視窗無效；自身設定欄位的測試改以觸發鍵（Ctrl＋Space）開啟輸入法，和使用者的操作相同。候選字視窗由服務的 UI 執行緒在回應之後顯示，測試等它出現再點選。
+應用程式測試先啟動 Fcitx 5，再啟動服務，和登入後 addon 啟動服務的順序相同：GPUI 只在啟動時尋找 XIM 伺服器，服務自己的文字欄位要在 Fcitx 已經執行時才會使用輸入法。GPUI 不送 XIM 的焦點通知，Fcitx 因此沒有「目前的輸入欄位」，`fcitx5-remote` 對 GPUI 視窗無效；自身設定欄位的測試改以觸發鍵（Ctrl＋Space）開啟輸入法，和使用者的操作相同。GPUI 和 Fcitx 的 XIM 連線在服務的 UI 執行緒上往返幾次才建立，視窗剛開時要等前幾個畫面畫完（Xvfb 的軟體繪製約兩秒）；連線建立前按鍵以英文字母直接進入欄位，而連線建立前就有欄位取得焦點時，GPUI 的 XIM 用戶端會在之後出錯並停用輸入法，所以這項測試先等 Fcitx 列出設定視窗的 XIM 輸入欄位（`DebugInfo`），再點欄位、打字。候選字視窗由服務的 UI 執行緒在回應之後顯示，測試等它出現再點選。
 
 ## 平台範圍
 
