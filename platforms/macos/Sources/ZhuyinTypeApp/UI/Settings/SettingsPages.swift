@@ -574,7 +574,7 @@ struct CandidatesPane: View {
                 CommandKeyRows(preferences: preferences, commands: [.previousCharacter, .nextCharacter])
                 SettingRow(title: "字級", value: "\(Int(preferences.candidateFontSize)) pt") {
                     Slider(value: Binding(get: { preferences.candidateFontSize },
-                                          set: { preferences.candidateFontSize = $0.rounded() }), in: 13...28) {
+                                          set: { preferences.candidateFontSize = $0.rounded() }), in: Preferences.candidateFontSizes) {
                         Text("字級")
                     } minimumValueLabel: {
                         Text("字").font(.system(size: 11))
@@ -610,6 +610,7 @@ struct CandidatesPane: View {
             }
             SettingsSection("外觀") {
                 RegistryRow("panelAppearance", preferences)
+                RegistryRow("accentColor", preferences)
             }
             SettingsSection("動畫") {
                 RegistryRow("panelAnimation", preferences)

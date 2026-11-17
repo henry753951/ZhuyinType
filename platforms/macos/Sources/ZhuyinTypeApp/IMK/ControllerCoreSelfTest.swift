@@ -1772,6 +1772,8 @@ enum ControllerCoreSelfTest {
 
         // The setup wizard's practice field (UI/Wizard/Practice).
         PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
+        // Contrast, accent colours, VoiceOver and the solid panel (UI/Accessibility).
+        AccessibilitySelfTest.run(test: test)
 
         test("wizard: a choice reaches the practice field on its page at once — the same field, its composition kept") {
             _ = NSApplication.shared
@@ -1883,6 +1885,7 @@ enum ControllerCoreSelfTest {
                 ("default", { _ in }),
                 ("horizontal", { $0.candidateLayout = .horizontal }),
                 ("28 pt", { $0.candidateFontSize = 28 }),
+                ("36 pt", { $0.candidateFontSize = 36 }),
                 ("horizontal 24 pt", { $0.candidateLayout = .horizontal; $0.candidateFontSize = 24 }),
             ]
             for (name, apply) in combos {

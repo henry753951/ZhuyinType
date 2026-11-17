@@ -364,7 +364,7 @@ struct PreviewSettings: Equatable {
         let keys = CurrentKeys(p)
         list = [p.candidateLayout.rawValue, "\(p.candidateFontSize)", p.candidateDensity.rawValue, "\(p.candidatesPerPage)",
                 p.selectionKeys.rawValue, "\(p.showsZhuyinHint)", "\(p.isEnabled(KeyFeature.zhuyinRowClick))", "\(p.candidatePlacement)",
-                "\(p.panelAppearance)", "\(p.isEnabled(KeyFeature.singleCharacterList))", keys.text(.singleCharacterList) ?? ""]
+                "\(p.panelAppearance)", p.accentColor.rawValue, "\(p.isEnabled(KeyFeature.singleCharacterList))", keys.text(.singleCharacterList) ?? ""]
         corrections = ["\(p.showsAnnotations)", "\(p.showsListSwitches)", "\(p.isEnabled(KeyFeature.correctionsList))",
                        keys.text(.correctionsList) ?? ""]
         paging = ["\(p.panelAnimation)", "\(p.pageAtListEdge)", "\(p.isEnabled(KeyFeature.pageKeys))", keys.text(.nextPage) ?? "",

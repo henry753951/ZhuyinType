@@ -79,6 +79,7 @@ final class Preferences: ObservableObject {
             Key.showsAnnotations: true,
             Key.showsListSwitches: true,
             Key.panelAppearance: PanelAppearance.system.rawValue,
+            Key.accentColor: AccentColorSetting.system.rawValue,
             Key.panelAnimation: true,
             Key.escapeClearsComposition: true,
             Key.shiftToggle: ShiftToggle.both.rawValue,
@@ -115,6 +116,8 @@ final class Preferences: ObservableObject {
         static let showsAnnotations = "showsAnnotations"
         static let showsListSwitches = "showsListSwitches"
         static let panelAppearance = "panelAppearance"
+        /// 強調色: the selection's and the switches' colour (`AccentColorSetting`).
+        static let accentColor = "accentColor"
         static let panelAnimation = "panelAnimation"
         static let escapeClearsComposition = "escapeClearsComposition"
         static let shiftToggle = "shiftToggle"
@@ -158,7 +161,7 @@ final class Preferences: ObservableObject {
                           characterForms, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
-                          recordsUsageStats]
+                          recordsUsageStats, accentColor]
     }
 
     func resetToDefaults() {
@@ -175,8 +178,10 @@ final class Preferences: ObservableObject {
         get { CandidateLayout(rawValue: defaults.string(forKey: Key.candidateLayout) ?? "") ?? .vertical }
         set { defaults.set(newValue.rawValue, forKey: Key.candidateLayout); changed() }
     }
+    /// 字級, in points: up to 36 for low vision.
+    static let candidateFontSizes: ClosedRange<Double> = 13...36
     var candidateFontSize: Double {
-        get { min(28, max(13, defaults.double(forKey: Key.candidateFontSize))) }
+        get { min(Self.candidateFontSizes.upperBound, max(Self.candidateFontSizes.lowerBound, defaults.double(forKey: Key.candidateFontSize))) }
         set { defaults.set(newValue, forKey: Key.candidateFontSize); changed() }
     }
     var selectionKeys: SelectionKeySet {
@@ -235,6 +240,10 @@ final class Preferences: ObservableObject {
         get { PanelAppearance(rawValue: defaults.string(forKey: Key.panelAppearance) ?? "") ?? .system }
         set { defaults.set(newValue.rawValue, forKey: Key.panelAppearance); changed() }
     }
+    var accentColor: AccentColorSetting {
+        get { AccentColorSetting(rawValue: defaults.string(forKey: Key.accentColor) ?? "") ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: Key.accentColor); changed() }
+    }
     /// The candidate window fades in and the 中/英 badge fades out; with Reduce Motion, nothing slides.
     var panelAnimation: Bool {
         get { defaults.bool(forKey: Key.panelAnimation) }
@@ -245,7 +254,7 @@ final class Preferences: ObservableObject {
     var candidateStyle: CandidateStyle {
         CandidateStyle(layout: candidateLayout, fontSize: candidateFontSize, density: candidateDensity,
                        showsZhuyinHint: showsZhuyinHint, showsAnnotations: showsAnnotations,
-                       showsListSwitches: showsListSwitches, keyLabels: candidateKeyLabels)
+                       showsListSwitches: showsListSwitches, keyLabels: candidateKeyLabels, accentColor: accentColor)
     }
     /// The keys that pick candidates on a page, as many as `candidatesPerPage`.
     var pageSelectionKeys: [Character] { Array(Array(selectionKeys.rawValue).prefix(candidatesPerPage)) }

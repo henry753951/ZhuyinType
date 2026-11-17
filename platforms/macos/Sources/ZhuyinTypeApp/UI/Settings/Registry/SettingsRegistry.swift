@@ -174,7 +174,7 @@ enum SettingsRegistry {
                [(CandidateLayout.vertical, "直式"), (.horizontal, "橫式")], preview: .list,
                detail: { p in p.candidateLayout == .vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
                    : "← → 移動反白，↑ ↓ 翻頁" + (CurrentKeys(p).text(.previousCharacter).map { "，\($0) 改前一個字" } ?? "") }),
-        SettingDescriptor(id: "candidateFontSize", title: "字級", kind: .number(13...28, step: 1, unit: " pt"), place: place(.candidates),
+        SettingDescriptor(id: "candidateFontSize", title: "字級", kind: .number(Preferences.candidateFontSizes, step: 1, unit: " pt"), place: place(.candidates),
                           preview: .list, read: { .number($0.candidateFontSize) },
                           write: { p, v in if case .number(let n) = v { p.candidateFontSize = n } }),
         choice("candidateDensity", "間距", place(.candidates), \.candidateDensity, [(CandidateDensity.standard, "標準"), (.compact, "緊湊")],
@@ -203,6 +203,9 @@ enum SettingsRegistry {
         choice("panelAppearance", "外觀", place(.candidates, SettingsRow.appearance), \.panelAppearance,
                [(PanelAppearance.system, "跟隨系統"), (.light, "淺色"), (.dark, "深色")], preview: .list,
                detail: { _ in "也套用到加入自訂詞的提示與「中」「英」提示" }),
+        choice("accentColor", "強調色", place(.candidates, SettingsRow.appearance), \.accentColor,
+               [(AccentColorSetting.system, "跟隨系統"), (.zhuyintype, "ZhuyinType 藍")], preview: .list,
+               detail: { _ in "候選字的反白與開關的顏色" }, keywords: ["顏色", "反白", "對比"]),
         toggle("panelAnimation", "動畫", place(.candidates, SettingsRow.motion), \.panelAnimation, preview: .paging,
                detail: { _ in NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? "淡入淡出；已開啟「減少動態效果」，不滑動"
                    : "候選字視窗出現、翻頁與「中」「英」提示的動態" }),
