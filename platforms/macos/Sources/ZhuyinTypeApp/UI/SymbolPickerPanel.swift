@@ -96,6 +96,11 @@ final class SymbolPickerView: InputMaterialView {
 
     // MARK: Drawing
 
+    /// The search line's well: a light tint of the text colour, as a search field on glass.
+    private static let fieldColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.1) : NSColor(white: 0, alpha: 0.06)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         drawSearch()
         drawTabs()
@@ -105,7 +110,7 @@ final class SymbolPickerView: InputMaterialView {
 
     private func drawSearch() {
         let rect = searchRect
-        NSColor.quaternaryLabelColor.withAlphaComponent(0.5).setFill()
+        Self.fieldColor.setFill()
         NSBezierPath(roundedRect: rect.insetBy(dx: 0, dy: 3), xRadius: 7, yRadius: 7).fill()
         if let glass = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .medium).applying(.init(paletteColors: [.secondaryLabelColor]))) {

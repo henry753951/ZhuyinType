@@ -68,6 +68,12 @@ enum UIPreviewRenderer {
                     }
                 }
             }
+            if only == "symbols" {
+                for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    NSApp.appearance = NSAppearance(named: appearanceName)
+                    try renderSymbolPicker(to: directory.appendingPathComponent("panels"), suffix: name)
+                }
+            }
             if only == "practice" {
                 // The setup wizard's practice field, driven by synthetic keys (UI/Wizard/Practice).
                 try PracticeRender.render(to: directory.appendingPathComponent("practice"))
@@ -160,6 +166,7 @@ enum UIPreviewRenderer {
         }
         let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))
+        try renderSymbolPicker(to: directory, suffix: suffix)
         // Turning pages and the end of the list, frame by frame (the animation's own easing, drawn still).
         let many = CandidateList(items: (words + ["瞑", "洺", "螟蛉", "明明", "名命"]).map { Candidate(text: $0) }, selection: 0,
                                  pageSize: 9, tolerant: false)
@@ -180,6 +187,25 @@ enum UIPreviewRenderer {
                         "paging/\(layout.rawValue)-\(name)-\(Int(progress * 100))-\(suffix).png"))
                 }
             }
+        }
+    }
+
+    /// 符號與 Emoji: a category with the second row highlighted, recent symbols first, and a Zhuyin search.
+    private static func renderSymbolPicker(to directory: URL, suffix: String) throws {
+        let source = SampleSymbolSource()
+        let browsing = SymbolPicker(source: source, recent: ["😂", "，", "→", "❤️"])
+        browsing.selectTab(4)
+        for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
+        let searching = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
+        let empty = SymbolPicker(source: source, recent: [])
+        for key: UInt16 in [12, 12] { _ = empty.handle(keyCode: key, modifiers: []) }
+        for (name, picker) in [("browse", browsing), ("search", searching), ("no-results", empty)] {
+            let view = SymbolPickerView(frame: .zero)
+            view.hoverEnabled = false
+            view.update(picker)
+            try capture(view: Backdrop(content: InputSurface(content: view)),
+                        to: directory.appendingPathComponent("symbols-\(name)-\(suffix).png"))
         }
     }
 
