@@ -154,6 +154,42 @@ PIPELINE = Pipeline(
         Step("ptt-lccc", "ptt plus an eighth of LCCC-base, ptt-lccc/ (GPU host)", variant("ptt-lccc")),
         Step("ptt-zhihu", "ptt plus an eighth of the MNBVC 知乎 shard, ptt-zhihu/ (GPU host)", variant("ptt-zhihu")),
         Step("ptt-others", "ptt plus all three, ptt-others/ (GPU host)", variant("ptt-others")),
+        Step("cn", "zh-meme, LCCC and 知乎 alone, the mainland model for selection, cn/ (GPU host)", variant("cn")),
+        Step(
+            "cn-select",
+            "keep the Taiwan-like mainland sentences by cross-entropy difference (GPU host)",
+            run(f"{MODULE}.select", "--workers", "24"),
+        ),
+        Step(
+            "ptt-cn0",
+            "ptt plus mainland sentences scored at least as Taiwan-like, ptt-cn0/ (GPU host)",
+            variant("ptt-cn0"),
+        ),
+        Step("ptt-cn20", "ptt plus the most Taiwan-like fifth of them, ptt-cn20/ (GPU host)", variant("ptt-cn20")),
+        Step(
+            "ptt-gen",
+            "ptt plus the generated sentences of data/build/private/gen, ptt-gen/ (GPU host)",
+            variant("ptt-gen"),
+        ),
+        Step(
+            "ptt-cn20-gen", "ptt-cn20 plus the generated sentences, ptt-cn20-gen/ (GPU host)", variant("ptt-cn20-gen")
+        ),
+        Step(
+            "ptt-cns",
+            "ptt plus the strict selection (no mainland-specific word), ptt-cns/ (GPU host)",
+            variant("ptt-cns"),
+        ),
+        Step("ptt-cns-gen", "ptt-cns plus the generated sentences, ptt-cns-gen/ (GPU host)", variant("ptt-cns-gen")),
+        Step(
+            "ptt-genpub",
+            "ptt plus the themed generated sentences only (no seeds), ptt-genpub/ (GPU host)",
+            variant("ptt-genpub"),
+        ),
+        Step(
+            "ptt-cns-genpub",
+            "ptt-cns plus the themed generated sentences only, ptt-cns-genpub/ (GPU host)",
+            variant("ptt-cns-genpub"),
+        ),
         Step("ptt14", "the ptt corpus pruned to the shipped model's 14 MB, ptt14/ (GPU host)", variant("ptt14")),
         Step("ship", "real variant and provenance into lm_chat/, the 0.3.0 model into lm_chat_v1/", ship),
     ),

@@ -46,7 +46,7 @@ def audit(work: Path, variant: str) -> dict[str, Any]:
     """Rescans every training sentence and turn pair against all holdouts."""
     files = evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"]
     held = blocked_text(files)
-    if variant.startswith(("web", "ptt")):
+    if variant.startswith(("web", "ptt", "cn")):
         rows = row_files()
         held.update(blocked_rows(rows))
         files += rows

@@ -10,7 +10,9 @@
               benefits; never the proposer) and vTaiwan comments, with every tracked row set and the pushed
               loss-analysis rows also blocked; web3 (web3/) keeps a fixed third of the proposal sentences; ptt
               (ptt/) is real plus PTT Gossiping title/push pairs (as turn pairs too) and TOCP sentences; ptt14
-              (ptt14/) is the same corpus pruned to the shipped model's size
+              (ptt14/) is the same corpus pruned to the shipped model's size; cn (cn/) is zh-meme, the LCCC
+              and 知乎 eighths alone (the mainland model of select.py); ptt-cn0 and ptt-cn20 are ptt plus the
+              sentences select.py keeps; ptt-gen and ptt-cn20-gen add data/build/private/gen (Claude Haiku)
 
 Every training text equal to, or sharing 8 characters with, a holdout or any frozen evaluation file is removed,
 also after OpenCC s2twp and 臺→台 normalization.  GPU host for prepare (24 workers).
@@ -51,7 +53,24 @@ VARIANTS = {
     "web3": "web3",
     "ptt": "ptt",
     "ptt14": "ptt14",
-    **{v: v for v in ("ptt-meme", "ptt-lccc", "ptt-zhihu", "ptt-others")},
+    **{
+        v: v
+        for v in (
+            "ptt-meme",
+            "ptt-lccc",
+            "ptt-zhihu",
+            "ptt-others",
+            "cn",
+            "ptt-cn0",
+            "ptt-cn20",
+            "ptt-gen",
+            "ptt-cn20-gen",
+            "ptt-cns",
+            "ptt-cns-gen",
+            "ptt-genpub",
+            "ptt-cns-genpub",
+        )
+    },
 }
 
 
@@ -63,6 +82,7 @@ def row_files() -> list[Path]:
     """Row sets (context|truth|syllables) the web corpus must not overlap: tracked ones and pushed analysis rows."""
     files = sorted((paths.ROOT / "ml" / "eval-sets").rglob("*.txt"))
     files += sorted(paths.data("loss-analysis", "rows").glob("*.txt"))
+    files += sorted(paths.data("private").glob("*holdout*.rows.txt"))
     return [p for p in files if p.is_file()]
 
 
@@ -112,7 +132,24 @@ def tocp_texts() -> Iterator[str]:
 
 
 OTHERS = RAW / "others"
-EXTRA = {"ptt-meme": ("meme",), "ptt-lccc": ("lccc",), "ptt-zhihu": ("zhihu",), "ptt-others": ("meme", "lccc", "zhihu")}
+EXTRA = {
+    "ptt-meme": ("meme",),
+    "ptt-lccc": ("lccc",),
+    "ptt-zhihu": ("zhihu",),
+    "ptt-others": ("meme", "lccc", "zhihu"),
+    "cn": ("meme", "lccc", "zhihu"),
+}
+SELECTED = {
+    "ptt-cn0": "kept-0.txt",
+    "ptt-cn20": "kept-q20.txt",
+    "ptt-cn20-gen": "kept-q20.txt",
+    "ptt-cns": "kept-strict.txt",
+    "ptt-cns-gen": "kept-strict.txt",
+    "ptt-cns-genpub": "kept-strict.txt",
+}
+# Sentences written by Claude Haiku 5.5 from the categories the probe and the private correction log show wrong
+# (data/build/private/gen, never in git; the correction holdout is blocked from training).
+GENERATED = paths.data("private", "gen")
 
 
 def eighth(text: str) -> bool:
@@ -460,7 +497,7 @@ def prepare(variant: str, workers: int) -> None:
     if marker.exists():
         raise ValueError("training corpus already prepared")
     held = blocked_text(evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"])
-    if variant.startswith(("web", "ptt")):
+    if variant.startswith(("web", "ptt", "cn")):
         held.update(blocked_rows(row_files()))
     # Canonical variants are also blocked so 台/臺 conversion cannot bypass the guard.
     held.update(normalize(s).replace("臺", "台") for s in list(held))
@@ -507,7 +544,7 @@ def prepare(variant: str, workers: int) -> None:
         chars.update(text)
 
     try:
-        for line in (OUT / "real_dialogues.jsonl").open():
+        for line in (OUT / "real_dialogues.jsonl").open() if variant != "cn" else []:
             record = json.loads(line)
             if record["source"] + ":" + record["document"] in reserved:
                 continue
@@ -518,7 +555,7 @@ def prepare(variant: str, workers: int) -> None:
                     sentence = sentence.strip()
                     if 4 <= len(sentence) <= 200:
                         add(sentence, record["source"])
-        for line in (paths.data("corpus", "train_commonvoice.txt")).open():
+        for line in (paths.data("corpus", "train_commonvoice.txt")).open() if variant != "cn" else []:
             add(line.strip(), "commonvoice")
         if variant.startswith("web"):
             for source, texts in (("join", join_texts()), ("vtaiwan", vtaiwan_texts())):
@@ -547,6 +584,20 @@ def prepare(variant: str, workers: int) -> None:
                     sentence = sentence.strip()
                     if 4 <= len(sentence) <= 200 and valid(sentence):
                         add(sentence, "tocp")
+        if variant.endswith(("-gen", "-genpub")):
+            # genpub: only the themed files, not the ones seeded with the user's corrected phrases (seed-*.txt)
+            paths_ = sorted(GENERATED.glob("*.txt"))
+            if variant.endswith("-genpub"):
+                paths_ = [p for p in paths_ if not p.name.startswith("seed-")]
+            for path in paths_:
+                for line in path.open(encoding="utf-8"):
+                    for sentence in mkn.SPLIT.split(line):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "generated")
+        if variant in SELECTED:
+            for line in (OUT / "cn-select" / SELECTED[variant]).open(encoding="utf-8"):
+                add(line.rstrip("\n"), "cn_selected")
         for source in EXTRA.get(variant, ()):
             for turns in other_dialogues(source):
                 short = [t for t in turns if valid(t) and len(t) <= 200]

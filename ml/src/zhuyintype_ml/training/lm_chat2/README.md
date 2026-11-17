@@ -40,6 +40,9 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 | `ptt` | `real` 再加上八卦版的標題與推文（也當成前後句對）與 TOCP 的句子（`ptt/`） | GPU 主機 |
 | `others-sources` | zh-meme-sft-8k、LCCC-base（`silver/lccc` 鏡像）與 MNBVC 知乎問答第一個分片，固定 Hugging Face 的版本，寫收據 | 任一 |
 | `ptt-meme`、`ptt-lccc`、`ptt-zhihu`、`ptt-others` | `ptt` 再加上各一份（LCCC 與知乎依雜湊取八分之一，s2twp 轉成正體）或全部 | GPU 主機 |
+| `cn`、`cn-select` | 只有三份大陸語料的模型，以及依交叉熵差（`select.py`）挑出像台灣用法的大陸句子：`kept-0.txt`、`kept-q20.txt`、`kept-strict.txt`（另去掉含大陸特有詞的句子） | GPU 主機 |
+| `ptt-cn0`、`ptt-cn20`、`ptt-cns` | `ptt` 再加上上面三種挑選結果 | GPU 主機 |
+| `ptt-gen`、`ptt-genpub`、`ptt-cn20-gen`、`ptt-cns-gen`、`ptt-cns-genpub` | 再加上 `data/build/private/gen/` 的 Haiku 產生句；`-genpub` 只用主題句，不用以使用者改字為種子的句子 | GPU 主機 |
 | `ptt14` | 同 `ptt` 的語料，剪到出貨模型的 14 MB（`ptt14/`） | GPU 主機 |
 | `ship` | 把 `no_generated/` 的三個 TSV 與出處檔案複製到 `lm_chat/`，0.3.0 的模型先保存到 `lm_chat_v1/` | 任一 |
 
