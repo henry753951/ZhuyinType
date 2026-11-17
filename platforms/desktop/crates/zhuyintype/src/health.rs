@@ -178,3 +178,61 @@ pub fn report(cx: &App) -> String {
         std::env::home_dir().as_deref(),
     )
 }
+
+/// `zhuyintype --health [--fix ID]`: the checks without a window, as 回報問題's text on stdout (support, tests).
+/// `--fix ID` first carries out that check's fix when it changes a setting (加入輸入法清單, 改用 Fcitx 5, 加入 Fcitx
+/// 5).  Another copy serving the input method counts as the running service.  The exit code is 1 when a check
+/// needs attention.
+pub fn command_line(fix: Option<&str>) -> i32 {
+    let settings = zt_core::settings::Settings::open(zt_core::paths::settings_file());
+    let endpoint = zt_core::broker::endpoint();
+    let running = endpoint.as_deref().is_some_and(health::answers);
+    let configured = settings.string("dataDirectory");
+    let configured = (!configured.is_empty()).then(|| PathBuf::from(configured));
+    let inputs = Inputs {
+        version: VERSION.to_owned(),
+        data: DataFacts::probe(zt_core::engine::DataFiles::find(configured.as_deref()), None),
+        settings: SettingsFacts::probe(settings.path().map(PathBuf::from), settings.unreadable()),
+        service: ServiceFacts {
+            running,
+            error: (!running).then(|| "沒有執行中的 ZhuyinType".to_owned()),
+            reachable: None,
+        },
+        endpoint,
+        updates: UpdateFacts::Unknown,
+        fcitx_helper: fcitx_helper(),
+    };
+    let mut checks = health::run(&inputs);
+    if let Some(id) = fix {
+        let work: Option<fn() -> anyhow::Result<()>> =
+            match checks.iter().find(|check| check.id == id).and_then(|c| c.fix.as_ref()) {
+                Some(Fix::AddToInputList) => Some(add_to_input_list),
+                Some(Fix::UseFcitx) => Some(|| fcitx_setup("framework")),
+                Some(Fix::AddToFcitx) => Some(|| fcitx_setup("enable")),
+                _ => None,
+            };
+        match work {
+            Some(work) => {
+                if let Err(error) = work() {
+                    eprintln!("{id}: {error:#}");
+                    return 2;
+                }
+                checks = health::run(&inputs);
+            }
+            None => eprintln!("{id}: 沒有可以執行的修正"),
+        }
+    }
+    let errors = health::recent::lines();
+    print!(
+        "{}",
+        health::report::text(
+            VERSION,
+            &chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+            &health::system(),
+            &checks,
+            Some(&errors),
+            std::env::home_dir().as_deref(),
+        )
+    );
+    i32::from(health::problems(&checks) > 0)
+}

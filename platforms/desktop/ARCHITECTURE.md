@@ -68,6 +68,10 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 
 `tools/zt data fetch engine && tools/zt data compile` 會在 `data/build` 產生這些檔案，和 macOS App 相同。神經模型（重排序與字模型）在 macOS 上用 Core ML，這裡不載入；接口留在 composer 的 hook（`EngineSession::composer_mut`）。個人資料、`stats.json` 與 `corrections.jsonl` 放在 `zt_core::paths::data_dir`；設定與按鍵放在 `zt_core::paths::settings_file`。這些檔案都先寫到旁邊的暫存檔、寫進磁碟後再換上（`zt_core::settings::write_atomically`），當機或斷電後只會是舊的或新的內容。設定檔無法讀取時（寫到一半、手動改壞）先用預設值，第一次變更設定前把原檔留成 `settings.unreadable.json`，不會直接蓋掉使用者的設定與按鍵。試打工作階段在同一份 `EngineData` 上開自己的引擎，個人資料只在記憶體中；對應到記憶體的檔案是共用的。
 
+## 檢查輸入法
+
+`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`）與 `probe_linux`（`fcitx5-setup status`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次，結果放在全域狀態供「關於 › 檢查輸入法」與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
+
 ## 介面規則
 
 - 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。

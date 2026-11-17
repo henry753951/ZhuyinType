@@ -116,6 +116,11 @@ fn main() {
     if let Some(code) = updater_mode() {
         std::process::exit(code);
     }
+    let mut arguments = std::env::args().skip(1);
+    if arguments.next().as_deref() == Some("--health") {
+        let fix = (arguments.next().as_deref() == Some("--fix")).then(|| arguments.next()).flatten();
+        std::process::exit(health::command_line(fix.as_deref()));
+    }
     let args = parse_args();
     let config = ServiceConfig {
         data_dir: args.data_dir.clone(),
