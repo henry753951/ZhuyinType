@@ -621,6 +621,9 @@ pub mod candidate {
         /// The selected row's candidate, and its number and annotation (`zt_panel::tokens::Colors`).
         pub selection_text: Hsla,
         pub selection_secondary: Hsla,
+        /// The accent (ZhuyinType's indigo, the system's, or high contrast's highlight), readable as text on the
+        /// surface: 標示自動修正's dotted marks, the word actions' 復原.
+        pub accent: Hsla,
         /// The window's border width: 1, or 2 in high contrast.
         pub stroke: f32,
         /// High contrast: an outline around the selected row.
@@ -672,6 +675,7 @@ pub mod candidate {
             success: hsla(shared.success),
             selection_text: hsla(shared.selection_text),
             selection_secondary: hsla(shared.selection_secondary),
+            accent: hsla(shared.accent),
             stroke: shared.stroke,
             selection_outline: shared.selection_outline.map(hsla),
             shadows: [shadow(pick(0.06, 0.3), 1., 2.), if dark { shadow(0.5, 8., 24.) } else { shadow(0.16, 6., 20.) }],
