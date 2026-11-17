@@ -4,6 +4,7 @@
 //! the conversion is the engine's lattice decoding, optionally reranked by a sentence model and adjusted by a
 //! character model, both supplied by the client as callbacks.
 
+mod association;
 mod candidates;
 mod scoring;
 #[cfg(test)]
@@ -19,7 +20,7 @@ use crate::api::{
     KeyResult, Presentation, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use crate::conversion::{CharacterScores, CompositionToken, ConversionCache, ConvertedWord, FixedWord, Request};
-use crate::engine::{CommittedWord, Engine, Match};
+use crate::engine::{CommittedWord, Engine, Match, Prediction};
 use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder, Syllable};
 use crate::keyboard;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
@@ -230,6 +231,10 @@ pub struct Composer {
     /// Text committed by the key being handled before what it composes (a full composition's head).
     sent: String,
     commit_listener: Option<CommitListener>,
+    /// 聯想詞 on (`association`).
+    associated_phrases: bool,
+    /// The next-word suggestions shown after a commit; empty when none are shown.  Never non-empty while composing.
+    predictions: Vec<Prediction>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -321,6 +326,8 @@ impl Composer {
             presentation: Presentation::default(),
             sent: String::new(),
             commit_listener: None,
+            associated_phrases: false,
+            predictions: vec![],
         }
     }
 
@@ -523,10 +530,15 @@ impl Composer {
         self.cursor <= self.tokens.len()
             && self.fixed.iter().all(|word| word.range.start <= word.range.end && word.range.end <= self.tokens.len())
             && (self.candidate_window.is_closed() || (self.candidate_window.valid_for(self.tokens.len())))
+            && (self.predictions.is_empty() || !self.has_composition())
     }
 
     /// Handles a key.
     pub fn handle(&mut self, key: KeyInput) -> KeyResult {
+        if let Some(result) = self.prediction_key(key) {
+            debug_assert!(self.invariants_hold());
+            return result;
+        }
         let mut result = self.process(key);
         // A full composition sent its head first: that text goes before anything else the key commits.
         let sent = std::mem::take(&mut self.sent);
@@ -537,6 +549,7 @@ impl Composer {
         if !result.handled && (key != KeyInput::Backspace || !self.follow_deletion()) {
             self.forget_context();
         }
+        self.offer_predictions(&result);
         debug_assert!(self.invariants_hold());
         result
     }
@@ -935,6 +948,9 @@ impl Composer {
 
     /// Picks candidate `index` of the open list.
     pub fn select_candidate(&mut self, index: usize) -> KeyResult {
+        if let Some(result) = self.select_prediction(index) {
+            return result;
+        }
         let Some(choice) = self.candidate_window.get(index).cloned() else {
             debug_assert!(self.invariants_hold());
             return KeyResult::CONSUMED;
@@ -1162,6 +1178,7 @@ impl Composer {
         self.notice = None;
         self.conversion_dirty = true;
         self.close_candidates();
+        self.predictions.clear();
         self.presentation = Presentation::default();
     }
 

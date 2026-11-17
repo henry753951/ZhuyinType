@@ -599,6 +599,18 @@ pub unsafe extern "C" fn zt_composer_set_freezes_on_pick(composer: *mut ZtCompos
     }
 }
 
+/// Next-word suggestions (聯想詞) after each commit: on or off (the default).
+///
+/// # Safety
+/// `composer` is a live handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_composer_set_associated_phrases(composer: *mut ZtComposer, on: bool) {
+    // SAFETY: live handle.
+    if let Some(composer) = unsafe { composer_mut(composer) } {
+        composer.set_associated_phrases(on);
+    }
+}
+
 /// A UTF-16 range.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -635,6 +647,8 @@ pub struct ZtCandidateList {
     pub tolerant: i8,
     /// Only the one character at the target.
     pub single_character: bool,
+    /// Next-word suggestions after a commit (聯想詞), not conversions: the window marks them.
+    pub associated: bool,
 }
 
 /// What to draw (Swift's `Presentation`).  Offsets are UTF-16 units.
@@ -690,6 +704,7 @@ pub unsafe extern "C" fn zt_composer_presentation(composer: *mut ZtComposer) -> 
             page_size: list.page_size(),
             tolerant: list.tolerant().map_or(-1, i8::from),
             single_character: list.single_character(),
+            associated: list.associated(),
         }))
     });
     Box::into_raw(Box::new(ZtPresentation {

@@ -8,6 +8,7 @@
 
 #[cfg(unix)]
 mod model_server;
+mod predict;
 mod usage;
 
 use std::collections::HashSet;
@@ -28,7 +29,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--predict N] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -58,6 +59,8 @@ struct Settings {
     report_list: bool,
     freeze_on_pick: bool,
     nbest: usize,
+    /// `--predict N`: print N next-word suggestions (聯想詞) for each line of standard input.
+    predict: usize,
     context: String,
     timing: bool,
     fuzzy: FuzzySounds,
@@ -118,6 +121,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         report_list: false,
         freeze_on_pick: true,
         nbest: 0,
+        predict: 0,
         context: String::new(),
         timing: false,
         fuzzy: FuzzySounds::NONE,
@@ -144,7 +148,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
             .unwrap_or_else(|| fail(USAGE));
         arguments.drain(..take);
     }
-    if arguments.len() != usize::from(!s.batch && !s.channel_table) {
+    if arguments.len() != usize::from(!s.batch && !s.channel_table && s.predict == 0) {
         fail(USAGE);
     }
     (s, arguments)
@@ -433,6 +437,7 @@ fn parse_misc_option(s: &mut Settings, option: &str, arguments: &[String]) -> Op
             let count = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
             s.nbest = count;
         }
+        "--predict" => s.predict = positive(next_value(arguments)).unwrap_or_else(|| fail(USAGE)),
         _ => return None,
     }
     Some(take)
@@ -894,6 +899,9 @@ fn main() {
     if s.channel_table {
         let path = s.config.reading_channel.clone().unwrap_or_else(|| fail("--channel-table needs --channel"));
         print_channel_table(&engine, &path);
+    }
+    if s.predict > 0 {
+        predict::run(&engine, s.predict, s.timing);
     }
     let engine = Arc::new(engine);
     let models = load_models(&s).unwrap_or_else(|e| fail(&e));
