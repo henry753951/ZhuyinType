@@ -455,7 +455,7 @@ impl CandidatePanel {
             );
         }
         if let Some(menu) = &layout.menu {
-            surface = surface.child(menu_element(menu, layout.row_radius, p, c, actions, self.on_menu.clone()));
+            surface = surface.child(menu_element(menu, layout.row_radius, c, actions, self.on_menu.clone()));
         }
         surface.children(edge(self.chrome, c, layout.radius)).into_any_element()
     }
@@ -487,7 +487,6 @@ fn undo_link(frame: Frame, size: f32, p: &Palette, actions: Option<ActionHandler
 fn menu_element(
     menu: &MenuLayout,
     radius: f32,
-    p: &Palette,
     c: &Colors,
     actions: Option<ActionHandler>,
     on_menu: Option<MenuHandler>,
