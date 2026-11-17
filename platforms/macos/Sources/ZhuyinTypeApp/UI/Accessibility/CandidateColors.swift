@@ -26,23 +26,20 @@ enum CandidateColors {
     }
 
     private struct Key: Hashable {
-        var setting: AccentColorSetting, accent: RGB, background: RGB, dark: Bool
+        var setting: AccentColorSetting, accent: RGB
     }
     private static var cache: [Key: Contrast.Selection] = [:]
 
-    /// The selection colours in `appearance`: the accent against the window's background colour there.
+    /// The selection colours in `appearance`: the accent there, with white text at 4.5:1 (`Contrast.selection`).
     static func selection(_ setting: AccentColorSetting, in appearance: NSAppearance) -> Contrast.Selection {
         let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         var accent = dark ? indigoDark : indigoLight
-        var background = dark ? RGB(hex: 0x323232) : RGB(hex: 0xECECEC)
         appearance.performAsCurrentDrawingAppearance {
             if setting == .system, let system = RGB(NSColor.controlAccentColor) { accent = system }
-            if let window = RGB(NSColor.windowBackgroundColor) { background = window }
         }
-        let key = Key(setting: setting, accent: accent, background: background, dark: dark)
+        let key = Key(setting: setting, accent: accent)
         if let known = cache[key] { return known }
-        let result = Contrast.selection(accent: accent, background: background, dark: dark,
-                                        fallback: dark ? indigoDark : indigoLight)
+        let result = Contrast.selection(accent: accent, fallback: indigoLight)
         cache[key] = result
         return result
     }

@@ -23,36 +23,24 @@ enum AccessibilitySelfTest {
             try expect(near(RGB(hex: 0x0A0A0A).luminance, (10.0 / 255) / 12.92, 1e-6), "the linear part of sRGB")
         }
 
-        test("contrast: the selection passes or falls back to the indigo") {
-            let light = RGB(hex: 0xECECEC), dark = RGB(hex: 0x323232)
-            func passes(_ s: Contrast.Selection, on background: RGB) -> Bool {
-                Contrast.ratio(s.fill, background) >= Contrast.fill && Contrast.ratio(s.fill, s.text) >= Contrast.text
+        test("contrast: white text at 4.5:1 on the selection, or the indigo") {
+            func passes(_ s: Contrast.Selection) -> Bool { s.text == .white && Contrast.ratio(s.fill, .white) >= Contrast.text }
+            // The light indigo passes as it is; the dark one is darkened a little (white on #7A8CF0 is 3.1:1).
+            let indigoLight = Contrast.selection(accent: CandidateColors.indigoLight, fallback: CandidateColors.indigoLight)
+            try expect(indigoLight.steps == 0 && !indigoLight.usedFallback && passes(indigoLight), "indigo (light): \(indigoLight)")
+            let indigoDark = Contrast.selection(accent: CandidateColors.indigoDark, fallback: CandidateColors.indigoLight)
+            try expect(indigoDark.steps > 0 && !indigoDark.usedFallback && passes(indigoDark), "indigo (dark): \(indigoDark)")
+            // macOS's accents in both appearances: darkened until white text passes, never black text.
+            for (name, hex) in [("blue", UInt32(0x007AFF)), ("dark blue", 0x0A84FF), ("yellow", 0xFFC600), ("graphite", 0x8C8C8C),
+                                ("pink", 0xF74F9E), ("purple", 0x6E3BD9)] {
+                let s = Contrast.selection(accent: RGB(hex: hex), fallback: CandidateColors.indigoLight)
+                try expect(!s.usedFallback && passes(s), "\(name): \(s)")
+                try expect(s.steps == 0 || s.fill.luminance < RGB(hex: hex).luminance, "\(name) was not darkened")
             }
-            // The indigo passes as it is, with white text in light and black text in dark.
-            let indigoLight = Contrast.selection(accent: CandidateColors.indigoLight, background: light, dark: false,
-                                                 fallback: CandidateColors.indigoLight)
-            try expect(indigoLight.steps == 0 && !indigoLight.usedFallback && indigoLight.text == .white
-                       && passes(indigoLight, on: light), "indigo (light): \(indigoLight)")
-            let indigoDark = Contrast.selection(accent: CandidateColors.indigoDark, background: dark, dark: true,
-                                                fallback: CandidateColors.indigoDark)
-            try expect(indigoDark.steps == 0 && indigoDark.text == .black && passes(indigoDark, on: dark), "indigo (dark): \(indigoDark)")
-            // Accents that fail in the light appearance are darkened until white text passes: blue a little, yellow and
-            // graphite more.
-            for (name, hex) in [("blue", UInt32(0x007AFF)), ("yellow", 0xFFC600), ("graphite", 0x8C8C8C), ("pink", 0xF74F9E)] {
-                let s = Contrast.selection(accent: RGB(hex: hex), background: light, dark: false, fallback: CandidateColors.indigoLight)
-                try expect(!s.usedFallback && s.steps > 0 && s.text == .white && passes(s, on: light), "\(name) (light): \(s)")
-                try expect(s.fill.luminance < RGB(hex: hex).luminance, "\(name) (light) was not darkened")
-            }
-            // In the dark appearance: lighter, with black text.
-            for (name, hex) in [("blue", UInt32(0x0A84FF)), ("graphite", 0x5E5E5E), ("purple", 0x6E3BD9)] {
-                let s = Contrast.selection(accent: RGB(hex: hex), background: dark, dark: true, fallback: CandidateColors.indigoDark)
-                try expect(!s.usedFallback && passes(s, on: dark), "\(name) (dark): \(s)")
-                try expect(s.steps == 0 || s.fill.luminance > RGB(hex: hex).luminance, "\(name) (dark) was not lightened")
-            }
-            // An accent that cannot pass in 6 steps: the fallback.
-            let white = Contrast.selection(accent: .white, background: .white, dark: false, fallback: CandidateColors.indigoLight)
+            // An accent that cannot pass even at its darkest usable shade: the indigo with white.
+            let white = Contrast.selection(accent: .white, fallback: CandidateColors.indigoLight)
             try expect(white.usedFallback && white.fill == CandidateColors.indigoLight && white.text == .white,
-                       "white on white did not fall back: \(white)")
+                       "white did not fall back: \(white)")
         }
 
         test("accent: both settings pass in light and dark, and the setting is stored as the other platforms do") {
@@ -63,8 +51,8 @@ enum AccessibilitySelfTest {
                     try expect(Contrast.ratio(s.fill, s.text) >= Contrast.text, "\(setting) in \(name.rawValue): \(s)")
                 }
                 let ours = CandidateColors.selection(.zhuyintype, in: appearance)
-                try expect(ours.fill == (name == .darkAqua ? CandidateColors.indigoDark : CandidateColors.indigoLight),
-                           "ZhuyinType 藍 in \(name.rawValue) is \(ours.fill)")
+                try expect(ours.text == .white && (name == .darkAqua || ours.fill == CandidateColors.indigoLight),
+                           "ZhuyinType 藍 in \(name.rawValue) is \(ours)")
             }
             let p = Preferences(defaults: MemorySettingsStorage())
             try expect(p.accentColor == .system && p.candidateStyle.accentColor == .system, "the default is not 跟隨系統")
