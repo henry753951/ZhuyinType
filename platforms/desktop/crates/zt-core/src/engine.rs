@@ -19,7 +19,7 @@ use zhuyin_core::api::{
     CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyInput, PunctuationKeys, PunctuationWidth,
     SpaceAction, TypoTolerance,
 };
-use zhuyin_core::composer::Composer;
+use zhuyin_core::composer::{CandidateAction, Composer};
 use zhuyin_core::engine::{Engine, EngineConfig, PhraseKey};
 
 use crate::keys::Key;
@@ -420,14 +420,76 @@ impl EngineSession {
     fn refresh(&mut self) {
         let page_size = self.values.number("candidatesPerPage").max(1.0) as usize;
         self.presentation = match &self.open {
-            Some(open) => Presentation::from_engine(
-                open.composer.presentation(),
-                &open.composer.options().selection_keys,
-                page_size,
-                open.engine.reading_channel().is_some(),
-            ),
+            Some(open) => {
+                let mut p = Presentation::from_engine(
+                    open.composer.presentation(),
+                    &open.composer.options().selection_keys,
+                    page_size,
+                    open.engine.reading_channel().is_some(),
+                );
+                p.row_actions = p
+                    .rows
+                    .iter()
+                    .map(|row| {
+                        CandidateAction::ALL
+                            .into_iter()
+                            .filter(|action| open.composer.candidate_action_available(*action, Some(row.index)))
+                            .fold(0, |bits, action| bits | 1 << action.raw_value())
+                    })
+                    .collect();
+                p
+            }
             None => Presentation::default(),
         };
+    }
+
+    // MARK: Word actions
+
+    /// Whether `action` applies to candidate `index` of the open list (`None`: the highlighted one; adding with no
+    /// list open takes the whole composition).
+    #[must_use]
+    pub fn word_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
+        self.open.as_ref().is_some_and(|open| open.composer.candidate_action_available(action, index))
+    }
+
+    /// Does `action` (see [`EngineSession::word_action_available`]); the notice it shows, or `None` when it does not
+    /// apply.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn perform_word_action(&mut self, action: CandidateAction, index: Option<usize>) -> Result<Option<String>> {
+        let notice = self.require()?.composer.perform_candidate_action(action, index);
+        if notice.is_some() {
+            self.personal_revision += 1;
+        }
+        self.committed.clear();
+        self.refresh();
+        Ok(notice)
+    }
+
+    /// The last word action can be undone.
+    #[must_use]
+    pub fn can_undo_word_action(&self) -> bool {
+        self.open.as_ref().is_some_and(|open| open.composer.can_undo_candidate_action())
+    }
+
+    /// Undoes the last word action; false when there is none.
+    ///
+    /// # Errors
+    /// When no engine is open.
+    pub fn undo_word_action(&mut self) -> Result<bool> {
+        let undone = self.require()?.composer.undo_candidate_action();
+        if undone {
+            self.personal_revision += 1;
+        }
+        self.refresh();
+        Ok(undone)
+    }
+
+    /// Shows or hides the notice's 「復原」 and the word actions' tip (the controller decides both).
+    pub fn set_word_overlay(&mut self, undo: bool, tip: Option<String>) {
+        self.presentation.undo = undo;
+        self.presentation.tip = tip;
     }
 
     fn require(&mut self) -> Result<&mut Open> {
@@ -772,6 +834,25 @@ impl EngineSession {
         self.engine().map_or_else(Vec::new, |engine| {
             engine.excluded_entries().into_iter().map(|key| Phrase::from_key(key, 0.0)).collect()
         })
+    }
+
+    /// Words never suggested (不要再推薦).
+    #[must_use]
+    pub fn blocked_entries(&self) -> Vec<Phrase> {
+        self.engine().map_or_else(Vec::new, |engine| {
+            engine.blocked_entries().into_iter().map(|key| Phrase::from_key(key, 0.0)).collect()
+        })
+    }
+
+    /// Suggests a blocked word again.
+    ///
+    /// # Errors
+    /// When the arguments are invalid or the change cannot be saved.
+    pub fn unblock(&mut self, word: &str, reading: &str) -> Result<()> {
+        self.require()?;
+        validate_phrase(word, reading)?;
+        self.require()?.engine.unblock(word, reading);
+        self.personal_changed()
     }
 
     /// Adds a user phrase.

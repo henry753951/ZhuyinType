@@ -13,6 +13,7 @@ use anyhow::{Result, anyhow, bail};
 use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 use zhuyin_core::api::KeyInput;
+use zhuyin_core::composer::CandidateAction;
 
 use crate::keys::{code, modifier};
 use crate::settings::Settings;
@@ -44,6 +45,9 @@ pub enum Action {
     Neighbour(i32),
     /// 標點全半形.
     TogglePunctuationWidth,
+    /// 不要再推薦, 忘記這個選字, 加入自訂詞: a word action on the highlighted candidate (or, adding, the whole
+    /// composition).
+    Word(CandidateAction),
 }
 
 /// One rebindable command.
@@ -96,7 +100,7 @@ const fn b(key: i32, modifiers: u32) -> Binding {
 }
 
 static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
-    use modifier::{ALT, SHIFT};
+    use modifier::{ALT, CONTROL, SHIFT};
     let command = |id, label, title, page, feature, required, defaults: &[Binding], action| Command {
         id,
         label,
@@ -237,6 +241,37 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             false,
             &[b(code::SPACE, ALT)],
             Action::Input(KeyInput::ShiftSpace),
+        ),
+        // The word actions (macOS `ShortcutCommand` with the same ids); Ctrl+Z undoes them for 5 s.
+        command(
+            "blockCandidate",
+            "不要再推薦",
+            "不要再推薦選取的字詞",
+            "choosing",
+            None,
+            false,
+            &[b(code::DELETE, CONTROL)],
+            Action::Word(CandidateAction::Block),
+        ),
+        command(
+            "forgetCandidate",
+            "忘記這個選字",
+            "忘記選過這個字詞",
+            "choosing",
+            None,
+            false,
+            &[b(code::DELETE, CONTROL | SHIFT)],
+            Action::Word(CandidateAction::Forget),
+        ),
+        command(
+            "addCandidatePhrase",
+            "加入自訂詞",
+            "把選取的字詞或整段組字加入自訂詞",
+            "choosing",
+            None,
+            false,
+            &[b(code::RETURN, CONTROL)],
+            Action::Word(CandidateAction::AddPhrase),
         ),
     ]
 });

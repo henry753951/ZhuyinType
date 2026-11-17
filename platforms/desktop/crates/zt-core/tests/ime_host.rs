@@ -389,3 +389,30 @@ fn duplicate_sequence_and_oversized_frames_disconnect() {
     client.send_raw("not json").unwrap();
     assert!(client.read_reply().is_err());
 }
+
+#[test]
+fn word_actions_from_the_window_the_adapter_draws() {
+    let mut f = Fixture::new();
+    assert!(ok(&f.request("focus", json!({"secure": false, "panel": true}))));
+    f.keys("su3cl3");
+    let reply = f.key(code::DOWN);
+    let row = &reply["panel"]["model"]["rows"][0];
+    assert_eq!(row["text"], "你好");
+    assert_eq!(row["actions"], 0b101, "不要再推薦 and 加入自訂詞; nothing learned to forget");
+    assert!(!ok(&f.request("action", json!({"action": "block"}))), "block needs a row");
+    let blocked = f.request("action", json!({"action": "block", "value": 0}));
+    assert!(ok(&blocked));
+    assert_eq!(blocked["panel"]["model"]["notice"], "不再推薦「你好」");
+    assert_eq!(blocked["panel"]["model"]["undo"], true);
+    assert!(f.service.blocked_entries().iter().any(|p| p.word == "你好"));
+    let undone = f.request("action", json!({"action": "undo"}));
+    assert!(ok(&undone));
+    assert_eq!(undone["panel"]["model"]["notice"], "已復原");
+    assert!(undone["panel"]["model"].get("undo").is_none(), "left out when false");
+    assert!(f.service.blocked_entries().is_empty());
+    // The app's own window: the same through popup_action.
+    f.service.popup_action(PopupAction::Word(zhuyin_core::composer::CandidateAction::Block, 0));
+    assert!(!f.service.blocked_entries().is_empty());
+    f.service.popup_action(PopupAction::UndoWordAction);
+    assert!(f.service.blocked_entries().is_empty());
+}

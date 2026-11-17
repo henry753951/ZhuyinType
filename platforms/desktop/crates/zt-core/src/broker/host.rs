@@ -4,6 +4,8 @@
 
 use serde_json::{Map, Value, json};
 
+use zhuyin_core::composer::CandidateAction;
+
 use crate::controller::{ControllerEvent, InputController};
 use crate::keys::{Key, ShiftSide, code, modifier};
 use crate::presentation::Rect;
@@ -21,6 +23,8 @@ pub enum Effect {
         text: &'static str,
     },
     Boundary(i32),
+    /// A list showed the word actions' tip: count it (`wordActionHintCount`).
+    WordActionTip,
 }
 
 const OPS: &[&str] = &["focus", "key", "poll", "blur", "reset", "secure", "context", "mode", "action"];
@@ -51,6 +55,8 @@ enum Action {
     Single,
     Corrections,
     Zhuyin,
+    Word(CandidateAction, usize),
+    Undo,
 }
 
 /// The broker's state: who has focus, and the text waiting for its next reply.
@@ -140,6 +146,7 @@ impl Host {
                     effects.push(Effect::Toast { text: if full { "全" } else { "半" } });
                 }
                 ControllerEvent::Boundary(direction) => effects.push(Effect::Boundary(direction)),
+                ControllerEvent::WordActionTip if self.focused() => effects.push(Effect::WordActionTip),
                 _ => {}
             }
         }
@@ -289,6 +296,15 @@ impl Host {
                 Some("single") => Action::Single,
                 Some("corrections") => Action::Corrections,
                 Some("zhuyin") => Action::Zhuyin,
+                Some("undo") => Action::Undo,
+                Some(name @ ("block" | "forget" | "addPhrase")) => {
+                    let action = match name {
+                        "block" => CandidateAction::Block,
+                        "forget" => CandidateAction::Forget,
+                        _ => CandidateAction::AddPhrase,
+                    };
+                    Action::Word(action, value().filter(|row| *row >= 0).ok_or("動作格式無效。")? as usize)
+                }
                 _ => return Err("動作格式無效。"),
             })
         } else {
@@ -376,6 +392,8 @@ impl Host {
                 Action::Single => self.toggle_single(controller),
                 Action::Corrections => self.toggle_corrections(controller),
                 Action::Zhuyin => self.type_reading(controller),
+                Action::Word(action, row) => self.word_action(controller, action, row),
+                Action::Undo => self.undo_word_action(controller),
             },
             "reset" => {
                 self.commit.clear();
@@ -431,6 +449,22 @@ impl Host {
     pub fn toggle_corrections(&mut self, controller: &mut InputController) {
         if self.visible(controller) {
             controller.toggle_corrections();
+        }
+    }
+
+    /// A word action on row `row` of the current page (the candidate window's menu).
+    pub fn word_action(&mut self, controller: &mut InputController, action: CandidateAction, row: usize) {
+        let p = controller.presentation();
+        if self.visible(controller) && row < p.rows.len() {
+            let index = p.rows[row].index;
+            controller.word_action(action, Some(index));
+        }
+    }
+
+    /// The notice's 「復原」.
+    pub fn undo_word_action(&mut self, controller: &mut InputController) {
+        if self.visible(controller) {
+            controller.undo_word_action();
         }
     }
 
