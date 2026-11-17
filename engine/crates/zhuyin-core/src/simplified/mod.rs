@@ -1,7 +1,7 @@
 //! 簡體 output: the composition, the candidates and the committed text are shown in simplified characters while the
 //! engine keeps converting, learning and matching in traditional ones (only what reaches the screen changes).
 //!
-//! The table is OpenCC's `t2s` applied to one character at a time (`tools/simplified_table.py`, `table.txt`):
+//! The table is `OpenCC`'s `t2s` applied to one character at a time (`tools/simplified_table.py`, `table.txt`):
 //! a character with a different simplified form is replaced by its first one, so 乾 becomes 干 even in 乾坤 —
 //! there is no phrase table.  Every pair is one BMP character to one BMP character, so [`to_simplified`] never
 //! changes a string's length in UTF-16 units or in characters: cursor positions and clause ranges computed on the
