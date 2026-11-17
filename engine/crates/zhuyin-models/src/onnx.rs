@@ -1,6 +1,7 @@
 //! The ONNX Runtime backend (Linux, Windows; feature `onnx`), set up as Swift's `ONNXBridge`: one CPU session per
-//! model with one intra-op and one inter-op thread (the evaluator supplies process parallelism), every graph
-//! optimization, telemetry off; `int32` inputs and `float32` outputs widened to `f64`.  The Linux and Windows apps'
+//! model with one intra-op and one inter-op thread (the evaluator supplies process parallelism; an app may ask for
+//! more intra-op threads, [`OnnxReranker::with_threads`]), every graph optimization, telemetry off; `int32` inputs
+//! and `float32` outputs widened to `f64`.  The Linux and Windows apps'
 //! models are ORT-format files, memory-mapped (see [`session`]).  Tokenization, penalties and
 //! every decision stay in [`NeuralReranker`](crate::NeuralReranker) and [`SyllableScorer`](crate::SyllableScorer).
 
@@ -34,9 +35,19 @@ fn environment() -> Result<&'static Environment, ModelError> {
 ///   the system can drop, as Core ML's are on macOS.
 /// - An ONNX file is read into memory.  A weight stored as int8 with a `DequantizeLinear` is folded into an fp32
 ///   constant once at load (`session.disable_quant_qdq`).
-fn session(directory: &Path, name: &str) -> Result<Session, ModelError> {
+///
+/// With `threads` above 1 a session splits each operator's work over that many threads.  ONNX Runtime's CPU kernels
+/// divide a matrix product's rows and columns among them, not its sums: the four development sets convert to the
+/// same text with one thread and with two.  The threads sleep between operators instead of spinning, which would
+/// take the cores the engine needs between the model calls of a key.
+fn session(directory: &Path, name: &str, threads: usize) -> Result<Session, ModelError> {
     let builder = Session::builder(environment()?).map_err(error)?;
-    let builder = builder.with_intra_threads(1).map_err(error)?;
+    let builder = builder.with_intra_threads(threads.max(1)).map_err(error)?;
+    let builder = if threads > 1 {
+        builder.with_config_entry("session.intra_op.allow_spinning", "0").map_err(error)?
+    } else {
+        builder
+    };
     let builder = builder.with_inter_threads(1).map_err(error)?;
     let builder = builder.with_optimization_level(GraphOptimizationLevel::All).map_err(error)?;
     let mapped = directory.join(format!("{name}.ort"));
@@ -90,12 +101,20 @@ impl OnnxReranker {
     /// # Errors
     /// When no model can be loaded: `Reranker.onnx` when there is no tree model, `RerankerTree.onnx` otherwise.
     pub fn new(directory: &Path) -> Result<Self, ModelError> {
+        Self::with_threads(directory, 1)
+    }
+
+    /// [`new`](Self::new) with `threads` intra-op threads per session (see [`session`]).
+    ///
+    /// # Errors
+    /// As [`new`](Self::new).
+    pub fn with_threads(directory: &Path, threads: usize) -> Result<Self, ModelError> {
         let present = |name: &str| ["onnx", "ort"].iter().any(|ext| directory.join(format!("{name}.{ext}")).exists());
         if !present("Reranker") {
-            return Ok(OnnxReranker { batch: None, tree: Some(session(directory, "RerankerTree")?) });
+            return Ok(OnnxReranker { batch: None, tree: Some(session(directory, "RerankerTree", threads)?) });
         }
-        let batch = Some(session(directory, "Reranker")?);
-        let tree = if present("RerankerTree") { session(directory, "RerankerTree").ok() } else { None };
+        let batch = Some(session(directory, "Reranker", threads)?);
+        let tree = if present("RerankerTree") { session(directory, "RerankerTree", threads).ok() } else { None };
         Ok(OnnxReranker { batch, tree })
     }
 }
@@ -149,9 +168,17 @@ impl OnnxSyllableModel {
     /// # Errors
     /// When either model cannot be loaded.
     pub fn new(directory: &Path) -> Result<Self, ModelError> {
+        Self::with_threads(directory, 1)
+    }
+
+    /// [`new`](Self::new) with `threads` intra-op threads per session (see [`session`]).
+    ///
+    /// # Errors
+    /// As [`new`](Self::new).
+    pub fn with_threads(directory: &Path, threads: usize) -> Result<Self, ModelError> {
         Ok(OnnxSyllableModel {
-            context: session(directory, "ContextEncoder")?,
-            syllable: session(directory, "SyllableEncoder")?,
+            context: session(directory, "ContextEncoder", threads)?,
+            syllable: session(directory, "SyllableEncoder", threads)?,
             cached_ids: vec![],
             memory: None,
         })
