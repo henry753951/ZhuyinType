@@ -494,7 +494,8 @@ impl Host {
             }
             self.inline_preedit = flag("inlinePreedit").unwrap_or(true);
             let asked = flag("panel").unwrap_or(false);
-            self.panel_for_screen_reader = !asked && cfg!(target_os = "linux") && crate::system_look::screen_reader();
+            self.panel_for_screen_reader =
+                !asked && cfg!(target_os = "linux") && crate::system_look::screen_reader_if_known();
             self.draws_panel = asked || self.panel_for_screen_reader;
         }
         if let Some(secure) = flag("secure") {

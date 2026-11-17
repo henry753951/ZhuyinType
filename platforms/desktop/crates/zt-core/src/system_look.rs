@@ -58,6 +58,14 @@ pub fn screen_reader() -> bool {
     state().screen_reader
 }
 
+/// [`screen_reader`] as last read, without reading: false until [`watch`] (or another call) has read it once.  For
+/// paths with a deadline, such as a field's `focus` (the Fcitx addon waits 80 ms for the reply): the first read runs
+/// `gdbus` and `gsettings`, which take far longer where no session bus answers.
+#[must_use]
+pub fn screen_reader_if_known() -> bool {
+    STATE.lock().ok().and_then(|cached| *cached).is_some_and(|state| state.screen_reader)
+}
+
 /// Calls `changed` (on its own thread) whenever the accent, high contrast or the screen reader changes.  Call once.
 pub fn watch(changed: impl Fn() + Send + 'static) {
     let spawned = std::thread::Builder::new().name("zt-system-look".into()).spawn(move || {
