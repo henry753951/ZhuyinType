@@ -134,6 +134,11 @@ impl Reservation {
     }
 }
 
+/// Wakes the accepting thread (the broker is stopping, `stop` is set).
+pub(super) fn wake(path: &str) {
+    let _ = connect(path);
+}
+
 pub(super) struct Listener {
     path: PathBuf,
     _lock: File,

@@ -261,6 +261,11 @@ fn an_adapter_that_draws_the_window_gets_it_in_its_replies() {
     let reply = f.request("key", shift(true));
     assert_eq!(reply["toast"], "英");
     assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. })));
+    // A switch outside a request, and after the blur, never makes the app draw a second badge.
+    f.service.with_controller(|controller| controller.set_english(false));
+    f.request("blur", json!({}));
+    f.service.with_controller(|controller| controller.set_english(true));
+    assert!(!f.ui_events().iter().any(|e| matches!(e, UiEvent::Toast { .. } | UiEvent::Boundary(_))));
 }
 
 #[test]
