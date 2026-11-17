@@ -94,6 +94,14 @@ enum EngineHost {
     /// the setup wizard's practice field.
     static func lexiconURL() -> URL? { sources()?.lexicon }
 
+    /// What a load would use, for 檢查輸入法: the folder holding the lexicon (nil without one) and which of the models
+    /// beside it or in their own folders are there.
+    static func dataFiles() -> (root: URL?, chat: Bool, channel: Bool, reranker: Bool, characters: Bool) {
+        guard let sources = sources() else { return (nil, false, false, false, false) }
+        return (sources.lexicon.deletingLastPathComponent(), sources.chat != nil, sources.channel != nil,
+                sources.reranker != nil, sources.characters != nil)
+    }
+
     /// Loads everything in the background and swaps it in on the main thread.  A request while loading runs once more
     /// afterwards.
     static func reload() {

@@ -8,7 +8,7 @@ import ZhuyinEngine
 
 /// Pages one level down from a sidebar page.
 enum SettingsSubpage: String, CaseIterable, Identifiable {
-    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources
+    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources, health
     var id: String { rawValue }
 
     var pane: SettingsPane {
@@ -18,7 +18,7 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .learnedWords, .phrases: return .words
         case .performance: return .analytics
         case .apps: return .advanced
-        case .sources: return .about
+        case .sources, .health: return .about
         }
     }
 
@@ -33,6 +33,7 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .performance: return "效能"
         case .apps: return "在候選字視窗顯示組字的 App"
         case .sources: return "授權與資料來源"
+        case .health: return "檢查輸入法"
         }
     }
 }
@@ -195,6 +196,7 @@ struct SettingsPaneView: View {
         case .performance: PerformancePage()
         case .apps: AppsPage(model: model)
         case .sources: SourcesPane()
+        case .health: HealthPage()
         }
     }
 }

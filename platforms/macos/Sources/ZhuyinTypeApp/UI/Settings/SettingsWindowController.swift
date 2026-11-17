@@ -345,6 +345,9 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
     /// Section headers and panes.
     private let rows: [Row] = SettingsPane.groups.flatMap { [Row.header($0.title)] + $0.panes.map(Row.pane) }
     private var icons: [SettingsPane: NSImage] = [:]
+    /// 檢查輸入法's badge on 關於, redrawn when the checks change.
+    private var healthObserver: AnyCancellable?
+    private static let badgeID = NSUserInterfaceItemIdentifier("HealthBadge")
 
     override func loadView() {
         let scroll = NSScrollView()
@@ -364,6 +367,12 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         scroll.documentView = table
         view = scroll
         SettingsPane.allCases.forEach { icons[$0] = $0.icon }
+        // After the change is published (`$checks` sends before it), redraw 關於's row.
+        healthObserver = HealthMonitor.shared.$checks.receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self, let row = self.rows.firstIndex(of: .pane(.about)) else { return }
+            self.table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
+        }
+        HealthMonitor.shared.refreshIfNeeded()
     }
 
     func select(_ pane: SettingsPane) {
@@ -406,7 +415,13 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
             let text = NSTextField(labelWithString: "")
             text.font = .systemFont(ofSize: NSFont.systemFontSize)
             text.lineBreakMode = .byTruncatingTail
-            for view in [image, text] as [NSView] {
+            let badge = NSImageView(image: NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                   accessibilityDescription: "有項目需要處理") ?? NSImage())
+            badge.identifier = Self.badgeID
+            badge.contentTintColor = .systemOrange
+            badge.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+            badge.isHidden = true
+            for view in [image, text, badge] as [NSView] {
                 view.translatesAutoresizingMaskIntoConstraints = false
                 cell.addSubview(view)
             }
@@ -418,6 +433,9 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
                 text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8),
                 text.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                badge.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                badge.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                text.trailingAnchor.constraint(lessThanOrEqualTo: badge.leadingAnchor, constant: -4),
             ])
             cell.imageView = image
             cell.textField = text
@@ -425,6 +443,7 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         }()
         cell.imageView?.image = icons[pane]
         cell.textField?.stringValue = pane.title
+        cell.subviews.first { $0.identifier == Self.badgeID }?.isHidden = !(pane == .about && HealthMonitor.shared.needsAttention)
         return cell
     }
 

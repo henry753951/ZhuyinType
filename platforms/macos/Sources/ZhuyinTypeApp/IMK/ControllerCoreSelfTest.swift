@@ -1773,6 +1773,9 @@ enum ControllerCoreSelfTest {
         // The setup wizard's practice field (UI/Wizard/Practice).
         PracticeSelfTest.run(lexiconURL: lexiconURL, test: test)
 
+        // 關於 › 檢查輸入法 (Health).
+        HealthSelfTest.run(test: test)
+
         test("wizard: a choice reaches the practice field on its page at once — the same field, its composition kept") {
             _ = NSApplication.shared
             let saved = Preferences.shared
