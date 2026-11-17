@@ -76,6 +76,9 @@ pub struct Host {
     draws_panel: bool,
     client_app: String,
     anchor: Rect,
+    /// A blur asked for the personal data to be written; the service does it after answering, off its lock
+    /// (`take_flush`).
+    flush: bool,
     /// 在候選字視窗顯示組字的 App (executable names, compared without case).
     pub popup_apps: Vec<String>,
 }
@@ -91,6 +94,7 @@ impl Default for Host {
             draws_panel: false,
             client_app: String::new(),
             anchor: Rect::default(),
+            flush: false,
             popup_apps: Vec::new(),
         }
     }
@@ -114,6 +118,20 @@ impl Host {
     #[must_use]
     pub fn draws_panel(&self) -> bool {
         self.focused() && self.draws_panel
+    }
+
+    /// The field last focused belongs to an adapter that draws the candidate window and the 中/英 badge itself
+    /// (even after its blur): the app never draws them for it.
+    #[must_use]
+    pub fn adapter_draws_panel(&self) -> bool {
+        self.draws_panel
+    }
+
+    /// A blur happened since the last call: the personal data should be written now.  The service does that after
+    /// the reply, without holding its lock, so the blur (TSF has 200 ms for it) and every other field's keys never
+    /// wait for the disk.
+    pub fn take_flush(&mut self) -> bool {
+        std::mem::take(&mut self.flush)
     }
 
     fn popup_app(&self) -> bool {
@@ -439,9 +457,7 @@ impl Host {
         if op == "blur" {
             self.active = None;
             self.context.clear();
-            if let Err(error) = controller.session_mut().flush() {
-                log::warn!("blur: {error}");
-            }
+            self.flush = true;
         }
         Ok((reply, effects))
     }

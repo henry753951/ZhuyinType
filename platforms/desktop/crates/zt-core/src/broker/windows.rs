@@ -4,6 +4,10 @@
 //!
 //! The TSF text service in this process (the app's own text fields) talks to this pipe too; the broker's threads
 //! never wait for the UI thread, so that cannot deadlock.
+//!
+//! Several threads accept connections, each waiting on an instance of its own, and each makes its next instance
+//! before it hands a connected one off: there are always free instances listening, so many applications connecting
+//! at once (at sign-in) do not find the pipe busy.
 #![allow(unsafe_code)]
 
 use std::ffi::c_void;
@@ -26,7 +30,7 @@ use windows_sys::Win32::Security::{GetTokenInformation, SECURITY_ATTRIBUTES, TOK
 use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_ACCESS_DUPLEX};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE,
-    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
+    PIPE_UNLIMITED_INSTANCES, PIPE_WAIT, WaitNamedPipeW,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -147,50 +151,88 @@ impl Reservation {
 
     pub(super) fn listen(self, handler: Arc<dyn Handler>, stop: Arc<AtomicBool>) -> Result<Listener> {
         let sid = user_sid().ok_or_else(|| anyhow!("無法取得使用者識別碼。"))?;
-        let descriptor = Descriptor::current_user(&sid)?;
-        let name = wide(&self.endpoint);
-        let first = descriptor.create(&name, true)?;
-        std::thread::Builder::new().name("zt-broker".into()).spawn(move || {
-            let mut pipe = Some(first);
-            loop {
-                let instance = match pipe.take() {
-                    Some(instance) => instance,
-                    None => match descriptor.create(&name, false) {
-                        Ok(instance) => instance,
-                        // Out of resources for a moment: try again.  Giving up would leave the input method dead
-                        // until the next sign-in, with this process still holding the lock no other copy can take.
-                        Err(error) => {
-                            log::warn!("broker: {error}");
-                            if stop.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                            continue;
-                        }
-                    },
-                };
-                // SAFETY: `instance` is a pipe handle this thread owns; a blocking connect.
-                let connected = unsafe { ConnectNamedPipe(instance.0, std::ptr::null_mut()) } != 0
-                    // SAFETY: reads the calling thread's last error.
-                    || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
-                if stop.load(Ordering::SeqCst) {
-                    break;
-                }
-                if !connected {
+        let descriptor = Arc::new(Descriptor::current_user(&sid)?);
+        let name: Arc<[u16]> = wide(&self.endpoint).into();
+        // The first instance here, so a name another process serves fails the start.
+        let mut first = Some(descriptor.create(&name, true)?);
+        for _ in 0..ACCEPTORS {
+            let pipe = first.take();
+            let (handler, stop, descriptor, name) = (handler.clone(), stop.clone(), descriptor.clone(), name.clone());
+            std::thread::Builder::new()
+                .name("zt-broker".into())
+                .spawn(move || accept(pipe, &descriptor, &name, &handler, &stop))?;
+        }
+        Ok(Listener { _lock: self.lock })
+    }
+}
+
+/// Threads accepting connections, each with an instance of its own listening.
+const ACCEPTORS: usize = 3;
+
+/// Accepts connections until `stop`: waits on `pipe` (or a new instance), makes the next instance, then hands the
+/// connected one to a thread of its own.
+fn accept(
+    mut pipe: Option<Pipe>,
+    descriptor: &Descriptor,
+    name: &[u16],
+    handler: &Arc<dyn Handler>,
+    stop: &AtomicBool,
+) {
+    loop {
+        let instance = match pipe.take() {
+            Some(instance) => instance,
+            None => match descriptor.create(name, false) {
+                Ok(instance) => instance,
+                // Out of resources for a moment: try again.  Giving up would leave the input method dead until the
+                // next sign-in, with this process still holding the lock no other copy can take.
+                Err(error) => {
+                    log::warn!("broker: {error}");
+                    if stop.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                     continue;
                 }
-                let file = instance.into_file();
-                let handler = handler.clone();
-                let spawned = std::thread::Builder::new().name("zt-broker-connection".into()).spawn(move || {
-                    let Ok(writer) = file.try_clone() else { return };
-                    super::serve(&handler, file, writer);
-                });
-                if let Err(error) = spawned {
-                    log::warn!("broker: {error}");
+            },
+        };
+        // SAFETY: `instance` is a pipe handle this thread owns; a blocking connect.
+        let connected = unsafe { ConnectNamedPipe(instance.0, std::ptr::null_mut()) } != 0
+            // SAFETY: reads the calling thread's last error.
+            || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        if !connected {
+            continue;
+        }
+        // The next instance listens before this one is handed off; if it cannot be made now, the loop tries again.
+        pipe = descriptor.create(name, false).ok();
+        let file = instance.into_file();
+        let handler = handler.clone();
+        let spawned = std::thread::Builder::new().name("zt-broker-connection".into()).spawn(move || {
+            let Ok(writer) = file.try_clone() else { return };
+            super::serve(&handler, file, writer);
+        });
+        if let Err(error) = spawned {
+            log::warn!("broker: {error}");
+        }
+    }
+}
+
+/// Wakes every accepting thread (the broker is stopping, `stop` is set): one connection each.  An instance may be
+/// between connections for a moment, so a busy pipe is waited for briefly.
+pub(super) fn wake(endpoint: &str) {
+    let path = wide(endpoint);
+    for _ in 0..ACCEPTORS {
+        for _ in 0..10 {
+            match connect(endpoint) {
+                Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {
+                    // SAFETY: `path` is NUL-terminated.
+                    unsafe { WaitNamedPipeW(path.as_ptr(), 20) };
                 }
+                _ => break,
             }
-        })?;
-        Ok(Listener { _lock: self.lock })
+        }
     }
 }
 
@@ -223,8 +265,10 @@ impl Drop for Pipe {
 /// A security descriptor that grants the current user (and nobody else) full access.
 struct Descriptor(*mut c_void);
 
-// SAFETY: the descriptor is immutable once made; it is only read by CreateNamedPipeW.
+// SAFETY: the descriptor is immutable once made; it is only read by CreateNamedPipeW, from any thread.
 unsafe impl Send for Descriptor {}
+// SAFETY: as above; nothing writes it after it is made.
+unsafe impl Sync for Descriptor {}
 
 impl Descriptor {
     fn current_user(sid: &str) -> Result<Self> {

@@ -121,6 +121,22 @@ pub enum PopupAction {
     UndoWordAction,
 }
 
+/// Writes the personal data on a thread of its own: a blur's reply goes out at once and the service's lock is not
+/// held while the disk works.  Written all the same (the engine's writer also writes 150 ms after any change, and
+/// the app writes everything when it quits).
+fn flush_in_background(engine: Arc<Engine>) {
+    fn write(engine: &Engine) {
+        if let Err(error) = engine.flush_personal_data() {
+            log::warn!("blur: personal data not written: {error}");
+        }
+    }
+    let worker = engine.clone();
+    if std::thread::Builder::new().name("zt-flush".into()).spawn(move || write(&worker)).is_err() {
+        // No thread to spare: write here rather than not at all.
+        write(&engine);
+    }
+}
+
 /// The settings key of 在候選字視窗顯示組字的 App (a list of executable names).
 pub const POPUP_APPS_KEY: &str = "popupCompositionApps";
 
@@ -311,7 +327,12 @@ impl Service {
             let result = work(&mut core);
             let Core { controller, host, popup, .. } = &mut *core;
             controller.sync_word_overlay();
-            let effects = host.drain(controller);
+            let mut effects = host.drain(controller);
+            if host.adapter_draws_panel() {
+                // Its adapter shows the badge and the list's bounce itself, in the field's application; the app
+                // drawing them too would show two.  The word actions' tip is only counted, never shown.
+                effects.retain(|effect| matches!(effect, Effect::ShowSettings(_) | Effect::WordActionTip));
+            }
             // An adapter that draws the window itself gets it in its replies; the app's own window stays hidden.
             let next = (host.visible(controller) && !host.draws_panel()).then(|| PopupState {
                 presentation: controller.output_presentation().into_owned(),
@@ -377,11 +398,17 @@ impl Service {
         }
         let mut effects = Vec::new();
         let mut draws = false;
+        let mut own_badge = false;
+        let mut flush = None;
         let mut reply = self.with_core(|core| {
             let (mut reply, found) = core.host.dispatch(&mut core.controller, connection, request);
             core.controller.sync_word_overlay();
             effects = found;
             effects.extend(core.host.drain(&mut core.controller));
+            if core.host.take_flush() {
+                flush = core.controller.session().engine().cloned();
+            }
+            own_badge = core.host.adapter_draws_panel();
             draws = core.host.draws_panel() && reply.get("ok") == Some(&Value::Bool(true));
             if draws {
                 let panel = if core.host.visible(&core.controller) {
@@ -422,8 +449,14 @@ impl Service {
                 Effect::QuickPanel => false,
                 Effect::ShowSettings(_) | Effect::WordActionTip => true,
             });
+        } else if own_badge {
+            // A blur's, say: that adapter draws its badge itself, never the app (the tip is only counted).
+            effects.retain(|effect| matches!(effect, Effect::ShowSettings(_) | Effect::WordActionTip));
         }
         self.emit(effects, None);
+        if let Some(engine) = flush {
+            flush_in_background(engine);
+        }
         reply
     }
 
