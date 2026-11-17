@@ -130,15 +130,16 @@ fn main() {
             (None, None, Some(format!("{error:#}")))
         }
     };
-    #[cfg(target_os = "linux")]
-    if service.is_some() && !args.no_broker {
-        std::thread::spawn(linux_enable_fcitx);
-    }
     // GPUI connects to the input method (XIM, the Wayland text-input) once, when it starts; at login autostart may
-    // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.
+    // run before Fcitx 5 is up, and the app's own fields would then go without it for the session.  Adding ZhuyinType
+    // to Fcitx's input methods waits as well: a profile edited while Fcitx starts is lost when it saves its own.
     #[cfg(target_os = "linux")]
     if args.background {
         wait_for_fcitx(std::time::Duration::from_secs(15));
+    }
+    #[cfg(target_os = "linux")]
+    if service.is_some() && !args.no_broker {
+        std::thread::spawn(linux_enable_fcitx);
     }
     let settings = service.as_ref().map_or_else(
         || Settings::open(args.settings_file.clone().or_else(zt_core::paths::settings_file)),
@@ -246,10 +247,16 @@ fn system_update() -> i32 {
     }
 }
 
-/// Adds ZhuyinType to the user's Fcitx 5 input methods when it is not there yet, with the helper the package installs
-/// (`packaging/linux/fcitx5-setup`).  Runs as the signed-in user, off the UI thread; keeps every existing entry.
+/// Adds ZhuyinType to the user's Fcitx 5 input methods once, with the helper the package installs
+/// (`packaging/linux/fcitx5-setup`).  Runs as the signed-in user, off the UI thread; keeps every existing entry.  Once
+/// it is there a marker in the personal data folder says so: someone who later removes ZhuyinType from Fcitx's input
+/// methods keeps it removed.
 #[cfg(target_os = "linux")]
 fn linux_enable_fcitx() {
+    let marker = zt_core::paths::data_dir().map(|dir| dir.join("fcitx5-added"));
+    if marker.as_ref().is_some_and(|marker| marker.exists()) {
+        return;
+    }
     let exe = std::env::current_exe().ok();
     let candidates = [
         exe.as_ref().and_then(|exe| exe.parent()).map(|bin| bin.join("../lib/zhuyintype/fcitx5-setup")),
@@ -258,13 +265,31 @@ fn linux_enable_fcitx() {
     let Some(helper) = candidates.into_iter().flatten().find(|path| path.is_file()) else { return };
     let Ok(status) = std::process::Command::new(&helper).arg("status").output() else { return };
     let status = String::from_utf8_lossy(&status.stdout);
-    if status.lines().any(|line| line == "profile=added") || status.lines().any(|line| line == "fcitx5=missing") {
+    if status.lines().any(|line| line == "fcitx5=missing") {
         return;
     }
-    match std::process::Command::new(&helper).arg("enable").status() {
-        Ok(code) if code.success() => log::info!("added ZhuyinType to the Fcitx 5 input methods"),
-        Ok(code) => log::warn!("fcitx5-setup enable: {code}"),
-        Err(error) => log::warn!("fcitx5-setup: {error}"),
+    let added = status.lines().any(|line| line == "profile=added")
+        || match std::process::Command::new(&helper).arg("enable").status() {
+            Ok(code) if code.success() => {
+                log::info!("added ZhuyinType to the Fcitx 5 input methods");
+                true
+            }
+            Ok(code) => {
+                log::warn!("fcitx5-setup enable: {code}");
+                false
+            }
+            Err(error) => {
+                log::warn!("fcitx5-setup: {error}");
+                false
+            }
+        };
+    if let (true, Some(marker)) = (added, marker) {
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        if let Err(error) = std::fs::write(&marker, b"") {
+            log::warn!("{}: {error}", marker.display());
+        }
     }
 }
 

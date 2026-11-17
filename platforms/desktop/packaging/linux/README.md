@@ -53,7 +53,7 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 - `zhuyintype`（沒有參數）：開啟設定視窗；已有服務在執行時請它顯示設定。
 - `--ime-socket PATH` 與 `--lexicon PATH`：測試用的隔離端點與詞庫（`platforms/linux/tests`）。
 - 引擎資料：先看 `ZT_DATA_DIR`，再看執行檔旁的 `../share/zhuyintype/data`（套件安裝為 `/usr/share/zhuyintype/data`），`lexicon.bin` 旁有 `lm/`、`lm_chat/`、`channel.bin`。
-- 第一次開啟時（或設定嚮導的啟用步驟）執行 `/usr/lib/zhuyintype/fcitx5-setup status`，需要時執行 `enable`，見下節。
+- 服務第一次啟動時（登入時的 `--background` 先等 Fcitx 5 啟動，最多 15 秒）執行 `/usr/lib/zhuyintype/fcitx5-setup status`，需要時執行 `enable`，見下節。加入後在個人資料夾留下 `fcitx5-added`，之後不再加入：使用者自己從 Fcitx 5 移除 ZhuyinType 後就保持移除。
 
 ## 維護腳本
 
@@ -61,7 +61,7 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 
 ## 加入 Fcitx 5 輸入方式（`fcitx5-setup`）
 
-套件腳本以 root 執行，不能也不應該修改每位使用者的 Fcitx 5 設定。設定程式第一次開啟時（設定嚮導的「啟用輸入法」步驟），以使用者身分執行：
+套件腳本以 root 執行，不能也不應該修改每位使用者的 Fcitx 5 設定。輸入法服務第一次啟動時（登入後，或第一次開啟「ZhuyinType 設定」）以使用者身分執行：
 
 ```sh
 /usr/lib/zhuyintype/fcitx5-setup status      # fcitx5=… running=… addon=… profile=… framework=…，一行一項
@@ -69,6 +69,7 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 /usr/lib/zhuyintype/fcitx5-setup framework   # 把 Fcitx 5 設為這位使用者的輸入法框架（im-config 或 imsettings），下次登入生效
 ```
 
+- Fcitx 5 正在啟動（行程已在、還沒有出現在 D-Bus 上）時，先等它最多 10 秒。
 - Fcitx 5 執行中時，`enable` 經 D-Bus（`busctl --user`）請 Fcitx 加入 ZhuyinType，由 Fcitx 自己存檔；Fcitx 是在套件安裝前啟動、還沒有載入 addon 時，先請它重新啟動一次。
 - Fcitx 5 沒有執行時，直接在 `~/.config/fcitx5/profile` 的第一個群組最後加入一項（原檔先備份為 `profile.zhuyintype-backup`）；沒有這個檔案時建立一個，含系統的鍵盤配置與 ZhuyinType。
 - 結束狀態：0 完成或不需要變更，1 失敗，2 用法錯誤，3 這台機器做不到（原因寫在 stderr）。

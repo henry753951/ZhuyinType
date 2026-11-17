@@ -24,6 +24,14 @@ running() {
     has busctl && busctl --user status "$service" >/dev/null 2>&1
 }
 call() { busctl --user call "$service" "${controller[@]}" "$@"; }
+# This user's fcitx5 process runs (it may not be on the bus yet).
+started() {
+    local process
+    for process in /proc/[0-9]*; do
+        [[ -O $process && $(cat "$process/comm" 2>/dev/null) == fcitx5 ]] && return 0
+    done
+    return 1
+}
 # busctl prints strings in double quotes; input method names never contain quotes or spaces.
 words() { xargs -n1 printf '%s\n'; }
 addon_loaded() { call AvailableInputMethods 2>/dev/null | grep -q "\"$im\""; }
@@ -118,6 +126,14 @@ enable_online() {
 
 enable() {
     has fcitx5 || { say '找不到 Fcitx 5；請先安裝 fcitx5 套件。'; exit 3; }
+    # Fcitx is starting (at sign-in): wait for it on the bus.  A profile edited under it is lost when it saves its own.
+    if ! running && started; then
+        local attempt
+        for attempt in $(seq 50); do
+            sleep 0.2
+            running && break
+        done
+    fi
     if running; then
         call InputMethodGroupInfo s "$(call CurrentInputMethodGroup | words | sed -n 2p)" | grep -q "\"$im\"" \
             && return 0
