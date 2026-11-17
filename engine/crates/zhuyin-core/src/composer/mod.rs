@@ -1865,7 +1865,13 @@ impl Composer {
             })
             .map(|i| self.conversion[i].clone())
             .collect();
-        let sentences = self.reranking_sentences(&remembered, self.n_best(self.reranking_count.max(1)));
+        // The N best of the lattice `refresh` just decoded: its words and language-model scores are reused.
+        let mut cache = self.conversion_cache.take();
+        let mut request = self.request(&self.tokens);
+        request.characters = self.character_scores.as_ref();
+        let best = self.engine.sentences_reusing(&request, self.reranking_count.max(1), &mut cache);
+        self.conversion_cache = cache;
+        let sentences = self.reranking_sentences(&remembered, best);
         if sentences.is_empty() {
             return;
         }
