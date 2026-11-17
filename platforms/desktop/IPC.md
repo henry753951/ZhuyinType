@@ -7,7 +7,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 使用僅目前使用者可存取的本機通訊端：
 
 - Linux 為 `$XDG_RUNTIME_DIR/zhuyintype/ime-v1`，未設定或不是絕對路徑時為 `/tmp/zhuyintype-<uid>/ime-v1`。目錄須由目前使用者擁有，權限為 0700；通訊端本身為 0600。每個連線以 `SO_PEERCRED` 取得對方的 uid，和服務的 uid 不同就關閉。路徑上已有其他檔案或其他使用者的通訊端時，服務不啟動，也不刪除那個檔案。
-- Windows 為 `\\.\pipe\ZhuyinType-ime-v1-<使用者 SID>`。管道的存取權限只包含目前使用者，拒絕遠端連線；第一個管道以 `FILE_FLAG_FIRST_PIPE_INSTANCE` 建立，其他行程無法先占用這個名稱。
+- Windows 為 `\\.\pipe\ZhuyinType-ime-v1-<使用者 SID>`。管道的存取權限只包含目前使用者，拒絕遠端連線；第一個管道以 `FILE_FLAG_FIRST_PIPE_INSTANCE` 建立，其他行程無法先占用這個名稱。服務同時有三個管道等待連線，每接受一個連線就先建立下一個再交出去，登入時許多程式同時連線也不會遇到管道忙碌；建立管道失敗時稍後再試，不會停止接受連線。
 
 服務以鎖定檔避免同時啟動兩個實例（Linux 在通訊端旁的 `ime-v1.lock`，Windows 在 `%LOCALAPPDATA%\ZhuyinType`）。啟動時先取得鎖定，引擎載入後才開始接受連線，避免首鍵送進尚未就緒的服務。測試可用 `ZT_IME_SOCKET` 或 `ServiceConfig::endpoint` 指定隔離通訊端。
 
@@ -17,11 +17,11 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 | op | 內容 |
 |---|---|
-| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設 |
+| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設（Windows：停用 ZhuyinType 時作用中的已是其他鍵盤輸入法或鍵盤配置才算；程式的執行緒結束或開新執行緒不算） |
 | `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`private`、`app`、`before` 及矩形。原生端也可以只「告知」應用程式自己會收到的按鍵（Windows 沒有組字時的 ⌫、空白、Enter），讓服務更新前文與「送出後刪掉重打」；這時不看回應的 `handled` |
 | `context` | 只更新 `app` 與 `before`（見〈前文〉），不處理按鍵 |
-| `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形 |
-| `blur` | 結束目前組字並回傳待送出文字，解除焦點 |
+| `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形。只在候選字視窗開著時需要（兩鍵之間只有視窗上的點選或剛改的設定會改變組字），其他時候原生端不定時喚醒 |
+| `blur` | 結束目前組字並回傳待送出文字，解除焦點。個人資料在回應之後、不持有服務的鎖時寫入磁碟，失焦不必等磁碟 |
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
 | `action` | `action`（`pick`、`page`、`single`、`corrections`、`zhuyin`）與 `value`（`pick` 的列、`page` 的 ±1）；原生端自己畫的候選字視窗上的點選（見〈候選字視窗〉） |
@@ -43,7 +43,9 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 `panel` 是 `zt_panel::style::Panel` 的 JSON：`model`（目前這一頁的候選字、選取、頁碼、注音、提示、單字／修正狀態、聚焦的詞，以及應用程式無法內嵌時的組字 `preview`）、`style`（排列、字級、密度、要顯示的列與按鍵標籤）、`appearance`（`system`、`light`、`dark`）、`animates` 與 `above`。值為 `null` 表示隱藏；和上一個回應相同時省略。版面、配色與鍵帽寫法都來自 `zt-panel`，GPUI 與 TSF DLL 共用，所以兩邊畫出來一樣。同一個回應也可能有 `toast`（`中` 或 `英`，「中英提示」開啟時）與 `boundary`（翻頁到清單盡頭，1 或 -1），原生端分別顯示中英提示與彈一下；這時服務不送對應的 `UiEvent`。
 
-原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。
+原生端把點選送成 `action` 請求，回應和按鍵的一樣套用（選字後組字更新、清單關閉）。所以原生端只在顯示候選字清單時 `poll`（讓剛改的設定立刻反映到開著的清單），閒置的欄位不會定時喚醒應用程式與服務。服務從不主動送封包，原生端在送出按鍵前檢查閒置的管道（`PeekNamedPipe`）：App 結束或重新啟動後，第一個按鍵就重新連線，不會送進已斷的管道而被當成英文字母交給程式。
+
+中英提示與翻頁到盡頭的彈一下只由原生端畫：最後取得焦點的欄位屬於自己畫視窗的原生端時，即使不在請求中（例如失焦之後），服務也不送 `UiEvent::Toast`、`UiEvent::Boundary`，App 不會再畫一個。
 
 ## 前文
 

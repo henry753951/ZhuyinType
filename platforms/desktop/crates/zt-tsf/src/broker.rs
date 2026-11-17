@@ -6,6 +6,9 @@
 //! - Connecting waits at most 100 ms in all for a busy pipe (every instance taken: many applications connecting at
 //!   once, as at sign-in), trying again whenever one frees; after a failure the next attempt is at least 250 ms
 //!   later, so a missing app costs a field nothing.
+//! - The broker never writes unasked, so nothing is read between requests.  Before a key goes out the idle pipe is
+//!   checked (`check`): if the app ended or restarted, the text service reconnects at once instead of sending the
+//!   key into a broken pipe and giving it back to the application as a plain letter.
 //! - The app's broker runs on its own thread, never on the GUI thread, so even the app's own text fields (whose TSF
 //!   calls arrive on the GUI thread) wait without pumping messages.
 
@@ -24,7 +27,7 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Environment::GetEnvironmentVariableW;
 use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
-use windows::Win32::System::Pipes::WaitNamedPipeW;
+use windows::Win32::System::Pipes::{PeekNamedPipe, WaitNamedPipeW};
 use windows::Win32::System::SystemInformation::GetTickCount64;
 use windows::Win32::System::Threading::{CreateEventW, GetCurrentProcess, OpenProcessToken, WaitForSingleObject};
 use windows::core::{HSTRING, PWSTR, w};
@@ -157,6 +160,20 @@ impl BrokerClient {
         }
         self.retry_at.set(now() + RETRY_MS);
         false
+    }
+
+    /// Closes an idle pipe whose other end went away (the app ended or restarted), so the next `connect` opens a
+    /// new one at once.  Unasked bytes break the protocol and close it too.
+    pub(crate) fn check(&self) {
+        if !self.connected() || self.busy.get() {
+            return;
+        }
+        let mut available = 0u32;
+        // SAFETY: the pipe opened by connect; only the count of waiting bytes is asked for.
+        let alive = unsafe { PeekNamedPipe(self.pipe.get(), None, 0, None, Some(&mut available), None) }.is_ok();
+        if !alive || available > 0 {
+            self.disconnect(false);
+        }
     }
 
     /// Closes the pipe; after a failure, the next connection waits the retry interval.
