@@ -10,7 +10,10 @@
 //!   (`DWMSBT_TRANSIENTWINDOW`) behind the content, in the window's light or dark appearance.  Elsewhere (Windows 10,
 //!   a virtual machine's basic display adapter, which Windows 11 never rounds) the window is layered and draws all of
 //!   that itself: rounded corners, the hairline and a soft shadow around a solid surface, so it is rounded
-//!   everywhere.  The content is Direct2D (`panel_draw`), with the app's geometry and colours (`zt_panel`).
+//!   everywhere.  The content is Direct2D (`panel_draw`), with the app's geometry and colours (`zt_panel`), the
+//!   system's accent colour and high contrast (`system_look`, `zt_panel::a11y`): high contrast is always solid, with
+//!   the system colours and a 2 px border.
+//! - **Screen readers.**  Both windows are UI Automation elements and announce what changed (`accessible`).
 //! - **Focus.**  The windows never activate (`WS_EX_NOACTIVATE`, `MA_NOACTIVATE`); clicks post to the text service's
 //!   message window, which sends them to the host inside an edit session.
 //! - **DPI.**  Created and moved per-monitor aware: sizes are the logical layout times the caret's monitor scale.
