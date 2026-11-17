@@ -17,7 +17,7 @@ use gpui_kit::Global;
 use gpui_kit::base::{ReducedMotion, Transition, TransitionId, transition};
 use gpui_kit::{App, BoxShadow, Hsla, StyleRefinement, Styled as _, Window, point, px};
 
-use crate::theme::Palette;
+use crate::theme::{Material, Palette};
 
 /// A selected item's fill appearing (the sidebar, segments).
 pub const SELECT: Duration = Duration::from_millis(140);
@@ -93,15 +93,24 @@ pub fn glide(id: impl Into<TransitionId>, target: f32, duration: Duration, windo
 /// The keyboard focus ring: two pixels of the accent around the element, drawn as a shadow so it takes no room and
 /// follows the element's corners.  Shown only while the keyboard moved the focus (`focus_visible`).
 ///
-/// GPUI fills a shadow's whole box, so the element takes `under` (the surface it sits on) as its background while the
-/// ring shows, and only the two pixels outside it stay visible.  Fills drawn as children (selection, hover) still
-/// show on top of it.
+/// GPUI fills a shadow's whole box, so on an opaque window the element takes `under` (the surface it sits on) as its
+/// background while the ring shows, and only the two pixels outside it stay visible.  Over a backdrop (Mica, KDE's
+/// blur) the page is a translucent tint and any opaque `under` would show as a patch, so the ring is drawn inside the
+/// element's edge instead, over its own background.  Fills drawn as children (selection, hover) still show on top of
+/// it.
 pub fn focus_ring(style: StyleRefinement, p: &Palette, under: Hsla) -> StyleRefinement {
-    style.bg(under).shadow(ring(p.accent.opacity(if p.dark { 0.8 } else { 0.6 })))
+    if p.material == Material::Opaque { focus_ring_on(style, p, under) } else { style.shadow(ring(p, true)) }
 }
 
-fn ring(color: Hsla) -> Vec<BoxShadow> {
-    vec![BoxShadow { color, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset: false }]
+/// The focus ring around an element covered by an opaque fill of `fill` (the selected segment's card): outside it, in
+/// every material.
+pub fn focus_ring_on(style: StyleRefinement, p: &Palette, fill: Hsla) -> StyleRefinement {
+    style.bg(fill).shadow(ring(p, false))
+}
+
+fn ring(p: &Palette, inset: bool) -> Vec<BoxShadow> {
+    let color = p.accent.opacity(if p.dark { 0.8 } else { 0.6 });
+    vec![BoxShadow { color, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset }]
 }
 
 // MARK: - The system's preference
