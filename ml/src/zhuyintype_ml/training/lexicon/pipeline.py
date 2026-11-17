@@ -282,7 +282,34 @@ def screen(ctx: Context) -> None:
         str(paths.raw("lm_chat2", "ptt", "TOCP_v1.0.zip")),
         "--out",
         str(ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))),
+        *(["--variants", str(ctx.out / "variants")] if ctx.options.get("variants", "1") != "0" else []),
     )
+
+
+def variants(ctx: Context) -> None:
+    """Variant and misspelt spellings among the colloquial packs' words, by their contexts in the corpus."""
+    ctx.python(
+        "zhuyintype_ml.training.lexicon.variants",
+        "--mined",
+        str(ctx.out / "mined"),
+        "--packs",
+        str(ctx.out / str(ctx.options.get("packs_dir", "packs-colloquial"))),
+        "--corpus",
+        *selected(ctx),
+        "--lexicon",
+        str(ctx.data / "lexicon.tsv"),
+        "--unihan",
+        str(sources.path("Unihan-18.0.0.zip")),
+        "--out",
+        str(ctx.out / "variants"),
+        group="train",
+        threads=1,
+    )
+
+
+def words_target(ctx: Context, packs: list[str]) -> Path:
+    """words-<packs>/, or --option words_dir=NAME."""
+    return ctx.out / str(ctx.options.get("words_dir", "words-" + "-".join(packs)))
 
 
 def words(ctx: Context) -> None:
@@ -294,7 +321,7 @@ def words(ctx: Context) -> None:
     packs = [p for p in str(ctx.options.get("word_packs", "ptt,generated")).split(",") if p]
     variant = str(ctx.options.get("chat_variant", "ptt-cns-genpub"))
     folder = ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))
-    target = ctx.out / ("words-" + "-".join(packs))
+    target = words_target(ctx, packs)
     # the chat model's vocabulary takes the screened words without the demoted vulgar ones (screen.py)
     seed_args = [arg for p in packs for arg in ("--pack", str(folder / f"{p}.seed.tsv"))]
     ctx.python(
@@ -325,7 +352,7 @@ def words_lexicon(ctx: Context) -> None:
     """Only the lexicon half of `words`: the shipped lexicon.tsv plus the screened packs, lm/ linked beside it."""
     packs = [p for p in str(ctx.options.get("word_packs", "ptt,generated")).split(",") if p]
     folder = ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))
-    target = ctx.out / ("words-" + "-".join(packs))
+    target = words_target(ctx, packs)
     ctx.python(
         "zhuyintype_ml.training.lexicon.extend",
         "--lexicon",
@@ -405,7 +432,16 @@ PIPELINE = Pipeline(
         ),
         Step("lm", "Wikipedia and chat bigrams re-segmented with the packs' words (GPU host)", language_models),
         Step("merge", "lexicon.tsv: base rows, channel variants, packs", merge),
-        Step("screen", "colloquial packs screened: fragments out, vulgar words demoted (review labels, TOCP)", screen),
+        Step(
+            "variants",
+            "variant and misspelt spellings among the colloquial packs, by corpus contexts (GPU host, numpy)",
+            variants,
+        ),
+        Step(
+            "screen",
+            "colloquial packs screened: fragments and variants out, vulgar words demoted (review labels, TOCP)",
+            screen,
+        ),
         Step(
             "words",
             "colloquial packs (ptt, generated) in the candidate chat model and the shipped lexicon (GPU host)",

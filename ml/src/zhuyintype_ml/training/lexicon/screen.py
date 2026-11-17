@@ -1,7 +1,7 @@
 """Screened colloquial packs: fragments, mainland usage and wrong readings out, vulgar words kept but demoted.
 
     python -m zhuyintype_ml.training.lexicon.screen --packs DIR --corpus ptt generated --labels REVIEW_DIR \\
-        --tocp data/raw/lm_chat2/ptt/TOCP_v1.0.zip --out DIR [--vulgar-penalty 4.6]
+        --tocp data/raw/lm_chat2/ptt/TOCP_v1.0.zip --out DIR [--vulgar-penalty 4.6] [--variants DIR]
 
 Mining from PTT finds real words (魯蛇, 慣老闆, 限動) next to pieces of frequent phrases (叫他, 後再, 讓她) and
 vulgar words.  A judgement per candidate (REVIEW_DIR/labels-*.tsv: word, label, reading; labels word, fragment,
@@ -15,6 +15,7 @@ corpus) decides:
             be typed and never outranks a common word on its own counts; a word holding any expression TOCP v1.0
             marks as profane (two characters or more) counts as vulgar whatever its label
   reading   wrong: left out (the v3 labeller's reading is not the Taiwan one)
+  variant   with --variants DIR (variants.py): left out, another spelling of a word the corpus uses more often
 
 A candidate without a label is left out.  Writes OUT/<corpus>.tsv (lexicon rows), OUT/<corpus>.seed.tsv (the rows
 whose words may join the chat model's vocabulary) and OUT/screen.json.  Standard library only.
@@ -54,8 +55,22 @@ def read_labels(folder: Path) -> dict[str, tuple[str, str]]:
     return labels
 
 
+def read_variants(folder: Path | None, corpus: str) -> set[str]:
+    path = folder / f"{corpus}.variants.tsv" if folder else None
+    if path is None or not path.exists():
+        return set()
+    rows = (line.split("\t") for line in path.read_text(encoding="utf-8").splitlines() if not line.startswith("#"))
+    return {parts[0] for parts in rows if len(parts) >= 8 and parts[7] == "variant"}
+
+
 def screen(
-    packs: Path, corpora: list[str], labels: dict[str, tuple[str, str]], profane: set[str], out: Path, penalty: float
+    packs: Path,
+    corpora: list[str],
+    labels: dict[str, tuple[str, str]],
+    profane: set[str],
+    out: Path,
+    penalty: float,
+    variants: Path | None = None,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     summary: dict = {"vulgar_penalty": penalty, "tocp_expressions": len(profane), "corpora": {}}
@@ -63,10 +78,14 @@ def screen(
         counts: collections.Counter[str] = collections.Counter()
         lexicon_rows: list[str] = []
         seed_rows: list[str] = []
+        spelt = read_variants(variants, corpus)
         for line in (packs / f"{corpus}.tsv").read_text(encoding="utf-8").splitlines():
             if line.startswith("#"):
                 continue
             reading, word, logp = line.split("\t")
+            if word in spelt:
+                counts["left_out_variant"] += 1
+                continue
             label, reading_ok = labels.get(word, ("unlabelled", "ok"))
             if any(expression in word for expression in profane):
                 label = "vulgar"
@@ -96,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tocp", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--vulgar-penalty", type=float, default=4.6)
+    parser.add_argument("--variants", type=Path, default=None)
     args = parser.parse_args(argv)
     summary = screen(
         args.packs,
@@ -104,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         profane_expressions(args.tocp),
         args.out,
         args.vulgar_penalty,
+        args.variants,
     )
     print(json.dumps(summary, ensure_ascii=False))
     return 0

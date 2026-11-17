@@ -48,7 +48,8 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 | `mine` | n-gram 次數、分支熵、選詞 | GPU 主機（16 程序，numpy） |
 | `vocabulary` | 讀音、詞頻、引擎檢查，依語料分成詞包 | GPU 主機（`train` 相依群組） |
 | `lm` | 以詞包重新斷詞，重算維基百科與聊天兩個 bigram | GPU 主機（16 程序） |
-| `screen` | 口語詞包（`--option corpora=ptt,generated`）依人工或 Haiku 的判斷篩選：片段、大陸用語、讀音錯的不收；粗話降權且不進聊天模型詞表 | 任一 |
+| `variants` | 口語詞包裡的異體字與錯字：和同讀音的通行寫法比較前後文，門檻取自詞庫的同音詞 | GPU 主機（numpy） |
+| `screen` | 口語詞包（`--option corpora=ptt,generated`）依人工或 Haiku 的判斷篩選：片段、大陸用語、讀音錯與 `variants` 判為異體的不收；粗話降權且不進聊天模型詞表 | 任一 |
 | `words` | 以篩選後的詞包重訓聊天模型（`lm_chat-ptt-cns-genpub`），再做 `words-lexicon` | GPU 主機（16 程序） |
 | `words-lexicon` | 出貨詞庫加上新詞，寫到 `words-<語料>/lexicon.tsv`，旁邊連結 `lm/` | 任一 |
 | `merge` | `lexicon.tsv`：資料端的合併候選（基本詞庫、台灣標準讀音、單字的台灣讀音與詞典詞讀音、個別詞的台灣讀音、異讀與台語音；詞包要另外指定） | 任一 |
@@ -66,6 +67,7 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 - `misread/`、`wiki-new/`：評測集；
 - `mined/`：`<語料>.ngrams.tsv`、`<語料>.mined.tsv`、`<語料>.json`（門檻與數量）；
 - `packs/<語料>.tsv` 與 `vocabulary.json`（口語語料以 `--option packs_dir=packs-colloquial` 另寫一份）；
+- `variants/<語料>.variants.tsv`、`calibration.tsv`、`contexts.npz`、`variants.json`；
 - `packs-screened/<語料>.tsv`、`<語料>.seed.tsv`、`screen.json`；`words-<語料>/`：重訓的聊天模型與加了新詞的詞庫；
 - `lm/`、`lm_chat/`、`seed.tsv`：重新計數的語言模型；
 - `lexicon.tsv` 與 `lexicon.json`（各類的列數）。
@@ -86,6 +88,7 @@ python -m unittest zhuyintype_ml.training.lexicon.test_lexicon
 | `vocabulary.py` | 找到的詞的讀音、詞頻與引擎檢查，詞包 |
 | `lm.py` | 以詞包重新斷詞，重算兩個語言模型 |
 | `screen.py` | 口語詞包的篩選（`review/labels-*.tsv`，TOCP 粗話） |
+| `variants.py` | 異體字與錯字的判定（前後文的相對概似） |
 | `extend.py` | 出貨詞庫加詞包，給成對比較用 |
 | `merge.py` | 合併成 `lexicon.tsv` |
 | `misread.py`、`newtitles.py` | `misread-dev`、`wiki-new-dev` 評測集 |

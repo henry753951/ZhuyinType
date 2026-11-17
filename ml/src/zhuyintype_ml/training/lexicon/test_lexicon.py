@@ -345,6 +345,59 @@ class Colloquial(unittest.TestCase):
         self.assertEqual(seed, ["ㄌㄨˇ ㄕㄜˊ\t魯蛇\t-11.0"])
         self.assertEqual(summary["corpora"]["ptt"]["left_out_unlabelled"], 1)
 
+    def test_screen_leaves_out_variant_spellings(self):
+        from zhuyintype_ml.training.lexicon.screen import screen
+
+        with tempfile.TemporaryDirectory() as tmp:
+            packs, found, out = Path(tmp) / "packs", Path(tmp) / "variants", Path(tmp) / "out"
+            packs.mkdir()
+            found.mkdir()
+            (packs / "ptt.tsv").write_text("# pack\nㄏㄜ ㄏㄜ\t喝喝\t-12.0\nㄆㄛˋ ㄧˋ\t破億\t-12.0\n", encoding="utf-8")
+            (found / "ptt.variants.tsv").write_text(
+                "# header\n喝喝\tㄏㄜ ㄏㄜ\t呵呵\tlexicon\t0.9\t300\t9000\tvariant\n"
+                "破億\tㄆㄛˋ ㄧˋ\t破譯\tlexicon\t0.1\t290\t400\tkept\n",
+                encoding="utf-8",
+            )
+            labels = {"喝喝": ("word", "ok"), "破億": ("word", "ok")}
+            summary = screen(packs, ["ptt"], labels, set(), out, 4.0, found)
+            kept = (out / "ptt.tsv").read_text(encoding="utf-8").splitlines()[1:]
+        self.assertEqual(kept, ["ㄆㄛˋ ㄧˋ\t破億\t-12.0"])
+        self.assertEqual(summary["corpora"]["ptt"]["left_out_variant"], 1)
+
+
+class Variants(unittest.TestCase):
+    def test_competitors_are_homophones_in_lexicon_or_corpus(self):
+        from zhuyintype_ml.training.lexicon.variants import competitors
+
+        by_reading = {"ㄏㄜ ㄏㄜ": {"呵呵", "喝喝"}}
+        chars = {"ㄌㄧㄢˊ": {"連", "憐", "廉"}, "ㄎㄡ": {"摳"}}
+        self.assertEqual(competitors("喝喝", "ㄏㄜ ㄏㄜ", by_reading, chars, {}), {"呵呵": "lexicon"})
+        found = competitors("摳憐", "ㄎㄡ ㄌㄧㄢˊ", by_reading, chars, {"摳連": 150, "摳廉": 0})
+        self.assertEqual(found, {"摳連": "corpus", "摳廉": "corpus"})
+
+    def test_contexts_of_a_variant_are_explained_by_the_usual_spelling(self):
+        import numpy as np
+
+        from zhuyintype_ml.training.lexicon.variants import Contexts
+
+        lines = ["好喔呵呵。"] * 30 + ["好喔喝喝。"] * 10 + ["票房破億了"] * 20 + ["破譯密碼"] * 20 + ["對啊呵呵"] * 5
+        text = "\n".join(lines) + "\n"
+        ids = np.frombuffer(text.encode("utf-32-le"), dtype=np.uint32).copy()
+        ids[(ids < 0x4E00) | (ids > 0x9FFF)] = 0
+        found = Contexts(ids, ["呵呵", "喝喝", "破億", "破譯"])
+        self.assertEqual(found.occurrences.tolist(), [35, 10, 20, 20])
+        self.assertGreater(found.score(1, 0), -0.5)
+        self.assertLess(found.score(2, 3), -2.0)
+
+    def test_variant_spelling_needs_unihan_variants_at_every_difference(self):
+        from zhuyintype_ml.training.lexicon.variants import is_variant_spelling
+
+        pairs = {("祕", "秘"), ("台", "臺")}
+        self.assertTrue(is_variant_spelling("祕書", "秘書", pairs))
+        self.assertTrue(is_variant_spelling("臺祕", "台秘", pairs))
+        self.assertFalse(is_variant_spelling("破億", "破譯", pairs))
+        self.assertFalse(is_variant_spelling("秘書", "秘書", pairs))
+
 
 if __name__ == "__main__":
     unittest.main()
