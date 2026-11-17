@@ -187,7 +187,7 @@ pub unsafe extern "C" fn zt_engine_free(engine: *mut ZtEngine) {
 
 /// # Safety
 /// `engine` is a live handle.
-unsafe fn engine_ref<'a>(engine: *const ZtEngine) -> Option<&'a Engine> {
+pub(crate) unsafe fn engine_ref<'a>(engine: *const ZtEngine) -> Option<&'a Engine> {
     // SAFETY: the caller passes a live handle or NULL.
     unsafe { engine.as_ref() }.map(|e| &*e.engine)
 }
@@ -304,7 +304,7 @@ pub struct ZtPhraseList {
     pub count: usize,
 }
 
-fn phrase_list(entries: impl Iterator<Item = (String, String, f64)>) -> *mut ZtPhraseList {
+pub(crate) fn phrase_list(entries: impl Iterator<Item = (String, String, f64)>) -> *mut ZtPhraseList {
     let items: Box<[ZtPhrase]> = entries
         .map(|(reading, word, count)| ZtPhrase { reading: owned(&reading), word: owned(&word), count })
         .collect();

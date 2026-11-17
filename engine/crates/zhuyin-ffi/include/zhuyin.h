@@ -1041,6 +1041,48 @@ size_t zt_strings_count(const ZtStrings *strings);
 // `strings` is a view passed to the running callback.
 char *zt_strings_get(const ZtStrings *strings, size_t index);
 
+// Whether `action` (0 block, 1 forget, 2 add a custom word) applies to candidate `index` of the open list; a
+// negative `index` is the highlighted candidate, or with no list open the whole composition (adding only).
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_candidate_action_available(ZtComposer *composer,
+                                            uint32_t action,
+                                            ptrdiff_t index);
+
+// Does `action` on candidate `index` (as for `zt_composer_candidate_action_available`) and returns the notice the
+// candidate window shows (free with `zt_string_free`), or NULL when the action does not apply.
+//
+// # Safety
+// `composer` is a live handle.
+char *zt_composer_perform_candidate_action(ZtComposer *composer,
+                                           uint32_t action,
+                                           ptrdiff_t index);
+
+// Whether the last word action can be undone.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_can_undo_candidate_action(ZtComposer *composer);
+
+// Undoes the last word action; false when there is none.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_undo_candidate_action(ZtComposer *composer);
+
+// The words never suggested (不要再推薦), sorted; free with `zt_phrase_list_free`.
+//
+// # Safety
+// `engine` is a live handle.
+ZtPhraseList *zt_engine_blocked_entries(const ZtEngine *engine);
+
+// Suggests a blocked word again.
+//
+// # Safety
+// `engine` is a live handle; the strings are C strings.
+void zt_engine_unblock(const ZtEngine *engine, const char *word, const char *reading);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

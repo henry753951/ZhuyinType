@@ -363,6 +363,34 @@ impl PersonalLanguageModel {
         self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
     }
 
+    /// Whether the user picked `id` anywhere.
+    #[must_use]
+    pub fn picked(&self, id: u32) -> bool {
+        self.lock().entries.iter().any(|(key, entry)| key.last() == Some(&id) && entry.picks > 0)
+    }
+
+    /// Removes every n-gram containing `id` and returns them, for [`restore`](Self::restore).
+    pub fn take(&self, id: u32) -> Vec<(Key, Entry)> {
+        let mut state = self.lock();
+        let keys: Vec<Key> = state.entries.keys().filter(|key| key.contains(&id)).cloned().collect();
+        let rows: Vec<(Key, Entry)> =
+            keys.into_iter().filter_map(|key| state.entries.remove(&key).map(|entry| (key, entry))).collect();
+        rebuild_totals(&mut state);
+        self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
+        rows
+    }
+
+    /// Puts back n-grams returned by [`take`](Self::take).
+    pub fn restore(&self, rows: Vec<(Key, Entry)>) {
+        if rows.is_empty() {
+            return;
+        }
+        let mut state = self.lock();
+        state.entries.extend(rows);
+        rebuild_totals(&mut state);
+        self.has_data.store(!state.entries.is_empty(), Ordering::Relaxed);
+    }
+
     /// Forgets everything.
     pub fn forget_all(&self) {
         let mut state = self.lock();

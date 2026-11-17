@@ -297,7 +297,7 @@ pub unsafe extern "C" fn zt_composer_free(composer: *mut ZtComposer) {
 
 /// # Safety
 /// `composer` is NULL or a live handle not used elsewhere during the call.
-unsafe fn composer_mut<'a>(composer: *mut ZtComposer) -> Option<&'a mut Composer> {
+pub(crate) unsafe fn composer_mut<'a>(composer: *mut ZtComposer) -> Option<&'a mut Composer> {
     // SAFETY: per the contract above.
     unsafe { composer.as_mut() }.map(|c| &mut c.composer)
 }
