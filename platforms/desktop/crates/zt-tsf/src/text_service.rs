@@ -534,7 +534,7 @@ impl TextService_Impl {
             self.host_focused.set(false);
             return false;
         }
-        self.english.set(reply.english);
+        let switched = self.english.replace(reply.english) != reply.english;
         self.composing.set(reply.composing);
         // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
         if let Some(button) = self.button() {
@@ -544,6 +544,7 @@ impl TextService_Impl {
             self.panel.hide();
         } else {
             self.panel.apply(&reply.panel, reply.boundary, reply.toast.as_deref(), self.rect.get(), self.scale.get());
+            self.panel.announce_mode(switched.then_some(reply.english), reply.toast.as_deref());
         }
         self.caps_at_reply.set(caps_lock_on());
         true

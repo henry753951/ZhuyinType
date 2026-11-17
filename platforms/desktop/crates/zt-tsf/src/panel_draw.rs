@@ -239,13 +239,16 @@ impl<'a> Painter<'a> {
         }
     }
 
-    /// A hairline frame just inside `f` (where the system draws no border).
-    pub(crate) fn outline(&self, f: Frame, radius: f32, c: Rgba) {
+    /// A frame `width` wide just inside `f` (a hairline where the system draws no border; 2 in high contrast).
+    pub(crate) fn outline(&self, f: Frame, radius: f32, c: Rgba, width: f32) {
         let brush = self.paint(c);
-        let inset = D2D_RECT_F { left: f.x + 0.5, top: f.y + 0.5, right: f.x + f.w - 0.5, bottom: f.y + f.h - 0.5 };
+        let h = width / 2.;
+        let inset = D2D_RECT_F { left: f.x + h, top: f.y + h, right: f.x + f.w - h, bottom: f.y + f.h - h };
+        // Wider than a hairline: the corner follows the frame's middle.
+        let radius = (radius - (h - 0.5)).max(0.);
         let rounded = D2D1_ROUNDED_RECT { rect: inset, radiusX: radius, radiusY: radius };
         // SAFETY: valid target and brush.
-        unsafe { self.target.DrawRoundedRectangle(&rounded, brush, 1., None) };
+        unsafe { self.target.DrawRoundedRectangle(&rounded, brush, width, None) };
     }
 
     fn line(&self, points: &[(f32, f32)], width: f32, c: Rgba) {
@@ -349,7 +352,13 @@ impl<'a> Painter<'a> {
         let top = y + ((box_h - KEYCAP_HEIGHT) / 2.).max(0.).round();
         let cap = Frame::new(x, top, width, KEYCAP_HEIGHT);
         self.fill(cap, tokens::KEYCAP_RADIUS, if on { self.c.keycap_on } else { self.c.keycap });
-        let ink = if on || keys::is_speck(key) { self.c.text } else { self.c.text_secondary };
+        let ink = if on {
+            self.c.accent
+        } else if keys::is_speck(key) {
+            self.c.text
+        } else {
+            self.c.text_secondary
+        };
         let cy = top + KEYCAP_HEIGHT / 2.;
         if keys::is_speck(key) {
             let size = tokens::KEYCAP_FONT + keys::SPECK_GROWTH;
@@ -436,11 +445,15 @@ pub(crate) fn content(p: &Painter<'_>, layout: &PanelLayout, motion: &Motion<'_>
                 selected.h - 2.,
             );
             p.fill(f, layout.row_radius, c.selection);
+            if let Some(outline) = c.selection_outline {
+                p.outline(f, layout.row_radius, outline, c.stroke);
+            }
         }
+        // The outgoing page's rows slide over the new highlight: drawn as rows that are not highlighted.
         if let Some((rows, x, y, alpha)) = motion.outgoing {
-            rows_element(p, layout, rows, (x, y, alpha), None);
+            rows_element(p, layout, rows, (x, y, alpha), None, false);
         }
-        rows_element(p, layout, &layout.rows, motion.incoming, motion.hover);
+        rows_element(p, layout, &layout.rows, motion.incoming, motion.hover, true);
         // SAFETY: pushed above.
         unsafe { p.target.PopAxisAlignedClip() };
     }
@@ -488,6 +501,7 @@ fn rows_element(
     rows: &[RowLayout],
     (dx, dy, alpha): (f32, f32, f32),
     hover: Option<usize>,
+    highlighted: bool,
 ) {
     let c = p.c;
     let fs = layout.font_size;
@@ -496,10 +510,11 @@ fn rows_element(
     for row in rows {
         let frame =
             Frame::new(area.x + row.frame.x + dx, area.y + row.frame.y + 1. + dy, row.frame.w, row.frame.h - 2.);
+        let selected = row.selected && highlighted;
         if hover == Some(row.index) && !row.selected {
             p.fill(frame, layout.row_radius, c.hover.fade(alpha));
         }
-        let key_ink = if row.selected { c.text_secondary } else { c.text_tertiary };
+        let key_ink = if selected { c.selection_secondary } else { c.text_tertiary };
         p.text(
             &row.key,
             layout.number_font,
@@ -516,10 +531,10 @@ fn rows_element(
             Family::Ui,
             Frame::new(frame.x + row.text_inset, frame.y, row.main_width + 1., frame.h),
             0.,
-            c.text.fade(alpha),
+            if selected { c.selection_text } else { c.text }.fade(alpha),
         );
         if let Some(annotation) = &row.annotation {
-            let ink = if row.selected { c.text_secondary } else { c.text_tertiary };
+            let ink = if selected { c.selection_secondary } else { c.text_tertiary };
             p.text(
                 annotation,
                 small,
@@ -569,7 +584,13 @@ fn toggle_element(p: &Painter<'_>, toggle: &ToggleLayout, hovered: bool) {
     let c = p.c;
     let f = toggle.frame;
     p.keycap(&toggle.key, f.x, f.y, toggle.keycap_w, CONTROL_H, toggle.on);
-    let ink = if toggle.on || hovered { c.text } else { c.text_secondary };
+    let ink = if toggle.on {
+        c.accent
+    } else if hovered {
+        c.text
+    } else {
+        c.text_secondary
+    };
     p.text(
         toggle.label,
         SMALL_FONT,

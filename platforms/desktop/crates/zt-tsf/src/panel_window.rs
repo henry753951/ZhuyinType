@@ -53,21 +53,26 @@ use windows::Win32::UI::WindowsAndMessaging::{
     MA_NOACTIVATE, PostMessageW, RegisterClassW, SPI_GETCLIENTAREAANIMATION, SW_HIDE, SW_SHOWNOACTIVATE,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetCursor, SetTimer,
     SetWindowLongPtrW, SetWindowPos, ShowWindow, SystemParametersInfoW, ULW_ALPHA, UnregisterClassW,
-    UpdateLayeredWindow, WM_APP, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE,
-    WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SETCURSOR, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_POPUP, WS_THICKFRAME,
+    UpdateLayeredWindow, WM_APP, WM_DWMCOLORIZATIONCOLORCHANGED, WM_ERASEBKGND, WM_GETOBJECT, WM_LBUTTONDOWN,
+    WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCHITTEST, WM_PAINT, WM_SETCURSOR, WM_SETTINGCHANGE,
+    WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    WS_POPUP, WS_THICKFRAME,
 };
 use windows::core::{BOOL, PCWSTR, w};
 use windows_numerics::Matrix3x2;
+use zt_panel::a11y::{self, AccentChoice};
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
 use zt_panel::position::{Rect, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
-use zt_panel::tokens::{self, motion};
+use zt_panel::tokens::{self, Colors, motion};
 
+use crate::accessible::{Accessible, Role};
+use crate::announce::{self, Shown};
 use crate::composition::per_monitor;
 use crate::module::instance;
 use crate::panel_draw::{self, Control, DirectWriteMeasure, Hit, Motion, Painter, graphics};
 use crate::protocol::PanelUpdate;
+use crate::system_look;
 
 /// Posted to the text service's message window for a click: `wparam` the action (`ACTION_*`), `lparam` its value.
 pub(crate) const WM_PANEL_ACTION: u32 = WM_APP + 0x31;
@@ -88,6 +93,9 @@ pub(crate) fn action_name(action: usize) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+/// The corner radius the system draws for a rounded popup (DWMWCP_ROUND).
+const SYSTEM_RADIUS: f32 = 8.;
 
 const ANIMATION_TIMER: usize = 1;
 const TOAST_TIMER: usize = 2;
@@ -216,10 +224,12 @@ struct Surface {
     /// Physical size and the scale it was laid out at.
     size: Cell<(i32, i32)>,
     scale: Cell<f32>,
+    /// The window for screen readers.
+    accessible: Accessible,
 }
 
 impl Surface {
-    fn new() -> Self {
+    fn new(role: Role) -> Self {
         Self {
             window: Cell::new(HWND::default()),
             target: RefCell::new(None),
@@ -231,6 +241,7 @@ impl Surface {
             dark: Cell::new(None),
             size: Cell::new((0, 0)),
             scale: Cell::new(1.),
+            accessible: Accessible::new(role),
         }
     }
 
@@ -239,6 +250,7 @@ impl Surface {
         self.dark.set(None);
         let window = self.window.replace(HWND::default());
         if !window.is_invalid() {
+            self.accessible.disconnect(window);
             // SAFETY: our own window; the back pointer is cleared first.
             unsafe {
                 SetWindowLongPtrW(window, GWLP_USERDATA, 0);
@@ -564,7 +576,8 @@ impl Surface {
     }
 
     /// The surface under the content: the system's backdrop with a tint, or the panel colour; the hairline where
-    /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.
+    /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.  High
+    /// contrast (`stroke` above 1) draws its wider border even where the system draws an edge.
     fn base(&self, painter: &Painter<'_>, size: (f32, f32), solid: bool) {
         let whole = Frame::new(0., 0., size.0, size.1);
         let c = painter.c;
@@ -578,13 +591,16 @@ impl Surface {
                 painter.fill(f, tokens::RADIUS + grow, ink);
             }
             painter.fill(whole, tokens::RADIUS, c.surface);
-            painter.outline(whole, tokens::RADIUS, c.border);
+            painter.outline(whole, tokens::RADIUS, c.border, c.stroke);
             return;
         }
         let translucent = self.backdrop.get() && !self.opaque.get() && !solid;
         painter.fill(whole, 0., if translucent { c.backdrop_tint } else { c.surface });
         if !self.system_edge.get() {
-            painter.outline(whole, 0., c.border);
+            painter.outline(whole, 0., c.border, c.stroke);
+        } else if c.stroke > 1. {
+            // Inside the system's rounded corners (8 px on Windows 11).
+            painter.outline(whole, SYSTEM_RADIUS, c.border, c.stroke);
         }
     }
 }
@@ -614,13 +630,25 @@ struct State {
     above: bool,
     /// 「透明效果」 off: the surface is solid even over the system's backdrop.
     solid: bool,
+    /// 「強調色」 of the last list, which the badge follows too.
+    accent: AccentChoice,
+    /// What screen readers were last told about the list.
+    announced: Shown,
 }
 
 impl State {
     fn forget(&mut self) {
-        let (toast, appearance, above, solid) = (self.toast.take(), self.appearance, self.above, self.solid);
-        *self = Self { toast, appearance, above, solid, ..Self::default() };
+        let (toast, appearance, above, solid, accent) =
+            (self.toast.take(), self.appearance, self.above, self.solid, self.accent);
+        *self = Self { toast, appearance, above, solid, accent, ..Self::default() };
     }
+}
+
+/// The window's colours: light or dark, the accent and high contrast (`a11y::resolve`), and whether the surface
+/// must be solid (high contrast never lets the backdrop through).
+fn colors(appearance: Appearance, accent: AccentChoice) -> (Colors, bool) {
+    let look = system_look::look();
+    (a11y::resolve(appearance.dark(system_dark()), accent, &look), a11y::opaque(&look))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -676,8 +704,8 @@ impl PanelWindow {
             class: RefCell::new(Vec::new()),
             owner: Cell::new(HWND::default()),
             notify: Cell::new(HWND::default()),
-            panel: Surface::new(),
-            badge: Surface::new(),
+            panel: Surface::new(Role::List),
+            badge: Surface::new(Role::Badge),
             state: RefCell::new(State::default()),
             warmed: Cell::new(HWND::default()),
         }
@@ -881,6 +909,7 @@ impl PanelWindow {
             PanelUpdate::Hidden => {
                 self.panel.hide();
                 self.state.borrow_mut().forget();
+                self.panel.accessible.set_name(|| announce::name(&Default::default()));
             }
             PanelUpdate::Show(panel) => self.show(panel, caret, scale),
         }
@@ -966,12 +995,47 @@ impl PanelWindow {
         state.appearance = panel.appearance;
         state.above = panel.above;
         state.solid = !panel.translucent;
+        state.accent = panel.accent;
         drop(state);
         self.panel.place(x, y as i32, width, height, scale);
         self.redraw(Kind::Panel);
+        self.announce_list(&panel.model);
         if animating {
             // SAFETY: our own window.
             unsafe { SetTimer(Some(self.panel.window.get()), ANIMATION_TIMER, FRAME_MS, None) };
+        }
+    }
+
+    /// Tells screen readers what changed in the list (only while one listens), and keeps the window's name.
+    fn announce_list(&self, model: &zt_panel::model::PanelModel) {
+        let accessible = &self.panel.accessible;
+        accessible.set_name(|| announce::name(model));
+        if !accessible.listening() {
+            self.state.borrow_mut().announced = Shown::default();
+            return;
+        }
+        let said = announce::announcement(model, &self.state.borrow().announced);
+        self.state.borrow_mut().announced = Shown::of(model);
+        if let Some(text) = said {
+            accessible.announce(self.panel.window.get(), &text, "ZhuyinType.Candidate");
+        }
+    }
+
+    /// Tells screen readers the new mode: `english` when 中/英 changed, else the badge's word (全形/半形標點).
+    /// From the badge's window (made if need be, hidden), so the list's own announcements are not replaced.
+    pub(crate) fn announce_mode(&self, english: Option<bool>, toast: Option<&str>) {
+        let text = match (english, toast) {
+            (Some(english), _) => announce::mode(english).to_owned(),
+            (None, Some(toast)) => announce::badge(toast),
+            (None, None) => return,
+        };
+        let accessible = &self.badge.accessible;
+        accessible.set_name(|| text.clone());
+        if !accessible.listening() {
+            return;
+        }
+        if let Some(window) = self.ensure(Kind::Badge) {
+            accessible.announce(window, &text, "ZhuyinType.Mode");
         }
     }
 
@@ -1073,11 +1137,11 @@ impl PanelWindow {
         let outgoing_rows = state.outgoing.clone();
         let old_label = state.old_label.clone();
         drop(state);
-        let colors = tokens::colors(panel.appearance.dark(system_dark()));
+        let (colors, opaque) = colors(panel.appearance, panel.accent);
         let surface = &self.panel;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (layout.width, layout.height), !panel.translucent);
+            surface.base(&painter, (layout.width, layout.height), !panel.translucent || opaque);
             let motion = Motion {
                 incoming: frames.incoming,
                 outgoing: outgoing_rows.as_deref().zip(frames.outgoing).map(|(rows, (x, y, a))| (rows, x, y, a)),
@@ -1106,13 +1170,13 @@ impl PanelWindow {
         let Some(g) = graphics() else { return };
         let state = self.state.borrow();
         let Some(text) = state.toast.clone() else { return };
-        let (appearance, solid) = (state.appearance, state.solid);
+        let (appearance, solid, accent) = (state.appearance, state.solid, state.accent);
         drop(state);
-        let colors = tokens::colors(appearance.dark(system_dark()));
+        let (colors, opaque) = colors(appearance, accent);
         let surface = &self.badge;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (BADGE_W, BADGE_H), solid);
+            surface.base(&painter, (BADGE_W, BADGE_H), solid || opaque);
             panel_draw::badge(&painter, &text, BADGE_W);
         });
     }
@@ -1192,6 +1256,16 @@ impl PanelWindow {
                     self.redraw(kind);
                 }
                 Some(LRESULT(0))
+            }
+            WM_GETOBJECT => self.surface(kind).accessible.get_object(window, wparam, lparam),
+            // Broadcast to every top-level window, owned ones too: high contrast, the system colours, the theme or
+            // the accent colour changed.
+            WM_SETTINGCHANGE | WM_SYSCOLORCHANGE | WM_THEMECHANGED | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                system_look::refresh();
+                if self.surface(kind).visible() {
+                    self.redraw(kind);
+                }
+                None
             }
             _ => None,
         }

@@ -9,11 +9,15 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+mod announce;
 mod coordinates;
 mod keys;
 mod marks;
 mod protocol;
+mod system_look;
 
+#[cfg(windows)]
+mod accessible;
 #[cfg(windows)]
 mod broker;
 #[cfg(windows)]
