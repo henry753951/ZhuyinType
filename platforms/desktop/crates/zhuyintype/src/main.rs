@@ -188,6 +188,8 @@ fn main() {
         // Screenshots and second copies for development (a settings file, no broker, a forced theme) never do.
         if args.settings_file.is_none() && !args.no_broker && args.dark.is_none() {
             wizard::show_on_first_use(cx);
+            #[cfg(target_os = "linux")]
+            platform::linux::check(cx);
         }
         if args.subpage.is_some() || args.row.is_some() {
             app::go(
@@ -257,12 +259,7 @@ fn linux_enable_fcitx() {
     if marker.as_ref().is_some_and(|marker| marker.exists()) {
         return;
     }
-    let exe = std::env::current_exe().ok();
-    let candidates = [
-        exe.as_ref().and_then(|exe| exe.parent()).map(|bin| bin.join("../lib/zhuyintype/fcitx5-setup")),
-        Some(std::path::PathBuf::from("/usr/lib/zhuyintype/fcitx5-setup")),
-    ];
-    let Some(helper) = candidates.into_iter().flatten().find(|path| path.is_file()) else { return };
+    let Some(helper) = platform::linux::fcitx_helper() else { return };
     let Ok(status) = std::process::Command::new(&helper).arg("status").output() else { return };
     let status = String::from_utf8_lossy(&status.stdout);
     if status.lines().any(|line| line == "fcitx5=missing") {
