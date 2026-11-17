@@ -37,6 +37,14 @@ final class ControllerCore {
     var disabledFeatures: Set<KeyFeature> = []
     /// The sentence shown has a typing correction (as last chosen by the reranker).
     private(set) var shownCorrected = false
+    /// 符號與 Emoji (ControllerCore+Symbols.swift): the symbols, nil when the engine has none; the open picker, which
+    /// gets every key while it is open; where it was opened.
+    var symbolSource: SymbolSource?
+    var recentSymbols: RecentSymbols?
+    var symbolPicker: SymbolPicker?
+    var symbolCaret = NSRect.zero
+    var showSymbolPicker: ((SymbolPicker, NSRect) -> Void)?
+    var hideSymbolPicker: (() -> Void)?
 
     private struct Mark: Equatable {
         var text: String
@@ -134,7 +142,9 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval? = nil) -> Bool {
         shiftTap = nil
-        guard !rendering, !isEnglish else { return false }
+        guard !rendering else { return false }
+        if let handled = symbolKey(keyCode: keyCode, modifiers: modifiers) { return handled }
+        guard !isEnglish else { return false }
         // With 「Caps Lock 打英文」 off, Caps Lock does not change what the keys type.
         let modifiers = disabledFeatures.contains(.capsLockEnglish) ? modifiers.subtracting(.capsLock) : modifiers
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
@@ -146,6 +156,7 @@ final class ControllerCore {
         if let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers), let command = shortcuts[shortcut] {
             if let input = command.input { return handle(input, time: time) }
             if command == .togglePunctuationWidth { return togglePunctuationWidth() }
+            if command == .symbolPicker { return false }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
         // A command's input comes only through its shortcut; its old default key, now unbound, is the app's.
@@ -391,6 +402,7 @@ final class ControllerCore {
     }
 
     func endSession() {
+        closeSymbolPicker()
         commit()
         heldShifts.removeAll()
         shiftTap = nil

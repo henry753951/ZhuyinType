@@ -254,6 +254,8 @@ struct KeysPane: View {
                 KeyItem(id: "optionSymbols", title: "鍵上的符號：. / ; < >", subtitle: "兩種標點按法都能用",
                         keys: .fixed(["⌥", "數字或符號鍵"]), feature: .optionSymbols),
                 KeyItem(id: "punctuationList", title: "列出同類的標點", subtitle: "在標點上按", keys: .fixed(["↓"])),
+                KeyItem(id: "symbolPicker", title: "開啟符號與 Emoji 面板", subtitle: "再按一次或按 Esc 關閉",
+                        keys: .command(.symbolPicker), feature: .symbolPicker),
             ]
         case .mode:
             return [

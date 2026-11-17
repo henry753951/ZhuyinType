@@ -130,6 +130,7 @@ enum SettingsRegistry {
                keywords: ["標點", "全形"]),
         feature(.controlPunctuation, "⌃ 加符號鍵打中文標點"),
         feature(.optionSymbols, "⌥ 加數字或符號鍵打鍵上的符號"),
+        feature(.symbolPicker, "符號與 Emoji"),
         toggle("shiftSwitch", "單按 Shift 切換中英", place(.typing, SettingsRow.shiftTap), \.shiftSwitchEnabled, preview: .mode,
                detail: { $0.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "關閉時，Shift 只當作 Shift" }, keywords: ["中英", "Shift"]),
         choice("shiftToggle", "使用的 Shift", place(.typing, SettingsRow.shiftTap), \.shiftToggle,

@@ -131,6 +131,8 @@ enum KeyFeature: String, CaseIterable, Identifiable {
     case capsLockEnglish
     /// Deleting what was just sent and typing again counts as a correction (and keeps the sentence going).
     case deleteAfterCommit
+    /// The symbol and emoji picker's shortcut (符號與 Emoji).
+    case symbolPicker
     var id: String { rawValue }
 }
 
@@ -141,6 +143,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
     case togglePunctuationWidth, insertSpace
+    /// Opens (and closes) the symbol and emoji picker.
+    case symbolPicker
 
     var id: String { rawValue }
 
@@ -159,6 +163,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "清單開著時改後一個字"
         case .togglePunctuationWidth: return "切換標點全半形"
         case .insertSpace: return "在組字中放一個空白"
+        case .symbolPicker: return "開啟符號與 Emoji 面板"
         }
     }
 
@@ -177,13 +182,14 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return Shortcut("→", option: true)
         case .togglePunctuationWidth: return Shortcut("Space", shift: true)
         case .insertSpace: return Shortcut("Space", option: true)
+        case .symbolPicker: return Shortcut(",", control: true, option: true)
         }
     }
 
     /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
     var input: KeyInput? {
         switch self {
-        case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
+        case .previousCharacter, .nextCharacter, .togglePunctuationWidth, .symbolPicker: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
@@ -213,6 +219,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "改後一個字"
         case .togglePunctuationWidth: return "標點全半形"
         case .insertSpace: return "插入空白"
+        case .symbolPicker: return "符號與 Emoji"
         }
     }
 
@@ -252,6 +259,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
+        case .symbolPicker: return .symbolPicker
         case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
         }
     }
