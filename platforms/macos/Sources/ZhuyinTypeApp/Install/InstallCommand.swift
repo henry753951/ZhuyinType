@@ -39,15 +39,7 @@ enum InstallCommand {
             if sources.isEmpty { print("ZhuyinType is already absent from registered input sources.") }
         } else {
             if enabling && !(flags.contains("--install") && alreadyListed) {
-                for source in parents + modes where !boolean(source, kTISPropertyInputSourceIsEnabled) {
-                    if boolean(source, kTISPropertyInputSourceIsEnableCapable) {
-                        report("Enable \(string(source, kTISPropertyInputSourceID) ?? bundleID)", TISEnableInputSource(source))
-                    }
-                }
-                let enabled = inputSources().contains {
-                    string($0, kTISPropertyInputSourceID) == modeID && boolean($0, kTISPropertyInputSourceIsEnabled)
-                }
-                if !enabled {
+                if !enableInputSource(report: report) {
                     print("Enable failed: add「ZhuyinType 注音」in System Settings → Keyboard → Input Sources → 繁體中文. Log out and back in if it is not listed.")
                     succeeded = false
                 } else { print("ZhuyinType 注音 is enabled.") }
@@ -72,6 +64,29 @@ enum InstallCommand {
         // main.swift exits successfully for true; preserve failures for installers.
         if !succeeded { exit(EXIT_FAILURE) }
         return true
+    }
+
+    /// Enables the input method and its mode where the system allows it, parents before modes, reporting each
+    /// attempt; returns whether the mode is enabled afterwards.  Also 檢查輸入法's 「加入輸入方式」.  Never selects it.
+    @discardableResult
+    static func enableInputSource(report: (String, OSStatus) -> Void = { _, _ in }) -> Bool {
+        let sources = inputSources()
+        let parents = sources.filter { string($0, kTISPropertyInputModeID) == nil }
+        let modes = sources.filter { string($0, kTISPropertyInputSourceID) == modeID }
+        for source in parents + modes where !boolean(source, kTISPropertyInputSourceIsEnabled) {
+            if boolean(source, kTISPropertyInputSourceIsEnableCapable) {
+                report("Enable \(string(source, kTISPropertyInputSourceID) ?? bundleID)", TISEnableInputSource(source))
+            }
+        }
+        return inputSources().contains {
+            string($0, kTISPropertyInputSourceID) == modeID && boolean($0, kTISPropertyInputSourceIsEnabled)
+        }
+    }
+
+    /// The input mode as the system lists it (all installed sources, enabled or not): nil when not registered.
+    static func inputModeState() -> (enabled: Bool, selectable: Bool)? {
+        guard let mode = inputSources().first(where: { string($0, kTISPropertyInputSourceID) == modeID }) else { return nil }
+        return (boolean(mode, kTISPropertyInputSourceIsEnabled), boolean(mode, kTISPropertyInputSourceIsSelectCapable))
     }
 
     private static func inputSources() -> [TISInputSource] {
