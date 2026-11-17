@@ -32,7 +32,7 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout �
 | `zhuyintype.exe` | App：設定、候選字視窗、設定精靈與輸入法服務（broker） |
 | `zhuyintype-tsf-x64.dll`、`zhuyintype-tsf-x86.dll` | TSF 文字服務，64 位元與 32 位元程式各自載入（`crates/zt-tsf`） |
 | `onnxruntime.dll` | ONNX Runtime，App 執行神經模型時載入 |
-| `logo.ico` | 語言清單與工作列輸入指示器裡的輸入法圖示 |
+| `logo.ico` | 語言清單與工作列輸入指示器裡的輸入法圖示：白底圓角方塊、黑色 ㄓ、50% 黑色外框，依微軟的輸入法品牌圖示規格只用黑白，深色、淺色與高對比工作列都用同一個圖示（Windows 從登記的檔案讀取，不能隨主題切換）。每個尺寸（16–256 px）各有一個對齊像素的 SVG，`packaging/icons/build_tip_icon.py` 由它們產生 `crates/zt-tsf/logo.ico` |
 | `zhuyintype.ico` | 開始功能表、「設定 › 應用程式」的圖示 |
 | `background.lnk` | 以 `--background` 啟動 App 的捷徑（更新服務無法使用時，在安裝者的工作階段重新啟動用） |
 | `data\` | 引擎資料：詞庫、讀音通道、兩個語言模型與神經模型，以及它們的授權說明（`build.sh`〈引擎資料〉） |
