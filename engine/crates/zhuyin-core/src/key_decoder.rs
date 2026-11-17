@@ -10,10 +10,10 @@
 //! States with equal cost are ranked by when their signature was first reached, as in the Swift engine (`DESIGN.md`
 //! §4).
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::api::KeyDecoderMethod;
+use crate::fast_hash::FastMap;
 use crate::key_channel;
 use crate::keyboard;
 
@@ -151,7 +151,7 @@ impl State {
 #[derive(Default)]
 struct Level {
     states: Vec<State>,
-    index: HashMap<Signature, usize>,
+    index: FastMap<Signature, usize>,
 }
 
 impl Level {

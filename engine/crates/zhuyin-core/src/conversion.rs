@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use crate::api::{ScoredSentence, SentenceWord, TypoTolerance};
 use crate::engine::{DECODING_BEAM_WIDTH, Engine, EngineModel};
+use crate::fast_hash::FastMap;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
 use crate::lexicon::WordEntry;
 use crate::reading_channel::ChannelUse;
@@ -167,7 +168,7 @@ struct DecodingEdge {
     characters: f64,
     /// Per history: the language-model part of the transition (everything but `characters`) and the history after
     /// the word.  It does not depend on the character scores, so it carries over to later decodes.
-    transitions: HashMap<LanguageModelHistory, (f64, LanguageModelHistory)>,
+    transitions: FastMap<LanguageModelHistory, (f64, LanguageModelHistory)>,
 }
 
 impl DecodingEdge {
@@ -203,7 +204,7 @@ impl DecodingEdge {
 
 struct DecodingPosition {
     edges: Vec<DecodingEdge>,
-    best: HashMap<LanguageModelHistory, Vec<usize>>,
+    best: FastMap<LanguageModelHistory, Vec<usize>>,
 }
 
 #[derive(Clone, Copy)]
@@ -466,7 +467,7 @@ impl Engine {
             }
             if reused > 0 {
                 // Copy the reused positions' nodes; every node's predecessor is in an earlier reused position.
-                let mut remap: HashMap<u32, u32> = HashMap::new();
+                let mut remap: FastMap<u32, u32> = FastMap::default();
                 for (state, old_state) in states.iter_mut().zip(&old.states).take(reused + 1) {
                     for &id in old_state {
                         let mut node = old.nodes[id as usize].clone();
@@ -509,18 +510,20 @@ impl Engine {
                 };
                 for edge_index in expansions {
                     let edge = &mut position.edges[edge_index];
-                    let word = edge.word.clone();
+                    let range = &edge.word.range;
                     if let Some(group) = &group
-                        && [group.start, group.end].iter().any(|&b| word.range.start < b && b < word.range.end)
+                        && [group.start, group.end].iter().any(|&b| range.start < b && b < range.end)
                     {
                         continue;
                     }
-                    let end = word.range.end;
+                    let end = range.end;
                     if end <= reused {
                         continue;
                     }
                     let is_literal = edge.entry.is_none();
                     let (value, state_key) = edge.transition(previous.history, model);
+                    // Borrowed until a node keeps it: most expansions are pruned.
+                    let word = &position.edges[edge_index].word;
                     let total = previous.score + value;
                     let rank = total + if end == tokens.len() { model.end(state_key) } else { 0.0 };
                     if states[end].len() == width
@@ -562,7 +565,7 @@ impl Engine {
                     let node = PathNode {
                         score: total,
                         has_last_word: !word.reading.is_empty(),
-                        word: Some(word),
+                        word: Some(word.clone()),
                         previous: Some(previous_id),
                         history: state_key,
                         beam_score: rank,
@@ -707,11 +710,11 @@ impl Engine {
                     values,
                     components,
                     characters,
-                    transitions: HashMap::new(),
+                    transitions: FastMap::default(),
                 }
             })
             .collect();
-        DecodingPosition { edges, best: HashMap::new() }
+        DecodingPosition { edges, best: FastMap::default() }
     }
 }
 

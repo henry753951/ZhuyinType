@@ -26,6 +26,7 @@ pub mod binary;
 pub mod composer;
 pub mod conversion;
 pub mod engine;
+mod fast_hash;
 pub mod key_channel;
 pub mod key_decoder;
 pub mod keyboard;
