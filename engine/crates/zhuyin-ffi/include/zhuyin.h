@@ -223,6 +223,8 @@ typedef struct {
   uint32_t punctuation_keys;
   // 0: off; otherwise past this many syllables a typing key first commits the finished sentences.
   size_t early_commit_syllables;
+  // The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting.
+  bool undo_correction_with_backspace;
 } ZtComposerOptions;
 
 // What a key did (Swift's `KeyResult`).
@@ -303,6 +305,16 @@ typedef struct {
   char *notice;
   // Standard plain Zhuyin for the highlighted span, or NULL.
   char *zhuyin_hint;
+  // The ranges of `text` shown through an automatic correction.
+  ZtRange *corrections;
+  // How many corrections.
+  size_t correction_count;
+  // Plain Zhuyin as typed for the corrections in the open window's span, or NULL.
+  char *typed_reading;
+  // ⌫ now converts the last correction as typed instead of deleting.
+  bool backspace_reverts;
+  // The last key or call converted a correction as typed.
+  bool reverted;
 } ZtPresentation;
 
 // The reranker hook (Swift's `Composer.reranker`).
@@ -597,6 +609,13 @@ void zt_composer_reset(ZtComposer *composer);
 // # Safety
 // `composer` is a live handle.
 void zt_composer_toggle_corrections(ZtComposer *composer);
+
+// Converts the automatic correction at the cursor as typed (the open window's span, the correction the last key
+// made, or the character ↓ would change); false when there is none.
+//
+// # Safety
+// `composer` is a live handle.
+bool zt_composer_revert_correction(ZtComposer *composer);
 
 // The text before the insertion point, read from the app when a composition starts.
 //

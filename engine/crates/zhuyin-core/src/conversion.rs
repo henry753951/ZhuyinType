@@ -289,6 +289,7 @@ impl ConversionCache {
             && self.group == request.group
             && self.start == request.start
             && self.characters == request.characters.is_some()
+            && request.literal.is_none()
     }
 }
 
@@ -311,13 +312,24 @@ pub struct Request<'a> {
     pub start: LanguageModelHistory,
     /// Character-model scores.
     pub characters: Option<&'a CharacterScores>,
+    /// No word over these tokens may be a typing correction or fuzzy sound: the keys there are converted as typed
+    /// (undoing an automatic correction).  Decode such a request without a cache.
+    pub literal: Option<Range<usize>>,
 }
 
 impl<'a> Request<'a> {
     /// A request with no group, the sentence start and no character scores.
     #[must_use]
     pub fn new(tokens: &'a [CompositionToken], fixed: &'a [FixedWord], typo: TypoTolerance) -> Self {
-        Self { tokens, fixed, typo, group: None, start: LanguageModelHistory::default(), characters: None }
+        Self {
+            tokens,
+            fixed,
+            typo,
+            group: None,
+            start: LanguageModelHistory::default(),
+            characters: None,
+            literal: None,
+        }
     }
 }
 
@@ -424,6 +436,7 @@ impl Engine {
         let mut reused = 0;
         if !distinct
             && !characters
+            && request.literal.is_none()
             && let Some(old) = cache.as_ref()
             && !old.characters
             && old.fixed == fixed
@@ -442,7 +455,7 @@ impl Engine {
         let mut nodes: Vec<PathNode> = Vec::new();
         let mut states: Vec<Vec<u32>> = vec![Vec::new(); tokens.len() + 1];
         let mut edge_cache: Vec<Option<DecodingPosition>> = (0..tokens.len()).map(|_| None).collect();
-        let old = cache.take();
+        let old = cache.take().filter(|_| request.literal.is_none());
         if let Some(mut old) = old {
             if old.fixed == fixed && old.typo == request.typo && old.revision == revision {
                 if old.tokens == tokens {
@@ -652,6 +665,9 @@ impl Engine {
                 } else {
                     for m in self.matches(tokens, start, request.typo) {
                         let corrected = m.annotation.is_some();
+                        if corrected && request.literal.as_ref().is_some_and(|literal| overlaps(literal, &m.range)) {
+                            continue;
+                        }
                         edges.push((
                             ConvertedWord {
                                 range: m.range.clone(),
