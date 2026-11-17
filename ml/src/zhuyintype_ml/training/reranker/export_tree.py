@@ -9,7 +9,11 @@ Writes RerankerTree.mlpackage or RerankerTree.onnx beside the reranker.
 Inputs are one packed trie: ids/positions [1,N], ancestors [N,N] (1 allowed, 0 masked), parents/targets [E] (root
 points to itself).  Terminal leaves need no hidden state.  Output [E] scores each token at its parent's hidden state;
 context/root outputs are ignored by Swift.  Before exporting, the scorer is checked against the batched model on a
-small tree (2e-5).  The Core ML export keeps int32 gather indices (see REPORT_tree.md).
+small tree (2e-5).  The Core ML export keeps int32 gather indices (see REPORT_tree.md) and computes the attention
+matmuls in fp32: in fp16, Core ML on the CPU (the app's compute unit) is off by 4 to 8 nats or NaN at some node counts
+(28, 29, 36, 37, 43, 49, 58, 62 among the first 63, for every v2b weights tried), about 5% of the app's calls; fp32
+matmuls cost about 4% per call.  Int8 weights (`zt train compress`) bring the error back through the linear layers;
+they are correct only with the whole model in fp32 (research log 2026-11-18, `chat-reranker`).
 
 TreeScorer and example are also imported by ml/src/zhuyintype_ml/remote's ONNX export.
 """
@@ -132,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             inputs=[ct.TensorType(name=name, shape=shape, dtype=np.int32) for name, shape in zip(names, shapes)],
             outputs=[ct.TensorType(name="logprob", dtype=np.float32)],
             minimum_deployment_target=getattr(ct.target, a.target),
-            compute_precision=ct.precision.FLOAT16,
+            # The attention matmuls (q·k and weights·v) stay fp32; everything else is fp16.
+            compute_precision=ct.transform.FP16ComputePrecision(op_selector=lambda op: op.op_type != "matmul"),
             convert_to="mlprogram",
             pass_pipeline=pipeline,
         )
