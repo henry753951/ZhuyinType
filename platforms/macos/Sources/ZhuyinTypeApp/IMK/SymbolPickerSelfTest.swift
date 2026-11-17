@@ -45,7 +45,9 @@ enum SymbolPickerSelfTest {
         }
 
         test("symbols: ⌃⌥, is a free key for the picker, with no conflict among the defaults") {
-            let key = ShortcutCommand.symbolPicker.defaultShortcut
+            guard let key = ShortcutCommand.symbolPicker.defaultShortcut else {
+                return try expect(false, "the picker has no default key")
+            }
             try expect(key == Shortcut(",", control: true, option: true), "the default is not ⌃⌥,")
             let saved = Shortcut.controlPunctuation
             defer { Shortcut.controlPunctuation = saved }

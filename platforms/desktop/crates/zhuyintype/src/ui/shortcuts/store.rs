@@ -66,7 +66,12 @@ pub fn commands() -> &'static [CommandInfo] {
             c("nextCharacter", "改後一個字", None, true, vec![b(RIGHT, ALT)]),
             c("togglePunctuationWidth", "標點全半形", None, false, vec![b(SPACE, SHIFT)]),
             c("insertSpace", "插入空白", None, false, vec![b(SPACE, ALT)]),
+            // The word actions (5 s to undo with Ctrl+Z).
+            c("blockCandidate", "不要再推薦", None, false, vec![b(DELETE, CONTROL)]),
+            c("forgetCandidate", "忘記這個選字", None, false, vec![b(DELETE, CONTROL | SHIFT)]),
+            c("addCandidatePhrase", "加入自訂詞", None, false, vec![b(RETURN, CONTROL)]),
             // No default key: the user chooses one.
+            c("addSelectedText", "選取的字加入自訂詞", None, false, vec![]),
             c("quickSettings", "快速設定", None, false, vec![]),
             c(
                 "symbolPicker",
@@ -680,5 +685,17 @@ mod tests {
         store.reset(Some("singleCharacterList")).unwrap();
         assert!(store.user().is_empty());
         assert!(store.remove("commitWithNewline", 0).is_err());
+    }
+
+    #[test]
+    fn the_local_port_has_every_core_command() {
+        let local: Vec<_> =
+            commands().iter().map(|c| (c.id, c.label, c.feature, c.required, c.defaults.clone())).collect();
+        let core: Vec<_> =
+            Shortcuts::commands().iter().map(|c| (c.id, c.label, c.feature, c.required, c.defaults.clone())).collect();
+        for command in &core {
+            assert!(local.contains(command), "{command:?}");
+        }
+        assert_eq!(local.len(), core.len());
     }
 }

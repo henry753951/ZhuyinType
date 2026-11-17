@@ -305,7 +305,7 @@ impl CandidatePanel {
         if let Some(notice) = &layout.notice {
             surface = surface.child(notice_element(notice, c));
             if let Some(frame) = notice.undo {
-                surface = surface.child(undo_link(frame, notice.font_size, p, actions.clone()));
+                surface = surface.child(undo_link(frame, notice.font_size, c, actions.clone()));
             }
         }
         if let Some((frame, text, text_w)) = &layout.preview {
@@ -333,7 +333,7 @@ impl CandidatePanel {
                     )
                     .children(layout.preview_marks.iter().map(|&(x, w)| {
                         // 「標示自動修正」: a dotted line in the accent colour just under the composition's underline.
-                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, p.accent)
+                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2.5, c.accent)
                     })),
             );
         }
@@ -462,8 +462,8 @@ impl CandidatePanel {
 }
 
 /// The notice's 「復原」 after a word action.
-fn undo_link(frame: Frame, size: f32, p: &Palette, actions: Option<ActionHandler>) -> impl IntoElement {
-    let accent = p.accent;
+fn undo_link(frame: Frame, size: f32, c: &Colors, actions: Option<ActionHandler>) -> impl IntoElement {
+    let accent = c.accent;
     at(frame)
         .id("word-undo")
         .flex()
