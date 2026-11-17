@@ -29,7 +29,10 @@ fn defaults_and_normalization() {
         19,
         "the macOS commands, with 標點全半形, 插入空白, 快速設定 and 符號與 Emoji"
     );
-    assert_eq!(resolve(&shortcuts, i32::from(b','), modifier::CONTROL | modifier::ALT), Some("symbolPicker"));
+    assert_eq!(resolve(&shortcuts, i32::from(b'/'), modifier::CONTROL | modifier::SHIFT), Some("symbolPicker"));
+    // The key as Windows and Fcitx report it: the shifted symbol.
+    assert_eq!(resolve(&shortcuts, i32::from(b'?'), modifier::CONTROL | modifier::SHIFT), Some("symbolPicker"));
+    assert_eq!(shortcuts.active_label("symbolPicker"), "Ctrl+⇧/");
     assert!(shortcuts.error().is_none());
     assert!(!shortcuts.any_customised());
     assert_eq!(resolve(&shortcuts, code::TAB, 0), Some("nextPage"));

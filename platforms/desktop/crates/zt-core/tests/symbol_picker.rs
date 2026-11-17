@@ -10,7 +10,7 @@ use serde_json::Value;
 use zt_core::keys::{code, modifier};
 use zt_core::symbols::{Category, Item, Source};
 
-const PICKER: (i32, u32) = (',' as i32, modifier::CONTROL | modifier::ALT);
+const PICKER: (i32, u32) = ('/' as i32, modifier::CONTROL | modifier::SHIFT);
 
 /// A small catalog: 常用標點 (，。、) and 箭頭 (← →); 「ㄒㄧㄠ」 finds 😀.
 struct Catalog;

@@ -119,7 +119,7 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 
 三個平台都有的 `accentColor`（強調色）：`system`（跟隨系統，預設）或 `zhuyintype`（ZhuyinType 藍）。macOS 在 `Preferences`，Linux／Windows 在 `settings.json`；顏色的計算在 `zt_panel::a11y`（Linux／Windows）與 `UI/Accessibility/ContrastMath.swift`（macOS），見 [DESKTOP.md](DESKTOP.md)「無障礙」。`candidateFontSize`（字級）三個平台都是 13–36 pt。
 
-符號與 Emoji 面板在兩邊用同樣的名稱：快捷鍵功能 `symbolPicker`（`keyBindings`／`shortcuts` 中的 id，預設 macOS ⌃⌥,、Linux／Windows Ctrl+Alt+,）與按鍵功能的開關 `symbolPicker`（macOS `KeyFeature.symbolPicker`，Linux／Windows `feature.symbolPicker`，預設開啟）。最近使用的符號不是設定，存在資料夾的 `recent-symbols.txt`。
+符號與 Emoji 面板在兩邊用同樣的名稱：快捷鍵功能 `symbolPicker`（`keyBindings`／`shortcuts` 中的 id，預設 macOS ⌃⌥,、Linux／Windows Ctrl+Shift+/）與按鍵功能的開關 `symbolPicker`（macOS `KeyFeature.symbolPicker`，Linux／Windows `feature.symbolPicker`，預設開啟）。最近使用的符號不是設定，存在資料夾的 `recent-symbols.txt`。
 
 `panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
 

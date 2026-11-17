@@ -522,7 +522,7 @@ fn selected_text_opens_the_add_form_filled_in() {
 #[test]
 fn claims_list_the_keys_reachable_with_nothing_composed() {
     let mut f = Fixture::new();
-    let picker = json!([',' as i32, modifier::CONTROL | modifier::ALT]);
+    let picker = json!(['/' as i32, modifier::CONTROL | modifier::SHIFT]);
     let quick = json!(['Q' as i32, modifier::ALT]);
     let add = json!(['J' as i32, modifier::ALT]);
     let focus = f.request("focus", json!({"secure": false}));

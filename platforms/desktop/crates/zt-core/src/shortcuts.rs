@@ -298,7 +298,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "typing",
             Some("feature.symbolPicker"),
             false,
-            &[b(i32::from(b','), CONTROL | ALT)],
+            &[b(i32::from(b'/'), CONTROL | SHIFT)],
             Action::SymbolPicker,
         ),
     ]

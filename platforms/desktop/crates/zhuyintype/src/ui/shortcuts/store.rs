@@ -78,7 +78,7 @@ pub fn commands() -> &'static [CommandInfo] {
                 "符號與 Emoji",
                 Some("feature.symbolPicker"),
                 false,
-                vec![b(i32::from(b','), CONTROL | ALT)],
+                vec![b(i32::from(b'/'), CONTROL | SHIFT)],
             ),
         ]
     })
