@@ -536,3 +536,27 @@ fn flush_rejects_null_engine() {
     // SAFETY: null is explicitly checked by the API.
     assert!(!unsafe { zt_engine_flush_personal_data(std::ptr::null()) });
 }
+
+#[test]
+fn symbols_as_json_and_text() {
+    let categories = text(zt_symbols_categories_json()).unwrap();
+    assert!(categories.starts_with(
+        "[{\"id\":\"punctuation\",\"title\":\"常用標點\",\"symbols\":[{\"text\":\"，\",\"name\":\"逗號\"}"
+    ));
+    assert!(categories.ends_with("]}]"));
+    let query = CString::new("9vup").unwrap();
+    // SAFETY: a NUL-terminated string.
+    let found = text(unsafe { zt_symbols_search_json(query.as_ptr(), 1) }).unwrap();
+    assert_eq!(found, "[{\"text\":\"❤️\",\"name\":\"愛心\"}]");
+    // SAFETY: a NUL-terminated string.
+    assert_eq!(text(unsafe { zt_symbols_display_query(query.as_ptr()) }).unwrap(), "ㄞㄒㄧㄣ");
+    // SAFETY: NULL is allowed.
+    assert_eq!(text(unsafe { zt_symbols_search_json(std::ptr::null(), 5) }).unwrap(), "[]");
+    let stored = CString::new("😀\n，\n").unwrap();
+    let symbol = CString::new("，").unwrap();
+    // SAFETY: NUL-terminated strings.
+    assert_eq!(text(unsafe { zt_symbols_recent_push(stored.as_ptr(), symbol.as_ptr()) }).unwrap(), "，\n😀\n");
+    // SAFETY: NULL is allowed.
+    assert_eq!(text(unsafe { zt_symbols_recent_push(std::ptr::null(), symbol.as_ptr()) }).unwrap(), "，\n");
+    assert_eq!(zt_symbols_recent_capacity(), 32);
+}
