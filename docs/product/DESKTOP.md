@@ -56,7 +56,7 @@
 - **清單**：發布時 `release.yml` 寫出 main 上的 `desktop-update.json`：新版本的版本號、說明與各平台安裝檔的網址、大小與 Ed25519 簽章，整份清單本身也簽章。金鑰和 macOS 的 Sparkle 相同，App 內建公鑰（`zt_core::update::PUBLIC_KEY`）。
 - **安裝要系統權限**，所以使用者的 App 只檢查、顯示，閒置時請系統的更新程式執行：
   - Windows：安裝程式建立的「ZhuyinType 更新」服務（`ZhuyinTypeUpdate`，手動啟動，LocalSystem）。安全性描述元讓登入的使用者可以查詢、啟動它，此外不能做任何事。服務先確認安裝資料夾只有系統管理員能修改，自己下載清單與安裝程式、驗證簽章，放在安裝資料夾的 `updates\`，執行前鎖住檔案再驗證一次，以 `/S /UPDATE` 安靜安裝；安裝程式結束 App，裝好後（失敗也一樣）在原本執行它的每個工作階段、以該使用者身分重新啟動它（`--relaunch-sessions`）。不會出現 UAC。
-  - Linux：套件附的 systemd 服務 `zhuyintype-update.service`（root）與 polkit 規則，讓目前在電腦前的使用者不輸入密碼就能啟動它（遠端桌面等規則不適用的情況，自動安裝不會跳出密碼視窗，按「立即安裝」才可能要求密碼）。它驗證後用 apt、dnf 或 zypper 安裝套件；執行中的 App 發現自己的執行檔被換掉，閒置時換成新版本。
+  - Linux：套件附的 systemd 服務 `zhuyintype-update.service`（root）與 polkit 規則，讓目前在電腦前的使用者不輸入密碼就能啟動它（遠端桌面等規則不適用的情況，自動安裝不會跳出密碼視窗，按「立即安裝」才可能要求密碼，等待輸入密碼時輸入法照常使用）。它驗證後用 apt、dnf 或 zypper 安裝套件；執行中的 App 發現自己的執行檔被換掉，閒置時換成新版本。
 - 更新程式不接受使用者的任何輸入，只安裝用專案金鑰簽章、版本比目前新的發布。
 
 ## 輸入法服務不中斷
