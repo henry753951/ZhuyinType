@@ -54,8 +54,20 @@ rpmlint（Fedora）沒有錯誤；警告為 `no-manual-page-for-binary` 與 `non
 
 `build.sh linux --test`（`tools/zt check desktop`）在 Debian 13 測試映像中：`cargo test` 全部通過（含 `zt-core` 讀真實資料的測試），CTest 4/4 通過，不略過任何一項：`fcitx-broker-transport`、`fcitx-native`、`fcitx-application-delivery`、`fcitx-self-host-settings`；三項整合測試連續再跑 5 次都通過。
 
+## 2026-11-18：0.6.1 的審查與修正之後
+
+版本 0.6.1（`polish/review-linux` 分支），同樣以 `scripts/build.sh linux --package` 在 Debian 13 映像中建置。
+
+- `verify.sh` 在 `debian:13`、`ubuntu:26.04`、`fedora:latest`（Fedora 45）、`opensuse/tumbleweed` 都通過，並以 `ZT_VERIFY_FROM` 從 0.6.0 的套件升級：升級後版本與檔案正確，管理員改過的 `/etc/xdg/autostart/zhuyintype.desktop`（加上 `Hidden=true`）保留；deb 以更新程式的方式安裝（沒有終端機、`--force-confdef --force-confold`）。移除後連更新程式的下載資料夾 `/var/cache/zhuyintype` 也不留下。
+- 沒有終端機時，dpkg 在設定檔詢問處會失敗：以兩個測試套件在 `debian:13` 重現（`end of file on stdin at conffile prompt`，套件停在 unpacked），加上這兩個選項後升級完成並保留改過的檔案。
+- `verify.sh --typing`：Qt 測試程式、服務自己的設定欄位，以及焦點在組字中途移到同一視窗的另一欄位、另一個視窗（Qt 與 GTK 3）都通過。
+- `verify.sh --lint`：lintian 沒有錯誤（`libonnxruntime.so.1` 在 deb 中改為 0644）；rpmlint 報 `files-duplicated-waste`（資料與授權資料夾中的幾個相同授權檔，共 0.78 MB）與上面列過的警告。
+- 設定視窗以一般使用者執行、Fcitx 5 沒有執行時（容器中沒有輸入法框架），頁面上方說明並有「改用 Fcitx 5」；按下後 `im-config -n fcitx5` 寫入 `~/.xinputrc`，說明改為「登出再登入一次」。openSUSE 容器中 `fcitx5-setup framework` 在 `~/.i18n` 設定 `INPUT_METHOD=fcitx5`，`status` 回報 `fcitx5-next-login`。
+- polkit 規則：Fedora 容器中的 polkitd 載入規則；沒有登入工作階段的使用者啟動更新服務得到 `auth_admin`。把工作階段條件換成 true 的副本確認規則只允許 `zhuyintype-update.service` 的 `start`（`stop` 與其他服務仍要 `auth_admin`）。
+
 ## 尚未驗證
 
-- 真實桌面登入後的 autostart 與 Fcitx 5 的啟動順序：GPUI 只在啟動時尋找 XIM 伺服器，所以 `--background` 在 Fcitx 5 是輸入法時先等 `fcitx5` 行程出現（最多 15 秒）再啟動介面；尚未在真實桌面登入時驗證。
-- Wayland、GNOME／KDE 的輸入法設定流程（`fcitx5-setup framework`）。
-- 套件升級（同名新版本覆蓋安裝）。
+- 真實桌面登入後的 autostart 與 Fcitx 5 的啟動順序：GPUI 只在啟動時尋找 XIM 伺服器，所以 `--background` 在 Fcitx 5 是輸入法時先等 `fcitx5` 行程出現（最多 15 秒）再啟動介面，加入輸入方式也在這之後；尚未在真實桌面登入時驗證。
+- Wayland 工作階段（GNOME、KDE）中由 Fcitx 顯示候選字清單；GNOME 上 Fcitx 的清單位置需要 Kimpanel 擴充功能。
+- Fedora 的 `imsettings-switch fcitx5`（需要桌面工作階段的 imsettings daemon）。
+- 真正的 systemd 與 polkit 下由使用者啟動更新服務、以 apt／dnf／zypper 安裝新版本。
