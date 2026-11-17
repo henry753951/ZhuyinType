@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/zhuyin-core", "crates/zhuyin-models", "crates/zhuyin-cli", "crates/zhuyin-ffi"]
+members = ["crates/zhuyin-core", "crates/zhuyin-models", "crates/zhuyin-cli", "crates/zhuyin-ffi", "crates/zhuyin-symbols"]
 
 [workspace.package]
 edition = "2024"

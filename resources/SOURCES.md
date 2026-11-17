@@ -4,6 +4,7 @@
 |---|---|---|
 | [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cc-cedict) | 詞彙、正體字形與讀音（有標註時優先採用台灣讀音） | CC BY-SA 4.0 |
 | [Unicode Unihan](https://www.unicode.org/charts/unihan.html) | Big5 字元與讀音 | Unicode License v3 |
+| [Unicode CLDR](https://cldr.unicode.org) 46 註解（[cldr-json](https://github.com/unicode-org/cldr-json) 46.0.0）與 [emoji-test.txt](https://unicode.org/Public/emoji/15.1/emoji-test.txt) 15.1 | 符號與 Emoji 面板：名稱、搜尋關鍵字（zh-Hant、zh-Hant-HK、en）與 Emoji 分類；`engine/crates/zhuyin-symbols/generate.py` 產生 `data/symbols.tsv`，關鍵字的注音取自詞庫 | Unicode License v3 |
 | [wordfreq](https://github.com/rspeer/wordfreq) | 詞頻 | 程式 Apache-2.0，資料 CC BY-SA 4.0；中文詞頻含 SUBTLEX-CH，依其條件註明作者（見 `wordfreq-NOTICE.txt`） |
 
 詞庫涵蓋流程（`ml/src/zhuyintype_ml/training/lexicon/`）另外使用以下資料，版本與 SHA-256 固定在 `sources.py`。data-4 起，App 的詞庫含其中的讀音資料（台灣標準讀音、全字庫的單字讀音、Wiktionary 與小麥注音的詞層級讀音），署名見 [LEXICON.txt](../platforms/macos/Resources/Licenses/LEXICON.txt)。data-7 起，`lexicon` 元件也帶讀音通道的字音表 `channel/`（署名在其中的 `NOTICE.md`），給引擎的讀音通道與評測用；0.4.3 起 App 帶著由它編成的 `channel.bin`，署名同樣在 LEXICON.txt。Unihan 的 Unicode License v3 允許使用、修改與散布資料檔，條件是附上著作權聲明與授權全文（App 的 `Licenses/Unicode-3.0.txt`）；BabelStone IDS 的維護者聲明 IDS 是事實，個人與商業使用都不必取得許可或署名，並放棄對檔案格式的權利（我們仍然署名）：
