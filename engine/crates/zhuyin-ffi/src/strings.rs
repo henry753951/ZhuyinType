@@ -142,3 +142,15 @@ pub(crate) unsafe fn string_array(strings: *const *const c_char, count: usize) -
     // SAFETY: each pointer is a valid C string per the contract.
     pointers.iter().map(|&p| unsafe { borrowed(p) }.map(str::to_owned)).collect()
 }
+
+/// `text` in simplified characters (`zhuyin_core::simplified`): the same length in UTF-16 units, so offsets into
+/// the traditional text stay valid.  NULL for NULL or invalid UTF-8; free the result with `zt_string_free`.
+///
+/// # Safety
+/// `text` is NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zt_to_simplified(text: *const c_char) -> *mut c_char {
+    // SAFETY: forwarded from the caller.
+    let text = unsafe { borrowed(text) };
+    owned_optional(text.map(zhuyin_core::simplified::to_simplified).as_deref())
+}

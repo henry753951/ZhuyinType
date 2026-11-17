@@ -1041,6 +1041,13 @@ size_t zt_strings_count(const ZtStrings *strings);
 // `strings` is a view passed to the running callback.
 char *zt_strings_get(const ZtStrings *strings, size_t index);
 
+// `text` in simplified characters (`zhuyin_core::simplified`): the same length in UTF-16 units, so offsets into
+// the traditional text stay valid.  NULL for NULL or invalid UTF-8; free the result with `zt_string_free`.
+//
+// # Safety
+// `text` is NULL or a NUL-terminated string.
+char *zt_to_simplified(const char *text);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
