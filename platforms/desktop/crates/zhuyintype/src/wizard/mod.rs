@@ -231,6 +231,8 @@ impl WizardWindow {
         let activation = cx.observe_window_activation(window, |this: &mut Self, window, cx| {
             if !window.is_window_active() {
                 this.field.update(cx, |field, cx| field.end_session(cx));
+            } else {
+                crate::motion::refresh(cx);
             }
         });
         let mut wizard = Self {

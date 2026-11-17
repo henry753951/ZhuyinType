@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, canvas, div,
+    AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, canvas, div,
 };
 
 use super::{controls, h, v};
@@ -179,24 +179,28 @@ pub(crate) fn anchor_probe(anchor: SharedString) -> impl IntoElement {
         .size_full()
 }
 
-/// The arrival tint: rises, holds, fades (macOS: peak opacity 0.17).
-pub(crate) fn arrival_tint(key: impl Into<SharedString>, generation: usize, cx: &App) -> impl IntoElement {
+/// How long the arrival tint takes: rises 0.24 s, holds, fades out by 1.6 s.
+const ARRIVAL: Duration = Duration::from_millis(1600);
+
+/// The arrival tint: rises, holds, fades (macOS: peak opacity 0.17), from the moment the link was followed.  It is a
+/// fade, so it plays under reduced motion too (only the scroll there is immediate).
+pub(crate) fn arrival_tint(window: &mut Window, cx: &App) -> impl IntoElement {
     let p = theme::palette(cx);
-    let key: SharedString = key.into();
-    div().absolute().inset(space::S2).rounded(size::R_SM).bg(p.accent).with_animation(
-        SharedString::from(format!("arrival-{key}-{generation}")),
-        Animation::new(Duration::from_millis(1600)),
-        |this, t| {
-            let opacity = if t < 0.15 {
-                t / 0.15
-            } else if t < 0.45 {
-                1.0
-            } else {
-                1.0 - (t - 0.45) / 0.55
-            };
-            this.opacity(0.17 * opacity)
-        },
-    )
+    let t = app::nav(cx)
+        .arrival
+        .as_ref()
+        .map_or(1., |(_, at)| (at.elapsed().as_secs_f32() / ARRIVAL.as_secs_f32()).min(1.));
+    if t < 1. {
+        window.request_animation_frame();
+    }
+    let opacity = if t < 0.15 {
+        t / 0.15
+    } else if t < 0.45 {
+        1.0
+    } else {
+        1.0 - (t - 0.45) / 0.55
+    };
+    div().absolute().inset(space::S2).rounded(size::R_SM).bg(p.accent).opacity(0.17 * opacity)
 }
 
 /// The 已自訂 dot's size.
@@ -209,13 +213,19 @@ impl RenderOnce for Row {
         let arrival = self.anchor.as_ref().and_then(|anchor| arrived(anchor, cx).map(|g| (anchor.clone(), g)));
         let chevron = match self.accessory {
             Accessory::Chevron => Some(controls::chevron(cx).into_any_element()),
-            Accessory::Disclosure(open) => Some(
-                gpui_kit::component::Icon::new(gpui_kit::assets::IconName::ChevronRight)
-                    .size(size::ICON_SM)
-                    .text_color(p.text_tertiary)
-                    .rotate(gpui_kit::radians(if open { std::f32::consts::FRAC_PI_2 } else { 0. }))
-                    .into_any_element(),
-            ),
+            Accessory::Disclosure(open) => {
+                // The chevron turns down as the rows open (at once under reduced motion).
+                let key = SharedString::from(format!("disclosure-{:?}", self.id));
+                let target = if open { std::f32::consts::FRAC_PI_2 } else { 0. };
+                let angle = crate::motion::glide(key, target, crate::motion::DISCLOSE, window, cx);
+                Some(
+                    gpui_kit::component::Icon::new(gpui_kit::assets::IconName::ChevronRight)
+                        .size(size::ICON_SM)
+                        .text_color(p.text_tertiary)
+                        .rotate(gpui_kit::radians(angle))
+                        .into_any_element(),
+                )
+            }
             _ => None,
         };
         let info: Option<AnyElement> = match self.accessory {
@@ -225,7 +235,6 @@ impl RenderOnce for Row {
             }
             _ => None,
         };
-        let _ = window;
         let group: SharedString = self.hover_group.clone().unwrap_or_else(|| "row-hover".into());
         let line = text::BODY * 1.5;
         h().id(self.id)
@@ -242,20 +251,25 @@ impl RenderOnce for Row {
             .when(clickable, |this| {
                 this.child(
                     div()
+                        .id("row-fill")
                         .absolute()
                         .left_0()
                         .right_0()
                         .top(space::S2)
                         .bottom(space::S2)
                         .rounded(size::R_SM)
-                        .group_hover(group.clone(), |style| style.bg(p.hover)),
+                        .group_hover(group.clone(), |style| style.bg(p.hover))
+                        .group_active(group.clone(), |style| style.bg(p.pressed)),
                 )
             })
-            .when_some(arrival, |this, (anchor, generation)| {
-                this.child(arrival_tint(anchor.clone(), generation, cx)).child(anchor_probe(anchor))
-            })
+            .when_some(arrival, |this, (anchor, _)| this.child(arrival_tint(window, cx)).child(anchor_probe(anchor)))
             .when(self.dimmed, |this| this.opacity(0.5))
-            .when(clickable, |this| this.cursor_pointer())
+            .when(clickable, |this| {
+                this.cursor_pointer()
+                    .rounded(size::R_SM)
+                    .tab_index(0)
+                    .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface))
+            })
             .when_some(self.on_click, |this, handler| this.on_click(handler))
             .child(
                 v().flex_1()

@@ -306,7 +306,8 @@ pub mod motion {
 
     pub const FAST: Duration = Duration::from_millis(120);
     pub const NORMAL: Duration = Duration::from_millis(200);
-    pub const PAGE: Duration = Duration::from_millis(240);
+    /// A sub-page sliding in or out (macOS: 0.22 s).
+    pub const PAGE: Duration = Duration::from_millis(220);
     /// The candidate window's page turn (macOS: 140 ms, 10 px).
     pub const PAGE_TURN: Duration = Duration::from_millis(140);
 }

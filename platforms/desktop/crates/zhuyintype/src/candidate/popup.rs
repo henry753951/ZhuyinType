@@ -264,6 +264,7 @@ fn show_candidates(state: PopupState, cx: &mut App) {
     let keys = CurrentKeys::new(&settings, app::service(cx));
     let style = style::style_from_settings(&settings, &keys);
     let animates = settings.bool("panelAnimation");
+    let moves = crate::motion::Panel::new(animates, cx);
     let above = settings.string("candidatePlacement") == "above";
     let appearance = PanelAppearance::from_settings(&settings);
     let reopen = handle
@@ -277,6 +278,7 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             }
             view.appearance = appearance;
             view.panel.animates = animates;
+            view.panel.reduced = moves.reduced;
             let margin = view.margin;
             let max_width = (screen.width as f32 - margin * 2.).max(100.);
             let (width, height) =
@@ -310,11 +312,21 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             if appearing {
                 platform::set_visible(window, true);
                 if animates {
-                    // A few pixels away from the caret, towards its place.
+                    // A few pixels away from the caret, towards its place (only a fade under reduced motion).
                     let below = y + f64::from(height) / 2. > caret.y + caret.height / 2.;
-                    view.appeared =
-                        Some((Instant::now(), if below { -motion::APPEAR_SLIDE } else { motion::APPEAR_SLIDE }));
+                    let slide = if !moves.slides() {
+                        0.
+                    } else if below {
+                        -motion::APPEAR_SLIDE
+                    } else {
+                        motion::APPEAR_SLIDE
+                    };
+                    view.appeared = Some((Instant::now(), slide));
                 }
+            } else {
+                // Still appearing when the next key arrives: finish at once, so the window shows every key in full
+                // (macOS `PanelMotion.present`).
+                view.appeared = None;
             }
             view.frame = Some(frame);
             view.last_caret = Some(caret);
@@ -376,6 +388,8 @@ pub struct ToastWindow {
     text: &'static str,
     margin: f32,
     shown_at: Option<Instant>,
+    /// Appearing: when, and how far it starts from its place (towards the caret).
+    appeared: Option<(Instant, f32)>,
     animates: bool,
     appearance: PanelAppearance,
     visible: bool,
@@ -385,23 +399,36 @@ impl Render for ToastWindow {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let system_dark = matches!(window.appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
         let palette = self.appearance.palette(system_dark);
-        let mut alpha = 1.;
+        let (mut alpha, mut dy) = (1., 0.);
+        if let Some((started, from)) = self.appeared {
+            let t = started.elapsed().as_secs_f32() * 1000. / crate::motion::panel::BADGE_APPEAR;
+            if t < 1. {
+                let from_alpha = crate::motion::panel::BADGE_FROM;
+                alpha = from_alpha + (1. - from_alpha) * ease_out(t);
+                dy = from * (1. - ease_out(t));
+                window.request_animation_frame();
+            } else {
+                self.appeared = None;
+            }
+        }
         if let Some(shown) = self.shown_at
             && self.animates
         {
             let elapsed = shown.elapsed().as_secs_f32() * 1000.;
             if elapsed >= motion::TOAST_HOLD {
-                alpha = (1. - (elapsed - motion::TOAST_HOLD) / motion::TOAST_FADE).max(0.);
+                alpha *= (1. - (elapsed - motion::TOAST_HOLD) / motion::TOAST_FADE).max(0.);
                 if alpha > 0. {
                     window.request_animation_frame();
                 }
             }
         }
-        div()
-            .size_full()
-            .font(crate::theme::font())
-            .p(px(self.margin))
-            .child(div().opacity(alpha).child(mode_badge_in(self.text, &palette, popup_chrome(self.margin))))
+        div().size_full().font(crate::theme::font()).p(px(self.margin)).child(
+            div().relative().top(px(dy)).opacity(alpha).child(mode_badge_in(
+                self.text,
+                &palette,
+                popup_chrome(self.margin),
+            )),
+        )
     }
 }
 
@@ -428,9 +455,10 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
                     text: "中",
                     margin,
                     shown_at: None,
+                    appeared: None,
                     animates: true,
                     appearance: PanelAppearance::System,
-                    visible: true,
+                    visible: false,
                 })
             });
             match opened {
@@ -448,6 +476,7 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
     let screen = screen_at(anchor, cx);
     let above = settings.string("candidatePlacement") == "above";
     let animates = settings.bool("panelAnimation");
+    let moves = crate::motion::Panel::new(animates, cx);
     let appearance = PanelAppearance::from_settings(&settings);
     let generation = {
         let popups = popups(cx);
@@ -460,6 +489,23 @@ fn show_toast(text: &'static str, anchor: Rect, cx: &mut App) {
         platform::place(window, device(frame, window.scale_factor()));
         platform::set_visible(window, true);
         platform::set_input_region(window, None);
+        // Appearing (not when it is already up: a second toggle only changes the text and restarts the hold).
+        if !view.visible && animates {
+            let below = y + f64::from(BADGE_H) / 2. > anchor.y + anchor.height / 2.;
+            let slide = crate::motion::panel::BADGE_SLIDE;
+            view.appeared = Some((
+                Instant::now(),
+                if !moves.slides() {
+                    0.
+                } else if below {
+                    -slide
+                } else {
+                    slide
+                },
+            ));
+        } else if !animates {
+            view.appeared = None;
+        }
         view.text = text;
         view.shown_at = Some(Instant::now());
         view.animates = animates;

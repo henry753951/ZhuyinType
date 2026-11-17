@@ -10,6 +10,7 @@ mod app;
 mod assets;
 mod candidate;
 mod card_window;
+mod motion;
 mod pages;
 mod platform;
 mod shell;
@@ -144,6 +145,7 @@ fn main() {
     );
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        motion::init(cx);
         theme::load_fonts(cx);
         // The copy that serves the input method runs until the session ends: closing the settings window or the
         // wizard must not end it.  GPUI otherwise quits when the last window closes, and on Windows the app has no

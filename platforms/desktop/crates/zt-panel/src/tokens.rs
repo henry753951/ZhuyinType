@@ -141,6 +141,8 @@ pub mod motion {
     pub const BOUNCE: f32 = 3.;
     pub const BOUNCE_OUT: f32 = 60.;
     pub const BOUNCE_BACK: f32 = 120.;
+    /// The bounce under reduced motion: the page dims to this opacity instead of moving.
+    pub const BOUNCE_DIM: f32 = 0.7;
     /// The 中/英 badge stays this long.
     pub const TOAST_HOLD: f32 = 800.;
 
