@@ -110,6 +110,19 @@ private func result(_ result: ZtKeyResult) -> KeyResult {
     KeyResult(handled: result.handled, commit: take(result.commit))
 }
 
+/// A word action from the candidate window (the engine's `CandidateAction`).
+public enum CandidateAction: UInt32, CaseIterable, Sendable {
+    case block = 0, forget = 1, addPhrase = 2
+
+    public var title: String {
+        switch self {
+        case .block: return "不要再推薦"
+        case .forget: return "忘記這個選字"
+        case .addPhrase: return "加入自訂詞"
+        }
+    }
+}
+
 public final class Composer {
     let handle: OpaquePointer
     private let engine: Engine
@@ -217,6 +230,28 @@ public final class Composer {
     public func revertCorrection() -> Bool {
         defer { cached = nil }
         return zt_composer_revert_correction(handle)
+    }
+
+    /// Whether `action` applies to candidate `index` of the open list (nil: the highlighted one; with no list open,
+    /// adding a custom word takes the whole composition).
+    public func candidateActionAvailable(_ action: CandidateAction, at index: Int? = nil) -> Bool {
+        zt_composer_candidate_action_available(handle, action.rawValue, index ?? -1)
+    }
+
+    /// Does `action` (see `candidateActionAvailable`); returns the notice shown, or nil when it does not apply.
+    @discardableResult
+    public func performCandidateAction(_ action: CandidateAction, at index: Int? = nil) -> String? {
+        defer { cached = nil }
+        return take(zt_composer_perform_candidate_action(handle, action.rawValue, index ?? -1))
+    }
+
+    public var canUndoCandidateAction: Bool { zt_composer_can_undo_candidate_action(handle) }
+
+    /// Undoes the last word action; false when there is none.
+    @discardableResult
+    public func undoCandidateAction() -> Bool {
+        defer { cached = nil }
+        return zt_composer_undo_candidate_action(handle)
     }
 
     public var learningSuspended: Bool {

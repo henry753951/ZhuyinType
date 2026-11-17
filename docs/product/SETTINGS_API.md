@@ -112,7 +112,7 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 | `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
 | `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
 
-`wordActionHintCount`（整數，預設 0，和 macOS 共用同一個鍵）：候選字清單下方顯示過「Ctrl+Del 不要再推薦・右鍵看更多」的次數；到 5 次後不再顯示。不出現在設定頁，由輸入法自己累加（`zt_core::controller::WORD_ACTION_TIP_KEY`）。
+`wordActionHintCount`（整數，預設 0，和 macOS 共用同一個鍵）：候選字清單下方顯示過「Ctrl+Del 不要再推薦・右鍵看更多」的次數；到 5 次後不再顯示。不出現在設定頁，由輸入法自己累加（`zt_core::controller::WORD_ACTION_TIP_KEY`）；macOS 存在 App 的 UserDefaults，同名，在 `ControllerCore+WordActions.swift`）。macOS 的提示寫「⌃⌫ 不要再推薦・右鍵看更多」。
 
 `panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。
 

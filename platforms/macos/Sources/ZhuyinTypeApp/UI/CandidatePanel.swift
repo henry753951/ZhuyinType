@@ -174,6 +174,8 @@ private final class CandidateRow: NSView {
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
     private var annotationAttributes: [NSAttributedString.Key: Any] = [:]
     var action: (() -> Void)?
+    /// Right-click: the word actions menu for this candidate.
+    var menuAction: ((NSEvent, NSView) -> Void)?
     private var keyInset: CGFloat { compact ? 6 : 8 }
     var textInset: CGFloat { keyInset + ceil(fontSize * 0.68) + (compact ? 5 : 8) }
     private var trailingPad: CGFloat { compact ? 7 : 10 }
@@ -259,6 +261,7 @@ private final class CandidateRow: NSView {
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { action?() }
+    override func rightMouseDown(with event: NSEvent) { menuAction?(event, self) }
     override func accessibilityPerformPress() -> Bool { action?(); return true }
     func resetHover() { isHovered = false }
 }
@@ -299,6 +302,10 @@ private final class ZhuyinHintButton: NSButton {
 private final class NoticeView: NSView {
     override var isFlipped: Bool { true }
     var message = "" { didSet { if message != oldValue { parse(); needsDisplay = true } } }
+    /// A click on the notice (「復原」 after a word action).
+    var action: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { action?() }
     var fontSize: CGFloat = 13 { didSet { if fontSize != oldValue { needsDisplay = true } } }
     private var key: String?
     private var done = false
@@ -530,6 +537,8 @@ final class CandidateContentView: InputMaterialView {
     var onZhuyin: (() -> Void)?
     var onCorrections: (() -> Void)?
     var onSingleCharacter: (() -> Void)?
+    var onMenu: ((Int, NSEvent, NSView) -> Void)?
+    var onNotice: (() -> Void)?
     /// The current shortcuts on the keycaps, so the window matches the 快捷鍵 settings.
     var keyLabels = CandidateKeyLabels()
     /// Whether pages move and the end of the list bounces: the 動畫 setting unless set (the wizard's practice field
@@ -661,6 +670,7 @@ final class CandidateContentView: InputMaterialView {
         var y: CGFloat = padding
         noticeView.isHidden = notice == nil
         noticeView.message = notice ?? ""
+        noticeView.action = { [weak self] in self?.onNotice?() }
         noticeView.fontSize = (fontSize * 0.72).rounded()
         let noticeHeight = ceil(fontSize * 1.25)
         if notice != nil {
@@ -696,6 +706,7 @@ final class CandidateContentView: InputMaterialView {
             row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
                        fontSize: fontSize, compact: compact, selected: index == list.selection, accent: style.accentColor)
             row.action = { [weak self] in self?.onSelect?(index) }
+            row.menuAction = { [weak self] event, view in self?.onMenu?(index, event, view) }
         }
         let activeRows = rows.prefix(indices.count)
         let gaps = CGFloat(max(0, indices.count - 1)) * spacing
@@ -1055,6 +1066,8 @@ final class CandidatePanelController {
     var onZhuyin: (() -> Void)?
     var onCorrections: (() -> Void)?
     var onSingleCharacter: (() -> Void)?
+    var onMenu: ((Int, NSEvent, NSView) -> Void)?
+    var onNotice: (() -> Void)?
     private let content = CandidateContentView(frame: .zero)
     private lazy var surface = InputSurface(content: content)
     private lazy var panel = InputPanel(content: surface)
@@ -1072,6 +1085,8 @@ final class CandidatePanelController {
         content.onZhuyin = { [weak self] in self?.onZhuyin?() }
         content.onCorrections = { [weak self] in self?.onCorrections?() }
         content.onSingleCharacter = { [weak self] in self?.onSingleCharacter?() }
+        content.onMenu = { [weak self] in self?.onMenu?($0, $1, $2) }
+        content.onNotice = { [weak self] in self?.onNotice?() }
         let preferences = Preferences.shared
         panel.appearance = preferences.panelAppearance.appearance
         let size = content.update(list: list, preview: preview, keys: keys, style: preferences.candidateStyle,

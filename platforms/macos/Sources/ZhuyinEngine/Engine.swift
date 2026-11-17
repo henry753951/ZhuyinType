@@ -132,6 +132,12 @@ public final class Engine: @unchecked Sendable {
     public func excludeFromLearning(word: String, reading: String) { zt_engine_exclude_from_learning(handle, word, reading) }
     public func includeInLearning(word: String, reading: String) { zt_engine_include_in_learning(handle, word, reading) }
 
+    /// Words never suggested for their reading (「不要再推薦」).
+    public func blockedEntries() -> [(reading: String, word: String)] {
+        phrases(zt_engine_blocked_entries(handle)).map { ($0.reading, $0.word) }
+    }
+    public func unblock(word: String, reading: String) { zt_engine_unblock(handle, word, reading) }
+
     public func readings(of word: String) -> [String] {
         guard let list = zt_engine_readings(handle, word) else { return [] }
         defer { zt_string_list_free(list) }

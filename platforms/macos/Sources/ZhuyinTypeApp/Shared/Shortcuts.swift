@@ -141,6 +141,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
     case togglePunctuationWidth, insertSpace
+    /// Word actions on the highlighted candidate (adding also takes the whole composition with no list open).
+    case blockCandidate, forgetCandidate, addCandidatePhrase
 
     var id: String { rawValue }
 
@@ -159,6 +161,9 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "清單開著時改後一個字"
         case .togglePunctuationWidth: return "切換標點全半形"
         case .insertSpace: return "在組字中放一個空白"
+        case .blockCandidate: return "不要再推薦反白的字詞"
+        case .forgetCandidate: return "忘記選過反白的字詞"
+        case .addCandidatePhrase: return "把反白的字詞或整段組字加入自訂詞"
         }
     }
 
@@ -177,6 +182,9 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return Shortcut("→", option: true)
         case .togglePunctuationWidth: return Shortcut("Space", shift: true)
         case .insertSpace: return Shortcut("Space", option: true)
+        case .blockCandidate: return Shortcut("⌫", control: true)
+        case .forgetCandidate: return Shortcut("⌫", control: true, shift: true)
+        case .addCandidatePhrase: return Shortcut("Return", control: true)
         }
     }
 
@@ -184,6 +192,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     var input: KeyInput? {
         switch self {
         case .previousCharacter, .nextCharacter, .togglePunctuationWidth: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
         case .correctionsList: return .shiftUp
@@ -213,6 +222,9 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextCharacter: return "改後一個字"
         case .togglePunctuationWidth: return "標點全半形"
         case .insertSpace: return "插入空白"
+        case .blockCandidate: return "不要再推薦"
+        case .forgetCandidate: return "忘記這個選字"
+        case .addCandidatePhrase: return "加入自訂詞"
         }
     }
 
@@ -253,6 +265,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
         case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace: return nil
+        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return nil
         }
     }
 
@@ -261,6 +274,16 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .commitWithNewline, .previousCharacter, .nextCharacter: return true
         default: return false
+        }
+    }
+
+    /// The word action the command does, or nil.
+    var candidateAction: CandidateAction? {
+        switch self {
+        case .blockCandidate: return .block
+        case .forgetCandidate: return .forget
+        case .addCandidatePhrase: return .addPhrase
+        default: return nil
         }
     }
 

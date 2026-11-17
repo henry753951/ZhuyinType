@@ -322,7 +322,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 ### 9.2 寫入
 
-個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`。改變後 150 毫秒在背景執行緒以原子寫入更新（`personal_writer`）；重新載入引擎與結束程序前會先寫完。寫入失敗時資料保留到下一次寫入，`flush_personal_data`（C 介面 `zt_engine_flush_personal_data`）回報失敗，App 記錄錯誤。
+個人資料存在 `~/Library/Application Support/ZhuyinType/`：`user_phrases.tsv`、`learned.tsv`、`excluded.tsv`、`typos.tsv`、`personal_ngrams.tsv`，有不推薦的字詞時另有 `blocked.tsv`（`engine/crates/zhuyin-core/src/word_actions.rs`；最後一筆移除時刪除檔案，匯出檔的 `[blocked]` 段也只在有資料時寫出）。改變後 150 毫秒在背景執行緒以原子寫入更新（`personal_writer`）；重新載入引擎與結束程序前會先寫完。寫入失敗時資料保留到下一次寫入，`flush_personal_data`（C 介面 `zt_engine_flush_personal_data`）回報失敗，App 記錄錯誤。
 
 設定的「記住的字詞」可以搜尋、移除、全部清除、把個別字詞設為不記住，也可以匯出、匯入成一個文字檔。「記住選過的字詞」關閉時不學習。
 

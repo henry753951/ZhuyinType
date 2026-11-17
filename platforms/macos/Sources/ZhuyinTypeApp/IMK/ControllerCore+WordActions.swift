@@ -1,0 +1,63 @@
+// Word actions from the candidate window (不要再推薦, 忘記這個選字, 加入自訂詞): their shortcuts, the right-click menu
+// on a candidate, the notice with 復原, and the hint shown the first few times the list opens.  The engine does the
+// work and keeps one level of undo; this part decides when keys are claimed.
+import AppKit
+import ZhuyinEngine
+
+extension ControllerCore {
+    /// How long a word action can be undone with ⌃Z or a click on the notice.
+    static let wordUndoSeconds: TimeInterval = 5
+    /// The list openings that show the hint.
+    static let wordActionHintLimit = 5
+    static let wordActionHintKey = "wordActionHintCount"
+
+    /// Does `action` on candidate `index` (nil: the highlighted one, or the whole composition for adding).  Claims
+    /// the key only while composing; with nothing to compose it goes to the app.
+    @discardableResult
+    func wordAction(_ action: CandidateAction, at index: Int? = nil) -> Bool {
+        guard composer.isComposing else { return false }
+        if composer.performCandidateAction(action, at: index) != nil { wordActionTime = Date() }
+        render()
+        return true
+    }
+
+    /// The actions that apply to candidate `index`, for the right-click menu.
+    func availableWordActions(at index: Int) -> [CandidateAction] {
+        CandidateAction.allCases.filter { composer.candidateActionAvailable($0, at: index) }
+    }
+
+    /// ⌃Z undoes only while the composition is still there, so the app's own undo is never taken.
+    var wordUndoOffered: Bool {
+        guard let time = wordActionTime, Date().timeIntervalSince(time) <= Self.wordUndoSeconds else { return false }
+        return composer.isComposing && composer.canUndoCandidateAction
+    }
+
+    @discardableResult
+    func undoWordAction() -> Bool {
+        guard wordUndoOffered else { return false }
+        wordActionTime = nil
+        composer.undoCandidateAction()
+        render()
+        return true
+    }
+
+    func isUndoKey(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        keyCode == 6 && modifiers.intersection([.control, .option, .shift, .command]) == .control
+    }
+
+    /// The notice the window shows: the composer's, with 「⌃Z 復原」 while a word action can be undone; else, the
+    /// first few times a list opens, how to reach the word actions.
+    func wordActionNotice(_ notice: String?, listOpen: Bool) -> String? {
+        defer { listWasOpen = listOpen }
+        if let notice {
+            return wordUndoOffered && notice != "已復原" ? notice + "　⌃Z 復原" : notice
+        }
+        guard listOpen else { return nil }
+        let defaults = UserDefaults.standard
+        let count = defaults.integer(forKey: Self.wordActionHintKey)
+        guard count < Self.wordActionHintLimit else { return nil }
+        if !listWasOpen { defaults.set(count + 1, forKey: Self.wordActionHintKey) }
+        let key = shortcuts.first { $0.value == .blockCandidate }?.key.compact
+        return (key.map { "\($0) 不要再推薦・" } ?? "") + "右鍵看更多"
+    }
+}
