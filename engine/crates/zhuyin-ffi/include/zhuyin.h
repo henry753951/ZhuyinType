@@ -1109,6 +1109,12 @@ ZtPhraseList *zt_engine_blocked_entries(const ZtEngine *engine);
 // # Safety
 // `engine` is a live handle; the strings are C strings.
 void zt_engine_unblock(const ZtEngine *engine, const char *word, const char *reading);
+// `text` in simplified characters (`zhuyin_core::simplified`): the same length in UTF-16 units, so offsets into
+// the traditional text stay valid.  NULL for NULL or invalid UTF-8; free the result with `zt_string_free`.
+//
+// # Safety
+// `text` is NULL or a NUL-terminated string.
+char *zt_to_simplified(const char *text);
 
 #ifdef __cplusplus
 }  // extern "C"

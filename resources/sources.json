@@ -178,6 +178,20 @@
       "version": "讀音通道使用 18.0.0"
     },
     {
+      "id": "opencc",
+      "group": "data",
+      "name": "OpenCC",
+      "use": "簡體輸出的單字對照表（t2s，逐字轉換；engine/crates/zhuyin-core/src/simplified/table.txt）",
+      "distribution": "bundled",
+      "license": "Apache-2.0",
+      "licenseFiles": [
+        "Apache-2.0.txt"
+      ],
+      "copyright": "Copyright (c) Carbo Kuo and OpenCC contributors",
+      "version": "1.4.2",
+      "url": "https://github.com/BYVoid/OpenCC"
+    },
+    {
       "id": "wordfreq",
       "group": "data",
       "name": "wordfreq（含 SUBTLEX-CH）",
