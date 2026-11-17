@@ -155,29 +155,53 @@ pub fn install_now(cx: &mut App) {
     install(true, cx);
 }
 
-/// Starts the system's updater; automatically (`ask` false) it never brings up a password dialog.
+/// Starts the system's updater; automatically (`ask` false) it never brings up a password dialog.  `systemctl` runs
+/// on a background thread: while polkit asks for a password (立即安裝 in a remote session) it waits for the answer,
+/// and the UI thread, which also draws the candidate window, keeps running.
 fn install(ask: bool, cx: &mut App) {
     let Some(Found::Newer { version, .. }) = state(cx).found.clone() else { return };
+    if state(cx).installing.is_some() {
+        return;
+    }
     // Windows: the installer ends this app; what was learnt since the last write is written now.
     if let Some(service) = app::service(cx) {
         service.flush();
     }
-    let state = cx.global_mut::<Updates>();
-    match update::start_system_update(ask) {
+    begin_install(cx.global_mut::<Updates>(), version.clone());
+    cx.refresh_windows();
+    let task = cx.background_executor().spawn(async move { update::start_system_update(ask) });
+    cx.spawn(async move |cx| {
+        let result = task.await;
+        cx.update(|cx| {
+            finish_install(cx.global_mut::<Updates>(), &version, result);
+            cx.refresh_windows();
+        });
+    })
+    .detach();
+}
+
+/// 關於 shows 安裝中… while the updater is being started, and neither 立即安裝 nor the next tick starts it again.
+fn begin_install(state: &mut Updates, version: String) {
+    state.installing = Some(version);
+    state.install_started = None;
+    state.error = None;
+}
+
+/// The system's updater started (it installs on its own), or it could not be started.
+fn finish_install(state: &mut Updates, version: &str, result: anyhow::Result<()>) {
+    match result {
         Ok(()) => {
             log::info!("installing update {version}");
-            state.installing = Some(version);
             state.install_started = Some(Instant::now());
-            state.error = None;
         }
         Err(error) => {
             log::warn!("update: {error:#}");
+            state.installing = None;
             state.error = Some(format!("{error:#}"));
             // Not again until the next check.
             state.found = None;
         }
     }
-    cx.refresh_windows();
 }
 
 /// Linux: the package manager replaced the executable; once idle, become the new version.  The broker socket and
@@ -199,4 +223,48 @@ fn restart_if_replaced(cx: &mut App) {
     let error = std::process::Command::new(&path).arg("--background").exec();
     log::warn!("restarting after the update: {error}");
     cx.global_mut::<Updates>().executable = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found() -> Updates {
+        Updates {
+            found: Some(Found::Newer { version: "0.9.0".to_owned(), notes: "https://example.org".to_owned() }),
+            error: Some("earlier".to_owned()),
+            ..Updates::default()
+        }
+    }
+
+    #[test]
+    fn installing_is_shown_while_the_updater_starts() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        assert_eq!(state.installing.as_deref(), Some("0.9.0"));
+        assert!(state.install_started.is_none());
+        assert!(state.error.is_none());
+    }
+
+    #[test]
+    fn a_started_updater_keeps_installing() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        finish_install(&mut state, "0.9.0", Ok(()));
+        assert_eq!(state.installing.as_deref(), Some("0.9.0"));
+        assert!(state.install_started.is_some());
+        assert!(state.error.is_none());
+        assert!(matches!(state.found, Some(Found::Newer { .. })));
+    }
+
+    #[test]
+    fn an_updater_that_did_not_start_shows_the_error() {
+        let mut state = found();
+        begin_install(&mut state, "0.9.0".to_owned());
+        finish_install(&mut state, "0.9.0", Err(anyhow::anyhow!("systemctl start: exit status: 4")));
+        assert!(state.installing.is_none());
+        assert!(state.install_started.is_none());
+        assert_eq!(state.error.as_deref(), Some("systemctl start: exit status: 4"));
+        assert!(state.found.is_none());
+    }
 }

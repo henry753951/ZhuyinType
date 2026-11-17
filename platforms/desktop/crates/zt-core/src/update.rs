@@ -322,7 +322,8 @@ fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Resu
 
 /// Starts the system's updater from the signed-in user's app.  It installs the newest release itself; this only
 /// asks it to run.  `ask`: Linux may ask for a password when polkit's rule does not let this user start it (not at
-/// the computer: a remote session); an automatic install never asks, the user's 立即安裝 may.
+/// the computer: a remote session); an automatic install never asks, the user's 立即安裝 may.  It waits while polkit
+/// asks, so the app calls it off the UI thread.
 pub fn start_system_update(ask: bool) -> Result<()> {
     #[cfg(windows)]
     {
@@ -333,8 +334,8 @@ pub fn start_system_update(ask: bool) -> Result<()> {
     {
         let mut command = std::process::Command::new("systemctl");
         command.args(["start", "--no-block", LINUX_UNIT]);
-        // polkit lets the active user start it without a password; an automatic install never waits on a password
-        // prompt instead (it would hold the UI thread, which draws the candidate window).
+        // polkit lets the active user start it without a password; an automatic install never brings up a password
+        // prompt the user did not ask for.
         if !ask {
             command.arg("--no-ask-password");
         }
