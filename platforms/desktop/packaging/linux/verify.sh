@@ -196,12 +196,18 @@ typing() {
         $mirror
         apt-get update -qq
         apt-get install -y -qq --no-install-recommends /dist/$(basename "$deb") fcitx5-frontend-qt6 libqt6widgets6 \
+            fcitx5-frontend-gtk3 libgtk-3-0t64 \
             xvfb xauth xdotool x11-utils dbus-x11 dbus-daemon mesa-vulkan-drivers fonts-noto-cjk procps >/dev/null 2>&1
         useradd -m tester
         su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_REAL_DATA=1 ZT_REQUIRE_HOST=1 \
             bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'
         su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_REAL_DATA=1 ZT_DELIVERY_SELF_HOST=1 \
-            ZT_REQUIRE_HOST=1 bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'"
+            ZT_REQUIRE_HOST=1 bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'
+        # Focus leaving mid-composition, in Qt and GTK 3 (the four-word fixture: the probes expect its candidates).
+        su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_FOCUS=1 ZT_REQUIRE_HOST=1 \
+            bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'
+        su tester -c 'cd /tmp && LANG=C.UTF-8 ZT_DELIVERY_INSTALLED=1 ZT_DELIVERY_GTK=1 ZT_REQUIRE_HOST=1 \
+            bash /linux/tests/delivery.sh /build /usr/bin/zhuyintype' 2>&1 | grep -vE '^[IDW]20|^E20.*portal'"
 }
 
 case "${1:-}" in

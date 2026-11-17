@@ -69,6 +69,17 @@ contents:
     dst: /usr/lib/zhuyintype
     type: tree
     expand: true
+  # ONNX Runtime, which the app loads at run time (crates/zt-core/src/models.rs); executable in the .rpm as the addon.
+  - src: ${ZT_STAGE}/onnxruntime/libonnxruntime.so.1
+    dst: /usr/lib/zhuyintype/libonnxruntime.so.1
+    packager: deb
+    expand: true
+  - src: ${ZT_STAGE}/onnxruntime/libonnxruntime.so.1
+    dst: /usr/lib/zhuyintype/libonnxruntime.so.1
+    packager: rpm
+    expand: true
+    file_info:
+      mode: 0755
   - src: ${ZT_STAGE}/usr/share/fcitx5/addon/zhuyintype.conf
     dst: /usr/share/fcitx5/addon/zhuyintype.conf
     expand: true

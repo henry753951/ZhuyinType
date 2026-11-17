@@ -249,7 +249,9 @@ stage_linux() {
         "$share"/{lm,lm_chat,channel}/NOTICE.md
     # The neural models (ONNX) and ONNX Runtime, which the app loads from /usr/lib/zhuyintype.
     "$packaging/../neural.sh" "$share" "$stage/usr/share/licenses/zhuyintype" \
-        "$stage/usr/lib/zhuyintype/libonnxruntime.so.1" linux || fail "神經模型或 ONNX Runtime 失敗"
+        "$stage/onnxruntime/libonnxruntime.so.1" linux || fail "神經模型或 ONNX Runtime 失敗"
+    # Outside the /usr/lib/zhuyintype tree: a shared object is 0644 in the .deb (Debian policy) and 0755 in the .rpm.
+    chmod 644 "$stage/onnxruntime/libonnxruntime.so.1"
     python3 -I - "$share" "$version" <<'PY'
 import hashlib, json, os, sys
 share, version = sys.argv[1], sys.argv[2]
