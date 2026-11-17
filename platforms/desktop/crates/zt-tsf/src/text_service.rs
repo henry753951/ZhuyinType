@@ -54,7 +54,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{ALT, CONTROL, META, SHIFT, claimed_key, host_observes_key, host_wants_key};
+use crate::keys::{claimed_key, host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
