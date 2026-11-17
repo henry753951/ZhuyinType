@@ -96,36 +96,27 @@ fn dword_values(root: HKEY, key: &str) -> Option<Vec<(String, u32)>> {
     if unsafe { RegOpenKeyExW(root, key.as_ptr(), 0, KEY_READ, &mut handle) } != ERROR_SUCCESS {
         return None;
     }
-    let mut values = Vec::new();
+    let mut names = Vec::new();
     for index in 0.. {
         let mut name = [0u16; 256];
         let mut name_len = name.len() as u32;
-        let mut data = 0u32;
-        let mut data_len = 4u32;
         let mut kind = 0u32;
-        // SAFETY: an open key; buffers of the sizes given.
+        // SAFETY: an open key; the name buffer of the size given; no data is asked for (a value's data of any size
+        // would otherwise end the enumeration with ERROR_MORE_DATA).
         let status = unsafe {
-            RegEnumValueW(
-                handle,
-                index,
-                name.as_mut_ptr(),
-                &mut name_len,
-                null(),
-                &mut kind,
-                (&raw mut data).cast(),
-                &mut data_len,
-            )
+            RegEnumValueW(handle, index, name.as_mut_ptr(), &mut name_len, null(), &mut kind, null_mut(), null_mut())
         };
         if status != ERROR_SUCCESS {
-            break; // ERROR_NO_MORE_ITEMS, or a value too long to be an input method's
+            break; // ERROR_NO_MORE_ITEMS, or a name too long to be an input method's
         }
         if kind == windows_sys::Win32::System::Registry::REG_DWORD {
-            values.push((String::from_utf16_lossy(&name[..name_len as usize]), data));
+            names.push(String::from_utf16_lossy(&name[..name_len as usize]));
         }
     }
     // SAFETY: opened above.
     unsafe { RegCloseKey(handle) };
-    Some(values)
+    let key = String::from_utf16_lossy(&key[..key.len().saturating_sub(1)]);
+    Some(names.into_iter().filter_map(|name| read_dword(root, &key, &name).map(|order| (name, order))).collect())
 }
 
 /// This user's input methods, language by language in the list's order, each language's in its own order.
