@@ -73,6 +73,8 @@ jobs:
   windows:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      ZT_TOOLCHAINS: ${{ github.workspace }}/.cache/toolchains
     steps:
       - uses: actions/checkout@v7
       - id: script
@@ -105,6 +107,22 @@ jobs:
             platforms/desktop/target
           key: desktop-windows-${{ hashFiles('platforms/desktop/Cargo.lock', 'platforms/desktop/rust-toolchain.toml') }}
           restore-keys: desktop-windows-
+      # The data assets and ONNX Runtime archive the installer bundles.  Each has a cache of its own, keyed on the file
+      # that pins it, so a build never depends on GitHub's or NuGet's downloads being up once the cache holds them
+      # (0.7.0's first release run failed when github.com/microsoft/onnxruntime returned 404).
+      - if: steps.script.outputs.present == 'true'
+        name: Data assets
+        uses: actions/cache@v6
+        with:
+          path: .cache/assets
+          key: assets-desktop-windows-${{ hashFiles('resources/assets.json') }}
+      - if: steps.script.outputs.present == 'true'
+        name: ONNX Runtime
+        uses: actions/cache@v6
+        with:
+          path: .cache/toolchains
+          key: desktop-windows-toolchains-${{ hashFiles('platforms/desktop/packaging/neural.sh') }}
+          restore-keys: desktop-windows-toolchains-
       - if: steps.script.outputs.present == 'true'
         name: Installer
         run: platforms/desktop/scripts/build.sh windows --package
