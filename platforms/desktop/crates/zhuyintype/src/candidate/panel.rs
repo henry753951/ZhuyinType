@@ -355,7 +355,7 @@ impl CandidatePanel {
                         .font(theme::zhuyin_font())
                         .text_size(px(SMALL_FONT))
                         .line_height(px(SMALL_FONT * 1.3))
-                        .text_color(p.text_secondary)
+                        .text_color(c.text_secondary)
                         .child(div().truncate().child(SharedString::from(text.clone()))),
                 ),
             );
@@ -450,7 +450,7 @@ impl CandidatePanel {
                     .items_center()
                     .text_size(px(*size))
                     .line_height(px(size * 1.3))
-                    .text_color(p.text_tertiary)
+                    .text_color(c.text_tertiary)
                     .child(div().truncate().child(SharedString::from(text.clone()))),
             );
         }
@@ -507,7 +507,7 @@ fn menu_element(
             .rounded(px(radius))
             .text_size(px(size))
             .line_height(px(size * 1.3))
-            .text_color(if item.enabled { p.text } else { p.text_tertiary.opacity(0.6) })
+            .text_color(if item.enabled { c.text } else { c.text_tertiary.opacity(0.6) })
             .whitespace_nowrap()
             .child(item.label)
             .when_some(actions.zip(action), |this, (actions, action)| {
