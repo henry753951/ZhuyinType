@@ -20,7 +20,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設 |
 | `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`private`、`app`、`before` 及矩形。原生端也可以只「告知」應用程式自己會收到的按鍵（Windows 沒有組字時的 ⌫、空白、Enter），讓服務更新前文與「送出後刪掉重打」；這時不看回應的 `handled` |
 | `context` | 只更新 `app` 與 `before`（見〈前文〉），不處理按鍵 |
-| `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形 |
+| `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形。原生端只在 App 的候選字視窗開著（回應的 `candidates` 為真）時定時送出 |
 | `blur` | 結束目前組字並回傳待送出文字，解除焦點 |
 | `reset` | 丟棄目前組字與尚未送出的文字 |
 | `secure` | `secure` 布林；進入安全輸入時立即清除組字與待送出文字，暫停學習 |
@@ -83,7 +83,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 ## 視窗與設定
 
-候選字視窗不取得鍵盤焦點。游標矩形經 `scale` 換成邏輯座標，服務以 `UiEvent::Popup(Some(PopupState))` 送出組字、目前這一頁的候選字與游標矩形；介面以 `zt_core::presentation::popup_position` 依「位置」把視窗放在游標下方或上方（間隔 4），候選字與組字對齊；空間不足改放另一邊並限制在螢幕可用範圍內。清單、引擎提示（例如 ↩ 加入自訂詞）或無法內嵌的組字出現時才顯示，否則送出 `UiEvent::Popup(None)`。切換中英時（單按 Shift 或 Caps Lock），「中英提示」開啟就送出 `UiEvent::ModeToast`，介面在游標旁顯示「中」或「英」0.8 秒，再淡出 0.2 秒。Windows adapter 先依所在螢幕的原點換算座標，再以 `scale: 1` 傳入，避免混合 DPI 桌面把螢幕原點也縮放。無法在應用程式內呈現組字時，`inlinePreedit: false` 會把組字放在同一個候選字視窗，不另顯示 Fcitx 原生面板；「在候選字視窗顯示組字的 App」清單中的程式也是如此。滑鼠操作以 `Service::popup_action` 透過同一個 `InputController` 選字，再由原生介面以 `poll` 取得並送出結果。
+候選字視窗不取得鍵盤焦點。游標矩形經 `scale` 換成邏輯座標，服務以 `UiEvent::Popup(Some(PopupState))` 送出組字、目前這一頁的候選字與游標矩形；介面以 `zt_core::presentation::popup_position` 依「位置」把視窗放在游標下方或上方（間隔 4），候選字與組字對齊；空間不足改放另一邊並限制在螢幕可用範圍內。清單、引擎提示（例如 ↩ 加入自訂詞）或無法內嵌的組字出現時才顯示，否則送出 `UiEvent::Popup(None)`。切換中英時（單按 Shift 或 Caps Lock），「中英提示」開啟就送出 `UiEvent::ModeToast`，介面在游標旁顯示「中」或「英」0.8 秒，再淡出 0.2 秒。Windows adapter 先依所在螢幕的原點換算座標，再以 `scale: 1` 傳入，避免混合 DPI 桌面把螢幕原點也縮放。Fcitx5 adapter 傳 X 伺服器的像素（`scale: 1`，Fcitx 只知道這個）；App 在 X11 上放視窗前再除以 GPUI 的縮放（Xft.dpi），所以 HiDPI 的 X11 桌面上視窗仍在游標旁（`candidate::popup::in_logical_pixels`）。無法在應用程式內呈現組字時，`inlinePreedit: false` 會把組字放在同一個候選字視窗，不另顯示 Fcitx 原生面板；「在候選字視窗顯示組字的 App」清單中的程式也是如此。滑鼠操作以 `Service::popup_action` 透過同一個 `InputController` 選字，再由原生介面以 `poll` 取得並送出結果。
 
 X11 與 Windows 可以由 App 指定視窗位置。Wayland 的輸入法 popup surface 需要合成器與 Fcitx 的協定支援，所以 Wayland 工作階段由 Fcitx 顯示清單（`panel: true`）。
 
