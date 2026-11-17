@@ -51,6 +51,8 @@ struct Args {
     popup: Option<String>,
     /// `--wizard SPEC` (or `ZT_WIZARD=SPEC`): only the setup wizard, still (screenshots; `wizard::open_preview`).
     wizard: Option<String>,
+    /// `--after-crash`: started by a copy whose UI thread panicked; wait for it to end, then take over.
+    after_crash: bool,
 }
 
 fn parse_args() -> Args {
@@ -69,6 +71,7 @@ fn parse_args() -> Args {
         panel: None,
         popup: None,
         wizard: std::env::var("ZT_WIZARD").ok().filter(|spec| !spec.is_empty()),
+        after_crash: false,
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -99,6 +102,7 @@ fn parse_args() -> Args {
             "--panel" => args.panel = iter.next(),
             "--popup" => args.popup = iter.next(),
             "--wizard" => args.wizard = iter.next(),
+            "--after-crash" => args.after_crash = true,
             _ => {}
         }
     }
@@ -117,6 +121,7 @@ fn main() {
         settings_file: args.settings_file.clone(),
         broker: !args.no_broker && args.popover.is_none() && args.wizard.is_none(),
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        wait_for_endpoint: args.after_crash.then_some(std::time::Duration::from_secs(10)),
         ..ServiceConfig::default()
     };
     let (service, events, service_error) = match Service::start(config) {
@@ -151,6 +156,7 @@ fn main() {
         let serves = service.is_some() && !args.no_broker && args.popover.is_none() && args.wizard.is_none();
         if serves {
             cx.set_quit_mode(gpui_kit::QuitMode::Explicit);
+            relaunch_after_panic();
         }
         cx.set_global(app::AppState { settings, service, service_error });
         if let Some(events) = events {
@@ -181,7 +187,14 @@ fn main() {
         if args.background {
             return;
         }
-        shell::open(args.page, args.dark, args.size, cx).expect("the settings window opens");
+        // A window that cannot open (no usable GPU, say) must not take the input method down with it.
+        if let Err(error) = shell::open(args.page, args.dark, args.size, cx) {
+            log::error!("opening the settings window: {error:#}");
+            if serves {
+                return;
+            }
+            panic!("the settings window opens: {error:#}");
+        }
         // Screenshots and second copies for development (a settings file, no broker, a forced theme) never do.
         if args.settings_file.is_none() && !args.no_broker && args.dark.is_none() {
             wizard::show_on_first_use(cx);
@@ -198,6 +211,31 @@ fn main() {
         }
         cx.activate(true);
     });
+}
+
+/// A panic on the UI thread ends the process (on Windows it cannot unwind out of the window procedure), and with it
+/// the input method until the next sign-in.  Start a new copy in the background; it waits for this one to end
+/// (`--after-crash`).  Not within the first minute, so a copy that panics at start does not loop.
+fn relaunch_after_panic() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RELAUNCHED: AtomicBool = AtomicBool::new(false);
+    let started = std::time::Instant::now();
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        if std::thread::current().name() != Some("main")
+            || started.elapsed() < std::time::Duration::from_secs(60)
+            || RELAUNCHED.swap(true, Ordering::SeqCst)
+        {
+            return;
+        }
+        let Ok(exe) = std::env::current_exe() else { return };
+        let args = std::env::args().skip(1).filter(|arg| arg != "--background" && arg != "--after-crash");
+        match std::process::Command::new(exe).args(args).args(["--background", "--after-crash"]).spawn() {
+            Ok(_) => log::error!("the UI thread panicked; started a new copy"),
+            Err(error) => log::error!("the UI thread panicked; could not start a new copy: {error}"),
+        }
+    }));
 }
 
 /// The system's updater (`zt_core::update`), run as the administrator or root, never with a window:

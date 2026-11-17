@@ -325,6 +325,29 @@ fn show_settings_and_single_instance() {
 }
 
 #[test]
+fn a_copy_started_after_a_crash_takes_over_once_the_old_one_is_gone() {
+    // The UI thread panicked: the old copy is still ending when the new one starts.  The new one waits for the
+    // endpoint instead of asking the dying copy for its settings window and quitting, which left no input method.
+    let Fixture { dir, service, events, client } = Fixture::new();
+    let mut waiting = config(&dir);
+    waiting.wait_for_endpoint = Some(std::time::Duration::from_secs(5));
+    let old = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        drop((client, events, service));
+    });
+    let (service, _events) = Service::start(waiting).expect("takes over the endpoint");
+    old.join().unwrap();
+    let mut client = Client::connect(&service.endpoint().unwrap()).unwrap();
+    assert!(ok(&client.request("focus", json!({"secure": false})).unwrap()));
+
+    // Nothing goes away: after the wait it is an ordinary second copy, and it does not open the settings window.
+    let mut short = config(&dir);
+    short.wait_for_endpoint = Some(std::time::Duration::from_millis(200));
+    let error = Service::start(short).err().expect("a second instance");
+    assert!(error.downcast_ref::<zt_core::service::AlreadyRunning>().is_some());
+}
+
+#[test]
 fn refuses_occupied_file() {
     let dir = TempDir::new();
     let endpoint = dir.join("occupied");

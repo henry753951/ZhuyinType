@@ -39,6 +39,9 @@ pub struct ServiceConfig {
     pub broker: bool,
     /// The app's version, recorded in correction records.
     pub app_version: String,
+    /// Another copy may hold the endpoint while it ends (this one was started after it crashed): wait this long for
+    /// it to go instead of asking it for its settings window.
+    pub wait_for_endpoint: Option<std::time::Duration>,
 }
 
 /// The candidate window's content and where it goes.
@@ -165,13 +168,23 @@ impl Service {
         let reservation = if config.broker {
             let endpoint =
                 config.endpoint.clone().or_else(broker::endpoint).ok_or_else(|| anyhow!("無法取得使用者通訊端。"))?;
-            match broker::reserve(&endpoint) {
-                Ok(reservation) => Some(reservation),
-                Err(ReserveError::AlreadyRunning) => {
-                    let _ = broker::show_settings(&endpoint);
-                    return Err(AlreadyRunning.into());
+            let deadline = config.wait_for_endpoint.map(|wait| std::time::Instant::now() + wait);
+            loop {
+                match broker::reserve(&endpoint) {
+                    Ok(reservation) => break Some(reservation),
+                    Err(ReserveError::AlreadyRunning)
+                        if deadline.is_some_and(|deadline| std::time::Instant::now() < deadline) =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(ReserveError::AlreadyRunning) => {
+                        if deadline.is_none() {
+                            let _ = broker::show_settings(&endpoint);
+                        }
+                        return Err(AlreadyRunning.into());
+                    }
+                    Err(ReserveError::Failed(error)) => return Err(error),
                 }
-                Err(ReserveError::Failed(error)) => return Err(error),
             }
         } else {
             None
