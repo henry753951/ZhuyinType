@@ -154,6 +154,20 @@ enum UIPreviewRenderer {
                                         tolerant: corrections.tolerant, singleCharacter: corrections.singleCharacter)
         try capturePanel(list: fivePerPage, keys: Array("asdfg"), style: minimal, zhuyinHint: hint,
                          to: directory.appendingPathComponent("candidate-minimal-\(suffix).png"))
+        // Accessibility (UI/Accessibility): ZhuyinType 藍, Increase Contrast, Reduce Transparency and the largest 字級.
+        let display = DisplayOptions.override
+        defer { DisplayOptions.override = display }
+        for (name, contrast, transparency, accent, size) in [
+            ("accent-zhuyintype", false, false, AccentColorSetting.zhuyintype, 18.0), ("increase-contrast", true, false, .system, 18),
+            ("reduce-transparency", false, true, .system, 18), ("36pt", false, false, .system, 36),
+        ] {
+            DisplayOptions.override = (contrast, transparency)
+            var style = CandidateStyle(layout: .vertical, fontSize: size)
+            style.accentColor = accent
+            try capturePanel(list: corrections, keys: keys, style: style, zhuyinHint: hint,
+                             to: directory.appendingPathComponent("candidate-a11y-\(name)-\(suffix).png"))
+        }
+        DisplayOptions.override = display
         for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字")] {
             try capturePanel(list: nil, keys: [], style: CandidateStyle(layout: .horizontal), notice: notice,
                              to: directory.appendingPathComponent("notice-\(file)-\(suffix).png"))
