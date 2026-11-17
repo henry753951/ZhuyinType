@@ -119,7 +119,9 @@ impl Host {
     #[must_use]
     pub fn visible(&self, controller: &InputController) -> bool {
         let p = controller.presentation();
-        self.focused() && !p.is_empty() && (p.has_list() || p.notice.is_some() || !self.inline_preedit())
+        self.focused()
+            && (controller.picker_open()
+                || (!p.is_empty() && (p.has_list() || p.notice.is_some() || !self.inline_preedit())))
     }
 
     /// Takes the controller's events: commits go into the next reply (when a field has focus and is not secure);
@@ -379,6 +381,7 @@ impl Host {
             },
             "reset" => {
                 self.commit.clear();
+                controller.close_picker();
                 let _ = controller.session_mut().reset();
                 controller.take_events();
             }

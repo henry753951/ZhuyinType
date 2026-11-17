@@ -55,6 +55,8 @@ pub struct PopupState {
     pub caret: Rect,
     /// The app shows the composition itself; false: the window shows it above the list.
     pub inline_preedit: bool,
+    /// 符號與 Emoji is open: the window shows its grid instead of `presentation` (its highlighted row as a list).
+    pub picker: Option<crate::symbols::PickerView>,
 }
 
 /// What the UI is asked to do.
@@ -87,6 +89,10 @@ pub enum PopupAction {
     ToggleCorrections,
     /// Types the highlighted span's Zhuyin (the footer's ` action).
     TypeReading,
+    /// Inserts item `n` of the symbol picker's list.
+    PickSymbol(usize),
+    /// Switches the symbol picker to tab `n`.
+    SymbolTab(usize),
 }
 
 /// The settings key of 在候選字視窗顯示組字的 App (a list of executable names).
@@ -217,6 +223,7 @@ impl Service {
             None => engine_error = Some("找不到詞庫資料（lexicon.bin 或 lexicon.tsv）。".to_owned()),
         }
         let mut controller = InputController::new(session, settings.clone(), shortcuts.clone());
+        controller.set_recent_symbols_dir(user_dir.as_deref());
         controller.refresh_settings();
         controller.pause_threshold = stats.pause_threshold();
         let sink_stats = stats.clone();
@@ -281,6 +288,7 @@ impl Service {
                 presentation: controller.presentation().clone(),
                 caret: host.anchor(),
                 inline_preedit: host.inline_preedit(),
+                picker: controller.picker_view(),
             });
             let changed = (*popup != next).then(|| next.clone());
             *popup = next;
@@ -371,6 +379,11 @@ impl Service {
     }
 
     /// What the composer shows now.
+    /// Forgets the recent symbols of 符號與 Emoji and removes their file (回復預設設定, deleting personal data).
+    pub fn clear_recent_symbols(&self) {
+        self.with_controller(InputController::clear_recent_symbols);
+    }
+
     #[must_use]
     pub fn presentation(&self) -> Presentation {
         self.inner.core.lock().controller.presentation().clone()
@@ -393,6 +406,12 @@ impl Service {
                 PopupAction::ToggleSingle => host.toggle_single(controller),
                 PopupAction::ToggleCorrections => host.toggle_corrections(controller),
                 PopupAction::TypeReading => host.type_reading(controller),
+                PopupAction::PickSymbol(index) => {
+                    if host.visible(controller) {
+                        controller.pick_symbol(index);
+                    }
+                }
+                PopupAction::SymbolTab(index) => controller.select_symbol_tab(index),
             }
         });
     }

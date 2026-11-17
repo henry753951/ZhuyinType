@@ -225,7 +225,10 @@ pub fn popup_demo(cx: &mut App) {
         let keys = keys.clone();
         move |cx: &mut App| {
             let presentation = list.borrow().presentation("約了王曉明", &keys);
-            popup::handle(UiEvent::Popup(Some(PopupState { presentation, caret, inline_preedit: true })), cx);
+            popup::handle(
+                UiEvent::Popup(Some(PopupState { presentation, caret, inline_preedit: true, picker: None })),
+                cx,
+            );
         }
     };
     let show = Rc::new(show);
@@ -245,7 +248,10 @@ pub fn popup_demo(cx: &mut App) {
                         list.toggle_single();
                         None
                     }
-                    PopupAction::Pick(_) | PopupAction::TypeReading => None,
+                    PopupAction::Pick(_)
+                    | PopupAction::TypeReading
+                    | PopupAction::PickSymbol(_)
+                    | PopupAction::SymbolTab(_) => None,
                 }
             };
             match boundary {
