@@ -207,7 +207,11 @@ final class SymbolPicker {
 enum SymbolSources {
     /// The input method's symbols; nil when this build has none, which leaves the feature out (its key goes to the
     /// app and the settings do not show it).
+    #if ZT_SYMBOLS
+    static let app: SymbolSource? = EngineSymbolSource()
+    #else
     static let app: SymbolSource? = SampleSymbolSource()
+    #endif
     static var isAvailable: Bool { app != nil }
 }
 
