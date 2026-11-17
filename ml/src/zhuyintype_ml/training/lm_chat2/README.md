@@ -43,6 +43,9 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 | `cn`、`cn-select` | 只有三份大陸語料的模型，以及依交叉熵差（`select.py`）挑出像台灣用法的大陸句子：`kept-0.txt`、`kept-q20.txt`、`kept-strict.txt`（另去掉含大陸特有詞的句子） | GPU 主機 |
 | `ptt-cn0`、`ptt-cn20`、`ptt-cns` | `ptt` 再加上上面三種挑選結果 | GPU 主機 |
 | `ptt-gen`、`ptt-genpub`、`ptt-cn20-gen`、`ptt-cns-gen`、`ptt-cns-genpub` | 再加上 `data/build/private/gen/` 的 Haiku 產生句；`-genpub` 只用主題句，不用以使用者改字為種子的句子 | GPU 主機 |
+| `ptt-cns-genpub2` | `ptt-cns-genpub` 再加上 `data/build/private/gen2/` 的第二批 Haiku 主題句（遊戲、語音與實況、社群、IT 工作、都市生活、同音字） | GPU 主機 |
+| `ptt-replies-sources` | 同一份 Gossiping 語料的全部推文（`data/source_replies/reply.7z`，Kaggle 版 `reply/` 的同一份檔案），寫收據；用 py7zr 解開 | 任一 |
+| `pttr-cns-genpub2` | `ptt-cns-genpub2` 再加上全部推文（只讀內容，不讀帳號與推噓；同一人連續的推文接回一則） | GPU 主機 |
 | `ptt14` | 同 `ptt` 的語料，剪到出貨模型的 14 MB（`ptt14/`） | GPU 主機 |
 | `ship` | 把 `no_generated/` 的三個 TSV 與出處檔案複製到 `lm_chat/`，0.3.0 的模型先保存到 `lm_chat_v1/` | 任一 |
 

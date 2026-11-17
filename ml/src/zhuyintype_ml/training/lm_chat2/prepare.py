@@ -69,6 +69,8 @@ VARIANTS = {
             "ptt-cns-gen",
             "ptt-genpub",
             "ptt-cns-genpub",
+            "ptt-cns-genpub2",
+            "pttr-cns-genpub2",
         )
     },
 }
@@ -118,6 +120,38 @@ def gossiping_pairs() -> Iterator[tuple[str, str]]:
                 yield question, answer
 
 
+def gossiping_replies() -> Iterator[tuple[str, list[str]]]:
+    """(title, pushes) of every article in the cached reply.7z, unpacked once beside it (titles may be empty).
+
+    A push longer than one PTT line is stored as consecutive responses by the same user; they are joined again
+    (as zake7749's PTT-Chat-Generator does).  User IDs and votes are never read further."""
+    folder = RAW / "ptt" / "reply"
+    if not (folder / ".complete").exists():
+        import py7zr
+
+        with py7zr.SevenZipFile(RAW / "ptt" / "reply.7z") as archive:
+            archive.extractall(path=folder)
+        (folder / ".complete").write_text("")
+    for path in sorted(folder.rglob("*.json")):
+        for article in json.loads(path.read_text(encoding="utf-8")):
+            # reply.7z holds each article as its list of responses, without the title; the crawler's article
+            # objects ({"Title", "Responses"}) are read too.
+            if isinstance(article, dict):
+                title, responses = article.get("Title") or "", article.get("Responses") or []
+            else:
+                title, responses = "", article
+            pushes: list[str] = []
+            user = None
+            for response in responses:
+                content = (response.get("Content") or "").strip()
+                if response.get("User") == user and pushes:
+                    pushes[-1] += content
+                else:
+                    pushes.append(content)
+                user = response.get("User")
+            yield title, [p for p in pushes if p]
+
+
 def tocp_texts() -> Iterator[str]:
     """Original sentences of TOCP v1.0 (the JSON file inside the cached zip)."""
     import zipfile
@@ -146,10 +180,15 @@ SELECTED = {
     "ptt-cns": "kept-strict.txt",
     "ptt-cns-gen": "kept-strict.txt",
     "ptt-cns-genpub": "kept-strict.txt",
+    "ptt-cns-genpub2": "kept-strict.txt",
+    "pttr-cns-genpub2": "kept-strict.txt",
 }
 # Sentences written by Claude Haiku 5.5 from the categories the probe and the private correction log show wrong
 # (data/build/private/gen, never in git; the correction holdout is blocked from training).
 GENERATED = paths.data("private", "gen")
+# The second, more detailed themed batch (games, voice chat and streams, communities, IT work, city life, confusable
+# characters), also written by Claude Haiku 5.5 without any user text.
+GENERATED2 = paths.data("private", "gen2")
 
 
 def eighth(text: str) -> bool:
@@ -584,11 +623,27 @@ def prepare(variant: str, workers: int) -> None:
                     sentence = sentence.strip()
                     if 4 <= len(sentence) <= 200 and valid(sentence):
                         add(sentence, "tocp")
-        if variant.endswith(("-gen", "-genpub")):
+        if variant.startswith("pttr"):
+            for title, pushes in gossiping_replies():
+                # consecutive pushes of one article as context pairs (the title first when there is one)
+                turns = [normalized(t) for t in ([title] if title else []) + pushes[:4]]
+                short = [t for t in turns if valid(t) and len(t) <= 200]
+                for previous, target in zip(short, short[1:]):
+                    add_context(previous, target)
+                for text in (title, *pushes):
+                    for sentence in mkn.SPLIT.split(text):
+                        sentence = sentence.strip()
+                        if 4 <= len(sentence) <= 200 and valid(sentence):
+                            add(sentence, "replies")
+                        elif sentence:
+                            counts["replies_invalid"] += 1
+        if variant.endswith(("-gen", "-genpub", "-genpub2")):
             # genpub: only the themed files, not the ones seeded with the user's corrected phrases (seed-*.txt)
             paths_ = sorted(GENERATED.glob("*.txt"))
-            if variant.endswith("-genpub"):
+            if variant.endswith(("-genpub", "-genpub2")):
                 paths_ = [p for p in paths_ if not p.name.startswith("seed-")]
+            if variant.endswith("-genpub2"):
+                paths_ += sorted(GENERATED2.glob("*.txt"))
             for path in paths_:
                 for line in path.open(encoding="utf-8"):
                     for sentence in mkn.SPLIT.split(line):

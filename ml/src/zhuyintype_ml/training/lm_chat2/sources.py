@@ -202,6 +202,17 @@ def ptt(directory: Path) -> None:
     )
 
 
+def ptt_replies(directory: Path) -> None:
+    """Every push of the PTT Gossiping articles the QA pairs came from (reply.7z, the Kaggle corpus' reply/ files)."""
+    base = f"https://raw.githubusercontent.com/zake7749/Gossiping-Chinese-Corpus/{GOSSIPING}/"
+    fetch(
+        base + "data/source_replies/reply.7z",
+        directory / "ptt" / "reply.7z",
+        "Apache-2.0 (zake7749, repository; Kaggle lists the same corpus as GPL 2); "
+        "PTT Gossiping titles and pushes belong to their authors",
+    )
+
+
 HF = "https://huggingface.co/datasets/{repo}/resolve/{rev}/{path}"
 OTHERS = [
     (
@@ -249,7 +260,9 @@ def others(directory: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt", "others"])
+    parser.add_argument(
+        "source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt", "ptt-replies", "others"]
+    )
     parser.add_argument("--first-year", type=int, default=2015)
     parser.add_argument("--last-year", type=int, default=2026)
     parser.add_argument("--documents", type=int, default=800)
@@ -267,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
         vtaiwan(a.raw)
     elif a.source == "ptt":
         ptt(a.raw)
+    elif a.source == "ptt-replies":
+        ptt_replies(a.raw)
     elif a.source == "others":
         others(a.raw)
     else:

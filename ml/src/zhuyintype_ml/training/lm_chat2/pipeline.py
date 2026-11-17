@@ -190,6 +190,21 @@ PIPELINE = Pipeline(
             "ptt-cns plus the themed generated sentences only, ptt-cns-genpub/ (GPU host)",
             variant("ptt-cns-genpub"),
         ),
+        Step(
+            "ptt-cns-genpub2",
+            "ptt-cns-genpub plus the second themed batch of data/build/private/gen2, ptt-cns-genpub2/ (GPU host)",
+            variant("ptt-cns-genpub2"),
+        ),
+        Step(
+            "ptt-replies-sources",
+            "cache every push of the PTT Gossiping articles (reply.7z) with a receipt",
+            run(f"{MODULE}.sources", "ptt-replies"),
+        ),
+        Step(
+            "pttr-cns-genpub2",
+            "ptt-cns-genpub2 plus every push of the Gossiping articles, pttr-cns-genpub2/ (GPU host)",
+            variant("pttr-cns-genpub2"),
+        ),
         Step("ptt14", "the ptt corpus pruned to the shipped model's 14 MB, ptt14/ (GPU host)", variant("ptt14")),
         Step("ship", "real variant and provenance into lm_chat/, the 0.3.0 model into lm_chat_v1/", ship),
     ),
