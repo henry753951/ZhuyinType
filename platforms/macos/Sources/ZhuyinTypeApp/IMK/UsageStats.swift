@@ -497,7 +497,8 @@ final class UsageStatsObserver {
                 literalBefore = nil
                 switch key {
                 case .backspace, .optionBackspace:
-                    if handled, !before.isEmpty, before.candidates == nil {
+                    // A ⌫ that put a correction back is counted as that, not as a deletion (as on Linux/Windows).
+                    if handled, !before.isEmpty, before.candidates == nil, !after.reverted {
                         count.backspaces = 1
                     } else if !handled, before.isEmpty, !deletedSinceCommit,
                               clock() - lastCommit <= Self.deleteWindow {
