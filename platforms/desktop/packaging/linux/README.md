@@ -16,7 +16,7 @@ sudo dnf remove zhuyintype
 在檔案管理員中按兩下套件檔，也會以系統的軟體中心安裝。相依套件（Fcitx 5、Vulkan、字型等）由 apt／dnf 自動安裝。安裝後：
 
 1. 重新登入一次。登入時 `/etc/xdg/autostart/zhuyintype.desktop` 在背景啟動輸入法服務（`zhuyintype --background`）；服務沒有執行時，Fcitx 5 的 addon 在第一次使用 ZhuyinType 時也會啟動它。
-2. 從應用程式選單開啟「ZhuyinType 設定」，依設定嚮導把 ZhuyinType 加入 Fcitx 5 的輸入方式。
+2. 登入後服務把 ZhuyinType 加入 Fcitx 5 的輸入方式（原有的保留，只加一次）。Fcitx 5 不是這個工作階段的輸入法框架時（GNOME 預設用 IBus），「ZhuyinType 設定」的頁面上方會說明，按「改用 Fcitx 5」（`fcitx5-setup framework`）後再登出、登入一次。
 
 移除套件會刪除它安裝的所有檔案，並結束執行中的服務。使用者自己的設定與記住的字詞（`~/.config/zhuyintype`、`~/.local/share/zhuyintype`）保留在家目錄，需要時自行刪除。`apt remove` 會留下 `/etc/xdg/autostart/zhuyintype.desktop`（設定檔，`apt purge` 才刪除）；它有 `TryExec`，程式不在時桌面不會執行它。
 
