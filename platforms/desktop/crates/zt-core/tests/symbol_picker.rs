@@ -160,3 +160,26 @@ fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
     let reply = request(&mut host, &mut f, key('J' as i32, 0));
     assert_eq!(reply["claims"], json!([]));
 }
+
+#[test]
+fn adapters_that_draw_the_window_get_the_row_across() {
+    use serde_json::json;
+    use zt_core::service::{Service, ServiceConfig};
+    let dir = common::TempDir::new();
+    common::write_lexicon(dir.path(), common::CONTROLLER_LEXICON);
+    let config =
+        ServiceConfig { data_dir: Some(dir.path().to_path_buf()), in_memory: true, ..ServiceConfig::default() };
+    let (service, _events) = Service::start(config).unwrap();
+    service.with_controller(|input| input.set_symbol_source(Arc::new(Catalog)));
+    let request = |fields: Value| {
+        let mut object = json!({"v": 1, "context": "{A}", "secure": false});
+        for (key, value) in fields.as_object().unwrap() {
+            object[key] = value.clone();
+        }
+        service.request(1, object.as_object().unwrap())
+    };
+    request(json!({"op": "focus", "panel": true}));
+    let reply = request(json!({"op": "key", "key": PICKER.0, "modifiers": PICKER.1, "release": false}));
+    assert_eq!(reply["panel"]["style"]["layout"], json!("horizontal"));
+    assert_eq!(reply["panel"]["model"]["rows"][0]["text"], json!("，"));
+}

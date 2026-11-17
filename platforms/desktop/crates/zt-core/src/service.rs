@@ -334,12 +334,17 @@ impl Service {
             if draws {
                 let panel = if core.host.visible(&core.controller) {
                     let shortcuts = &self.inner.shortcuts;
-                    let panel = crate::panel::panel(
+                    let mut panel = crate::panel::panel(
                         &self.inner.settings,
                         |command| shortcuts.active_label(command),
                         core.controller.presentation(),
                         core.host.inline_preedit(),
                     );
+                    if core.controller.picker_open() {
+                        // 符號與 Emoji: the highlighted row of the grid, across like the grid's rows.
+                        panel.style.layout = zt_panel::style::Layout::Horizontal;
+                        panel.style.shows_list_switches = false;
+                    }
                     serde_json::to_value(panel).unwrap_or(Value::Null)
                 } else {
                     Value::Null
