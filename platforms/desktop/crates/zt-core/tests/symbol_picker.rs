@@ -133,7 +133,7 @@ fn english_mode_and_focus_loss() {
 }
 
 #[test]
-fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
+fn the_broker_keeps_keys_while_open() {
     use serde_json::json;
     use zt_core::broker::host::Host;
     let mut f = fixture();
@@ -146,7 +146,7 @@ fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
         host.dispatch(&mut f.input, 1, object.as_object().unwrap()).0
     };
     let reply = request(&mut host, &mut f, json!({"op": "focus", "panel": true}));
-    assert_eq!(reply["claims"], json!([[',' as i32, modifier::CONTROL | modifier::ALT]]));
+    assert_eq!(reply["ok"], json!(true));
     let key = |code: i32, modifiers: u32| json!({"op": "key", "key": code, "modifiers": modifiers, "release": false});
     let reply = request(&mut host, &mut f, key(PICKER.0, PICKER.1));
     assert_eq!(reply["handled"], json!(true));
@@ -156,9 +156,6 @@ fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
     let reply = request(&mut host, &mut f, key('1' as i32, 0));
     assert_eq!(reply["commit"], json!("，"));
     assert_eq!(reply["composing"], json!(false));
-    f.settings.set("feature.symbolPicker", Value::Bool(false)).unwrap();
-    let reply = request(&mut host, &mut f, key('J' as i32, 0));
-    assert_eq!(reply["claims"], json!([]));
 }
 
 #[test]

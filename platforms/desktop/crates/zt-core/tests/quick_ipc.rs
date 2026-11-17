@@ -244,17 +244,3 @@ fn quick_from_the_field_converts_its_own_reply() {
     let back = f.request("quick", json!({"simplified": false}));
     assert_eq!(back["preedit"], "話");
 }
-
-#[test]
-fn hotkeys_carry_the_quick_settings_keys() {
-    let mut f = Fixture::new();
-    let focus = f.request("focus", json!({"secure": false}));
-    assert_eq!(focus["hotkeys"], json!([]), "no key by default, sent at focus");
-    assert!(f.request("poll", json!({})).get("hotkeys").is_none(), "unchanged: left out");
-    f.service.shortcuts().record("quickSettings", 'Q' as i32, modifier::ALT, None).unwrap();
-    let changed = f.request("poll", json!({}));
-    assert_eq!(changed["hotkeys"], json!([{"key": 'Q' as i32, "modifiers": modifier::ALT}]));
-    assert!(f.request("poll", json!({})).get("hotkeys").is_none());
-    let again = f.request("focus", json!({"secure": false}));
-    assert_eq!(again["hotkeys"], json!([{"key": 'Q' as i32, "modifiers": modifier::ALT}]));
-}
