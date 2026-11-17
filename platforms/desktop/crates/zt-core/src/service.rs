@@ -37,6 +37,9 @@ pub struct ServiceConfig {
     pub endpoint: Option<String>,
     /// Serve the native adapters.  Off for renders and tests that only need the UI's side.
     pub broker: bool,
+    /// When another instance already serves this user, end without asking it for its settings window
+    /// (`zhuyintype --background`: sign-in and the Fcitx5 addon start it, and must never open a window).
+    pub quiet_if_running: bool,
     /// The app's version, recorded in correction records.
     pub app_version: String,
 }
@@ -158,7 +161,8 @@ impl Service {
     /// ready.
     ///
     /// # Errors
-    /// [`AlreadyRunning`] when another instance serves this user (it was asked to show its settings); otherwise
+    /// [`AlreadyRunning`] when another instance serves this user (it was asked to show its settings, unless
+    /// `quiet_if_running`); otherwise
     /// when the endpoint cannot be reserved or served.  A missing lexicon is not an error: the service runs without
     /// an engine and [`Service::engine_error`] says why.
     pub fn start(config: ServiceConfig) -> Result<(Service, async_channel::Receiver<UiEvent>)> {
@@ -168,7 +172,9 @@ impl Service {
             match broker::reserve(&endpoint) {
                 Ok(reservation) => Some(reservation),
                 Err(ReserveError::AlreadyRunning) => {
-                    let _ = broker::show_settings(&endpoint);
+                    if !config.quiet_if_running {
+                        let _ = broker::show_settings(&endpoint);
+                    }
                     return Err(AlreadyRunning.into());
                 }
                 Err(ReserveError::Failed(error)) => return Err(error),

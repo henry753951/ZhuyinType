@@ -325,6 +325,16 @@ fn show_settings_and_single_instance() {
 }
 
 #[test]
+fn a_quiet_second_instance_opens_no_window() {
+    let f = Fixture::new();
+    let error =
+        Service::start(ServiceConfig { quiet_if_running: true, ..config(&f.dir) }).err().expect("a second instance");
+    assert!(error.downcast_ref::<zt_core::service::AlreadyRunning>().is_some());
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(!f.ui_events().contains(&UiEvent::ShowSettings(None)), "zhuyintype --background never opens settings");
+}
+
+#[test]
 fn refuses_occupied_file() {
     let dir = TempDir::new();
     let endpoint = dir.join("occupied");

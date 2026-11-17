@@ -116,6 +116,8 @@ fn main() {
         endpoint: args.endpoint.clone(),
         settings_file: args.settings_file.clone(),
         broker: !args.no_broker && args.popover.is_none() && args.wizard.is_none(),
+        // Sign-in and the Fcitx5 addon start `--background`; a second one ends quietly (packaging/linux/README.md).
+        quiet_if_running: args.background,
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         ..ServiceConfig::default()
     };
