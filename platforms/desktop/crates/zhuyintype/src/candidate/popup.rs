@@ -91,9 +91,15 @@ fn in_logical_pixels(event: UiEvent, cx: &mut App) -> UiEvent {
 
 /// Opens the floating windows (hidden) and shapes some CJK text, which loads the system's fallback fonts, soon after
 /// start rather than at the first key: otherwise the session's first candidate window waits ~100 ms and its first
-/// badge ~55 ms.  For the copy that serves the input method on Linux (on Windows the text service draws both).
+/// badge ~55 ms.  For the copy that serves the input method on Linux (on Windows the text service draws both), on X11
+/// only: in a Wayland session the Fcitx5 addon has Fcitx show the list and the badge (IPC.md, `panel`), and GPUI's
+/// floating windows there are toplevels this app can neither hide nor move off screen, so opening them early would
+/// only put two empty windows on the desktop.
 #[cfg(target_os = "linux")]
 pub fn prewarm(cx: &mut App) {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()) {
+        return;
+    }
     cx.spawn(async move |cx| cx.update(open_hidden)).detach();
 }
 
