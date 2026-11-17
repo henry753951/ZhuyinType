@@ -19,7 +19,7 @@ pub const VISIBLE_ROWS: usize = 6;
 /// Search results asked of the core.
 pub const SEARCH_LIMIT: usize = 180;
 /// The recent list's file in the user's data directory.
-pub const RECENT_FILE: &str = "recent-symbols.txt";
+pub const RECENT_FILE: &str = zhuyin_symbols::RECENT_FILE;
 /// The recent category's id.
 pub const RECENT_ID: &str = "recent";
 
@@ -55,64 +55,53 @@ pub trait Source: Send + Sync {
     fn recent_pushed(&self, recent: &[String], symbol: &str) -> (Vec<String>, String);
 }
 
-/// A small built-in catalog, until the core's symbols (`zhuyin-symbols`) are linked in.
+/// The core's symbols (`zhuyin-symbols`).
 pub struct CoreSource;
-
-fn builtin() -> Vec<Category> {
-    let category = |id: &str, title: &str, texts: &str| Category {
-        id: id.to_owned(),
-        title: title.to_owned(),
-        items: texts.split(' ').map(|text| Item { text: text.to_owned(), name: String::new() }).collect(),
-    };
-    vec![
-        category("punctuation", "常用標點", "， 。 、 ； ： ？ ！ … — 「 」 『 』 （ ） 《 》 〈 〉 ・ ～"),
-        category("math", "數學", "＋ － × ÷ ＝ ≠ ≈ ≤ ≥ ± √ ∞ ∑ ∏ ∫ ∂ ∈ ∉ ⊂ ⊃ ∩ ∪ ∀ ∃ ∅ ∠ ⊥ ∥ ％ ‰"),
-        category("arrows", "箭頭", "← → ↑ ↓ ↔ ↕ ↖ ↗ ↘ ↙ ⇐ ⇒ ⇑ ⇓ ⇔ ➜ ➤ ⤴ ⤵"),
-        category(
-            "smileys",
-            "笑臉與情緒",
-            "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 😚 😙 😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔",
-        ),
-    ]
-}
 
 impl Source for CoreSource {
     fn categories(&self) -> Arc<Vec<Category>> {
         static CATEGORIES: OnceLock<Arc<Vec<Category>>> = OnceLock::new();
-        CATEGORIES.get_or_init(|| Arc::new(builtin())).clone()
+        CATEGORIES
+            .get_or_init(|| {
+                Arc::new(
+                    zhuyin_symbols::categories()
+                        .iter()
+                        .map(|category| Category {
+                            id: category.id.to_owned(),
+                            title: category.title.to_owned(),
+                            items: category.symbols.iter().map(item).collect(),
+                        })
+                        .collect(),
+                )
+            })
+            .clone()
     }
 
     fn search(&self, query: &str, limit: usize) -> Vec<Item> {
-        if query.is_empty() {
-            return Vec::new();
-        }
-        self.categories()
-            .iter()
-            .flat_map(|category| category.items.iter())
-            .filter(|item| item.text.contains(query))
-            .take(limit)
-            .cloned()
-            .collect()
+        zhuyin_symbols::search(query, limit).into_iter().map(item).collect()
     }
 
     fn display_query(&self, query: &str) -> String {
-        query.to_owned()
+        zhuyin_symbols::display_query(query)
     }
 
-    fn name_of(&self, _text: &str) -> Option<String> {
-        None
+    fn name_of(&self, text: &str) -> Option<String> {
+        zhuyin_symbols::name_of(text).map(str::to_owned)
     }
 
     fn recent_from_text(&self, text: &str) -> Vec<String> {
-        text.lines().filter(|line| !line.is_empty()).take(32).map(str::to_owned).collect()
+        zhuyin_symbols::Recent::from_text(text).items().to_vec()
     }
 
     fn recent_pushed(&self, recent: &[String], symbol: &str) -> (Vec<String>, String) {
-        let mut list = vec![symbol.to_owned()];
-        list.extend(recent.iter().filter(|s| *s != symbol).take(31).cloned());
-        let text = list.join("\n") + "\n";
-        (list, text)
+        let mut list = zhuyin_symbols::Recent::from_text(&recent.join("\n"));
+        list.push(symbol);
+        (list.items().to_vec(), list.to_text())
     }
+}
+
+fn item(symbol: &zhuyin_symbols::Symbol) -> Item {
+    Item { text: symbol.text.clone(), name: symbol.name.clone() }
 }
 
 /// The recent list and where it is kept (`None`: in memory only, for renders and tests).

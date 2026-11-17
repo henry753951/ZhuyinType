@@ -10,6 +10,7 @@ rust-version.workspace = true
 [dependencies]
 zt-panel.workspace = true
 zhuyin-core.workspace = true
+zhuyin-symbols.workspace = true
 zhuyin-models.workspace = true
 ort.workspace = true
 serde.workspace = true

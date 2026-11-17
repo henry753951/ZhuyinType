@@ -15,6 +15,7 @@ rust-version = "1.98"
 
 [workspace.dependencies]
 zhuyin-core = { path = "../../engine/crates/zhuyin-core" }
+zhuyin-symbols = { path = "../../engine/crates/zhuyin-symbols" }
 # The neural models with ONNX Runtime, which the app loads at run time from beside itself (`load-dynamic`: nothing to
 # link, so the Windows build cross-compiles as before); zt-core/src/models.rs.
 zhuyin-models = { path = "../../engine/crates/zhuyin-models", features = ["onnx"] }
