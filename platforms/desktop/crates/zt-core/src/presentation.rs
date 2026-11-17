@@ -62,6 +62,12 @@ pub struct Presentation {
     pub notice: Option<String>,
     /// The engine's reading channel (「接受常見的其他讀法」) is loaded and on.
     pub reading_channel_active: bool,
+    /// The word actions each row of the page offers (`zt_panel::model::Row::actions`), in row order.
+    pub row_actions: Vec<u8>,
+    /// The notice reports a word action that 「復原」 or Ctrl+Z can still undo.
+    pub undo: bool,
+    /// The word actions' tip under the list, the first few times a list opens.
+    pub tip: Option<String>,
 }
 
 impl Presentation {
@@ -147,10 +153,12 @@ impl Presentation {
             rows: self
                 .rows
                 .iter()
-                .map(|row| zt_panel::model::Row {
+                .enumerate()
+                .map(|(n, row)| zt_panel::model::Row {
                     key: row.key,
                     text: row.text.clone(),
                     annotation: row.annotation.clone(),
+                    actions: self.row_actions.get(n).copied().unwrap_or(0),
                 })
                 .collect(),
             count: self.count,
@@ -164,6 +172,9 @@ impl Presentation {
             tolerant: self.tolerant,
             focused_clause: self.focused_clause,
             preview: preview.filter(|text| !text.is_empty()).map(str::to_owned),
+            undo: self.undo,
+            tip: self.tip.clone(),
+            menu: None,
         }
     }
 

@@ -4,7 +4,7 @@
 //! Windows text service with DirectWrite, and both draw what this returns.
 
 use crate::keys::{self, Piece};
-use crate::model::PanelModel;
+use crate::model::{PanelModel, WORD_ACTIONS};
 use crate::style::{Layout, PanelStyle};
 use crate::tokens;
 
@@ -125,6 +125,31 @@ pub struct NoticeLayout {
     pub keycap_h: f32,
     pub lead: f32,
     pub label_w: f32,
+    /// The 「復原」 link at the row's end (window coordinates), after a word action.
+    pub undo: Option<Frame>,
+}
+
+/// The link that undoes a word action.
+pub const UNDO_LABEL: &str = "復原";
+
+/// The right-click menu of a candidate, drawn inside the window under the list.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuLayout {
+    /// The row of the page it acts on.
+    pub row: usize,
+    /// The hairline above it.
+    pub rule: Frame,
+    pub items: Vec<MenuItemLayout>,
+    pub font_size: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuItemLayout {
+    pub frame: Frame,
+    /// Index into [`WORD_ACTIONS`] (the action's raw value).
+    pub action: usize,
+    pub label: &'static str,
+    pub enabled: bool,
 }
 
 /// A footer switch: its key cap and short name.
@@ -198,6 +223,12 @@ pub struct PanelLayout {
     /// From the window's left edge to the candidates' text (the window lines its text up with the composition).
     pub text_inset: f32,
     pub list_open: bool,
+    /// The word actions' tip under the list, and its text size.
+    pub tip: Option<(Frame, String, f32)>,
+    pub menu: Option<MenuLayout>,
+    /// The part of `height` that is the menu: a list's steady size leaves it out, so the window shrinks back when
+    /// the menu closes.
+    pub transient_height: f32,
 }
 
 impl PanelLayout {
@@ -298,6 +329,24 @@ fn compute_fitted(
         width = width.max(notice.preferred + NOTICE_X * 2.);
         y += notice_height + if alone { 0. } else { 2. };
     }
+    // The tip and the menu go under the list; they only widen the window here.
+    let tip_font = SMALL_FONT;
+    let tip = p.tip.as_deref().filter(|_| list_open).map(|text| {
+        width = width.max(ceil(measure.width(text, tip_font, false)) + padding * 2. + key_inset * 2.);
+        text.to_owned()
+    });
+    let menu_font = (fs * 0.8).round().max(12.);
+    let menu_row = p.menu.filter(|row| *row < p.rows.len() && list_open);
+    if menu_row.is_some() {
+        let widest = WORD_ACTIONS.iter().map(|(_, title)| measure.width(title, menu_font, false)).fold(0., f32::max);
+        width = width.max(ceil(widest) + padding * 2. + key_inset * 2.);
+    }
+    let undo_w = if p.undo { ceil(measure.width(UNDO_LABEL, (fs * 0.72).round(), true)) } else { 0. };
+    if let Some(notice) = &notice
+        && p.undo
+    {
+        width = width.max(notice.preferred + NOTICE_X * 2. + 12. + undo_w);
+    }
     let preview_y = y;
     let mut preview_width = 0.;
     if let Some(text) = preview {
@@ -389,6 +438,11 @@ fn compute_fitted(
     let notice_frame = Frame::new(NOTICE_X, padding, (width - NOTICE_X * 2.).max(0.), notice_height);
     if let Some(notice) = &mut notice {
         notice.layout.frame = notice_frame;
+        if p.undo {
+            notice.layout.frame.w = (notice_frame.w - undo_w - 12.).max(0.);
+            notice.layout.undo =
+                Some(Frame::new(notice_frame.x + notice_frame.w - undo_w, notice_frame.y, undo_w, notice_frame.h));
+        }
     }
     // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them.
     let rows_room = (width - padding * 2. - if vertical { 0. } else { footer_width }).max(0.);
@@ -496,7 +550,33 @@ fn compute_fitted(
     if has_footer && vertical {
         y += footer_height;
     }
-    let height = (y + padding).max(if list_open { steady.1 } else { 0. });
+    let mut height = (y + padding).max(if list_open { steady.1 } else { 0. });
+    let mut below = height - padding;
+    let tip = tip.map(|text| {
+        let frame = Frame::new(padding + key_inset, below, (width - padding * 2. - key_inset * 2.).max(0.), 18.);
+        below += frame.h;
+        height = height.max(below + padding);
+        (frame, text, tip_font)
+    });
+    let base_height = height;
+    let menu = menu_row.map(|row| {
+        let rule = Frame::new(0., below + 3., width, 1.);
+        below += 7.;
+        let item_h = ceil(menu_font * 1.8);
+        let bits = p.rows[row].actions;
+        let items = WORD_ACTIONS
+            .iter()
+            .enumerate()
+            .map(|(action, (_, label))| {
+                let frame = Frame::new(padding, below + action as f32 * item_h, width - padding * 2., item_h);
+                MenuItemLayout { frame, action, label, enabled: bits & (1 << action) != 0 }
+            })
+            .collect::<Vec<_>>();
+        below += item_h * items.len() as f32;
+        height = height.max(below + padding);
+        MenuLayout { row, rule, items, font_size: menu_font }
+    });
+    let transient_height = height - base_height;
     let layout = PanelLayout {
         width,
         height,
@@ -522,6 +602,9 @@ fn compute_fitted(
         pager,
         text_inset: text_inset_total,
         list_open,
+        tip,
+        menu,
+        transient_height,
     };
     (layout, wanted)
 }
@@ -565,6 +648,7 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
             keycap_h,
             lead,
             label_w,
+            undo: None,
         },
         preferred,
     }
@@ -607,7 +691,7 @@ mod tests {
         let rows = WORDS[start..(start + page_size).min(WORDS.len())]
             .iter()
             .enumerate()
-            .map(|(row, text)| Row { key: keys.get(row).copied(), text: (*text).to_owned(), annotation: None })
+            .map(|(row, text)| Row { key: keys.get(row).copied(), text: (*text).to_owned(), ..Row::default() })
             .collect();
         PanelModel {
             rows,

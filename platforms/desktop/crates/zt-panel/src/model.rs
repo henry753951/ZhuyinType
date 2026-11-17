@@ -12,6 +12,24 @@ pub struct Row {
     pub text: String,
     /// Small grey text after it (a correction's reading).
     pub annotation: Option<String>,
+    /// The word actions this candidate offers (its right-click menu): bit `n` is the action whose raw value is `n`
+    /// ([`WORD_ACTIONS`]).  Left out of the JSON when none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub actions: u8,
+}
+
+/// The word actions in menu order: their IPC names (`action` op) and titles; bit `n` of [`Row::actions`] is entry `n`.
+pub const WORD_ACTIONS: [(&str, &str); 3] =
+    [("block", "不要再推薦"), ("forget", "忘記這個選字"), ("addPhrase", "加入自訂詞")];
+
+#[allow(clippy::trivially_copy_pass_by_ref, reason = "serde's skip_serializing_if passes a reference")]
+fn is_zero(value: &u8) -> bool {
+    *value == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref, reason = "serde's skip_serializing_if passes a reference")]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// One state of the window.
@@ -38,6 +56,18 @@ pub struct PanelModel {
     pub focused_clause: Option<usize>,
     /// The composition, shown above the list when the application cannot show it.
     pub preview: Option<String>,
+    /// The notice reports a word action that 「復原」 (a link at the notice's end, or Ctrl+Z) can undo.  Left out of
+    /// the JSON when false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub undo: bool,
+    /// A line under the list that teaches the word actions (「Ctrl+Del 不要再推薦・右鍵看更多」), the first few times a
+    /// list opens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tip: Option<String>,
+    /// The right-click menu open on this row of the page, drawn inside the window (the GPUI app only; the Windows
+    /// text service shows a system menu instead).  Not sent.
+    #[serde(skip)]
+    pub menu: Option<usize>,
 }
 
 impl PanelModel {

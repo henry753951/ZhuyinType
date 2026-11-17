@@ -9,6 +9,7 @@ use std::sync::{Arc, Weak};
 use anyhow::{Result, anyhow};
 use parking_lot::Mutex;
 use serde_json::{Map, Value};
+use zhuyin_core::composer::CandidateAction;
 use zhuyin_core::engine::Engine;
 
 use crate::broker::host::{Effect, Host};
@@ -87,6 +88,10 @@ pub enum PopupAction {
     ToggleCorrections,
     /// Types the highlighted span's Zhuyin (the footer's ` action).
     TypeReading,
+    /// A word action (不要再推薦, 忘記這個選字, 加入自訂詞) on row `n` of the current page (the right-click menu).
+    Word(CandidateAction, usize),
+    /// The notice's 「復原」: undoes the last word action.
+    UndoWordAction,
 }
 
 /// The settings key of 在候選字視窗顯示組字的 App (a list of executable names).
@@ -275,6 +280,7 @@ impl Service {
             core.host.popup_apps = popup_apps(&self.inner.settings);
             let result = work(&mut core);
             let Core { controller, host, popup, .. } = &mut *core;
+            controller.sync_word_overlay();
             let effects = host.drain(controller);
             // An adapter that draws the window itself gets it in its replies; the app's own window stays hidden.
             let next = (host.visible(controller) && !host.draws_panel()).then(|| PopupState {
@@ -296,6 +302,15 @@ impl Service {
             let event = match effect {
                 Effect::ShowSettings(place) => UiEvent::ShowSettings(place),
                 Effect::Boundary(direction) => UiEvent::Boundary(direction),
+                Effect::WordActionTip => {
+                    // Outside the service's lock: setting a value calls the service's settings observer.
+                    let key = crate::controller::WORD_ACTION_TIP_KEY;
+                    let count = self.inner.settings.number(key).max(0.0) + 1.0;
+                    if let Err(error) = self.inner.settings.set(key, Value::from(count as i64)) {
+                        log::warn!("{key}: {error}");
+                    }
+                    continue;
+                }
                 Effect::Toast { text } => {
                     if !self.inner.settings.bool("showModeToast") {
                         continue;
@@ -321,7 +336,9 @@ impl Service {
         let mut draws = false;
         let mut reply = self.with_core(|core| {
             let (mut reply, found) = core.host.dispatch(&mut core.controller, connection, request);
+            core.controller.sync_word_overlay();
             effects = found;
+            effects.extend(core.host.drain(&mut core.controller));
             draws = core.host.draws_panel() && reply.get("ok") == Some(&Value::Bool(true));
             if draws {
                 let panel = if core.host.visible(&core.controller) {
@@ -358,7 +375,7 @@ impl Service {
                     reply.insert("boundary".into(), Value::from(*direction));
                     false
                 }
-                Effect::ShowSettings(_) => true,
+                Effect::ShowSettings(_) | Effect::WordActionTip => true,
             });
         }
         self.emit(effects, None);
@@ -393,6 +410,8 @@ impl Service {
                 PopupAction::ToggleSingle => host.toggle_single(controller),
                 PopupAction::ToggleCorrections => host.toggle_corrections(controller),
                 PopupAction::TypeReading => host.type_reading(controller),
+                PopupAction::Word(action, row) => host.word_action(controller, action, row),
+                PopupAction::UndoWordAction => host.undo_word_action(controller),
             }
         });
     }
@@ -506,6 +525,18 @@ impl Service {
     #[must_use]
     pub fn excluded_entries(&self) -> Vec<Phrase> {
         self.session(|s| s.excluded_entries())
+    }
+
+    /// Words never suggested (不要再推薦).
+    #[must_use]
+    pub fn blocked_entries(&self) -> Vec<Phrase> {
+        self.session(|s| s.blocked_entries())
+    }
+
+    /// # Errors
+    /// See [`EngineSession::unblock`].
+    pub fn unblock(&self, word: &str, reading: &str) -> Result<()> {
+        self.session(|s| s.unblock(word, reading))
     }
 
     /// The readings of `word` the lexicon knows.

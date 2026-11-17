@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use zhuyin_core::api::{KeyInput, PunctuationWidth};
+use zhuyin_core::composer::CandidateAction;
 
 use crate::corrections::{CandidateDetails, CorrectionLog, CorrectionRecorder, ObservedInput, correction_settings};
 use crate::engine::EngineSession;
@@ -37,7 +38,16 @@ pub enum ControllerEvent {
     Boundary(i32),
     /// A candidate was picked by a click.
     CandidateChosen { elapsed_ms: f64 },
+    /// A list opened with the word actions' tip: the host counts it in [`WORD_ACTION_TIP_KEY`] (outside the lock).
+    WordActionTip,
 }
+
+/// The settings key counting the lists that showed the word actions' tip (macOS uses the same name).
+pub const WORD_ACTION_TIP_KEY: &str = "wordActionHintCount";
+/// How many lists show the tip.
+pub const WORD_ACTION_TIP_LISTS: f64 = 5.0;
+/// How long a word action can be undone (「復原」, Ctrl+Z), in seconds.
+pub const WORD_UNDO_SECONDS: f64 = 5.0;
 
 /// The characters read before the insertion point.
 pub const CONTEXT_READ: usize = 128;
@@ -129,6 +139,11 @@ pub struct InputController {
     events: Vec<ControllerEvent>,
     clock: Box<dyn Fn() -> f64 + Send>,
     now: Box<dyn Fn() -> i64 + Send>,
+    /// When the last word action was done (the clock's seconds).
+    word_action_at: Option<f64>,
+    /// A list is open, and whether it shows the word actions' tip.
+    list_seen: bool,
+    list_tip: bool,
     /// The gap that ends a burst of typing (four times the usual key interval, at least 2 s); the statistics store
     /// may set it from the user's rhythm.
     pub pause_threshold: f64,
@@ -162,6 +177,9 @@ impl InputController {
             events: Vec::new(),
             clock: Box::new(move || started.elapsed().as_secs_f64()),
             now: Box::new(|| chrono::Utc::now().timestamp_millis()),
+            word_action_at: None,
+            list_seen: false,
+            list_tip: false,
             pause_threshold: 2.0,
         };
         controller.sync_settings();
@@ -426,6 +444,13 @@ impl InputController {
         if self.english() {
             return self.pass_through();
         }
+        // Ctrl+Z undoes a word action for a few seconds while still composing (a fixed key, not a command).
+        if crate::shortcuts::Binding::normalized(key.code, key.modifiers)
+            == Some(crate::shortcuts::Binding { key: i32::from(b'Z'), modifiers: modifier::CONTROL })
+            && self.word_undo_offered()
+        {
+            return self.undo_word_action();
+        }
         if let Some(command) = self.shortcuts.resolve(key.code, key.modifiers) {
             if !self.shortcuts.is_enabled(command.id) {
                 return self.pass_through();
@@ -455,6 +480,14 @@ impl InputController {
 
     fn dispatch(&mut self, id: &str, action: Action, key: &Key, time: f64) -> bool {
         match action {
+            // Only while composing; a word action that does not apply here keeps the composition (no commit).
+            Action::Word(action) => {
+                if !self.session.composing() {
+                    return self.pass_through();
+                }
+                self.word_action(action, None);
+                true
+            }
             Action::Neighbour(delta) => {
                 let arrow = if delta < 0 { KeyInput::Left } else { KeyInput::Right };
                 let p = self.session.presentation().clone();
@@ -605,6 +638,79 @@ impl InputController {
         let Some(input) = key.input() else { return false };
         let time = self.clock();
         self.engine_input(input, time)
+    }
+
+    // MARK: Word actions
+
+    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one; adding with no list open
+    /// takes the whole composition).  False when it does not apply.
+    pub fn word_action(&mut self, action: CandidateAction, index: Option<usize>) -> bool {
+        self.sync_settings();
+        if self.secure || self.english() || !self.session.ready() || !self.session.composing() {
+            return false;
+        }
+        self.shift_tap = None;
+        let done = matches!(self.session.perform_word_action(action, index), Ok(Some(_)));
+        if done {
+            self.word_action_at = Some(self.clock());
+        }
+        done
+    }
+
+    /// Whether `action` applies to candidate `index` of the whole list (see [`InputController::word_action`]).
+    #[must_use]
+    pub fn word_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
+        !self.secure && self.session.ready() && self.session.word_action_available(action, index)
+    }
+
+    /// The last word action can still be undone: within [`WORD_UNDO_SECONDS`], still composing.
+    #[must_use]
+    pub fn word_undo_offered(&self) -> bool {
+        self.word_action_at.is_some_and(|at| (0.0..=WORD_UNDO_SECONDS).contains(&(self.clock() - at)))
+            && !self.secure
+            && self.session.ready()
+            && self.session.composing()
+            && self.session.can_undo_word_action()
+    }
+
+    /// Undoes the last word action (「復原」, Ctrl+Z) while it is offered.
+    pub fn undo_word_action(&mut self) -> bool {
+        if !self.word_undo_offered() {
+            return false;
+        }
+        self.word_action_at = None;
+        matches!(self.session.undo_word_action(), Ok(true))
+    }
+
+    /// Brings the notice's 「復原」 and the word actions' tip up to date with the composer (the host calls this after
+    /// every request, before drawing).  A list that opens while fewer than [`WORD_ACTION_TIP_LISTS`] lists have shown
+    /// the tip shows it until it closes.
+    pub fn sync_word_overlay(&mut self) {
+        if !self.session.ready() {
+            return;
+        }
+        let has_list = self.session.presentation().has_list();
+        if has_list && !self.list_seen {
+            self.list_tip = !self.secure && self.settings.number(WORD_ACTION_TIP_KEY) < WORD_ACTION_TIP_LISTS;
+            if self.list_tip {
+                self.events.push(ControllerEvent::WordActionTip);
+            }
+        }
+        self.list_seen = has_list;
+        self.list_tip &= has_list;
+        let undo = self.word_undo_offered() && self.session.presentation().notice.is_some();
+        let tip = self.list_tip.then(|| {
+            let key = self.shortcuts.active_label("blockCandidate");
+            if key.is_empty() {
+                "右鍵看更多".to_owned()
+            } else {
+                format!("{key} 不要再推薦・右鍵看更多")
+            }
+        });
+        let p = self.session.presentation();
+        if p.undo != undo || p.tip != tip {
+            self.session.set_word_overlay(undo, tip);
+        }
     }
 
     /// The candidate window's corrections switch.
