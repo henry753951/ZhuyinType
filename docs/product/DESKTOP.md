@@ -27,7 +27,8 @@
 - 以 ONNX Runtime 1.24.4 在 CPU 上執行。App 在執行時載入它（`ort` 的 `load-dynamic`）：Windows 為安裝目錄的 `onnxruntime.dll`，Linux 為 `/usr/lib/zhuyintype/libonnxruntime.so.1`。找不到時不用模型，其餘照常。
 - 判斷邏輯（重排的門檻、逐字模型的權重 0.5、候選字排序）是 `engine/crates/zhuyin-models`，和 macOS 共用；接法在 `crates/zt-core/src/models.rs`。
 - 和 macOS 的差別：動態 int8 的矩陣運算以 int8 進行，開發集兩組各 400 段中有 18 段和 macOS 權重的結果不同，整句全對率口語 86.2%（macOS 權重 87.0%）、百科 81.0%（81.2%）。改用和 macOS 逐句相同的作法（權重展開成 fp32）時，App 要多用約 490 MB 記憶體，見 [研究紀錄](../research/log.md) 2026-11-17。
-- GPU 主機上模型載入約 30 ms 與 55 ms，每鍵延遲中位數 4.3 ms、最慢 21 ms（沒有模型時 3.9 ms）。
+- 模型在背景執行緒載入，和詞庫、語言模型同時進行，載入後各執行一次，第一個鍵不必等 ONNX Runtime 第一次執行與讀入權重。四核心以上的電腦每個模型用兩個執行緒（執行緒在運算之間休眠，不空轉），結果和一個執行緒相同。
+- GPU 主機上服務啟動到可以接鍵約 135 ms（模型載入約 50 ms 與 60 ms）。桌面版的引擎路徑打開發集四組各 400 段：每鍵中位數 0.45–0.6 ms，95% 的鍵在 20–28 ms 內，最慢 45–68 ms；完成一個音節的鍵才會執行模型。數字與量法見[研究紀錄](../research/log.md) 2026-11-18。
 
 ## 更新
 
