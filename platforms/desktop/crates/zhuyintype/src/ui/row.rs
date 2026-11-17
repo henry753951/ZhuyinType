@@ -203,6 +203,12 @@ pub(crate) fn arrival_tint(window: &mut Window, cx: &App) -> impl IntoElement {
     div().absolute().inset(space::S2).rounded(size::R_SM).bg(p.accent).opacity(0.17 * opacity)
 }
 
+/// A row's focus handle, and whether the focus was in it when last drawn (the page scrolls to it once on arrival).
+struct Focus {
+    handle: gpui_kit::FocusHandle,
+    shown: bool,
+}
+
 /// The 已自訂 dot's size.
 const DOT: gpui_kit::Pixels = space::S6;
 
@@ -210,6 +216,21 @@ impl RenderOnce for Row {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         let clickable = self.on_click.is_some();
+        // The row holds the keyboard focus (a clickable row) or contains it (its switch, its pop-up button): when the
+        // focus arrives, the page scrolls to show the row.
+        let focus = window.use_keyed_state(SharedString::from(format!("focus-{:?}", self.id)), cx, |_, cx| {
+            let handle = cx.focus_handle();
+            Focus {
+                handle: if clickable { handle.tab_index(0).tab_stop(true) } else { handle.tab_stop(false) },
+                shown: false,
+            }
+        });
+        let focused = focus.read(cx).handle.contains_focused(window, cx);
+        let reveal = focused && !focus.read(cx).shown;
+        if focused != focus.read(cx).shown {
+            focus.update(cx, |focus, _| focus.shown = focused);
+        }
+        let focus_handle = focus.read(cx).handle.clone();
         let arrival = self.anchor.as_ref().and_then(|anchor| arrived(anchor, cx).map(|g| (anchor.clone(), g)));
         let chevron = match self.accessory {
             Accessory::Chevron => Some(controls::chevron(cx).into_any_element()),
@@ -264,10 +285,11 @@ impl RenderOnce for Row {
             })
             .when_some(arrival, |this, (anchor, _)| this.child(arrival_tint(window, cx)).child(anchor_probe(anchor)))
             .when(self.dimmed, |this| this.opacity(0.5))
+            .track_focus(&focus_handle)
+            .when(reveal, |this| this.child(canvas(app::reveal, |_, _, _, _| {}).absolute().size_full()))
             .when(clickable, |this| {
                 this.cursor_pointer()
                     .rounded(size::R_SM)
-                    .tab_index(0)
                     .focus_visible(|style| crate::motion::focus_ring(style, &p, p.surface))
             })
             .when_some(self.on_click, |this, handler| this.on_click(handler))

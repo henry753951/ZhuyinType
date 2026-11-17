@@ -172,6 +172,27 @@ pub fn scroll_into_view(anchor: &str, bounds: Bounds<Pixels>, window: &mut Windo
     window.refresh();
 }
 
+/// Scrolls the page just enough to show `bounds` (something the keyboard moved to), keeping a margin; the top wins
+/// when it is taller than the page.
+pub fn reveal(bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    let nav = cx.global_mut::<Navigation>();
+    let viewport = nav.scroll.bounds();
+    let margin = px(16.);
+    let offset = nav.scroll.offset();
+    let mut y = offset.y;
+    if bounds.bottom() > viewport.bottom() - margin {
+        y -= bounds.bottom() - (viewport.bottom() - margin);
+    }
+    if bounds.top() + (y - offset.y) < viewport.top() + margin {
+        y = offset.y + (viewport.top() + margin - bounds.top());
+    }
+    let y = y.min(px(0.)).max(-nav.scroll.max_offset().y);
+    if y != offset.y {
+        nav.scroll.set_offset(point(offset.x, y));
+        window.refresh();
+    }
+}
+
 /// The navigation state.
 pub fn nav(cx: &App) -> &Navigation {
     cx.global::<Navigation>()
