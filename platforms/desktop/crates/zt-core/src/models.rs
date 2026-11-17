@@ -76,7 +76,8 @@ fn runtime() -> Result<(), String> {
         .clone()
 }
 
-/// The models in `reranker` and `character` (directories), whichever are given.
+/// The models in `reranker` and `character` (directories), whichever are given, each run once on a small input
+/// (`warm_up`) so the first key does not pay for ONNX Runtime's first run and for reading the mapped weights in.
 #[must_use]
 pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
     let mut models = NeuralModels::default();
@@ -92,8 +93,9 @@ pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
         let started = Instant::now();
         match OnnxReranker::new(directory).and_then(|model| NeuralReranker::configured(directory, Box::new(model))) {
             Ok(model) => {
-                models.reranker = Some(Arc::new(model));
                 models.reranker_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+                model.warm_up();
+                models.reranker = Some(Arc::new(model));
             }
             Err(error) => {
                 log::warn!("reranker: {error}");
@@ -105,8 +107,9 @@ pub fn load(reranker: Option<&Path>, character: Option<&Path>) -> NeuralModels {
         let started = Instant::now();
         match OnnxSyllableModel::new(directory).and_then(|model| SyllableScorer::new(directory, Box::new(model))) {
             Ok(model) => {
-                models.character = Some(Arc::new(model));
                 models.character_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+                model.warm_up();
+                models.character = Some(Arc::new(model));
             }
             Err(error) => {
                 log::warn!("character model: {error}");

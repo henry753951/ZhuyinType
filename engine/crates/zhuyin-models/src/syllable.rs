@@ -162,6 +162,22 @@ impl SyllableScorer {
         Some(output.into_iter().zip(candidates).map(|(row, list)| row[..list.len().min(width)].to_vec()).collect())
     }
 
+    /// Runs both encoders once on a small composition, so the first key the user types does not pay for ONNX
+    /// Runtime's first run and for reading the weights in (they are memory-mapped).  Nothing is remembered as an
+    /// answer; the context encoder keeps the empty context's memory, which is what a first composition asks for.
+    pub fn warm_up(&self) {
+        let ids: Vec<i32> = ["的", "地", "得", "德"].iter().map(|c| self.character_id(c)).collect();
+        let syllable = self.syllable_ids.get("ㄉㄜ").copied().unwrap_or(1);
+        let _ = self.raw_scores(&SyllableInput {
+            context_ids: &[1],
+            syllable_ids: &[syllable, syllable],
+            tones: &[5, 2],
+            costs: &[0, 0],
+            boundaries: &[0, 0],
+            candidates: &[ids.clone(), ids],
+        });
+    }
+
     /// Runs the model on raw IDs (for checking against the v3 test vectors).
     ///
     /// # Errors

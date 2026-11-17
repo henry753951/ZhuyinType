@@ -126,10 +126,26 @@ impl EngineData {
         Arc::new(Self { files, config, models: std::sync::OnceLock::new() })
     }
 
-    /// The neural models, loaded on first use (by the first session that opens).
+    /// The neural models, loaded on first use (by the first session that opens, or
+    /// [`load_models_in_background`](Self::load_models_in_background)); a caller waits while they load.
     pub fn models(&self) -> &crate::models::NeuralModels {
         self.models
             .get_or_init(|| crate::models::load(self.files.reranker.as_deref(), self.files.character_model.as_deref()))
+    }
+
+    /// Starts loading the neural models on a thread of their own, so they load while the first session opens the
+    /// lexicon and language models instead of after them; the session's [`models`](Self::models) waits for them.
+    pub fn load_models_in_background(self: &Arc<Self>) {
+        if self.files.reranker.is_none() && self.files.character_model.is_none() {
+            return;
+        }
+        let data = Arc::clone(self);
+        let spawned = std::thread::Builder::new().name("zt-models".into()).spawn(move || {
+            data.models();
+        });
+        if let Err(error) = spawned {
+            log::warn!("neural models: no loading thread ({error}); they load with the engine");
+        }
     }
 
     /// The engine data for the lexicon at `path` (a `lexicon.tsv`, which need not exist when `lexicon.bin` does),

@@ -160,6 +160,12 @@ impl NeuralReranker {
         )
     }
 
+    /// Scores two short sentences once, so the first key that needs the model does not pay for ONNX Runtime's first
+    /// run and for reading the weights in (they are memory-mapped).  The last choice is left as it was.
+    pub fn warm_up(&self) {
+        let _ = self.scores("", &["你好嗎", "妳好嗎"]);
+    }
+
     /// `weight` × log P(candidate | context) for candidate-list ordering, scored in batches the model accepts.
     #[must_use]
     pub fn candidate_scores<S: AsRef<str>>(&self, context: &str, candidates: &[S]) -> Option<Vec<f64>> {

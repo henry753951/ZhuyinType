@@ -192,6 +192,7 @@ impl Service {
         let data = DataFiles::find(config.data_dir.as_deref()).map(EngineData::new);
         match &data {
             Some(data) => {
+                data.load_models_in_background();
                 if let Err(error) = session.open(data, user_dir.as_deref()) {
                     log::error!("engine: {error:#}");
                     engine_error = Some(format!("{error:#}"));
