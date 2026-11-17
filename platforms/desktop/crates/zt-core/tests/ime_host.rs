@@ -30,8 +30,12 @@ fn config(dir: &TempDir) -> ServiceConfig {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_lexicon(LEXICON)
+    }
+
+    fn with_lexicon(lexicon: &str) -> Self {
         let dir = TempDir::new();
-        write_lexicon(dir.path(), LEXICON);
+        write_lexicon(dir.path(), lexicon);
         let (service, events) = Service::start(config(&dir)).unwrap();
         assert!(service.engine_error().is_none());
         let client = Client::connect(&service.endpoint().unwrap()).unwrap();
@@ -278,6 +282,20 @@ fn replies_mark_the_words_and_the_one_being_changed() {
     assert_eq!(listed["focus"], 0, "the word the list replaces");
     let secure = f.request("key", json!({"secure": true}));
     assert!(secure.get("clauses").is_none(), "nothing about the text leaves a secure field");
+}
+
+#[test]
+fn replies_mark_the_corrected_words() {
+    let mut f = Fixture::with_lexicon(common::CORRECTION_LEXICON);
+    f.request("focus", json!({"secure": false}));
+    f.keys("18 wk");
+    let typed = f.key('3' as i32);
+    assert_eq!(typed["preedit"], "八乙");
+    assert_eq!(typed["corrections"], json!([[1, 2]]), "UTF-16 ranges of the corrected words");
+    f.service.settings().set("showCorrections", json!(false)).unwrap();
+    let typed = f.key(code::LEFT);
+    assert_eq!(typed["preedit"], "八乙");
+    assert!(typed.get("corrections").is_none(), "「標示自動修正」 off");
 }
 
 #[test]

@@ -187,7 +187,13 @@ pub struct PanelLayout {
     pub notice: Option<NoticeLayout>,
     /// The composition, underlined, when the app cannot show it inline.
     pub preview: Option<(Frame, String, f32)>,
+    /// The preview's characters shown through an automatic correction: `(x, width)` from the preview text's left
+    /// edge, marked with a dotted underline in the accent colour.
+    pub preview_marks: Vec<(f32, f32)>,
     pub hint: Option<HintLayout>,
+    /// Below the list: 「你打的是 ㄊㄜˇ · ⌫ 還原」 for a span shown through an automatic correction, in the reading
+    /// row's type.  The frame is the whole row; the text starts at the rows' key inset.
+    pub typed: Option<(Frame, String)>,
     pub rows_area: Frame,
     pub rows: Vec<RowLayout>,
     /// The hairline above the footer (vertical, edge to edge) or before it (horizontal, 1 × 14).
@@ -257,6 +263,7 @@ fn compute_fitted(
     let has_pages = p.page_count > 1 && list_open;
     let readable = p.reading.as_deref().is_some_and(|reading| !reading.is_empty()) && list_open;
     let has_hint = readable && style.shows_zhuyin_hint;
+    let typed = p.typed.as_deref().filter(|text| !text.is_empty() && list_open);
     let has_toggle = p.tolerant.is_some()
         && list_open
         && !keys.corrections.is_empty()
@@ -318,6 +325,10 @@ fn compute_fitted(
             if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
         y += hint_height;
+    }
+    if let Some(text) = typed {
+        let typed_w = measure.width(text, SMALL_FONT, false) + 4.;
+        width = width.max(ceil(padding * 2. + key_inset * 2. + typed_w));
     }
 
     // The rows at their natural widths.
@@ -449,6 +460,11 @@ fn compute_fitted(
     if vertical {
         y += rows_area.h;
     }
+    // The typed reading under the list (vertical: above the footer); a horizontal list's footer stays on the row.
+    let typed_y = if vertical { y } else { y + row_height };
+    if vertical && typed.is_some() {
+        y += hint_height;
+    }
     let page_y = if vertical { y + footer_height - CONTROL_H } else { y + (row_height - CONTROL_H) / 2. };
     let footer_rule = has_footer.then(|| {
         if vertical {
@@ -461,6 +477,9 @@ fn compute_fitted(
     });
     if !vertical && list_open {
         y += row_height;
+        if typed.is_some() {
+            y += hint_height;
+        }
     }
     let text_inset_total = if list_open { padding + text_inset } else { NOTICE_X };
 
@@ -513,7 +532,10 @@ fn compute_fitted(
         preview: preview.map(|text| {
             (Frame::new(14., preview_y, (width - 28.).max(0.), row_height), text.to_owned(), preview_width)
         }),
+        preview_marks: preview.map_or_else(Vec::new, |text| marks(text, &p.preview_corrected, fs, measure)),
         hint,
+        typed: typed
+            .map(|text| (Frame::new(padding, typed_y, width - padding * 2., hint_height - 2.), text.to_owned())),
         rows_area,
         rows,
         footer_rule,
@@ -524,6 +546,21 @@ fn compute_fitted(
         list_open,
     };
     (layout, wanted)
+}
+
+/// `(x, width)` of each UTF-16 range of `text` (ranges that do not fit it are left out).
+fn marks(text: &str, ranges: &[std::ops::Range<usize>], font_size: f32, measure: &mut dyn Measure) -> Vec<(f32, f32)> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let prefix = |end: usize| String::from_utf16(&units[..end]).ok();
+    ranges
+        .iter()
+        .filter(|range| range.start < range.end && range.end <= units.len())
+        .filter_map(|range| {
+            let (before, through) = (prefix(range.start)?, prefix(range.end)?);
+            let x = measure.width(&before, font_size, false);
+            Some((x, measure.width(&through, font_size, false) - x))
+        })
+        .collect()
 }
 
 struct ParsedNotice {
@@ -648,6 +685,36 @@ mod tests {
         let last = compute(&page(9, 1, "123456789"), &style, 4000., (first.width, first.height), &mut Fixed);
         assert_eq!(last.rows.len(), 8);
         assert_eq!((last.width, last.height), (first.width, first.height));
+    }
+
+    #[test]
+    fn typed_reading_sits_under_the_list_and_preview_marks_the_corrections() {
+        let style = PanelStyle::default();
+        let plain = compute(&list(9), &style, 4000., (0., 0.), &mut Fixed);
+        let p = PanelModel {
+            typed: Some("你打的是 ㄊㄜˇ · ⌫ 還原".into()),
+            preview: Some("你特別".into()),
+            preview_corrected: std::iter::once(1..2).collect(),
+            ..list(9)
+        };
+        let layout = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        let (frame, text) = layout.typed.clone().expect("a typed-reading row");
+        assert_eq!(text, "你打的是 ㄊㄜˇ · ⌫ 還原");
+        assert_eq!(frame.y, layout.rows_area.y + layout.rows_area.h);
+        assert!(layout.footer_rule.is_some_and(|rule| rule.y > frame.y));
+        let (_, _, preview_w) = layout.preview.clone().expect("a preview");
+        assert_eq!(layout.height, plain.height + 26. + layout.row_height + 5.);
+        let [(x, w)] = layout.preview_marks[..] else { panic!("one mark") };
+        assert!(x > 0. && w > 0. && x + w < preview_w);
+        // Ranges outside the text are left out; no typed reading without a list.
+        let p = PanelModel {
+            preview: Some("你".into()),
+            preview_corrected: std::iter::once(0..3).collect(),
+            typed: Some("x".into()),
+            ..PanelModel::default()
+        };
+        let layout = compute(&p, &style, 4000., (0., 0.), &mut Fixed);
+        assert!(layout.preview_marks.is_empty() && layout.typed.is_none());
     }
 
     #[test]

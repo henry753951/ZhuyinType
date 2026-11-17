@@ -73,6 +73,8 @@ fn choosing_page(cx: &App) -> AnyElement {
                 .row(setting_row("typoTolerance", cx).info("按錯鍵修正", |_, cx| typo_info(cx)))
                 .row(setting_row("readingChannel", cx))
                 .rows(feature_row("feature.correctionsList").rows(cx))
+                .row(setting_row("showCorrections", cx))
+                .row(setting_row("undoCorrectionWithBackspace", cx))
                 .row(
                     drill_row(
                         Page::Choosing,

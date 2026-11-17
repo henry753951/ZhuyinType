@@ -38,6 +38,12 @@ pub struct PanelModel {
     pub focused_clause: Option<usize>,
     /// The composition, shown above the list when the application cannot show it.
     pub preview: Option<String>,
+    /// The footer for a span shown through an automatic correction: 「你打的是 ㄊㄜˇ」 (+「 · ⌫ 還原」).
+    #[serde(default)]
+    pub typed: Option<String>,
+    /// UTF-16 ranges of `preview` shown through an automatic correction (a dotted underline marks them).
+    #[serde(default)]
+    pub preview_corrected: Vec<std::ops::Range<usize>>,
 }
 
 impl PanelModel {

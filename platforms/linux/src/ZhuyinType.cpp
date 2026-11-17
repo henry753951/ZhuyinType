@@ -45,10 +45,11 @@ void addContext(fcitx::InputContext &ic, nlohmann::json &fields) {
     while (start < offset && (static_cast<unsigned char>(text[start]) & 0xC0) == 0x80) ++start;
     fields["before"] = text.substr(start, offset - start);
 }
-// The words of the composition (IPC.md); left out by older hosts, ignored when malformed.
-std::vector<std::pair<size_t, size_t>> clauses(const nlohmann::json &response) {
+// UTF-16 ranges of the composition (IPC.md): its words (`clauses`), the words shown through an automatic correction
+// (`corrections`).  Left out by older hosts, ignored when malformed.
+std::vector<std::pair<size_t, size_t>> ranges(const nlohmann::json &response, const char *key) {
     std::vector<std::pair<size_t, size_t>> result;
-    const auto it = response.find("clauses");
+    const auto it = response.find(key);
     if (it == response.end() || !it->is_array()) return result;
     for (const auto &clause : *it) {
         if (!clause.is_array() || clause.size() != 2 || !clause[0].is_number_unsigned() ||
@@ -226,10 +227,14 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
     panel.reset();
     if (state.inlinePreedit) {
         fcitx::Text text;
-        for (auto &part : preeditParts(preedit, clauses(*response), index(*response, "focus"), index(*response, "target"))) {
+        for (auto &part : preeditParts(preedit, ranges(*response, "clauses"), index(*response, "focus"),
+                                       index(*response, "target"), ranges(*response, "corrections"))) {
             fcitx::TextFormatFlags format{fcitx::TextFormatFlag::Underline};
             if (part.mark == Mark::Focus) format |= fcitx::TextFormatFlag::HighLight;
             if (part.mark == Mark::Target) format |= fcitx::TextFormatFlag::Bold;
+            // 「標示自動修正」: Fcitx has no dotted underline; italic is the lightest mark GTK and Qt clients draw that
+            // is not already taken (bold: `target`, highlight: `focus`) and keeps the word's underline.
+            if (part.corrected) format |= fcitx::TextFormatFlag::Italic;
             text.append(std::move(part.text), format);
         }
         text.setCursor(*cursorBytes(preedit, (*response)["cursor"].get<size_t>()));
@@ -280,6 +285,8 @@ void ZhuyinType::showPanel(fcitx::InputContext &ic, const State &state) {
     if (const auto preview = text(model, "preview"); !preview.empty()) panel.setPreedit(fcitx::Text(preview));
     if (const auto reading = text(model, "reading"); !reading.empty()) panel.setAuxUp(fcitx::Text(reading));
     if (const auto notice = text(model, "notice"); !notice.empty()) panel.setAuxDown(fcitx::Text(notice));
+    // 「你打的是 ㄊㄜˇ · ⌫ 還原」 for a span shown through an automatic correction (a notice comes first).
+    else if (const auto typed = text(model, "typed"); !typed.empty()) panel.setAuxDown(fcitx::Text(typed));
     const auto rows = model.find("rows");
     if (rows == model.end() || !rows->is_array() || rows->empty()) return;
     const bool horizontal = state.panel.contains("style") && state.panel["style"].is_object() &&

@@ -39,6 +39,7 @@ fn add(a: &mut Counters, b: &Counters) {
     a.undo_literal += b.undo_literal;
     a.corrected_shown += b.corrected_shown;
     a.corrected_committed += b.corrected_committed;
+    a.corrections_reverted += b.corrections_reverted;
     a.phrases_added += b.phrases_added;
     a.typing_milliseconds += b.typing_milliseconds;
     a.thinking_milliseconds += b.thinking_milliseconds;
@@ -71,6 +72,7 @@ pub fn sample(period: Period) -> Usage {
             day.undo_literal = day.characters / 4000;
             day.corrected_shown = day.compositions / 25;
             day.corrected_committed = day.compositions / 30;
+            day.corrections_reverted = day.compositions / 120;
             day.phrases_added = i64::from(back % 9 == 0);
             day.clean_compositions = day.compositions * 82 / 100;
             day.typing_milliseconds = day.characters * 60_000 / random.range(38, 52);

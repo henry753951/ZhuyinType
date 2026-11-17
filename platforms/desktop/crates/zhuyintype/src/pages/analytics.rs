@@ -333,6 +333,11 @@ impl AnalyticsPage {
                         ui::row("auto-corrections", "自動修正")
                             .subtitle("整句中有按錯修正的字：送出的組字 / 出現過的組字")
                             .value(format!("{} / {}", grouped(c.corrected_committed), grouped(c.corrected_shown))),
+                    )
+                    .row(
+                        ui::row("corrections-reverted", "還原自動修正")
+                            .subtitle("按 ⌫ 把自動修正改回你打的注音")
+                            .value(format!("{} 次", grouped(c.corrections_reverted))),
                     ),
             )
             .child(

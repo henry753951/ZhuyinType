@@ -321,11 +321,35 @@ impl CandidatePanel {
                             .w(px(text_w.min(frame.w)))
                             .h(px(1.))
                             .bg(p.text),
-                    ),
+                    )
+                    .children(layout.preview_marks.iter().map(|&(x, w)| {
+                        // 「標示自動修正」: a dotted line in the accent colour just under the composition's underline.
+                        dotted(x, w.min(frame.w - x), ((frame.h - fs * 1.3) / 2.).max(0.) - 2., p.accent)
+                    })),
             );
         }
         if let Some(hint) = &layout.hint {
             surface = surface.child(hint_element(hint, layout.row_radius, p, c, actions.clone()));
+        }
+        if let Some((frame, text)) = &layout.typed {
+            let inset = layout.rows.first().map_or(8., |row| row.key_inset);
+            surface = surface.child(
+                at(*frame).id("typed-reading").child(
+                    div()
+                        .absolute()
+                        .left(px(inset))
+                        .right(px(inset))
+                        .top_0()
+                        .bottom_0()
+                        .flex()
+                        .items_center()
+                        .font(theme::zhuyin_font())
+                        .text_size(px(SMALL_FONT))
+                        .line_height(px(SMALL_FONT * 1.3))
+                        .text_color(p.text_secondary)
+                        .child(div().truncate().child(SharedString::from(text.clone()))),
+                ),
+            );
         }
         if layout.list_open {
             let area = layout.rows_area;
@@ -538,6 +562,16 @@ fn keycap(width: f32, box_h: f32, key: &str, on: bool, p: &Palette, c: &Colors) 
 
 /// The key glyphs live with the shared key cap (`ui::keycap`).
 pub use crate::ui::keycap::key_glyphs;
+
+/// A dotted line `width` long at `x`, `bottom` above the bottom of its parent: 1.5 px dots every 3 px.
+fn dotted(x: f32, width: f32, bottom: f32, color: gpui_kit::Hsla) -> impl IntoElement {
+    let dots = ((width.max(0.) + 1.5) / 3.).floor() as usize;
+    div().absolute().left(px(x)).bottom(px(bottom.max(0.))).w(px(width.max(0.))).h(px(1.5)).children(
+        (0..dots).map(move |dot| {
+            div().absolute().left(px(dot as f32 * 3.)).top_0().size(px(1.5)).rounded(px(0.75)).bg(color)
+        }),
+    )
+}
 
 fn hint_element(
     hint: &HintLayout,

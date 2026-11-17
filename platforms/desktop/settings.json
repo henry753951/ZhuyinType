@@ -260,6 +260,26 @@
     ]
   },
   {
+    "key": "showCorrections",
+    "title": "標示自動修正",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "按錯鍵修正過的字，下方加一條點線；開啟候選字視窗時顯示你打的注音",
+    "anchor": "showCorrections"
+  },
+  {
+    "key": "undoCorrectionWithBackspace",
+    "title": "⌫ 還原自動修正",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "修正剛出現時按 ⌫，改回你打的注音；再按一次才刪除",
+    "anchor": "undoCorrection"
+  },
+  {
     "key": "fuzzy.zZh",
     "title": "ㄗ 與 ㄓ",
     "page": "fuzzy",
