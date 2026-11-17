@@ -535,8 +535,8 @@
     "anchor": "placement"
   },
   {
-    "key": "panelAppearance",
-    "title": "外觀",
+    "key": "theme",
+    "title": "主題",
     "page": "appearance",
     "group": "外觀",
     "kind": "choice",
@@ -545,6 +545,59 @@
       {
         "value": "system",
         "label": "跟隨系統"
+      },
+      {
+        "value": "light",
+        "label": "淺色"
+      },
+      {
+        "value": "dark",
+        "label": "深色"
+      }
+    ],
+    "detail": "設定視窗、設定嚮導、候選字視窗與「中」「英」提示",
+    "anchor": "theme"
+  },
+  {
+    "key": "transparency",
+    "title": "透明效果",
+    "page": "appearance",
+    "group": "外觀",
+    "kind": "choice",
+    "default": "system",
+    "options": [
+      {
+        "value": "system",
+        "label": "跟隨系統"
+      },
+      {
+        "value": "on",
+        "label": "開啟"
+      },
+      {
+        "value": "off",
+        "label": "關閉"
+      }
+    ],
+    "detail": "視窗背景透出桌面的顏色",
+    "details": {
+      "system": "依照系統的「透明效果」設定，讓視窗背景透出桌面的顏色",
+      "on": "視窗背景透出桌面的顏色",
+      "off": "視窗使用不透明的背景"
+    },
+    "anchor": "transparency"
+  },
+  {
+    "key": "panelAppearance",
+    "title": "候選字視窗",
+    "page": "appearance",
+    "group": "外觀",
+    "kind": "choice",
+    "default": "system",
+    "options": [
+      {
+        "value": "system",
+        "label": "跟隨主題"
       },
       {
         "value": "light",

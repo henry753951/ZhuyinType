@@ -24,12 +24,12 @@ pub fn style(settings: &Settings, key: impl Fn(&str) -> String) -> PanelStyle {
     }
 }
 
-/// 「外觀」.
+/// 「候選字視窗」 (its own choice, else the 主題).
 pub fn appearance(settings: &Settings) -> Appearance {
-    match settings.string("panelAppearance").as_str() {
-        "light" => Appearance::Light,
-        "dark" => Appearance::Dark,
-        _ => Appearance::System,
+    match crate::appearance::panel_theme(settings) {
+        crate::appearance::Choice::Light => Appearance::Light,
+        crate::appearance::Choice::Dark => Appearance::Dark,
+        crate::appearance::Choice::System => Appearance::System,
     }
 }
 
@@ -39,6 +39,7 @@ pub fn panel(settings: &Settings, key: impl Fn(&str) -> String, p: &Presentation
         model: p.panel_model((!inline_preedit).then_some(p.composition.as_str())),
         style: style(settings, key),
         appearance: appearance(settings),
+        translucent: crate::appearance::transparency(settings),
         animates: settings.bool("panelAnimation"),
         above: settings.string("candidatePlacement") == "above",
     }

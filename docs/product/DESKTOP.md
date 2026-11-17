@@ -8,6 +8,25 @@
 - **視覺不同**：Linux／Windows 版是 ZhuyinType 自己的一套現代設計語言，不模仿 macOS，也不模仿 Windows 原生外觀。暖色中性的表面、單色線條圖示、以細分隔線區隔設定列、強調色只用在少數地方；視窗不用系統邊框，標題列與視窗按鈕由 App 自己繪製。macOS 版維持原生外觀。
 - **用語**：⌥ 寫成 Alt、⌃ 寫成 Ctrl、「這台 Mac」寫成「這台電腦」、Finder 寫成「檔案管理員」（Windows：「檔案總管」）。
 
+## 主題與透明效果
+
+「視窗與提示 › 外觀」有三列，macOS 版只有其中的「外觀」（在這裡叫「候選字視窗」）：
+
+| 設定 | 選項 | 預設 | 內容 |
+|---|---|---|---|
+| 主題（`theme`） | 跟隨系統、淺色、深色 | 跟隨系統 | App 畫的每個視窗：設定視窗、設定嚮導、候選字視窗與中英提示。Windows 的標題列與視窗邊框（`DWMWA_USE_IMMERSIVE_DARK_MODE`）也跟著主題 |
+| 透明效果（`transparency`） | 跟隨系統、開啟、關閉 | 跟隨系統 | 視窗背景透出桌面的顏色。「跟隨系統」在 Windows 依照「設定 › 個人化 › 色彩 › 透明效果」（`EnableTransparency`），在 KDE Plasma 為開啟 |
+| 候選字視窗（`panelAppearance`） | 跟隨主題、淺色、深色 | 跟隨主題 | 只改候選字視窗與中英提示，和 macOS 的「外觀」是同一個設定與值（`system` 在這裡表示跟隨主題） |
+
+改設定立即套用，不需要重新開啟。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
+
+透明效果的材質：
+
+- **Windows 11 22H2（組建 22621）以上**：設定視窗與設定嚮導用 Mica（`DWMSBT_MAINWINDOW`）。GPUI 的 DirectComposition 畫面以透明清除，視窗框架延伸到整個工作區，標題列與側欄在 Mica 上只加一層淡淡的視窗色，頁面再加一層較濃的頁面色，所以兩種主題的文字對比都和不透明時接近。Mica 只在視窗是使用中的視窗時顯示，其他時候 DWM 改用不透明的顏色。候選字視窗與中英提示由 TSF DLL 畫，系統替視窗畫圓角時（不是虛擬機的基本顯示卡）用 Acrylic（`DWMSBT_TRANSIENTWINDOW`），透明效果關閉時改畫不透明的背景（`zt_panel::style::Panel` 的 `translucent`）。
+- **較舊的 Windows**：不透明，「透明效果」變暗並寫「需要 Windows 11 22H2 或更新的版本」。
+- **KDE Plasma**：設定視窗與設定嚮導用 KWin 的模糊：Wayland 由 GPUI 使用 `ext-background-effect` 或 KDE 的 blur 協定，範圍是圓角的視窗本身；X11 在有合成器時設定 `_KDE_NET_WM_BLUR_BEHIND_REGION`，範圍同樣不含陰影。模糊會透出後面移動的內容，所以框架與頁面的顏色保留得較多。Linux 的候選字視窗維持不透明。
+- **其他 Linux 桌面**：不透明，「透明效果」變暗並寫「只在 KDE Plasma 上提供」。
+
 ## 安裝
 
 | 平台 | 安裝檔 | 內容 |

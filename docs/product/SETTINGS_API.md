@@ -101,3 +101,14 @@ changes.revert(in: other) // 改回原本的值
 | macOS 注音的習慣 | 空白鍵：開啟候選字視窗、單按 Shift：關、Caps Lock 打英文：開、⌥ 加數字或符號鍵打鍵上的符號：開、選字鍵 1–9 |
 | ZhuyinType 預設 | 所有設定的預設值（按鍵與功能的開關除外） |
 | 自訂 | 不改變設定 |
+
+## 8. Linux 與 Windows 版
+
+Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`platforms/desktop/settings.json`，每個設定一個物件（`key`、`title`、`page`、`group`、`kind`、`default`、`options`、`detail`／`details`、`anchor`），由 `zt_core::settings` 讀取、驗證與儲存。和 macOS 意思相同的設定使用相同的鍵與值，所以兩邊的 `settings.json` 形狀相同。只有 Linux／Windows 版有的設定：
+
+| 鍵 | 值 | 預設 | 說明 |
+|---|---|---|---|
+| `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
+| `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
+
+`panelAppearance` 和 macOS 相同（`system`、`light`、`dark`），但 `system` 在 Linux／Windows 表示跟隨 `theme`；`theme` 也是 `system` 時才跟隨系統。讀取方式在 `zt_core::appearance`，介面見 [DESKTOP.md](DESKTOP.md)「主題與透明效果」。

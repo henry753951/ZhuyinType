@@ -490,7 +490,7 @@ impl Surface {
 
     /// The surface under the content: the system's backdrop with a tint, or the panel colour; the hairline where
     /// the system draws no edge.  A layered window draws its rounded surface, hairline and shadow itself.
-    fn base(&self, painter: &Painter<'_>, size: (f32, f32)) {
+    fn base(&self, painter: &Painter<'_>, size: (f32, f32), solid: bool) {
         let whole = Frame::new(0., 0., size.0, size.1);
         let c = painter.c;
         if self.layered.get() {
@@ -506,7 +506,7 @@ impl Surface {
             painter.outline(whole, tokens::RADIUS, c.border);
             return;
         }
-        let translucent = self.backdrop.get() && !self.opaque.get();
+        let translucent = self.backdrop.get() && !self.opaque.get() && !solid;
         painter.fill(whole, 0., if translucent { c.backdrop_tint } else { c.surface });
         if !self.system_edge.get() {
             painter.outline(whole, 0., c.border);
@@ -535,12 +535,14 @@ struct State {
     /// The last list's appearance and placement, which the 中/英 badge follows after the list closed.
     appearance: Appearance,
     above: bool,
+    /// 「透明效果」 off: the surface is solid even over the system's backdrop.
+    solid: bool,
 }
 
 impl State {
     fn forget(&mut self) {
-        let (toast, appearance, above) = (self.toast.take(), self.appearance, self.above);
-        *self = Self { toast, appearance, above, ..Self::default() };
+        let (toast, appearance, above, solid) = (self.toast.take(), self.appearance, self.above, self.solid);
+        *self = Self { toast, appearance, above, solid, ..Self::default() };
     }
 }
 
@@ -851,6 +853,7 @@ impl PanelWindow {
         state.panel = Some(panel.clone());
         state.appearance = panel.appearance;
         state.above = panel.above;
+        state.solid = !panel.translucent;
         drop(state);
         self.panel.place(x, y as i32, width, height, scale);
         self.redraw(Kind::Panel);
@@ -958,7 +961,7 @@ impl PanelWindow {
         let surface = &self.panel;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (layout.width, layout.height));
+            surface.base(&painter, (layout.width, layout.height), !panel.translucent);
             let motion = Motion {
                 incoming: frames.incoming,
                 outgoing: outgoing_rows.as_deref().zip(frames.outgoing).map(|(rows, (x, y, a))| (rows, x, y, a)),
@@ -987,13 +990,13 @@ impl PanelWindow {
         let Some(g) = graphics() else { return };
         let state = self.state.borrow();
         let Some(text) = state.toast.clone() else { return };
-        let appearance = state.appearance;
+        let (appearance, solid) = (state.appearance, state.solid);
         drop(state);
         let colors = tokens::colors(appearance.dark(system_dark()));
         let surface = &self.badge;
         surface.render(dc, |target| {
             let Some(painter) = Painter::new(&g, target, colors) else { return };
-            surface.base(&painter, (BADGE_W, BADGE_H));
+            surface.base(&painter, (BADGE_W, BADGE_H), solid);
             panel_draw::badge(&painter, &text, BADGE_W);
         });
     }

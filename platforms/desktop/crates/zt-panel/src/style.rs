@@ -77,12 +77,19 @@ impl Appearance {
     }
 }
 
+fn translucent_by_default() -> bool {
+    true
+}
+
 /// The window as the broker sends it to a native adapter that draws it (`IPC.md` §候選字視窗).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Panel {
     pub model: PanelModel,
     pub style: PanelStyle,
     pub appearance: Appearance,
+    /// 「透明效果」: the system's backdrop shows through the window where it has one (Windows 11's acrylic).
+    #[serde(default = "translucent_by_default")]
+    pub translucent: bool,
     /// The 動畫 setting: page turns slide.
     pub animates: bool,
     /// 「位置」: above the caret's line rather than below.
