@@ -192,6 +192,19 @@
       "url": "https://github.com/BYVoid/OpenCC"
     },
     {
+      "id": "cldr",
+      "group": "data",
+      "name": "Unicode CLDR 與 Emoji 資料",
+      "use": "符號與 Emoji 面板的符號名稱、搜尋用的關鍵字（正體中文、香港正體中文、英文）與 Emoji 的分類",
+      "distribution": "bundled",
+      "license": "Unicode License v3",
+      "licenseFiles": [
+        "Unicode-3.0.txt"
+      ],
+      "url": "https://cldr.unicode.org",
+      "version": "CLDR 46 註解（cldr-json 46.0.0）；emoji-test.txt 15.1"
+    },
+    {
       "id": "wordfreq",
       "group": "data",
       "name": "wordfreq（含 SUBTLEX-CH）",

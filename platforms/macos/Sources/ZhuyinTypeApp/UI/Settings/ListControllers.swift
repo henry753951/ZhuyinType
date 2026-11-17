@@ -217,12 +217,13 @@ final class LearnedListController: NSObject {
         guard let window = SettingsWindowController.shared.sheetWindow else { return }
         let alert = NSAlert()
         alert.messageText = "要清除所有記住的字詞嗎？"
-        alert.informativeText = "清除後無法復原。不記住的字詞會保留。"
+        alert.informativeText = "最近使用的符號也會清除。清除後無法復原。不記住的字詞會保留。"
         alert.addButton(withTitle: "清除").hasDestructiveAction = true
         alert.addButton(withTitle: "取消")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.model?.engine?.forgetAllLearned()
+            RecentSymbols.shared.clear()
             self?.reload()
         }
     }

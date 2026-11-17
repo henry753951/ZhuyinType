@@ -61,6 +61,14 @@ final class ControllerCore {
     var wordActionTime: Date?
     /// Whether the list was open at the last render, to count list openings for the word-action hint.
     var listWasOpen = false
+    /// 符號與 Emoji (ControllerCore+Symbols.swift): the symbols, nil when the engine has none; the open picker, which
+    /// gets every key while it is open; where it was opened.
+    var symbolSource: SymbolSource?
+    var recentSymbols: RecentSymbols?
+    var symbolPicker: SymbolPicker?
+    var symbolCaret = NSRect.zero
+    var showSymbolPicker: ((SymbolPicker, NSRect) -> Void)?
+    var hideSymbolPicker: (() -> Void)?
 
     private struct Mark: Equatable {
         var text: String
@@ -159,13 +167,15 @@ final class ControllerCore {
     @discardableResult
     func keyDown(keyCode: UInt16, modifiers: NSEvent.ModifierFlags, time: TimeInterval? = nil) -> Bool {
         shiftTap = nil
+        guard !rendering else { return false }
+        if let handled = symbolKey(keyCode: keyCode, modifiers: modifiers) { return handled }
         // 快速設定 opens in English mode too: it is one way back to Chinese.
-        if !rendering, let quickSettingsRequested, let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers),
+        if let quickSettingsRequested, let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers),
            shortcuts[shortcut] == .quickSettings {
             quickSettingsRequested(client.caretRect(cursorIndex: composer.presentation.cursor))
             return true
         }
-        guard !rendering, !isEnglish else { return false }
+        guard !isEnglish else { return false }
         // With 「Caps Lock 打英文」 off, Caps Lock does not change what the keys type.
         let modifiers = disabledFeatures.contains(.capsLockEnglish) ? modifiers.subtracting(.capsLock) : modifiers
         // Caps Lock types English, every key of it, until it is released; what was being composed is kept.
@@ -179,6 +189,7 @@ final class ControllerCore {
             if command == .addSelectedText { return addSelectedText() }
             if let input = command.input { return handle(input, time: time) }
             if command == .togglePunctuationWidth { return togglePunctuationWidth() }
+            if command == .symbolPicker { return false }
             return neighbour(command == .nextCharacter ? 1 : -1, time: time)
         }
         if isUndoKey(keyCode: keyCode, modifiers: modifiers), wordUndoOffered { return undoWordAction() }
@@ -435,7 +446,8 @@ final class ControllerCore {
             }
             return false
         }
-        guard keyCode == 56 || keyCode == 60 else {
+        // A Shift tap while the symbol picker is open does not switch 中/英.
+        guard keyCode == 56 || keyCode == 60, symbolPicker == nil else {
             shiftTap = nil
             return false
         }
@@ -470,6 +482,7 @@ final class ControllerCore {
     }
 
     func endSession() {
+        closeSymbolPicker()
         commit()
         heldShifts.removeAll()
         shiftTap = nil

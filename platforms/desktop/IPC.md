@@ -32,7 +32,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 按鍵與修飾鍵沿用 Qt 的數值（`zt_core::keys::code`、`zt_core::keys::modifier`），Linux 與 Windows 的 Control 為 `0x04000000`，Windows 鍵或 Super 為 `0x10000000`。
 
-成功的輸入回應含 `ok`、`handled`、`commit`、`preedit`、UTF-16 `cursor`、`candidates`、`english`、`simplified`（「繁／簡」為簡體）、`learningPaused`（暫停學習）、`fullWidth`（中文標點全形）、`composing`（有組字或候選字視窗；原生端據此預先判斷要不要攔下按鍵）。`preedit` 為空字串時 `cursor` 為 0。有組字時另含 `clauses`（組字中每個詞的 UTF-16 範圍 `[起, 迄]`，依序、不重疊）、`focus`（候選字清單正在替換的詞的索引，沒有時為 `null`）與 `target`（清單沒開、游標在組字中間時 ↓ 會改的詞，沒有時為 `null`），原生端據此在應用程式裡標示組字：每個詞底線，`focus` 反白，`target` 加粗。有按錯鍵修正或模糊音轉出的詞時另含 `corrections`（這些字在 `preedit` 中的 UTF-16 範圍 `[起, 迄]`，與 `clauses` 同單位，依序、不重疊），原生端在這些字下方加點線（Fcitx 沒有點線，改用斜體）；「標示自動修正」關閉或沒有修正時省略。沒有組字或安全欄位時省略；舊版服務不送這幾個欄位，原生端把整段組字當成一個詞、不標示修正。失敗回應含 `ok: false` 與錯誤說明。每份 `commit` 只在一個回應中取出；沒有未經請求的封包。原生介面必須核對識別碼與欄位，不能把舊欄位回應送入新欄位，也不能重送超時的按鍵。安全欄位不傳輸實際按鍵或文字。
+成功的輸入回應含 `ok`、`handled`、`commit`、`preedit`、UTF-16 `cursor`、`candidates`、`english`、`simplified`（「繁／簡」為簡體）、`learningPaused`（暫停學習）、`fullWidth`（中文標點全形）、`composing`（有組字或候選字視窗；原生端據此預先判斷要不要攔下按鍵）。`preedit` 為空字串時 `cursor` 為 0。有組字時另含 `clauses`（組字中每個詞的 UTF-16 範圍 `[起, 迄]`，依序、不重疊）、`focus`（候選字清單正在替換的詞的索引，沒有時為 `null`）與 `target`（清單沒開、游標在組字中間時 ↓ 會改的詞，沒有時為 `null`），原生端據此在應用程式裡標示組字：每個詞底線，`focus` 反白，`target` 加粗。有按錯鍵修正或模糊音轉出的詞時另含 `corrections`（這些字在 `preedit` 中的 UTF-16 範圍 `[起, 迄]`，與 `clauses` 同單位，依序、不重疊），原生端在這些字下方加點線（Fcitx 沒有點線，改用斜體）；「標示自動修正」關閉或沒有修正時省略。沒有組字或安全欄位時省略；舊版服務不送這幾個欄位，原生端把整段組字當成一個詞、不標示修正。每個回應另含 `claims`：沒有組字時也要送給服務的按鍵 `[[key, modifiers], …]`（目前是「符號與 Emoji」的快捷鍵，功能關閉或安全欄位時為空陣列）；Ctrl+Alt 組合鍵平常是 AltGr 的，TSF 只在這裡列出時才攔下。舊版服務不送，原生端沿用上一次的清單。失敗回應含 `ok: false` 與錯誤說明。每份 `commit` 只在一個回應中取出；沒有未經請求的封包。原生介面必須核對識別碼與欄位，不能把舊欄位回應送入新欄位，也不能重送超時的按鍵。安全欄位不傳輸實際按鍵或文字。
 
 同一時間只有一個取得焦點的欄位可操作組字。轉移焦點前，原生介面先處理舊欄位的 `blur` 回應，再送出新欄位的 `focus`。舊欄位的遲到請求會被拒絕。斷線清除服務端狀態；原生端僅能保留同一個仍聚焦且非安全欄位的已確認組字，不得重送未確認的按鍵。沒有輸入文字的持久化通訊記錄。
 
@@ -52,6 +52,8 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 選取的字加入自訂詞：沒在組字時按下 `addSelectedText` 的鍵，`key` 的回應多一個 `selection: true`，原生端接著送 `selection`（TSF 以 `ITfContext::GetSelection` 與 `ITfRange::GetText` 讀，Fcitx 5 以 surrounding text 的 `selectedText()`）。這個指令預設沒有按鍵；Windows 的文字服務沒在組字時不攔 Ctrl／Alt 加字母，所以 `focus` 的回應帶 `idleKeys: [[key, modifiers], …]`，原生端沒在組字時也攔這些鍵。
 
 字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「復原」，原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
+
+「符號與 Emoji」面板開著時，回應的 `composing` 與 `candidates` 為真、`preedit` 為空，原生端把每個鍵都送給服務；App 畫的視窗顯示面板的格子（`PopupState::picker`），原生端畫的視窗收到反白的那一列（最多 9 個，按鍵 1–9）當成候選字清單、類別與列數在 `notice`，點選照常送 `pick`。
 
 ## 前文
 

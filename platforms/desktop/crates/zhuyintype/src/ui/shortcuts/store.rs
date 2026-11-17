@@ -44,7 +44,7 @@ pub fn commands() -> &'static [CommandInfo] {
     static LIST: OnceLock<Vec<CommandInfo>> = OnceLock::new();
     LIST.get_or_init(|| {
         use code::*;
-        use modifier::{ALT, SHIFT};
+        use modifier::{ALT, CONTROL, SHIFT};
         let c = |id, label, feature, required, defaults| CommandInfo { id, label, feature, required, defaults };
         vec![
             c("singleCharacterList", "只列一個字", Some("feature.singleCharacterList"), false, vec![b(DOWN, SHIFT)]),
@@ -68,6 +68,13 @@ pub fn commands() -> &'static [CommandInfo] {
             c("insertSpace", "插入空白", None, false, vec![b(SPACE, ALT)]),
             // No default key: the user chooses one.
             c("quickSettings", "快速設定", None, false, vec![]),
+            c(
+                "symbolPicker",
+                "符號與 Emoji",
+                Some("feature.symbolPicker"),
+                false,
+                vec![b(i32::from(b','), CONTROL | ALT)],
+            ),
         ]
     })
 }
@@ -86,6 +93,9 @@ pub fn command_place(id: &str) -> Place {
         "singleCharacterList" | "nextPage" | "previousPage" | "previousCharacter" | "nextCharacter" => Page::Candidates,
         _ => Page::Typing,
     };
+    if id == "symbolPicker" {
+        return Place::row(page, format!("keys-{id}")).in_subpage("punctuation");
+    }
     Place::row(page, format!("keys-{id}"))
 }
 

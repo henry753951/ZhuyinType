@@ -97,6 +97,19 @@
     "anchor": "optionSymbols"
   },
   {
+    "key": "feature.symbolPicker",
+    "title": "符號與 Emoji 面板",
+    "page": "punctuation",
+    "group": "可以關閉的按鍵",
+    "kind": "toggle",
+    "default": true,
+    "detail": "方向鍵移動，Tab 換類別，打注音或英文搜尋",
+    "anchor": "symbolPicker",
+    "commands": [
+      "symbolPicker"
+    ]
+  },
+  {
     "key": "shiftSwitch",
     "title": "單按 Shift 切換中英",
     "page": "typing",

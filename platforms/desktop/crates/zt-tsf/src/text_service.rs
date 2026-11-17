@@ -54,7 +54,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{ALT, CONTROL, META, SHIFT, host_observes_key, host_wants_key, is_hotkey};
+use crate::keys::{ALT, CONTROL, META, SHIFT, claimed_key, host_observes_key, host_wants_key, is_hotkey};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
@@ -155,6 +155,8 @@ pub(crate) struct TextService {
     reset_deferred: Cell<bool>,
     english: Cell<bool>,
     composing: Cell<bool>,
+    /// Keys the host takes when idle (the reply's `claims`: 符號與 Emoji's shortcut).
+    claimed: RefCell<Vec<(i32, i32)>>,
     caps_at_reply: Cell<bool>,
     /// The keys claimed even when nothing is composed (選取的字加入自訂詞's; IPC `idleKeys`).
     idle_keys: RefCell<Vec<(i32, i32)>>,
@@ -213,6 +215,7 @@ impl TextService {
             reset_deferred: Cell::new(false),
             english: Cell::new(false),
             composing: Cell::new(false),
+            claimed: RefCell::new(Vec::new()),
             caps_at_reply: Cell::new(false),
             idle_keys: RefCell::new(Vec::new()),
             lang_bar: RefCell::new(None),
@@ -273,6 +276,9 @@ impl TextService {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
         let composing = self.composing.get() || load(&self.composition).is_some();
         let key = translate_key(vk, flags, release);
+        if self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed)) {
+            return true;
+        }
         let chord = key.modifiers & (SHIFT | CONTROL | ALT | META);
         let idle = !composing
             && !release
@@ -660,6 +666,11 @@ impl TextService_Impl {
         }
         if let Some(keys) = &reply.idle_keys {
             self.idle_keys.replace(keys.clone());
+        }
+        if let Some(claims) = &reply.claims
+            && let Ok(mut claimed) = self.claimed.try_borrow_mut()
+        {
+            claimed.clone_from(claims);
         }
         // The taskbar's 中/英 first: it costs nothing, the badge may have to make its window.
         if let Some(button) = self.button() {

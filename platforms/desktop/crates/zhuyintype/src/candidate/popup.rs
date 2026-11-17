@@ -258,6 +258,8 @@ pub struct CandidateWindow {
     state: Option<PopupState>,
     menu: Option<usize>,
     undo_generation: u64,
+    /// 符號與 Emoji is open: the window draws its grid instead of the panel.
+    picker: Option<zt_core::symbols::PickerView>,
 }
 
 impl CandidateWindow {
@@ -275,6 +277,7 @@ impl CandidateWindow {
             state: None,
             menu: None,
             undo_generation: 0,
+            picker: None,
         }
     }
 }
@@ -310,9 +313,15 @@ impl Render for CandidateWindow {
             }
         }
         let _ = cx;
-        div().size_full().font(crate::theme::font()).p(px(self.margin)).child(
-            div().relative().top(px(dy)).opacity(alpha).child(self.panel.render(&palette, Some(actions), window)),
-        )
+        let content = match &self.picker {
+            Some(picker) => super::picker::render(picker, &palette, self.panel.chrome, Some(actions)),
+            None => self.panel.render(&palette, Some(actions), window),
+        };
+        div()
+            .size_full()
+            .font(crate::theme::font())
+            .p(px(self.margin))
+            .child(div().relative().top(px(dy)).opacity(alpha).child(content))
     }
 }
 
@@ -394,7 +403,7 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             }
             view.state = Some(state.clone());
             let preview = (!state.inline_preedit).then_some(p.composition.as_str());
-            if !p.has_list() && preview.is_none_or(str::is_empty) && p.notice.is_none() {
+            if state.picker.is_none() && !p.has_list() && preview.is_none_or(str::is_empty) && p.notice.is_none() {
                 hide(view, window);
                 cx.notify();
                 return None;
@@ -404,15 +413,21 @@ fn show_candidates(state: PopupState, cx: &mut App) {
             view.panel.reduced = moves.reduced;
             let margin = view.margin;
             let max_width = (screen.width as f32 - margin * 2.).max(100.);
-            let (width, height) = view.panel.update(
-                p,
-                Extras { preview, menu: view.menu },
-                &style,
-                max_width,
-                view.visible,
-                &mut WindowMeasure(window),
-            );
-            let text_inset = view.panel.layout().map_or(14., |layout| layout.text_inset);
+            view.picker = state.picker.clone();
+            let (width, height, text_inset) = if state.picker.is_some() {
+                let (width, height) = super::picker::size();
+                (width, height, super::picker::TEXT_INSET)
+            } else {
+                let (width, height) = view.panel.update(
+                    p,
+                    Extras { preview, menu: view.menu },
+                    &style,
+                    max_width,
+                    view.visible,
+                    &mut WindowMeasure(window),
+                );
+                (width, height, view.panel.layout().map_or(14., |layout| layout.text_inset))
+            };
             let caret = state.caret;
             let (mut x, y) =
                 popup_position(caret, f64::from(width), f64::from(height), above, f64::from(text_inset), screen);
@@ -503,6 +518,7 @@ fn hide(view: &mut CandidateWindow, window: &mut Window) {
     view.last_caret = None;
     view.appeared = None;
     view.menu = None;
+    view.picker = None;
     view.panel.reset();
 }
 

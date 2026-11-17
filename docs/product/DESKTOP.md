@@ -105,12 +105,20 @@ Linux（X11）的選單畫在候選字視窗裡，視窗不取得焦點；Window
 - Windows：見 [ARCHITECTURE.md](../../platforms/desktop/ARCHITECTURE.md) 的 TSF 說明（中／英按鈕的選單與游標旁的選單）。
 - 暫停學習期間每個欄位都當成私人欄位（照常打字，不學習、不讀取前文、不記錄改字），服務重新啟動後恢復學習。
 
+## 符號與 Emoji
+
+按 Ctrl+Alt+,（「快捷鍵」可改；「打字 › 標點與符號 › 符號與 Emoji 面板」可關閉）開啟符號與 Emoji 面板，正在打字的 App 保持焦點。方向鍵移動、PgUp／PgDn 翻一頁、Tab／Shift+Tab 換類別、1–9 選反白那一列的第幾個、Return（或沒有搜尋時的空白）送出、Esc 先清除搜尋再關閉，再按一次快捷鍵也會關閉；其他鍵打進搜尋，可打注音（標準鍵盤）或英文。組字中開啟時，目前的字成為搜尋內容，組字取消不送出。資料與搜尋在引擎的 `zhuyin-symbols`，和 macOS 相同。
+
+Linux（X11）在候選字視窗畫完整的格子：搜尋列、類別、每列 9 個、反白符號的名稱，可以點選。Windows 與 Linux 的 Wayland 工作階段由輸入法自己畫候選字清單（Windows 能出現在開始功能表的搜尋框上），面板以反白的那一列（1–9）呈現，類別與列數在提示裡。Windows 上 Ctrl+Alt 是 AltGr，沒有組字時文字服務原本不把它交給程式；回覆中的 `claims` 列出面板開著時要取得的按鍵（見 `platforms/desktop/IPC.md`）。
+
+最近使用的符號（最多 32 個）存在使用者資料夾的 `recent-symbols.txt`；「回復預設設定」會刪除它，Windows 解除安裝時勾選刪除個人資料也會刪除。
+
 ## 尚未完成
 
+- Windows 的符號與 Emoji 面板由文字服務畫完整的格子（目前只畫反白的那一列）。
 - Wayland 工作階段裡「開啟快速設定」快捷鍵還沒有游標旁的清單（App 不能在 Wayland 上擺放自己的視窗）；請用 Fcitx 5 輸入法選單裡的四個勾選項目。X11 上點小視窗以外的地方不會關閉它，要按下一個鍵或換欄位。
 - Windows 的 TSF 候選字清單介面（`ITfCandidateListUIElement`）：自己畫候選字清單的 App（UI-less 模式）拿不到清單。UI Automation 也還沒有每個候選字一個項目的樹狀結構，只有清單本身與通知事件。
 - 高對比時只有候選字視窗與中英提示改用系統顏色，設定視窗與設定嚮導維持原本的配色。
-
 - Wayland 上 ZhuyinType 自己的候選字視窗（需要合成器的輸入法 popup 介面）。Wayland 工作階段中候選字清單、注音、提示與中／英提示改由 Fcitx 5 顯示（它的 classicui，或 KDE、GNOME 的輸入法面板），樣式是 Fcitx 的。
 - 程式碼簽章。
 - 引擎載入期間（登入後的頭一兩秒）打的鍵直接交給程式；macOS 會先保留最多 64 個鍵。

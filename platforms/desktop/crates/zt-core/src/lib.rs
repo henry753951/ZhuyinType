@@ -18,5 +18,6 @@ pub mod service;
 pub mod settings;
 pub mod shortcuts;
 pub mod stats;
+pub mod symbols;
 pub mod system_look;
 pub mod update;

@@ -131,6 +131,8 @@ enum KeyFeature: String, CaseIterable, Identifiable {
     case capsLockEnglish
     /// Deleting what was just sent and typing again counts as a correction (and keeps the sentence going).
     case deleteAfterCommit
+    /// The symbol and emoji picker's shortcut (符號與 Emoji).
+    case symbolPicker
     var id: String { rawValue }
 }
 
@@ -147,6 +149,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     case addSelectedText
     /// Opens 快速設定 by the caret (中／英, 全形／半形, 繁／簡, 暫停學習).  No key by default.
     case quickSettings
+    /// Opens (and closes) the symbol and emoji picker.
+    case symbolPicker
 
     var id: String { rawValue }
 
@@ -170,6 +174,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .addCandidatePhrase: return "把反白的字詞或整段組字加入自訂詞"
         case .addSelectedText: return "把 App 裡選取的字加入自訂詞"
         case .quickSettings: return "開啟快速設定"
+        case .symbolPicker: return "開啟符號與 Emoji 面板"
         }
     }
 
@@ -195,13 +200,14 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         // Not bound by default (`defaultBindings` is empty); the key the settings would suggest first.
         case .addSelectedText: return Shortcut("A", control: true, option: true)
         case .quickSettings: return nil
+        case .symbolPicker: return Shortcut(",", control: true, option: true)
         }
     }
 
     /// What the composer receives for the command; nil for the commands ControllerCore carries out itself.
     var input: KeyInput? {
         switch self {
-        case .previousCharacter, .nextCharacter, .togglePunctuationWidth, .quickSettings: return nil
+        case .previousCharacter, .nextCharacter, .togglePunctuationWidth, .quickSettings, .symbolPicker: return nil
         case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil
         case .insertSpace: return .shiftSpace
         case .singleCharacterList: return .shiftDown
@@ -237,6 +243,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .addCandidatePhrase: return "加入自訂詞"
         case .addSelectedText: return "選取的字加入自訂詞"
         case .quickSettings: return "快速設定"
+        case .symbolPicker: return "符號與 Emoji"
         }
     }
 
@@ -277,6 +284,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .nextPage, .previousPage: return .pageKeys
         case .selectLeft, .selectRight: return .selectPhrase
         case .deleteWord: return .deleteWord
+        case .symbolPicker: return .symbolPicker
         case .commitWithNewline, .previousCharacter, .nextCharacter, .togglePunctuationWidth, .insertSpace,
              .quickSettings: return nil
         case .blockCandidate, .forgetCandidate, .addCandidatePhrase, .addSelectedText: return nil

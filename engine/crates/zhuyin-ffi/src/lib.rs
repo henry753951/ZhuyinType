@@ -30,10 +30,12 @@ mod composer;
 mod engine;
 mod models;
 mod strings;
+mod symbols;
 mod word_actions;
 
 pub use composer::*;
 pub use engine::*;
 pub use models::*;
 pub use strings::*;
+pub use symbols::*;
 pub use word_actions::*;

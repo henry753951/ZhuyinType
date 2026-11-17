@@ -90,6 +90,16 @@ pub(crate) fn is_hotkey(key: &Key, hotkeys: &[(i32, i32)]) -> bool {
             .any(|&(code, mods)| upper(code) == upper(key.key) && mods & (SHIFT | CONTROL | ALT | META) == modifiers)
 }
 
+/// A key the host claimed in its last reply (`claims`: 符號與 Emoji's shortcut), whatever the composition or 中/英.
+pub(crate) fn claimed_key(key: &Key, claims: &[(i32, i32)]) -> bool {
+    if key.release || key.key == 0 {
+        return false;
+    }
+    let modifiers = key.modifiers & (SHIFT | CONTROL | ALT | META);
+    let code = if (i32::from(b'a')..=i32::from(b'z')).contains(&key.key) { key.key - 32 } else { key.key };
+    claims.iter().any(|&(claimed, claimed_modifiers)| claimed == code && claimed_modifiers == modifiers)
+}
+
 /// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
 /// (送出後刪掉重打), Space and Return (they extend 前文).  The application still gets them; the text service only tells
 /// the host.
@@ -107,6 +117,17 @@ mod tests {
 
     fn key(key: i32, modifiers: i32) -> Key {
         Key { key, modifiers, ..Key::default() }
+    }
+
+    #[test]
+    fn claimed_keys_are_taken_in_any_state() {
+        let picker = [(i32::from(b','), CONTROL | ALT)];
+        assert!(claimed_key(&key(',' as i32, CONTROL | ALT), &picker));
+        assert!(!claimed_key(&key(',' as i32, CONTROL), &picker));
+        assert!(!claimed_key(&key('.' as i32, CONTROL | ALT), &picker));
+        let mut release = key(',' as i32, CONTROL | ALT);
+        release.release = true;
+        assert!(!claimed_key(&release, &picker));
     }
 
     #[test]

@@ -138,6 +138,7 @@ final class ZhuyinInputController: IMKInputController {
         makeCoreIfReady()
         setPanelCallbacks()
         CandidatePanelController.shared.hide()
+        SymbolPickerPanelController.shared.hide()
     }
 
     /// Keys come only to the controller of the focused text, so it owns the candidate window even when
@@ -161,6 +162,7 @@ final class ZhuyinInputController: IMKInputController {
         active = false
         if Self.activeController === self {
             CandidatePanelController.shared.hide()
+            SymbolPickerPanelController.shared.hide()
             ModeToast.shared.hide()
             QuickSettingsPanel.shared.hide()
             Self.activeController = nil
@@ -169,6 +171,7 @@ final class ZhuyinInputController: IMKInputController {
 
     override func commitComposition(_ sender: Any!) {
         // The client asks for this when the user clicks into the text or it moves the insertion point.
+        core?.closeSymbolPicker()
         core?.commit()
         core?.breakContext()
         if Self.activeController === self {
@@ -383,6 +386,15 @@ final class ZhuyinInputController: IMKInputController {
                                                 typedReading: self.core?.composer.presentation.typedReading)
         }
         core.quickSettingsRequested = { [weak self] caret in self?.showQuickSettings(caret: caret) }
+        core.symbolSource = SymbolSources.app
+        core.recentSymbols = RecentSymbols.shared
+        core.showSymbolPicker = { [weak self] picker, caret in
+            guard let self, self.active, Self.activeController === self, let client = self.textClient else { return }
+            SymbolPickerPanelController.shared.show(picker, caret: caret, windowLevel: client.windowLevel)
+        }
+        core.hideSymbolPicker = { [weak self] in
+            if let self, self.active, Self.activeController === self { SymbolPickerPanelController.shared.hide() }
+        }
         core.listEdge = { [weak self] direction in
             if let self, self.active, Self.activeController === self { CandidatePanelController.shared.bounce(direction: direction) }
         }
@@ -464,6 +476,18 @@ final class ZhuyinInputController: IMKInputController {
         CandidatePanelController.shared.onPage = { [weak self] direction in
             guard let self, self.active, Self.activeController === self else { return }
             _ = self.core?.handle(direction < 0 ? .pageUp : .pageDown)
+        }
+        SymbolPickerPanelController.shared.onPick = { [weak self] index in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.pickSymbol(at: index)
+        }
+        SymbolPickerPanelController.shared.onTab = { [weak self] index in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.selectSymbolCategory(index)
+        }
+        SymbolPickerPanelController.shared.onScroll = { [weak self] rows in
+            guard let self, self.active, Self.activeController === self else { return }
+            self.core?.scrollSymbols(rows: rows)
         }
     }
 

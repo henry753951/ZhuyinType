@@ -1118,6 +1118,36 @@ void zt_engine_unblock(const ZtEngine *engine, const char *word, const char *rea
 // `text` is NULL or a NUL-terminated string.
 char *zt_to_simplified(const char *text);
 
+// Every category of the picker except 最近使用, as JSON:
+// `[{"id":"punctuation","title":"常用標點","symbols":[{"text":"，","name":"逗號"},…]},…]`.  Free with
+// [`zt_string_free`](crate::zt_string_free).
+char *zt_symbols_categories_json(void);
+
+// The symbols matching `query` (raw standard-layout keys, Zhuyin, Chinese or English), best first, at most
+// `limit`, as a JSON array of `{"text","name"}`.  NULL `query` is empty.
+//
+// # Safety
+// `query` is NULL or a NUL-terminated string.
+char *zt_symbols_search_json(const char *query,
+                             size_t limit);
+
+// How `query` is shown in the picker: Zhuyin when the keys decode, otherwise as typed.
+//
+// # Safety
+// `query` is NULL or a NUL-terminated string.
+char *zt_symbols_display_query(const char *query);
+
+// The recent list's stored text (`stored`, NULL for none) after `symbol` was inserted: one symbol per line, newest
+// first, at most [`zt_symbols_recent_capacity`].
+//
+// # Safety
+// `stored` and `symbol` are NULL or NUL-terminated strings.
+char *zt_symbols_recent_push(const char *stored,
+                             const char *symbol);
+
+// The most symbols the recent list keeps.
+size_t zt_symbols_recent_capacity(void);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -61,6 +61,7 @@ enum SettingsRow {
     static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
     static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
     static let associatedPhrases = "associatedPhrases"
+    static let symbolPicker = "symbolPicker"
 }
 
 /// Where each feature with keys is set.
@@ -78,6 +79,7 @@ extension KeyFeature {
         case .optionSymbols: return SettingsPlace(.typing, subpage: .punctuation, row: SettingsRow.optionSymbols)
         case .capsLockEnglish: return SettingsPlace(.typing, row: SettingsRow.capsLock)
         case .deleteAfterCommit: return SettingsPlace(.choosing, row: SettingsRow.deleteAfterCommit)
+        case .symbolPicker: return SettingsPlace(.typing, row: SettingsRow.symbolPicker)
         }
     }
 }
@@ -366,6 +368,10 @@ private struct TypingPane: View {
                 RegistryRow("keys.togglePunctuationWidth", preferences,
                             accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
                 RegistryRow("keys.insertSpace", preferences)
+                if SymbolSources.isAvailable {
+                    FeatureRow(preferences: preferences, title: "符號與 Emoji", subtitle: "開啟面板，用注音或英文搜尋符號與 Emoji",
+                               feature: .symbolPicker, commands: [.symbolPicker], anchor: SettingsRow.symbolPicker)
+                }
                 DrillRow(model: model, title: "標點與符號的按鍵與說明", subtitle: "中文預設全形；英數與空白維持半形",
                          value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
             }

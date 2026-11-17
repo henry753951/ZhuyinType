@@ -143,11 +143,12 @@ struct AdvancedPane: View {
         .alert("要回復所有設定的預設值嗎？", isPresented: $confirmingReset) {
             Button("回復", role: .destructive) {
                 preferences.resetToDefaults()
+                RecentSymbols.shared.clear()
                 model.apps.reload()
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("自訂詞與記住的字詞會保留。")
+            Text("自訂詞與記住的字詞會保留；最近使用的符號會清除。")
         }
         .alert("要清除所有改字記錄嗎？", isPresented: $confirmingClear) {
             Button("清除", role: .destructive) { CorrectionLog.shared.clear { error in

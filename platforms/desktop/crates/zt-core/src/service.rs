@@ -58,6 +58,8 @@ pub struct PopupState {
     pub caret: Rect,
     /// The app shows the composition itself; false: the window shows it above the list.
     pub inline_preedit: bool,
+    /// 符號與 Emoji is open: the window shows its grid instead of `presentation` (its highlighted row as a list).
+    pub picker: Option<crate::symbols::PickerView>,
 }
 
 /// What the UI is asked to do.
@@ -122,6 +124,10 @@ pub enum PopupAction {
     Word(CandidateAction, usize),
     /// The notice's 「復原」: undoes the last word action.
     UndoWordAction,
+    /// Inserts item `n` of the symbol picker's list.
+    PickSymbol(usize),
+    /// Switches the symbol picker to tab `n`.
+    SymbolTab(usize),
 }
 
 /// Writes the personal data on a thread of its own: a blur's reply goes out at once and the service's lock is not
@@ -270,6 +276,7 @@ impl Service {
             None => engine_error = Some("找不到詞庫資料（lexicon.bin 或 lexicon.tsv）。".to_owned()),
         }
         let mut controller = InputController::new(session, settings.clone(), shortcuts.clone());
+        controller.set_recent_symbols_dir(user_dir.as_deref());
         controller.refresh_settings();
         controller.pause_threshold = stats.pause_threshold();
         let sink_stats = stats.clone();
@@ -343,6 +350,7 @@ impl Service {
                 presentation: controller.output_presentation().into_owned(),
                 caret: host.anchor(),
                 inline_preedit: host.inline_preedit(),
+                picker: controller.picker_view(),
             });
             let changed = (*popup != next).then(|| next.clone());
             *popup = next;
@@ -501,12 +509,17 @@ impl Service {
             return Value::Null;
         }
         let shortcuts = &self.inner.shortcuts;
-        let panel = crate::panel::panel(
+        let mut panel = crate::panel::panel(
             &self.inner.settings,
             |command| shortcuts.active_label(command),
             &core.controller.output_presentation(),
             core.host.inline_preedit(),
         );
+        if core.controller.picker_open() {
+            // 符號與 Emoji: the highlighted row of the grid, across like the grid's rows.
+            panel.style.layout = zt_panel::style::Layout::Horizontal;
+            panel.style.shows_list_switches = false;
+        }
         serde_json::to_value(panel).unwrap_or(Value::Null)
     }
 
@@ -582,6 +595,11 @@ impl Service {
     }
 
     /// What the composer shows now.
+    /// Forgets the recent symbols of 符號與 Emoji and removes their file (回復預設設定, deleting personal data).
+    pub fn clear_recent_symbols(&self) {
+        self.with_controller(InputController::clear_recent_symbols);
+    }
+
     #[must_use]
     pub fn presentation(&self) -> Presentation {
         self.inner.core.lock().controller.presentation().clone()
@@ -606,6 +624,12 @@ impl Service {
                 PopupAction::TypeReading => host.type_reading(controller),
                 PopupAction::Word(action, row) => host.word_action(controller, action, row),
                 PopupAction::UndoWordAction => host.undo_word_action(controller),
+                PopupAction::PickSymbol(index) => {
+                    if host.visible(controller) {
+                        controller.pick_symbol(index);
+                    }
+                }
+                PopupAction::SymbolTab(index) => controller.select_symbol_tab(index),
             }
         });
     }

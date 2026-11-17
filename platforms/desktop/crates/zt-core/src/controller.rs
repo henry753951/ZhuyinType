@@ -20,6 +20,7 @@ use crate::presentation::Presentation;
 use crate::settings::Settings;
 use crate::shortcuts::{Action, Shortcuts, is_command_input};
 use crate::stats::{PickList, UsageEvent};
+use crate::symbols::{self, Picker, PickerView, Recent};
 
 /// Receives every usage event while 記錄使用統計 is on.
 pub type UsageSink = Arc<dyn Fn(&UsageEvent) + Send + Sync>;
@@ -154,6 +155,12 @@ pub struct InputController {
     /// The gap that ends a burst of typing (four times the usual key interval, at least 2 s); the statistics store
     /// may set it from the user's rhythm.
     pub pause_threshold: f64,
+    /// 符號與 Emoji: the symbols, the recent list, and the picker while it is open (with its list as the candidate
+    /// windows of the native adapters draw it).
+    symbols: Arc<dyn symbols::Source>,
+    recent_symbols: Recent,
+    picker: Option<Picker>,
+    picker_presentation: Presentation,
 }
 
 impl InputController {
@@ -189,6 +196,10 @@ impl InputController {
             list_seen: false,
             list_tip: false,
             pause_threshold: 2.0,
+            symbols: Arc::new(symbols::CoreSource),
+            recent_symbols: Recent::open(&symbols::CoreSource, None),
+            picker: None,
+            picker_presentation: Presentation::default(),
         };
         controller.sync_settings();
         controller.events.clear();
@@ -215,10 +226,116 @@ impl InputController {
         &self.shortcuts
     }
 
-    /// What the composer shows now.
+    /// What the composer shows now (while the symbol picker is open: its highlighted row as a candidate list).
     #[must_use]
     pub fn presentation(&self) -> &Presentation {
+        if self.picker.is_some() {
+            return &self.picker_presentation;
+        }
         self.session.presentation()
+    }
+
+    // MARK: 符號與 Emoji
+
+    /// Keeps the recent symbols in `dir` (`None`: in memory only).
+    pub fn set_recent_symbols_dir(&mut self, dir: Option<&std::path::Path>) {
+        self.recent_symbols = Recent::open(self.symbols.as_ref(), dir);
+    }
+
+    /// Uses `source` for the picker's symbols (tests).
+    pub fn set_symbol_source(&mut self, source: Arc<dyn symbols::Source>) {
+        self.symbols = source;
+    }
+
+    /// The recent symbols, newest first.
+    #[must_use]
+    pub fn recent_symbols(&self) -> &[String] {
+        self.recent_symbols.items()
+    }
+
+    /// Forgets the recent symbols and removes their file (回復預設設定, deleting personal data).
+    pub fn clear_recent_symbols(&mut self) {
+        self.recent_symbols.clear();
+    }
+
+    /// The symbol picker is open.
+    #[must_use]
+    pub fn picker_open(&self) -> bool {
+        self.picker.is_some()
+    }
+
+    /// What the picker's grid shows, while it is open.
+    #[must_use]
+    pub fn picker_view(&self) -> Option<PickerView> {
+        self.picker.as_ref().map(Picker::view)
+    }
+
+    /// Opens the picker: the composition's text becomes the search, and the composition is dropped (not sent).
+    fn open_picker(&mut self) -> bool {
+        let prefill =
+            if self.session.composing() { self.session.presentation().composition.clone() } else { String::new() };
+        if self.session.composing() {
+            let _ = self.session.reset();
+        }
+        self.picker = Some(Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill));
+        self.sync_picker();
+        true
+    }
+
+    /// Closes the picker without inserting.
+    pub fn close_picker(&mut self) {
+        self.picker = None;
+        self.picker_presentation = Presentation::default();
+    }
+
+    fn sync_picker(&mut self) {
+        self.picker_presentation = self.picker.as_ref().map(Picker::presentation).unwrap_or_default();
+    }
+
+    /// Sends `text` like a picked candidate, remembers it, closes the picker.
+    fn insert_symbol(&mut self, text: &str) {
+        self.close_picker();
+        self.committed(text);
+        let _ = self.session.break_context();
+        if let Some(recorder) = &mut self.recorder {
+            recorder.break_context();
+        }
+        let source = self.symbols.clone();
+        self.recent_symbols.push(source.as_ref(), text);
+    }
+
+    /// A key while the picker is open: it takes every key (the picker's key again closes it).
+    fn picker_key(&mut self, key: &Key) -> bool {
+        if self.shortcuts.resolve(key.code, key.modifiers).is_some_and(|command| command.action == Action::SymbolPicker)
+        {
+            self.close_picker();
+            return true;
+        }
+        let Some(picker) = &mut self.picker else { return false };
+        match picker.key(key) {
+            symbols::Outcome::Handled => self.sync_picker(),
+            symbols::Outcome::Insert(text) => self.insert_symbol(&text),
+            symbols::Outcome::Close => self.close_picker(),
+        }
+        true
+    }
+
+    /// A click on item `index` of the picker's list.
+    pub fn pick_symbol(&mut self, index: usize) -> bool {
+        let Some(text) = self.picker.as_ref().and_then(|picker| picker.item(index)).map(|item| item.text.clone())
+        else {
+            return false;
+        };
+        self.insert_symbol(&text);
+        true
+    }
+
+    /// A click on the picker's tab `index`.
+    pub fn select_symbol_tab(&mut self, index: usize) {
+        if let Some(picker) = &mut self.picker {
+            picker.select_tab(index);
+            self.sync_picker();
+        }
     }
 
     /// Applies the settings to the engine again (after `open`, or to pick up a change before the next key).
@@ -449,7 +566,17 @@ impl InputController {
         if self.secure || !self.session.ready() {
             return false;
         }
+        if self.picker.is_some() {
+            return self.picker_key(key);
+        }
         let command = self.shortcuts.resolve(key.code, key.modifiers);
+        // 符號與 Emoji opens in English too.
+        if let Some(command) = command
+            && command.action == Action::SymbolPicker
+            && self.shortcuts.is_enabled(command.id)
+        {
+            return self.open_picker();
+        }
         // 快速設定 opens in English too: it is how to switch back.
         if command
             .is_some_and(|c| c.action == Action::QuickSettings && self.english() && self.shortcuts.is_enabled(c.id))
@@ -534,6 +661,7 @@ impl InputController {
                 }
                 true
             }
+            Action::SymbolPicker => self.open_picker(),
             Action::TogglePunctuationWidth => self.toggle_punctuation_width(time),
             Action::QuickSettings => {
                 self.events.push(ControllerEvent::QuickPanel);
@@ -591,6 +719,9 @@ impl InputController {
         }
         let time = self.clock();
         let tap = self.shift_tap.take();
+        if self.picker.is_some() {
+            return;
+        }
         let toggle = tap
             .is_some_and(|(side, at)| side == key.shift_side && time >= at && time - at <= SHIFT_TAP_SECONDS)
             && self.held_shifts.is_empty()
@@ -622,7 +753,11 @@ impl InputController {
     /// Sets 中/英 from outside the keyboard (the taskbar indicator), like a Shift tap: not while composing.
     pub fn set_english(&mut self, english: bool) {
         self.sync_settings();
-        if self.secure || english == self.english || (self.session.ready() && self.session.composing()) {
+        if self.secure
+            || english == self.english
+            || self.picker.is_some()
+            || (self.session.ready() && self.session.composing())
+        {
             return;
         }
         self.switch_mode(english);
@@ -631,10 +766,13 @@ impl InputController {
     /// Picks candidate `index` of the whole list (a click).
     pub fn choose(&mut self, index: usize) -> bool {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() {
+        if self.secure || (self.english() && self.picker.is_none()) || !self.session.ready() {
             return false;
         }
         self.shift_tap = None;
+        if self.picker.is_some() {
+            return self.pick_symbol(index);
+        }
         let before = self.session.presentation().clone();
         let observed = ObservedInput::Click { index };
         let candidate = self.candidate_details(&observed, &before);
@@ -653,10 +791,13 @@ impl InputController {
     /// A key from the candidate window's own controls (page buttons, list switches), observed like keys.
     pub fn feed(&mut self, key: &Key) -> bool {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() {
+        if self.secure || (self.english() && self.picker.is_none()) || !self.session.ready() {
             return false;
         }
         self.shift_tap = None;
+        if self.picker.is_some() {
+            return self.picker_key(key);
+        }
         let Some(input) = key.input() else { return false };
         let time = self.clock();
         self.engine_input(input, time)
@@ -738,7 +879,12 @@ impl InputController {
     /// The candidate window's corrections switch.
     pub fn toggle_corrections(&mut self) {
         self.sync_settings();
-        if self.secure || self.english() || !self.session.ready() || !self.session.presentation().has_list() {
+        if self.secure
+            || self.english()
+            || self.picker.is_some()
+            || !self.session.ready()
+            || !self.session.presentation().has_list()
+        {
             return;
         }
         let before = self.session.presentation().clone();
@@ -752,6 +898,9 @@ impl InputController {
         self.sync_settings();
         self.held_shifts.clear();
         self.shift_tap = None;
+        if secure {
+            self.close_picker();
+        }
         if secure || self.secure {
             self.discard_secure_composition();
         }
@@ -846,7 +995,7 @@ impl InputController {
     /// What the views draw and the app shows: [`Self::presentation`] with its texts converted by [`Self::output`].
     #[must_use]
     pub fn output_presentation(&self) -> Cow<'_, Presentation> {
-        let p = self.session.presentation();
+        let p = self.presentation();
         if self.simplified() { Cow::Owned(p.simplified()) } else { Cow::Borrowed(p) }
     }
 
@@ -903,6 +1052,7 @@ impl InputController {
         self.sync_settings();
         self.held_shifts.clear();
         self.shift_tap = None;
+        self.close_picker();
         if self.secure {
             self.discard_secure_composition();
         } else {

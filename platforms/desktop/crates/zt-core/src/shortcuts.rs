@@ -52,6 +52,8 @@ pub enum Action {
     QuickSettings,
     /// 選取的字加入自訂詞: the field's selected text in the 加入自訂詞 form (only when not composing).
     AddSelectedText,
+    /// 符號與 Emoji: opens (or closes) the symbol picker.
+    SymbolPicker,
 }
 
 /// One rebindable command.
@@ -288,6 +290,16 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             false,
             &[],
             Action::AddSelectedText,
+        ),
+        command(
+            "symbolPicker",
+            "符號與 Emoji",
+            "開啟符號與 Emoji 面板",
+            "typing",
+            Some("feature.symbolPicker"),
+            false,
+            &[b(i32::from(b','), CONTROL | ALT)],
+            Action::SymbolPicker,
         ),
     ]
 });
