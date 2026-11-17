@@ -73,7 +73,7 @@ Core ML 神經模型只用於 macOS，Linux 套件不含。
 ```sh
 /usr/lib/zhuyintype/fcitx5-setup status      # fcitx5=… running=… addon=… profile=… framework=…，一行一項
 /usr/lib/zhuyintype/fcitx5-setup enable      # 加入目前的輸入方式群組，保留原有項目
-/usr/lib/zhuyintype/fcitx5-setup framework   # 把 Fcitx 5 設為這位使用者的輸入法框架（im-config 或 imsettings），下次登入生效
+/usr/lib/zhuyintype/fcitx5-setup framework   # 把 Fcitx 5 設為這位使用者的輸入法框架（im-config、imsettings 或 openSUSE 的 ~/.i18n），下次登入生效
 ```
 
 - Fcitx 5 正在啟動（行程已在、還沒有出現在 D-Bus 上）時，先等它最多 10 秒。

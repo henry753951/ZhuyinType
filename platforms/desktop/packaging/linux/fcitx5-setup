@@ -4,8 +4,8 @@
 #
 #   fcitx5-setup status      key=value lines: fcitx5, running, addon, profile, framework
 #   fcitx5-setup enable      put zhuyintype in the first input method group (keeps every existing entry)
-#   fcitx5-setup framework   make Fcitx 5 this user's input method framework (im-config or imsettings);
-#                            takes effect at the next sign-in
+#   fcitx5-setup framework   make Fcitx 5 this user's input method framework (im-config, imsettings, or
+#                            openSUSE's ~/.i18n); takes effect at the next sign-in
 #
 # Exit status: 0 done (or nothing to do), 1 failed, 2 usage, 3 not possible here (the reason is on stderr).
 set -euo pipefail
@@ -41,6 +41,10 @@ framework() {
     if [[ ${XMODIFIERS:-} == *fcitx* || ${GTK_IM_MODULE:-} == fcitx* || ${QT_IM_MODULE:-} == fcitx* ]]; then
         echo fcitx5
     elif [[ -f $HOME/.xinputrc ]] && grep -q 'run_im fcitx5' "$HOME/.xinputrc"; then
+        echo fcitx5-next-login
+    elif [[ $(readlink -f "$HOME/.config/imsettings/xinputrc" 2>/dev/null) == *fcitx5* ]]; then
+        echo fcitx5-next-login
+    elif [[ -f $HOME/.i18n ]] && grep -q '^export INPUT_METHOD=fcitx5$' "$HOME/.i18n"; then
         echo fcitx5-next-login
     elif [[ -n ${XMODIFIERS:-}${GTK_IM_MODULE:-} ]]; then
         echo other
@@ -149,6 +153,14 @@ set_framework() {
         im-config -n fcitx5
     elif has imsettings-switch; then
         imsettings-switch -q fcitx5
+    elif [[ -e /usr/etc/X11/xim.d/fcitx5 || -e /etc/X11/xim.d/fcitx5 ]]; then
+        # openSUSE: /etc/X11/xim reads the user's INPUT_METHOD from ~/.i18n.
+        local i18n=$HOME/.i18n
+        if [[ -f $i18n ]]; then
+            cp -p "$i18n" "$i18n.zhuyintype-backup"
+            sed -i '/^export INPUT_METHOD=/d' "$i18n"
+        fi
+        echo 'export INPUT_METHOD=fcitx5' >> "$i18n"
     else
         say '這個系統沒有 im-config 或 imsettings；請依發行版的說明把輸入法框架設為 Fcitx 5。'
         exit 3
