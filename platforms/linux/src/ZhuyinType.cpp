@@ -131,7 +131,8 @@ void ZhuyinType::recover(fcitx::InputContext &ic, State &state) {
         !protectedField(ic.capabilityFlags()) && !known.empty()) ic.commitString(known);
     clear(ic);
 }
-bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op, nlohmann::json fields) {
+bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op, nlohmann::json fields,
+                          std::string_view delivered) {
     const auto response = broker_.request(state.context, op, std::move(fields));
     if (!response) { recover(ic, state); timer_->setEnabled(false); return false; }
     // Synchronous exchange and tracked focus bind every result to its originating context.
@@ -140,10 +141,10 @@ bool ZhuyinType::exchange(fcitx::InputContext &ic, State &state, const char *op,
         state.english = english;
         ic.updateUserInterface(fcitx::UserInterfaceComponent::StatusArea);
     }
-    const auto &commit = (*response)["commit"].get_ref<const std::string &>();
     const auto &preedit = (*response)["preedit"].get_ref<const std::string &>();
     state.preedit = preedit;
-    if (!commit.empty()) ic.commitString(commit);
+    if (const auto commit = undelivered((*response)["commit"].get_ref<const std::string &>(), delivered); !commit.empty())
+        ic.commitString(std::string(commit));
     auto &panel = ic.inputPanel();
     panel.reset();
     if (state.inlinePreedit) {
@@ -189,8 +190,8 @@ void ZhuyinType::secure(fcitx::InputContext &ic, State &state, bool next) {
     exchange(ic, state, "secure", {{"secure", next}});
     clear(ic);
 }
-void ZhuyinType::blur(fcitx::InputContext &ic, State &state) {
-    exchange(ic, state, "blur");
+void ZhuyinType::blur(fcitx::InputContext &ic, State &state, std::string_view delivered) {
+    exchange(ic, state, "blur", nlohmann::json::object(), delivered);
     clear(ic);
     state.context.clear();
     state.preedit.clear();
@@ -225,7 +226,12 @@ void ZhuyinType::deactivate(const fcitx::InputMethodEntry &, fcitx::InputContext
         static_cast<fcitx::InputContextSwitchInputMethodEvent &>(event).reason() == fcitx::InputMethodSwitchedReason::CapabilityChanged;
     // Fcitx deactivates before exposing new password capability flags.
     secure(ic, state, capabilityChange || protectedField(ic.capabilityFlags()));
-    blur(ic, state);
+    // When focus leaves, the composition shown in the field is already committed there: by Fcitx itself, or by the
+    // application's Fcitx module (ClientUnfocusCommit: GTK, Qt, Wayland) before it reported the focus change.  The
+    // host commits it on blur as well; sending that again would type it twice, or into the field focus moved to.
+    std::string delivered;
+    if (event.type() == fcitx::EventType::InputContextFocusOut) delivered = ic.inputPanel().clientPreedit().toStringForCommit();
+    blur(ic, state, delivered);
 }
 void ZhuyinType::reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) {
     auto &ic = *event.inputContext();

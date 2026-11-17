@@ -90,7 +90,16 @@ int main() {
         CHECK(!key(b,FcitxKey_Caps_Lock,false,fcitx::KeyState::CapsLock));
         CHECK(!key(b,FcitxKey_Caps_Lock,true));
         type(b,"su3");
+        // Focus leaving: Fcitx (or the application's module) commits the composition the field shows, so the addon
+        // does not send it again (it would be typed twice, or into the field focus moved to).
+        CHECK(b.preedit()=="你");
         fcitx::FocusOutEvent blur(&b); addon.deactivate(entry,blur);
+        CHECK(b.commits.empty());
+        // Switching to another input method: nothing else commits, so the addon does.
+        activate(b);
+        type(b,"su3");
+        fcitx::InputContextSwitchInputMethodEvent switched(fcitx::InputMethodSwitchedReason::Trigger, "zhuyintype", &b);
+        addon.deactivate(entry,switched);
         CHECK(b.commits==std::vector<std::string>{"你"});
         // A private field (Sensitive: a private window) types Chinese; only learning and 前文 stop.
         activate(b);
@@ -113,6 +122,12 @@ int main() {
         type(a,"su3cl3");
         CHECK(a.preedit().empty()); CHECK(a.inputPanel().preedit().empty()); CHECK(!a.inputPanel().candidateList());
         CHECK(key(a,FcitxKey_Return)); CHECK(a.commits.back()=="你好");
+        // Without inline composition the field shows nothing that Fcitx could commit on focus out: the addon does.
+        type(a,"su3");
+        const auto beforeFocusOut = a.commits.size();
+        fcitx::FocusOutEvent leaveNoInline(&a); addon.deactivate(entry,leaveNoInline);
+        CHECK(a.commits.size()==beforeFocusOut+1); CHECK(a.commits.back()=="你");
+        activate(a);
         a.setCapabilityFlags(fcitx::CapabilityFlag::Preedit);
         type(a,"su3"); CHECK(!a.preedit().empty());
         a.setCapabilityFlags(fcitx::CapabilityFlags());

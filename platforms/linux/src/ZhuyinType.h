@@ -7,6 +7,7 @@
 #include <fcitx/instance.h>
 #include <array>
 #include <memory>
+#include <string_view>
 
 namespace zhuyintype {
 class ZhuyinType final : public fcitx::InputMethodEngineV2 {
@@ -34,10 +35,12 @@ private:
     std::unique_ptr<fcitx::HandlerTableEntry<fcitx::EventHandler>> destroyWatcher_;
     bool focus(fcitx::InputContext &, State &);
     void secure(fcitx::InputContext &, State &, bool);
-    void blur(fcitx::InputContext &, State &);
+    // `delivered`: the composition Fcitx or the application already committed when focus left (see deactivate).
+    void blur(fcitx::InputContext &, State &, std::string_view delivered = {});
     void clear(fcitx::InputContext &);
     void recover(fcitx::InputContext &, State &);
-    bool exchange(fcitx::InputContext &, State &, const char *, nlohmann::json = nlohmann::json::object());
+    bool exchange(fcitx::InputContext &, State &, const char *, nlohmann::json = nlohmann::json::object(),
+                  std::string_view delivered = {});
     void poll();
 };
 }

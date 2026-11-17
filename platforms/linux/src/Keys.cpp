@@ -107,4 +107,10 @@ std::vector<PreeditPart> preeditParts(std::string_view preedit, const std::vecto
     if (static_cast<size_t>(done) < preedit.size()) parts.push_back({std::string(preedit.substr(done)), Mark::Word});
     return parts;
 }
+std::string_view undelivered(std::string_view commit, std::string_view delivered) {
+    if (delivered.empty()) return commit;
+    if (commit.size() >= delivered.size() && commit.substr(commit.size() - delivered.size()) == delivered)
+        return commit.substr(0, commit.size() - delivered.size());
+    return {};
+}
 }

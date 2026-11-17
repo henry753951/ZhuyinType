@@ -97,6 +97,10 @@ done
 [[ -S $ZT_IME_SOCKET ]] || skip "host does not serve the broker at --ime-socket yet (see platforms/desktop/IPC.md)"
 if [[ ${ZT_DELIVERY_SELF_HOST:-0} == 1 ]]; then
     QT_IM_MODULE=compose "$build/fcitx-self-host-probe" "$host_pid"
+elif [[ ${ZT_DELIVERY_FOCUS:-0} == 1 ]]; then
+    "$build/fcitx-focus-probe"
+elif [[ ${ZT_DELIVERY_GTK:-0} == 1 ]]; then
+    GTK_IM_MODULE=fcitx "$build/fcitx-gtk-focus-probe"
 else
     "$build/fcitx-delivery-probe"
 fi

@@ -60,6 +60,11 @@ int main() {
         CHECK(!cursorBytes("𠀀好",1));
         CHECK(!cursorBytes("\xff",0));
         CHECK(!cursorBytes("好",2));
+        // Focus out: what Fcitx or the application already committed is not sent again.
+        CHECK(undelivered("你好", "你好").empty());
+        CHECK(undelivered("我你好", "你好") == "我");
+        CHECK(undelivered("你好", "") == "你好");
+        CHECK(undelivered("你號", "你好").empty());
         {
             const auto parts = preeditParts("你好嗎𠀀", {{0,2},{2,3},{3,5}}, 1, std::nullopt);
             CHECK(parts.size() == 3);
