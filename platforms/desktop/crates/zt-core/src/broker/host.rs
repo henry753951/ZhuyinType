@@ -200,6 +200,14 @@ impl Host {
         object.insert("cursor".into(), cursor.into());
         object.insert("candidates".into(), visible.into());
         object.insert("english".into(), controller.english().into());
+        // Keys the adapter sends even with nothing composed: 符號與 Emoji's (Ctrl+Alt is otherwise AltGr's).
+        let shortcuts = controller.shortcuts();
+        let claims: Vec<Value> = if self.secure || !shortcuts.is_enabled("symbolPicker") {
+            Vec::new()
+        } else {
+            shortcuts.bindings("symbolPicker").iter().map(|b| json!([b.binding.key, b.binding.modifiers])).collect()
+        };
+        object.insert("claims".into(), claims.into());
         // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
         object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible)).into());
         object

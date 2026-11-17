@@ -131,3 +131,32 @@ fn english_mode_and_focus_loss() {
     assert!(!f.input.picker_open());
     assert!(f.commits().is_empty());
 }
+
+#[test]
+fn the_broker_claims_the_shortcut_and_keeps_keys_while_open() {
+    use serde_json::json;
+    use zt_core::broker::host::Host;
+    let mut f = fixture();
+    let mut host = Host::default();
+    let mut request = |host: &mut Host, f: &mut Fixture, fields: Value| {
+        let mut object = json!({"v": 1, "context": "{A}", "secure": false});
+        for (key, value) in fields.as_object().unwrap() {
+            object[key] = value.clone();
+        }
+        host.dispatch(&mut f.input, 1, object.as_object().unwrap()).0
+    };
+    let reply = request(&mut host, &mut f, json!({"op": "focus", "panel": true}));
+    assert_eq!(reply["claims"], json!([[',' as i32, modifier::CONTROL | modifier::ALT]]));
+    let key = |code: i32, modifiers: u32| json!({"op": "key", "key": code, "modifiers": modifiers, "release": false});
+    let reply = request(&mut host, &mut f, key(PICKER.0, PICKER.1));
+    assert_eq!(reply["handled"], json!(true));
+    assert_eq!(reply["composing"], json!(true), "the adapter sends every key while the picker is open");
+    assert_eq!(reply["candidates"], json!(true));
+    assert_eq!(reply["preedit"], json!(""));
+    let reply = request(&mut host, &mut f, key('1' as i32, 0));
+    assert_eq!(reply["commit"], json!("，"));
+    assert_eq!(reply["composing"], json!(false));
+    f.settings.set("feature.symbolPicker", Value::Bool(false)).unwrap();
+    let reply = request(&mut host, &mut f, key('J' as i32, 0));
+    assert_eq!(reply["claims"], json!([]));
+}
