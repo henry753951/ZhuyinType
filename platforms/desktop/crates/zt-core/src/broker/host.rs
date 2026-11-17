@@ -115,11 +115,14 @@ impl Host {
         self.inline_preedit && !self.popup_app()
     }
 
-    /// As macOS `ControllerCore.render`: the window shows a list, a notice, or the composition for apps that cannot.
+    /// As macOS `ControllerCore.render`: the window shows a list, a notice, or the composition for apps that cannot;
+    /// 聯想詞 are a list with nothing composed.
     #[must_use]
     pub fn visible(&self, controller: &InputController) -> bool {
         let p = controller.presentation();
-        self.focused() && !p.is_empty() && (p.has_list() || p.notice.is_some() || !self.inline_preedit())
+        self.focused()
+            && (!p.is_empty() || (p.associated && p.has_list()))
+            && (p.has_list() || p.notice.is_some() || !self.inline_preedit())
     }
 
     /// Takes the controller's events: commits go into the next reply (when a field has focus and is not secure);

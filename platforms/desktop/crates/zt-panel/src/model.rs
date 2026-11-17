@@ -38,6 +38,9 @@ pub struct PanelModel {
     pub focused_clause: Option<usize>,
     /// The composition, shown above the list when the application cannot show it.
     pub preview: Option<String>,
+    /// The list is next-word suggestions after a commit (聯想詞), not conversions: the window says so.
+    #[serde(default)]
+    pub associated: bool,
 }
 
 impl PanelModel {

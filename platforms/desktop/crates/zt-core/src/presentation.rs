@@ -62,6 +62,8 @@ pub struct Presentation {
     pub notice: Option<String>,
     /// The engine's reading channel (「接受常見的其他讀法」) is loaded and on.
     pub reading_channel_active: bool,
+    /// The list is next-word suggestions after a commit (聯想詞): no composition, ⇧ + a selection key picks.
+    pub associated: bool,
 }
 
 impl Presentation {
@@ -98,6 +100,7 @@ impl Presentation {
         self.single = list.single_character();
         self.tolerant = list.tolerant();
         self.corrections = list.tolerant() == Some(true);
+        self.associated = list.associated();
         if self.count == 0 {
             return;
         }
@@ -164,6 +167,7 @@ impl Presentation {
             tolerant: self.tolerant,
             focused_clause: self.focused_clause,
             preview: preview.filter(|text| !text.is_empty()).map(str::to_owned),
+            associated: self.associated,
         }
     }
 

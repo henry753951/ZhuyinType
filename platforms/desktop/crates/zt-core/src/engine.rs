@@ -410,6 +410,7 @@ impl EngineSession {
 
     fn configure(composer: &mut Composer, engine: &Engine, values: &Values) {
         composer.set_options(values.options());
+        composer.set_associated_phrases(values.bool("associatedPhrases", false));
         engine.set_fuzzy_sounds(values.fuzzy());
         engine.set_reading_channel_enabled(values.bool("readingChannel", true));
         if !values.bool("usesPrecedingText", true) {
