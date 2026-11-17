@@ -369,6 +369,7 @@ mod tests {
             animates: true,
             above: false,
             accent: zt_panel::a11y::AccentChoice::Zhuyintype,
+            picker: None,
         };
         let mut shown = good();
         shown["panel"] = serde_json::to_value(&panel).unwrap();

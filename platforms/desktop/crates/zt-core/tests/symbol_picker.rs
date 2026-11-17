@@ -183,3 +183,38 @@ fn adapters_that_draw_the_window_get_the_row_across() {
     assert_eq!(reply["panel"]["style"]["layout"], json!("horizontal"));
     assert_eq!(reply["panel"]["model"]["rows"][0]["text"], json!("，"));
 }
+
+#[test]
+fn adapters_that_draw_the_window_get_the_grid_and_click_its_cells_and_tabs() {
+    use serde_json::json;
+    use zt_core::service::{Service, ServiceConfig};
+    let dir = common::TempDir::new();
+    common::write_lexicon(dir.path(), common::CONTROLLER_LEXICON);
+    let config =
+        ServiceConfig { data_dir: Some(dir.path().to_path_buf()), in_memory: true, ..ServiceConfig::default() };
+    let (service, _events) = Service::start(config).unwrap();
+    service.with_controller(|input| input.set_symbol_source(Arc::new(Catalog)));
+    let request = |fields: Value| {
+        let mut object = json!({"v": 1, "context": "{A}", "secure": false});
+        for (key, value) in fields.as_object().unwrap() {
+            object[key] = value.clone();
+        }
+        service.request(1, object.as_object().unwrap())
+    };
+    let reply = request(json!({"op": "focus", "panel": true}));
+    assert!(reply["panel"].is_null());
+    let reply = request(json!({"op": "key", "key": PICKER.0, "modifiers": PICKER.1, "release": false}));
+    let picker = &reply["panel"]["picker"];
+    assert_eq!(picker["tabs"][1]["title"], json!("箭頭"));
+    assert_eq!(picker["tab"], json!(0));
+    assert_eq!(picker["items"][2]["text"], json!("、"));
+    // A click on the 箭頭 tab, then on its second cell.
+    let reply = request(json!({"op": "action", "action": "symbolTab", "value": 1}));
+    assert_eq!(reply["panel"]["picker"]["tab"], json!(1));
+    assert_eq!(reply["panel"]["picker"]["items"][0]["text"], json!("←"));
+    let reply = request(json!({"op": "action", "action": "symbol", "value": 1}));
+    assert_eq!(reply["commit"], json!("→"));
+    assert!(reply["panel"].is_null(), "the picker closed");
+    let reply = request(json!({"op": "action", "action": "symbol", "value": -1}));
+    assert_eq!(reply["ok"], json!(false));
+}

@@ -43,5 +43,6 @@ pub fn panel(settings: &Settings, key: impl Fn(&str) -> String, p: &Presentation
         animates: settings.bool("panelAnimation"),
         above: settings.string("candidatePlacement") == "above",
         accent: crate::system_look::accent(settings),
+        picker: None,
     }
 }

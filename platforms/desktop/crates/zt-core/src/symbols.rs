@@ -12,24 +12,16 @@ use std::sync::{Arc, OnceLock};
 use crate::keys::{Key, code, modifier};
 use crate::presentation::{CandidateRow, Presentation};
 
-/// Items in one row of the grid (digits 1–9 pick from the highlighted row).
-pub const COLUMNS: usize = 9;
-/// Rows the grid shows at once (PageUp / PageDown move this many).
-pub const VISIBLE_ROWS: usize = 6;
+/// The grid's model and sizes are the candidate window's (`zt_panel::picker`), so the broker can send the view to
+/// the Windows text service as it is.
+pub use zt_panel::picker::{COLUMNS, Item, PickerView, Tab, VISIBLE_ROWS};
+
 /// Search results asked of the core.
 pub const SEARCH_LIMIT: usize = 180;
 /// The recent list's file in the user's data directory.
 pub const RECENT_FILE: &str = zhuyin_symbols::RECENT_FILE;
 /// The recent category's id.
 pub const RECENT_ID: &str = "recent";
-
-/// One symbol.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Item {
-    pub text: String,
-    /// Its name (CLDR zh_Hant), for tooltips and screen readers.
-    pub name: String,
-}
 
 /// One category of the core.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -170,33 +162,6 @@ pub enum Outcome {
     Insert(String),
     /// The picker closes without inserting.
     Close,
-}
-
-/// One tab of the picker.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Tab {
-    pub id: String,
-    pub title: String,
-}
-
-/// What the grid view draws: a window of rows around the highlight.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PickerView {
-    pub tabs: Vec<Tab>,
-    /// The active tab; `None` while searching.
-    pub tab: Option<usize>,
-    /// The search field (as `display_query` shows it); empty: no search.
-    pub query: String,
-    /// The query came from the composition (the first key replaces it).
-    pub prefilled: bool,
-    /// The first row shown.
-    pub first_row: usize,
-    /// How many rows the whole list has.
-    pub row_count: usize,
-    /// The items of the rows shown, from `first_row`; item `i` is index `first_row * COLUMNS + i` of the list.
-    pub items: Vec<Item>,
-    /// The highlighted index in the whole list.
-    pub highlight: Option<usize>,
 }
 
 /// The picker's state.

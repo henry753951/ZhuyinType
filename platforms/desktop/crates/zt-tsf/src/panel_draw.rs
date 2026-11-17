@@ -252,7 +252,7 @@ impl<'a> Painter<'a> {
         unsafe { self.target.DrawRoundedRectangle(&rounded, brush, width, None) };
     }
 
-    fn line(&self, points: &[(f32, f32)], width: f32, c: Rgba) {
+    pub(crate) fn line(&self, points: &[(f32, f32)], width: f32, c: Rgba) {
         let brush = self.paint(c);
         for pair in points.windows(2) {
             // SAFETY: valid target, brush and stroke style.
