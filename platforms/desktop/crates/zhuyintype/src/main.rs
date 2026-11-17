@@ -158,6 +158,10 @@ fn main() {
         if let Some(events) = events {
             candidate::popup::run(events, cx);
         }
+        #[cfg(target_os = "linux")]
+        if serves {
+            candidate::popup::prewarm(cx);
+        }
         if let Some(id) = &args.popover {
             card_window::open(id, args.dark, args.size, cx).expect("the card window opens");
             cx.activate(true);

@@ -53,11 +53,6 @@ fn popups(cx: &mut App) -> &mut Popups {
 /// Drains the service's events on the foreground executor for as long as the app runs.  Call once.
 #[allow(dead_code, reason = "main.rs calls it once Service::start is ported")]
 pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
-    // Open both windows (hidden) now rather than at the first key: opening one takes 50–90 ms, which the first
-    // candidate window and the first badge of the session would otherwise wait for.  Windows has no use for them
-    // (the text service draws its own).
-    #[cfg(target_os = "linux")]
-    cx.spawn(async move |cx| cx.update(prewarm)).detach();
     cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
             cx.update(|cx| handle(event, cx));
@@ -66,10 +61,16 @@ pub fn run(receiver: async_channel::Receiver<UiEvent>, cx: &mut App) {
     .detach();
 }
 
-/// Opens the floating windows hidden and shapes some CJK text, which loads the system's fallback fonts (100 ms or
-/// more the first time).
+/// Opens the floating windows (hidden) and shapes some CJK text, which loads the system's fallback fonts, soon after
+/// start rather than at the first key: otherwise the session's first candidate window waits ~100 ms and its first
+/// badge ~55 ms.  For the copy that serves the input method on Linux (on Windows the text service draws both).
 #[cfg(target_os = "linux")]
-fn prewarm(cx: &mut App) {
+pub fn prewarm(cx: &mut App) {
+    cx.spawn(async move |cx| cx.update(open_hidden)).detach();
+}
+
+#[cfg(target_os = "linux")]
+fn open_hidden(cx: &mut App) {
     if let Some(handle) = candidate_window(cx) {
         let _ = handle.update(cx, |_, window, _| {
             let mut measure = WindowMeasure(window);

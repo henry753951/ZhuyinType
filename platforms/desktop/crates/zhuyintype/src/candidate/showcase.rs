@@ -113,6 +113,7 @@ impl Showcase {
             presentation.reading = None;
         }
         let mut panel = CandidatePanel::new();
+        panel.reduced = crate::motion::reduced(cx);
         panel.hover = false;
         let keys = selection_keys(&settings);
         if let Some((mut list, pinned)) = paging {
