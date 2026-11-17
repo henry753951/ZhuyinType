@@ -22,7 +22,7 @@ pub(crate) fn content(p: &Painter<'_>, view: &PickerView, layout: &PickerLayout,
     p.line(&[(search.x + 9.5, cy + 2.5), (search.x + 13., cy + 6.)], 1.4, c.text_tertiary);
     let searching = !view.query.is_empty();
     let text_x = search.x + 20.;
-    let hint_w = if searching { 120. } else { 0. };
+    let hint_w = if searching { 150. } else { 0. };
     let (query, ink) = if searching { (view.query.as_str(), c.text) } else { (SEARCH_PLACEHOLDER, c.text_tertiary) };
     p.text(query, 13., false, Family::Ui, Frame::new(text_x, search.y, search.w - 20. - hint_w, search.h), 0., ink);
     if searching {

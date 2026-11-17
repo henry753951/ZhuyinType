@@ -376,8 +376,23 @@ mod tests {
         shown["toast"] = json!("英");
         shown["boundary"] = json!(-1);
         let reply = parse_reply(&line(shown), 7, "{A}").unwrap();
-        assert_eq!(reply.panel, PanelUpdate::Show(Box::new(panel)));
+        assert_eq!(reply.panel, PanelUpdate::Show(Box::new(panel.clone())));
         assert_eq!((reply.toast.as_deref(), reply.boundary), (Some("英"), Some(-1)));
+        // 符號與 Emoji's grid rides along in the panel.
+        let mut with_grid = panel.clone();
+        with_grid.picker = Some(zt_panel::picker::PickerView {
+            tabs: vec![zt_panel::picker::Tab { id: "smileys".into(), title: "笑臉與情緒".into() }],
+            tab: Some(0),
+            query: String::new(),
+            prefilled: false,
+            first_row: 0,
+            row_count: 1,
+            items: vec![zt_panel::picker::Item { text: "😀".into(), name: "笑臉".into() }],
+            highlight: Some(0),
+        });
+        let mut grid = good();
+        grid["panel"] = serde_json::to_value(&with_grid).unwrap();
+        assert_eq!(parse_reply(&line(grid), 7, "{A}").unwrap().panel, PanelUpdate::Show(Box::new(with_grid)));
         for (key, value) in [("panel", json!(3)), ("toast", json!(1)), ("boundary", json!(2))] {
             let mut bad = good();
             bad[key] = value;
