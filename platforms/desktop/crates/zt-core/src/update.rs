@@ -212,15 +212,17 @@ fn download(asset: &Asset, directory: &Path, key: &VerifyingKey) -> Result<PathB
     Ok(path)
 }
 
-/// Where the updater keeps the installer: `<install dir>\updates` (Windows; only administrators can write there),
-/// `/var/cache/zhuyintype` (Linux, root).
+/// Where the updater keeps the installer: `<install dir>\updates` (Windows; only administrators can write there,
+/// which the service checks first), `/var/cache/zhuyintype` (Linux, root).
 fn download_directory() -> Result<PathBuf> {
-    if cfg!(windows) {
+    #[cfg(windows)]
+    {
+        windows::ensure_installation_protected()?;
         let exe = std::env::current_exe()?;
         Ok(exe.parent().ok_or_else(|| anyhow!("no install directory"))?.join("updates"))
-    } else {
-        Ok(PathBuf::from("/var/cache/zhuyintype"))
     }
+    #[cfg(not(windows))]
+    Ok(PathBuf::from("/var/cache/zhuyintype"))
 }
 
 /// The system's updater (the Windows service, the systemd unit; administrator or root): installs the newest signed
@@ -239,26 +241,41 @@ pub fn system_update(current: &str) -> Result<Option<String>> {
     // Earlier downloads are not kept.
     let _ = std::fs::remove_dir_all(&directory);
     let file = download(asset, &directory, &key)?;
-    install(asset_key, &file)?;
+    install(asset_key, &file, asset, &key)?;
     Ok(Some(feed.version))
 }
 
+/// Runs the installer.  It is opened so that nobody can change or replace it until it runs and its signature is
+/// checked again on what was read through that handle, so nothing written between the download and the start runs.
 #[cfg(windows)]
-fn install(_: &str, installer: &Path) -> Result<()> {
+fn install(_: &str, installer: &Path, asset: &Asset, key: &VerifyingKey) -> Result<()> {
+    use std::io::Read as _;
+    use std::os::windows::fs::OpenOptionsExt as _;
     use std::os::windows::process::CommandExt as _;
+    const FILE_SHARE_READ: u32 = 0x1;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    // /UPDATE: after installing, start the app again in every signed-in session (installer.nsi).
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(installer)
+        .with_context(|| installer.display().to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    ensure!(bytes.len() as u64 == asset.length, "安裝程式在下載後被改變");
+    verify(key, &bytes, &asset.signature).context("installer")?;
+    // /UPDATE: after installing, start the app again where it ran (installer.nsi).
     std::process::Command::new(installer)
         .args(["/S", "/UPDATE"])
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .context("安裝程式")?;
+    drop(file);
     Ok(())
 }
 
 #[cfg(not(windows))]
-fn install(asset_key: &str, package: &Path) -> Result<()> {
+fn install(asset_key: &str, package: &Path, _: &Asset, _: &VerifyingKey) -> Result<()> {
     let package = package.to_string_lossy().into_owned();
     let have = |program: &str| {
         ["/usr/bin", "/bin", "/usr/sbin", "/sbin"].iter().any(|dir| Path::new(dir).join(program).exists())

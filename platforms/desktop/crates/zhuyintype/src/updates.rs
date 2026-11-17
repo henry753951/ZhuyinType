@@ -153,6 +153,10 @@ pub fn check_now(cx: &mut App) {
 /// 立即安裝 (or automatically when idle): starts the system's updater for the version found.
 pub fn install_now(cx: &mut App) {
     let Some(Found::Newer { version, .. }) = state(cx).found.clone() else { return };
+    // Windows: the installer ends this app; what was learnt since the last write is written now.
+    if let Some(service) = app::service(cx) {
+        service.flush();
+    }
     let state = cx.global_mut::<Updates>();
     match update::start_system_update() {
         Ok(()) => {
