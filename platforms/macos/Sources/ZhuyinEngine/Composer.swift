@@ -220,7 +220,7 @@ public final class Composer {
         didSet { zt_composer_set_freezes_on_pick(handle, freezesOnPick) }
     }
 
-    /// 聯想詞: after a commit, the words likely to come next are listed (⇧ + a selection key picks one).  Off by default.
+    /// 聯想詞: after a commit, the words likely to come next are listed; ↓ enters the list.  Off by default.
     public var associatedPhrases = false {
         didSet {
             guard associatedPhrases != oldValue else { return }
@@ -250,7 +250,7 @@ public final class Composer {
             }
             return CandidateList(items: items, selection: l.selection, pageSize: l.page_size,
                                  tolerant: l.tolerant < 0 ? nil : l.tolerant == 1, singleCharacter: l.single_character,
-                                 associated: l.associated)
+                                 associated: l.associated, passive: l.passive)
         }
         return Presentation(text: String(cString: p.text), cursor: p.cursor, clauses: clauses,
                             focusedClause: p.focused_clause < 0 ? nil : p.focused_clause,
