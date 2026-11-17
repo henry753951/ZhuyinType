@@ -23,14 +23,14 @@ pub(crate) fn run(engine: &Engine, count: usize, timing: bool) -> ! {
     let _ = out.flush();
     if timing && !times.is_empty() {
         times.sort_by(f64::total_cmp);
-        let at = |q: f64| times[((times.len() - 1) as f64 * q).round() as usize];
+        let at = |percent: usize| times[(times.len() - 1) * percent / 100];
         let _ = writeln!(
             std::io::stderr(),
             "predict: {} lines, p50 {:.3} ms, p95 {:.3} ms, p99 {:.3} ms, max {:.3} ms",
             times.len(),
-            at(0.5),
-            at(0.95),
-            at(0.99),
+            at(50),
+            at(95),
+            at(99),
             times[times.len() - 1]
         );
     }
