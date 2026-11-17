@@ -157,9 +157,15 @@ impl Reservation {
                     Some(instance) => instance,
                     None => match descriptor.create(&name, false) {
                         Ok(instance) => instance,
+                        // Out of resources for a moment: try again.  Giving up would leave the input method dead
+                        // until the next sign-in, with this process still holding the lock no other copy can take.
                         Err(error) => {
                             log::warn!("broker: {error}");
-                            break;
+                            if stop.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            continue;
                         }
                     },
                 };

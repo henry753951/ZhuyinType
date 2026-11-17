@@ -1,12 +1,14 @@
 //! The settings: their descriptors (`settings.json`, shared with every page and the wizard) and the stored values.
 //!
 //! Descriptors say what a setting is (title, page, group, kind, default, options, range); `Settings` validates,
-//! stores and notifies.  Values live in one JSON file in the user's config directory, written atomically.
+//! stores and notifies.  Values live in one JSON file in the user's config directory, written atomically.  A file that
+//! cannot be read (cut short by a crash, broken in an editor) is set aside as `settings.unreadable.json` before the
+//! first change replaces it, so the user's settings and keys are never silently lost.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::{Context as _, Result};
 use parking_lot::RwLock;
@@ -137,19 +139,33 @@ struct Inner {
     values: RwLock<BTreeMap<String, Value>>,
     listeners: RwLock<Vec<Listener>>,
     revision: AtomicU64,
+    /// The file is there but could not be read: set it aside before writing over it.
+    unreadable: AtomicBool,
 }
 
 impl Settings {
     /// The settings in `path` (missing or unreadable: all defaults).  `None` keeps them in memory only (previews,
     /// tests).
     pub fn open(path: Option<PathBuf>) -> Self {
-        let values = path.as_deref().and_then(|path| read(path).ok()).unwrap_or_default();
+        let mut unreadable = false;
+        let values = match path.as_deref().map(|path| (path, read(path))) {
+            Some((_, Ok(values))) => values,
+            Some((path, Err(error))) => {
+                unreadable = path.exists();
+                if unreadable {
+                    log::warn!("settings: {} cannot be read ({error:#}); using the defaults", path.display());
+                }
+                BTreeMap::new()
+            }
+            None => BTreeMap::new(),
+        };
         Self {
             inner: Arc::new(Inner {
                 path,
                 values: RwLock::new(values),
                 listeners: RwLock::default(),
                 revision: AtomicU64::new(0),
+                unreadable: AtomicBool::new(unreadable),
             }),
         }
     }
@@ -253,17 +269,21 @@ impl Settings {
         self.inner.revision.load(Ordering::Acquire)
     }
 
-    /// Back to the default.
+    /// Back to the default.  When it cannot be saved, nothing changes.
     pub fn reset(&self, key: &str) -> Result<()> {
-        if self.inner.values.write().remove(key).is_some() {
-            self.save()?;
-            self.notify(key);
+        let Some(previous) = self.inner.values.write().remove(key) else { return Ok(()) };
+        if let Err(error) = self.save() {
+            self.inner.values.write().insert(key.to_owned(), previous);
+            return Err(error);
         }
+        self.notify(key);
         Ok(())
     }
 
-    /// Every setting of the registry back to its default; other stored values (keys, app lists) stay.
+    /// Every setting of the registry back to its default; other stored values (keys, app lists) stay.  When it
+    /// cannot be saved, nothing changes.
     pub fn reset_all(&self) -> Result<()> {
+        let before = self.inner.values.read().clone();
         let keys: Vec<String> = {
             let mut values = self.inner.values.write();
             let keys: Vec<String> = values.keys().filter(|key| descriptor(key).is_some()).cloned().collect();
@@ -272,7 +292,10 @@ impl Settings {
             }
             keys
         };
-        self.save()?;
+        if let Err(error) = self.save() {
+            *self.inner.values.write() = before;
+            return Err(error);
+        }
         for key in keys {
             self.notify(&key);
         }
@@ -293,9 +316,24 @@ impl Settings {
 
     fn save(&self) -> Result<()> {
         let Some(path) = &self.inner.path else { return Ok(()) };
+        if self.inner.unreadable.load(Ordering::Acquire) {
+            set_aside(path)?;
+            self.inner.unreadable.store(false, Ordering::Release);
+        }
         let text = serde_json::to_string_pretty(&*self.inner.values.read())?;
         write_atomically(path, text.as_bytes())
     }
+}
+
+/// Keeps the settings file that could not be read as `<name>.unreadable.json` (replacing an older one), so the
+/// user can recover it; fails rather than let it be written over.
+fn set_aside(path: &Path) -> Result<()> {
+    let aside = path.with_extension("unreadable.json");
+    if std::fs::rename(path, &aside).is_err() && path.exists() {
+        std::fs::copy(path, &aside).with_context(|| format!("keeping {}", path.display()))?;
+    }
+    log::warn!("settings: the unreadable file was kept as {}", aside.display());
+    Ok(())
 }
 
 fn read(path: &Path) -> Result<BTreeMap<String, Value>> {
@@ -304,14 +342,36 @@ fn read(path: &Path) -> Result<BTreeMap<String, Value>> {
     Ok(serde_json::from_str(text.trim_start_matches('\u{feff}'))?)
 }
 
-/// Writes `bytes` to a temporary file beside `path`, then renames it over `path`.
+/// Writes `bytes` to a temporary file of its own beside `path`, flushes it to the disk, then renames it over `path`:
+/// after a crash or power loss `path` holds either the old contents or the new, never a part or zeros.  Writers at the
+/// same time each leave a whole file; another file of the same stem is never touched.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
+    use std::io::Write as _;
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
     }
-    let temporary = path.with_extension("tmp");
-    std::fs::write(&temporary, bytes).with_context(|| format!("writing {}", temporary.display()))?;
-    std::fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
+    let mut name = path.file_name().map(std::ffi::OsStr::to_os_string).unwrap_or_default();
+    name.push(format!(".{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let temporary = path.with_file_name(name);
+    let written = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    })();
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error).with_context(|| format!("replacing {}", path.display()));
+    }
+    // The rename itself reaches the disk with the directory (Linux; NTFS journals it).
+    #[cfg(unix)]
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty())
+        && let Ok(directory) = std::fs::File::open(parent)
+    {
+        let _ = directory.sync_all();
+    }
     Ok(())
 }
 

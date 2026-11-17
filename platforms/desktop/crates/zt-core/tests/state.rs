@@ -149,6 +149,78 @@ fn restore_only_known_preferences() {
 }
 
 #[test]
+fn an_unreadable_settings_file_is_set_aside_before_it_is_replaced() {
+    // A file cut short by a crash, broken in an editor, or of another shape: the defaults apply, and the first change
+    // must not silently replace the user's settings (and keys) with that one value.
+    for original in [r#"{"candidateFontSize": 24, "panelAppearance": "da"#, "[1, 2, 3]", ""] {
+        let dir = TempDir::new();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, original).unwrap();
+        let settings = Settings::open(Some(path.clone()));
+        assert_eq!(settings.number("candidateFontSize"), 18.0);
+        settings.set("showsZhuyinHint", Value::Bool(false)).unwrap();
+        let aside = dir.join("settings.unreadable.json");
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), original, "{original:?}");
+        // The next change leaves the copy alone.
+        settings.set("candidateFontSize", Value::from(20)).unwrap();
+        assert_eq!(std::fs::read_to_string(&aside).unwrap(), original);
+        let restored = Settings::open(Some(path));
+        assert!(!restored.bool("showsZhuyinHint"));
+        assert_eq!(restored.number("candidateFontSize"), 20.0);
+    }
+}
+
+#[test]
+fn a_missing_settings_file_sets_nothing_aside() {
+    let dir = TempDir::new();
+    let settings = Settings::open(Some(dir.join("settings.json")));
+    settings.set("showsZhuyinHint", Value::Bool(false)).unwrap();
+    assert!(!dir.join("settings.unreadable.json").exists());
+}
+
+#[test]
+fn a_reset_that_cannot_be_saved_changes_nothing() {
+    let dir = TempDir::new();
+    let folder = dir.join("config");
+    let settings = Settings::open(Some(folder.join("settings.json")));
+    settings.set("candidateFontSize", Value::from(24)).unwrap();
+    // The folder is gone and a file has its name: nothing can be written.
+    std::fs::remove_dir_all(&folder).unwrap();
+    std::fs::write(&folder, "").unwrap();
+    assert!(settings.reset("candidateFontSize").is_err());
+    assert_eq!(settings.number("candidateFontSize"), 24.0);
+    assert!(settings.reset_all().is_err());
+    assert_eq!(settings.number("candidateFontSize"), 24.0);
+}
+
+#[test]
+fn files_written_at_once_by_several_threads_stay_whole() {
+    // Statistics are saved from the broker's thread and the UI's; an export may share a folder with other files.
+    let dir = TempDir::new();
+    let path = dir.join("stats.json");
+    std::fs::write(dir.join("stats.tmp"), "someone else's file").unwrap();
+    let writers: Vec<_> = (0..8)
+        .map(|n| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let text = format!("{{\"writer\": {n}, \"padding\": \"{}\"}}", "x".repeat(64 * 1024));
+                for _ in 0..20 {
+                    zt_core::settings::write_atomically(&path, text.as_bytes()).unwrap();
+                }
+            })
+        })
+        .collect();
+    for writer in writers {
+        writer.join().unwrap();
+    }
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(serde_json::from_str::<Value>(&text).is_ok());
+    assert_eq!(std::fs::read_to_string(dir.join("stats.tmp")).unwrap(), "someone else's file");
+    let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left.len(), 2, "{left:?}");
+}
+
+#[test]
 fn assign_is_all_or_nothing_and_sandboxes_stay_apart() {
     let settings = Settings::open(None);
     let bad = [("candidateFontSize".to_owned(), Value::from(20)), ("panelAppearance".to_owned(), Value::from("glass"))];

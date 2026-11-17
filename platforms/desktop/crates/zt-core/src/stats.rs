@@ -1,8 +1,9 @@
 //! 使用統計 (macOS `IMK/UsageStats.swift`, Qt `DesktopServices`): counts only — characters, compositions, keys, picks
 //! and corrections, per-key latency as a histogram, the typing rhythm (key intervals, thinking pauses, the longest
 //! runs, characters by weekday and hour) — by local day for 60 days and in total.  Never the text, the readings,
-//! which keys or the app.  Kept in memory and written to `stats.json` (the macOS schema) at most every 10 minutes,
-//! when the settings window asks and before the process exits.
+//! which keys or the app.  Kept in memory and written to `stats.json` (the macOS schema) at most every 10 minutes of
+//! typing and once typing has stopped for a minute ([`UsageStats::save_if_quiet`]): at sign-out the process is ended
+//! without a chance to write.
 //!
 //! The input controller reports what happened as [`UsageEvent`]s (`IPC.md` §使用統計).
 
@@ -369,6 +370,8 @@ struct Store {
     error: Option<String>,
     dirty: bool,
     last_save: Option<i64>,
+    /// When something was last counted (uptime, ms).
+    last_change: Option<i64>,
     writes: usize,
     revision: u64,
     // The observer: one input session's burst and corrections.
@@ -491,6 +494,7 @@ impl Store {
         self.dirty = true;
         self.revision += 1;
         let now = (self.uptime)();
+        self.last_change = Some(now);
         match self.last_save {
             None => self.last_save = Some(now),
             Some(last) if now - last >= SAVE_INTERVAL_MS => {
@@ -740,6 +744,7 @@ impl UsageStats {
             error: None,
             dirty: false,
             last_save: None,
+            last_change: None,
             writes: 0,
             revision: 0,
             session_threshold: 2.0,
@@ -829,6 +834,21 @@ impl UsageStats {
         store.dirty = false;
         store.revision += 1;
         Ok(())
+    }
+
+    /// Writes what was counted once nothing has been for `quiet` (the app's minute timer): the process may be
+    /// ended at sign-out without a chance to write.
+    ///
+    /// # Errors
+    /// When the file cannot be written.
+    pub fn save_if_quiet(&self, quiet: std::time::Duration) -> Result<()> {
+        let quiet_ms = i64::try_from(quiet.as_millis()).unwrap_or(i64::MAX);
+        let mut store = self.inner.lock();
+        let now = (store.uptime)();
+        if !store.dirty || !store.readable || store.last_change.is_some_and(|at| now - at < quiet_ms) {
+            return Ok(());
+        }
+        store.write()
     }
 
     /// Writes `stats.json` now if anything changed.
