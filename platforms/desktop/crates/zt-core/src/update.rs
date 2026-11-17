@@ -100,6 +100,23 @@ pub fn newer(candidate: &str, current: &str) -> bool {
     matches!((version(candidate), version(current)), (Some(a), Some(b)) if a > b)
 }
 
+/// How long after a failed check (offline, the server unreachable) the next one is tried.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+/// Whether the app should check now: it never has, the last check is [`CHECK_INTERVAL`] old or dated after `now`
+/// (saved while the clock was wrong), and no check failed in the last [`RETRY_INTERVAL`].
+#[must_use]
+pub fn check_due<Tz: chrono::TimeZone>(
+    last_check: Option<&chrono::DateTime<Tz>>,
+    last_failure: Option<&chrono::DateTime<Tz>>,
+    now: &chrono::DateTime<Tz>,
+) -> bool {
+    let since = |at: &chrono::DateTime<Tz>| now.clone().signed_duration_since(at.clone()).to_std().ok();
+    let checked = last_check.is_none_or(|last| since(last).is_none_or(|elapsed| elapsed >= CHECK_INTERVAL));
+    let resting = last_failure.is_some_and(|failed| since(failed).is_some_and(|elapsed| elapsed < RETRY_INTERVAL));
+    checked && !resting
+}
+
 /// Which installer fits this installation: Windows, or the Linux package format that installed it.  None for a
 /// copy the package manager does not own (a development build), which never updates itself.
 #[must_use]
@@ -276,7 +293,8 @@ pub fn start_system_update() -> Result<()> {
     #[cfg(not(windows))]
     {
         let status = std::process::Command::new("systemctl")
-            .args(["start", "--no-block", LINUX_UNIT])
+            // polkit lets the active user start it without a password; never wait on a password prompt instead.
+            .args(["start", "--no-block", "--no-ask-password", LINUX_UNIT])
             .status()
             .context("systemctl")?;
         ensure!(status.success(), "systemctl start {LINUX_UNIT}: {status}");
@@ -347,6 +365,30 @@ mod tests {
         assert!(verify(&key.verifying_key(), b"abc", &good).is_ok());
         assert!(verify(&key.verifying_key(), b"abd", &good).is_err());
         assert!(verify(&key.verifying_key(), b"abc", "not base64").is_err());
+    }
+
+    #[test]
+    fn checks_are_due_daily_and_after_a_wrong_clock() {
+        use chrono::{TimeZone as _, Utc};
+        let at = |hours: i64| Utc.timestamp_opt(1_800_000_000 + hours * 3600, 0).unwrap();
+        assert!(check_due(None, None, &at(0)));
+        assert!(!check_due(Some(&at(0)), None, &at(23)));
+        assert!(check_due(Some(&at(0)), None, &at(24)));
+        // The last check was saved while the clock was years ahead: checking must not wait for that date.
+        assert!(check_due(Some(&at(24 * 365)), None, &at(0)));
+    }
+
+    #[test]
+    fn a_failed_check_is_retried_after_an_hour_not_every_minute() {
+        use chrono::{TimeZone as _, Utc};
+        let at = |minutes: i64| Utc.timestamp_opt(1_800_000_000 + minutes * 60, 0).unwrap();
+        // Offline: never checked, and the attempt a minute ago failed.
+        assert!(!check_due(None, Some(&at(0)), &at(1)));
+        assert!(!check_due(None, Some(&at(0)), &at(59)));
+        assert!(check_due(None, Some(&at(0)), &at(60)));
+        assert!(!check_due(Some(&at(-24 * 60)), Some(&at(0)), &at(30)));
+        // A failure in the future (the clock went back) does not hold checks off.
+        assert!(check_due(None, Some(&at(600)), &at(0)));
     }
 
     #[test]

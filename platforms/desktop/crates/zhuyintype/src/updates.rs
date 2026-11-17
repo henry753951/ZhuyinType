@@ -5,17 +5,20 @@
 //! Linux: the package manager replaces the executable under the running app, so once idle the app starts the new
 //! one in its place (Windows: the installer stops the app and starts it again in every session).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 use gpui_kit::{App, Global};
 use serde_json::{Value, json};
-use zt_core::update::{self, CHECK_INTERVAL, CHECKS_KEY, Found, INSTALLS_KEY};
+use zt_core::update::{self, CHECKS_KEY, Found, INSTALLS_KEY};
 
 use crate::app;
 
 /// How often the app looks at the clock, the composition and the executable.
 const TICK: Duration = Duration::from_secs(60);
+/// The system's updater was started this long ago and this copy still runs: it did not install (the package manager
+/// was busy, the download failed), so the next check may start it again.
+const INSTALL_GIVEN_UP: Duration = Duration::from_secs(60 * 60);
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What 關於 shows.
@@ -27,6 +30,10 @@ pub struct Updates {
     /// The system's updater was started for this version.
     pub installing: Option<String>,
     pub error: Option<String>,
+    /// When the system's updater was started.
+    install_started: Option<Instant>,
+    /// The last check that failed; the next waits `update::RETRY_INTERVAL`.
+    last_failure: Option<DateTime<Local>>,
     #[cfg(target_os = "linux")]
     executable: Option<(u64, u64)>,
 }
@@ -84,10 +91,8 @@ fn tick(cx: &mut App) {
     let settings = app::settings(cx);
     let (checks, installs) = (settings.bool(CHECKS_KEY), settings.bool(INSTALLS_KEY));
     let state = state(cx);
-    let due = !state.checking
-        && state
-            .last_check
-            .is_none_or(|last| Local::now().signed_duration_since(last).to_std().unwrap_or_default() >= CHECK_INTERVAL);
+    let due =
+        !state.checking && update::check_due(state.last_check.as_ref(), state.last_failure.as_ref(), &Local::now());
     let ready = matches!(&state.found, Some(Found::Newer { .. })) && state.installing.is_none();
     if checks && due {
         check_now(cx);
@@ -123,12 +128,19 @@ pub fn check_now(cx: &mut App) {
             match result {
                 Ok(found) => {
                     state.last_check = Some(now);
+                    state.last_failure = None;
                     state.found = Some(found);
                     state.error = None;
+                    // Still running the old version long after the updater started: it did not install.
+                    if state.install_started.is_some_and(|started| started.elapsed() >= INSTALL_GIVEN_UP) {
+                        state.installing = None;
+                        state.install_started = None;
+                    }
                     save_last_check(now);
                 }
                 Err(error) => {
                     log::warn!("update check: {error:#}");
+                    state.last_failure = Some(now);
                     state.error = Some(format!("{error:#}"));
                 }
             }
@@ -146,6 +158,7 @@ pub fn install_now(cx: &mut App) {
         Ok(()) => {
             log::info!("installing update {version}");
             state.installing = Some(version);
+            state.install_started = Some(Instant::now());
             state.error = None;
         }
         Err(error) => {
