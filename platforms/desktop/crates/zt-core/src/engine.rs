@@ -215,7 +215,8 @@ fn feature_for(input: KeyInput) -> Option<&'static str> {
         KeyInput::ShiftUp => "feature.correctionsList",
         KeyInput::ShiftDown => "feature.singleCharacterList",
         KeyInput::ShiftLeft | KeyInput::ShiftRight => "feature.selectPhrase",
-        KeyInput::Tab | KeyInput::ShiftTab | KeyInput::PageUp | KeyInput::PageDown => "feature.pageKeys",
+        // Page Up and Page Down page the list anyway (DESIGN.md「可以關閉的功能」, as macOS does).
+        KeyInput::Tab | KeyInput::ShiftTab => "feature.pageKeys",
         KeyInput::ControlChar(_) => "feature.controlPunctuation",
         KeyInput::Printed(_) => "feature.optionSymbols",
         KeyInput::Char('`') => "feature.typeZhuyin",
@@ -457,8 +458,8 @@ impl EngineSession {
 
     // MARK: Word actions
 
-    /// Whether `action` applies to candidate `index` of the open list (`None`: the highlighted one; adding with no
-    /// list open takes the whole composition).
+    /// Whether `action` applies to candidate `index` of the open list (`None`: the highlighted one); never with no
+    /// list open.
     #[must_use]
     pub fn word_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
         self.open.as_ref().is_some_and(|open| open.composer.candidate_action_available(action, index))

@@ -336,15 +336,16 @@
         "CC-BY-SA-4.0.txt",
         "CC-BY-4.0.txt",
         "OGDL-1.0.txt",
-        "CC0-1.0.txt"
+        "CC0-1.0.txt",
+        "Apache-2.0.txt"
       ],
-      "version": "data-2",
+      "version": "data-11",
       "notices": [
         "lm_chat/NOTICE.md",
         "lm_chat/attribution.jsonl",
         "lm_chat/source-manifest.json"
       ],
-      "changes": "出貨的是只含真實文字的版本：立法院公報、維基百科討論頁與 Common Voice 的句子。NOTICE 裡的 Qwen 語料說明指的是沒有出貨的另一個版本。"
+      "changes": "0.7.2 起的版本（ptt-cns-genpub）除了立法院公報、維基百科討論頁與 Common Voice 的句子，另外計入 PTT 八卦版的標題與推文、海大 TOCP 的句子、轉成正體並只留像台灣用法的 zh-meme-sft-8k、LCCC-base 與 MNBVC 知乎句子，以及 Claude Haiku 5.5 依主題產生的台灣口語句子（不含使用者的文字）。每份來源的網址、版本、SHA-256 與授權在 NOTICE 與 source-manifest.json；原文不隨模型散布。"
     },
     {
       "id": "v3",
@@ -377,14 +378,18 @@
       "licenseFiles": [
         "CC-BY-SA-4.0.txt",
         "CC0-1.0.txt",
+        "Apache-2.0.txt",
         "Reranker-NOTICE.md"
       ],
-      "version": "data-5",
+      "version": "data-11",
       "notices": [
         "lm/NOTICE.md",
         "lm/articles.tsv.gz",
+        "lm_chat/NOTICE.md",
+        "lm_chat/source-manifest.json",
         "v3/Licenses/Qwen3-8B-LICENSE"
-      ]
+      ],
+      "changes": "0.7.2 起加入聊天語言模型的訓練句重新訓練，前綴樹以 fp32 計算、權重以 int8 儲存。"
     },
     {
       "id": "wikipedia",
@@ -445,6 +450,83 @@
       "url": "https://huggingface.co/Qwen/Qwen3-8B",
       "version": "b968826d9c46dd6066d109eabc6255188de91218",
       "changes": "產生台灣口語句子並過濾、去重。"
+    },
+    {
+      "id": "ptt-gossiping",
+      "group": "models",
+      "name": "PTT 八卦版問答集（Gossiping-Chinese-Corpus）",
+      "use": "標題與推文用於聊天語言模型與整句重排訓練",
+      "distribution": "training",
+      "license": "整理者標示 Apache-2.0；文字的著作權屬各 PTT 作者",
+      "licenseFiles": [],
+      "url": "https://github.com/zake7749/Gossiping-Chinese-Corpus",
+      "copyright": "PTT 八卦版的作者群；問答對整理為 zake7749",
+      "version": "2.0（65b7e3630a560223a2b4d702d78d120d5ff1e8dd）",
+      "changes": "只取標題與推文的文字，不取帳號與推噓；去除與評測集有 8 字重疊的句子。"
+    },
+    {
+      "id": "tocp",
+      "group": "models",
+      "name": "海大 TOCP 中文不雅文字資料集",
+      "use": "句子用於聊天語言模型與整句重排訓練，也用於不雅詞的檢查",
+      "distribution": "training",
+      "license": "CC BY-SA 4.0",
+      "licenseFiles": [],
+      "url": "https://nlp.cse.ntou.edu.tw/resources/TOCP/",
+      "copyright": "句子的作者（PTT、Twitch 使用者）；標記與整理為海大 NLP 實驗室（Hsu Yang、Chuan-Jie Lin，LREC 2020 TRAC-2）",
+      "version": "v1.0"
+    },
+    {
+      "id": "zh-meme",
+      "group": "models",
+      "name": "zh-meme-sft-8k",
+      "use": "篩選後的句子用於聊天語言模型與整句重排訓練",
+      "distribution": "training",
+      "license": "Hugging Face 標示 MIT，README 標示 Apache-2.0",
+      "licenseFiles": [],
+      "url": "https://huggingface.co/datasets/GaryYang123/zh-meme-sft-8k",
+      "copyright": "抖音、小紅書、B 站的評論作者；整理與 LLM 改寫為 GaryYang123",
+      "version": "84838bb5b1b023325499012ba956c485bbf592b4",
+      "changes": "以 OpenCC s2twp 轉成正體，依交叉熵差只留像台灣用法、且不含大陸特有詞的句子。"
+    },
+    {
+      "id": "lccc",
+      "group": "models",
+      "name": "LCCC-base（清華 CoAI，CDial-GPT）",
+      "use": "篩選後的句子用於聊天語言模型與整句重排訓練",
+      "distribution": "training",
+      "license": "鏡像標示 MIT；原作者說明資料用於研究",
+      "licenseFiles": [],
+      "url": "https://huggingface.co/datasets/silver/lccc",
+      "copyright": "微博使用者；整理為清華大學 CoAI（Wang et al. 2020）",
+      "version": "5bd582fa28cd7143f2f9c852e08e23089d677c44",
+      "changes": "以 OpenCC s2twp 轉成正體，依交叉熵差只留像台灣用法、且不含大陸特有詞的句子。"
+    },
+    {
+      "id": "mnbvc",
+      "group": "models",
+      "name": "MNBVC 知乎子集",
+      "use": "篩選後的句子用於聊天語言模型與整句重排訓練",
+      "distribution": "training",
+      "license": "MIT（Hugging Face 標示）",
+      "licenseFiles": [],
+      "url": "https://huggingface.co/datasets/liwu/MNBVC",
+      "copyright": "知乎使用者；整理為 MNBVC 社群（liwu）",
+      "version": "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0（qa/20230196/zhihu）",
+      "changes": "以 OpenCC s2twp 轉成正體，依交叉熵差只留像台灣用法、且不含大陸特有詞的句子。"
+    },
+    {
+      "id": "claude-haiku",
+      "group": "models",
+      "name": "Claude Haiku 5.5 產生的句子",
+      "use": "依主題產生的台灣口語句子，用於聊天語言模型與整句重排訓練",
+      "distribution": "training",
+      "license": "依 Anthropic 的使用條款",
+      "licenseFiles": [],
+      "url": "https://www.anthropic.com/legal",
+      "copyright": "Anthropic 的模型產生；提示由 ZhuyinType 撰寫",
+      "version": "2026-11-17",
+      "changes": "只給主題與類別，不給使用者的文字；以使用者改字為種子的句子不用於出貨的模型。"
     },
     {
       "id": "business-registry",

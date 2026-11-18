@@ -1071,7 +1071,7 @@ size_t zt_strings_count(const ZtStrings *strings);
 char *zt_strings_get(const ZtStrings *strings, size_t index);
 
 // Whether `action` (0 block, 1 forget, 2 add a custom word) applies to candidate `index` of the open list; a
-// negative `index` is the highlighted candidate, or with no list open the whole composition (adding only).
+// negative `index` is the highlighted candidate.  None applies with no list open.
 //
 // # Safety
 // `composer` is a live handle.

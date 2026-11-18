@@ -15,6 +15,8 @@
 zt --remote train reranker                     # GPU 主機：test 到 tree；到 compile 會停止（compile 只能在 macOS 執行）
 zt train reranker export tree compile          # Mac：取回 reranker/charlm.pt 之後
 zt --remote train reranker --option workers=60 # prepare 的程序數（預設 32）
+zt --remote train reranker prepare train --option out=reranker_chat \
+    --option chat=ptt-cns-genpub --option chat_repeat=4   # 加上聊天語料、寫到另一個目錄（研究紀錄的 chat-reranker）
 python -m zhuyintype_ml.training.reranker.train --data data/build/reranker_v2c --steps 90000 \
     --layers 10 --width 640 --heads 10 --ffn 2560          # 其他大小（REPORT_v2.md 的 v2c）
 ```
@@ -25,7 +27,7 @@ python -m zhuyintype_ml.training.reranker.train --data data/build/reranker_v2c -
 | `prepare` | 詞彙表與 token 串流，排除和開發、測試集有 8 字重疊的句子 | GPU 主機 |
 | `train` | v2b，90,000 步，每 5,000 步存檔並量測開發集困惑度 | GPU 主機（CUDA） |
 | `export` | `Reranker.mlpackage`（fp16、macOS 14）與 `config.json` | 任一（需要 coremltools） |
-| `tree` | `RerankerTree.mlpackage`：深度 RoPE、只看祖先的注意力；匯出前先和批次模型比對 | 任一（需要 coremltools） |
+| `tree` | `RerankerTree.mlpackage`：深度 RoPE、只看祖先的注意力，以 fp32 計算（fp16 時 Core ML 在 CPU 上某些節點數會算錯）；匯出前先和批次模型比對 | 任一（需要 coremltools） |
 | `compile` | 以 `xcrun coremlcompiler` 編譯兩個套件 | 只限 macOS |
 
 ## 輸入與輸出
@@ -36,11 +38,12 @@ python -m zhuyintype_ml.training.reranker.train --data data/build/reranker_v2c -
 
 - `lm/work/unique.txt`：`zt train lm` 去重後的維基百科句子（訓練當時在主機的 `work/unique.txt`；可用 `--wiki` 指定）；
 - `corpus/synthetic_phase1.txt`、`corpus/synthetic_background.txt`、`corpus/train_commonvoice.txt`：口語句，重複兩次；
-- 保留集 `lm/test_sentences.txt`、`corpus/test_colloquial.txt`、`corpus/dev_wikipedia.txt`、`corpus/dev_colloquial.txt`：只用來排除；兩個開發集另外編成驗證串流。
+- 有 `chat` 選項時：聊天模型變體 `<chat>` 的訓練句（`lm_chat2` 斷好的 `work/sentences/*.txt`），重複 `chat_repeat` 次（預設 1）；
+- 保留集 `lm/test_sentences.txt`、`corpus/test_colloquial.txt`、`corpus/dev_wikipedia.txt`、`corpus/dev_colloquial.txt`：只用來排除；兩個開發集另外編成驗證串流。有 `chat` 時，`lm_chat2/dev_dialogue.txt`、`lm_chat2/test_dialogue.txt` 也排除，前者另外編成 `val_chat.bin`。
 
-寫入 `reranker/`：
+寫入 `reranker/`（或 `--option out=目錄`）：
 
-- `vocab.json`（0 = `<pad>`、1 = `<bos>`、2 = `<unk>`）、`train.bin`、`val_wiki.bin`、`val_colloquial.bin`、`prepare.json`；
+- `vocab.json`（0 = `<pad>`、1 = `<bos>`、2 = `<unk>`）、`train.bin`、`val_wiki.bin`、`val_colloquial.bin`（與 `val_chat.bin`）、`prepare.json`；
 - `charlm.pt`、`train-log.json`；
 - `Reranker.mlpackage`／`.mlmodelc`：輸入 `ids`、`targets` `[B, L]`，輸出每個字的 `logprob` `[B, L]`；
 - `RerankerTree.mlpackage`／`.mlmodelc`：輸入一棵打包的前綴樹（`ids`、`positions` `[1, N]`，`ancestors` `[N, N]`，`parents`、`targets` `[E]`），輸出每個目標在父節點上的 `logprob` `[E]`；

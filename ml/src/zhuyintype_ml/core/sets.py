@@ -104,6 +104,24 @@ SETS += [
         for name, text in MISREAD_SUBSETS.items()
     ],
 ]
+# Modern everyday and internet language, one file per problem class (docs/research/slang-inventory.md).
+SLANG = "ml/eval-sets/slang-probe"
+SLANG_CLASSES = {
+    "slang": "網路用語與迷因",
+    "particle": "語氣詞與句尾助詞",
+    "loan": "台語、客語借詞",
+    "japanese": "日語來源的詞",
+    "entity": "品牌、人名、地名、遊戲",
+    "newword": "新詞",
+    "reading": "實際打的讀音",
+    "variant": "寫法",
+    "zhuyinwen": "注音文",
+    "tech": "技術、軟體與學術詞",
+}
+SETS += [
+    EvalSet(f"slang-{name}", f"{SLANG}/{name}.rows.txt", "rows", "dev", "tracked", f"現代用語探針：{text}")
+    for name, text in SLANG_CLASSES.items()
+]
 BY_NAME = {s.name: s for s in SETS}
 
 # Named groups, for the common choices.
@@ -113,6 +131,7 @@ GROUPS = {
     "shanjie": [s.name for s in SETS if s.name.startswith("shanjie-")],
     # Built by `zt train lexicon misread` (ml/src/zhuyintype_ml/training/lexicon/misread.py).
     "misread": [f"misread-dev-{name}" for name in MISREAD_SUBSETS],
+    "slang": [f"slang-{name}" for name in SLANG_CLASSES],
 }
 
 

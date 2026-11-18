@@ -191,9 +191,11 @@ impl BrokerClient {
         if !self.connected() || self.busy.get() {
             return None;
         }
-        self.busy.set(true);
+        // Cleared on the way out even if the transaction panics (the COM method's guard catches it): a `busy` left
+        // set would hand every later key to the application and keep any window on screen, the picker's included.
+        let busy = Busy::set(&self.busy);
         let reply = self.transaction(context, op, fields);
-        self.busy.set(false);
+        drop(busy);
         if reply.is_none() {
             self.disconnect(true);
         }
@@ -266,6 +268,22 @@ impl BrokerClient {
         // SAFETY: created above.
         let _ = unsafe { CloseHandle(event) };
         (finished && done > 0).then_some(done as usize)
+    }
+}
+
+/// `BrokerClient::busy` while a request is in flight; cleared when dropped, unwinding included.
+struct Busy<'a>(&'a Cell<bool>);
+
+impl<'a> Busy<'a> {
+    fn set(flag: &'a Cell<bool>) -> Self {
+        flag.set(true);
+        Self(flag)
+    }
+}
+
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        self.0.set(false);
     }
 }
 

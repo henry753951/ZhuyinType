@@ -26,14 +26,18 @@ License: CC-BY-SA-4.0
  McBopomofo and wordfreq data; attributions are in /usr/share/licenses/zhuyintype/LEXICON.txt and SOURCES.md, the
  licence texts beside them.
 
-Files: usr/share/zhuyintype/data/lm/* usr/share/zhuyintype/data/lm_chat/*
-Copyright: Chinese Wikipedia contributors, the Legislative Yuan of Taiwan, OpenFun Ltd., Common Voice contributors
- and ZhuyinType contributors
+Files: usr/share/zhuyintype/data/lm/* usr/share/zhuyintype/data/lm_chat/* usr/share/zhuyintype/data/reranker/*
+Copyright: Chinese Wikipedia contributors, the Legislative Yuan of Taiwan, OpenFun Ltd., Common Voice contributors,
+ PTT Gossiping authors (compiled by zake7749), NTOU NLP Lab (TOCP), GaryYang123, Tsinghua CoAI, the MNBVC
+ community and ZhuyinType contributors
 License: CC-BY-SA-4.0
  Trained from Chinese Wikipedia (CC BY-SA 4.0), Legislative Yuan gazettes through LYAPI (OGDL 1.0, CC BY 4.0) and
- Common Voice sentences (CC0 1.0).  Each model directory has its NOTICE.md and attribution files (articles.tsv.gz,
- attribution.jsonl, source-manifest.json), which must stay with the model.  Licence text:
- /usr/share/licenses/zhuyintype/CC-BY-SA-4.0.txt.
+ Common Voice sentences (CC0 1.0).  Since 0.7.2 the chat model and the reranker also count PTT Gossiping titles and
+ pushes (Gossiping-Chinese-Corpus 2.0, marked Apache-2.0 by its compiler), TOCP v1.0 (CC BY-SA 4.0), Taiwan-like
+ sentences filtered from zh-meme-sft-8k, LCCC-base and MNBVC (marked MIT) and themed sentences written by Claude
+ Haiku 5.5; the source texts are not redistributed.  Each model directory has its NOTICE.md and attribution files
+ (articles.tsv.gz, attribution.jsonl, source-manifest.json), which must stay with the model.  Licence texts:
+ /usr/share/licenses/zhuyintype/CC-BY-SA-4.0.txt and Apache-2.0.txt.
 
 Files: usr/lib/*/fcitx5/libzhuyintype.so
 Copyright: 2026 Henry753951 and ZhuyinType contributors

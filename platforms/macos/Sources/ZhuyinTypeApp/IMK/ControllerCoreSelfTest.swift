@@ -79,6 +79,7 @@ enum ControllerCoreSelfTest {
         }
 
         SymbolPickerSelfTest.run(engine: engine, test: test)
+        ShortcutSelfTest.run(engine: engine, test: test)
 
         test("secure input: nothing is read, remembered or learned") {
             let (core, _) = session()
@@ -1202,9 +1203,13 @@ enum ControllerCoreSelfTest {
             }
             let old = ListItem(id: "old", title: "王小明", detail: "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ")
             controller.model.phrases.list.onEdit?(old)
-            func waitForSheet() throws -> NSWindow {
-                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-                guard let sheet = window.attachedSheet else { throw Failure(description: "missing edit sheet") }
+            // The next sheet, other than `previous`: a slow machine (CI) can take longer than 0.1 s to attach it.
+            func waitForSheet(after previous: NSWindow? = nil) throws -> NSWindow {
+                let deadline = Date(timeIntervalSinceNow: 3)
+                repeat {
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+                } while (window.attachedSheet == nil || window.attachedSheet === previous) && Date() < deadline
+                guard let sheet = window.attachedSheet, sheet !== previous else { throw Failure(description: "missing edit sheet") }
                 return sheet
             }
             func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
@@ -1215,9 +1220,9 @@ enum ControllerCoreSelfTest {
             }
             word.stringValue = ""
             window.endSheet(first, returnCode: .alertFirstButtonReturn)
-            let error = try waitForSheet()
+            let error = try waitForSheet(after: first)
             window.endSheet(error, returnCode: .alertFirstButtonReturn)
-            let retry = try waitForSheet()
+            let retry = try waitForSheet(after: error)
             guard let retryRoot = retry.contentView,
                   let retryWord = descendants(retryRoot).compactMap({ $0 as? NSTextField }).first(where: { $0.placeholderString == "例如：王小明" }),
                   let retryReading = descendants(retryRoot).compactMap({ $0 as? NSComboBox }).first else {
@@ -1692,14 +1697,23 @@ enum ControllerCoreSelfTest {
                 let style = preferences.candidateStyle
                 content.reset()
                 let start = DispatchTime.now().uptimeNanoseconds
-                for index in 0..<200 {
+                for index in 0..<100 {
                     let list = CandidateList(items: items, selection: (index % 2) * 9, pageSize: 9, tolerant: false)
                     content.update(list: list, preview: nil, keys: Array("123456789"), style: style)
                 }
-                return Double(DispatchTime.now().uptimeNanoseconds - start) / 200 / 1000
+                return Double(DispatchTime.now().uptimeNanoseconds - start) / 100 / 1000
             }
+            // One timed run of each was at the mercy of whatever else the machine did: on a busy CI runner the
+            // animated run once took 771 µs against 273 µs plain, while the same build passed minutes earlier.  So
+            // both are warmed up, then measured in alternating rounds, and each keeps its fastest round: the cost
+            // of the code itself, with other processes' interruptions dropped.
             _ = flips(animated: false)
-            let plain = flips(animated: false), animated = flips(animated: true)
+            _ = flips(animated: true)
+            var plain = Double.infinity, animated = Double.infinity
+            for _ in 0..<5 {
+                plain = min(plain, flips(animated: false))
+                animated = min(animated, flips(animated: true))
+            }
             print("     page change: \(String(format: "%.0f", plain)) µs plain, \(String(format: "%.0f", animated)) µs animated")
             try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
         }

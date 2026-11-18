@@ -4,9 +4,10 @@
     python -m zhuyintype_ml.training.reranker.prepare --workers 60 [--out data/build/reranker]
 
 Training text: Wikipedia sentences (the lm pipeline's deduplicated lm/work/unique.txt), generated Taiwan colloquial
-sentences and Common Voice zh-TW sentences (training/corpus).  Every sentence sharing an 8-character substring with a
-test or development sentence is dropped, so the evaluation sets stay unseen.  Colloquial text is repeated
-`--colloquial-repeat` times.
+sentences and Common Voice zh-TW sentences (training/corpus), and with --chat DIR the training sentences of a chat
+model variant (lm_chat2/<variant>/work/sentences/*.txt; that step already left out every evaluation set and row
+file).  Every sentence sharing an 8-character substring with a test or development sentence is dropped, so the
+evaluation sets stay unseen.  Colloquial text is repeated `--colloquial-repeat` times, chat text `--chat-repeat`.
 
 Writes vocab.json (id → character; 0 = <pad>, 1 = <bos>, 2 = <unk>), train.bin and val_{wiki,colloquial}.bin
 (uint16 streams, each sentence preceded by <bos>) and prepare.json.
@@ -36,6 +37,8 @@ HELD_OUT = [
     "corpus/dev_wikipedia.txt",
     "corpus/dev_colloquial.txt",
 ]
+# With --chat, the chat development and test sets too.
+CHAT_HELD_OUT = ["lm_chat2/dev_dialogue.txt", "lm_chat2/test_dialogue.txt"]
 COLLOQUIAL = ["synthetic_phase1.txt", "synthetic_background.txt", "train_commonvoice.txt"]
 GRAMS: set[str] = set()
 
@@ -79,16 +82,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=32)
     parser.add_argument("--vocab", type=int, default=12000)
     parser.add_argument("--colloquial-repeat", type=int, default=2)
+    parser.add_argument("--chat", type=Path, default=None, help="a chat variant's sentence shards (*.txt)")
+    parser.add_argument("--chat-repeat", type=int, default=1)
     args = parser.parse_args(argv)
     os.makedirs(args.out, exist_ok=True)
 
     held: set[str] = set()
-    for path in HELD_OUT:
+    for path in HELD_OUT + (CHAT_HELD_OUT if args.chat else []):
         for line in read(paths.data(path)):
-            held |= grams(line.strip())
+            # dialogue files are context<TAB>truth
+            for part in line.strip().split("\t"):
+                held |= grams(part)
     print(f"held-out 8-grams: {len(held)}", flush=True)
 
     sources = {"wiki": [args.wiki], "colloquial": [paths.data("corpus", name) for name in COLLOQUIAL]}
+    if args.chat:
+        sources["chat"] = sorted(args.chat.glob("*.txt"))
     kept: dict[str, list[str]] = {}
     with mp.Pool(args.workers, initializer=init, initargs=(held,)) as pool:
         for name, files in sources.items():
@@ -114,14 +123,19 @@ def main(argv: list[str] | None = None) -> int:
             out.extend(index.get(c, 2) for c in s)
         return np.array(out, dtype=np.uint16)
 
-    train = kept["wiki"] + kept["colloquial"] * args.colloquial_repeat
+    train = kept["wiki"] + kept["colloquial"] * args.colloquial_repeat + kept.get("chat", []) * args.chat_repeat
     random.Random(7).shuffle(train)
     encode(train).tofile(os.path.join(args.out, "train.bin"))
     for name, path in [("wiki", "corpus/dev_wikipedia.txt"), ("colloquial", "corpus/dev_colloquial.txt")]:
         encode([line.strip() for line in read(paths.data(path)) if line.strip()]).tofile(
             os.path.join(args.out, f"val_{name}.bin")
         )
+    if args.chat:
+        # the chat development set's truths (context<TAB>truth)
+        truths = [line.rstrip("\n").split("\t")[-1] for line in read(paths.data(CHAT_HELD_OUT[0])) if line.strip()]
+        encode(truths).tofile(os.path.join(args.out, "val_chat.bin"))
     stats: dict[str, object] = {name: len(v) for name, v in kept.items()}
+    stats.update(chat_source=str(args.chat) if args.chat else None, chat_repeat=args.chat_repeat)
     stats.update(
         vocab=len(vocab),
         coverage=coverage,

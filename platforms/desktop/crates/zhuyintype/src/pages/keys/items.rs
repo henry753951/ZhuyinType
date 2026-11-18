@@ -218,7 +218,7 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
             KeyItem::new("zhuyin", "拼注音", fixed(&["注音鍵"])).sub("固定：注音鍵的位置依標準注音鍵盤"),
             KeyItem::new("tones", "聲調：二聲、三聲、四聲、輕聲", fixed(&["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"])).sub("固定"),
             KeyItem::new("space", "空白", fixed(&["空白"])).sub(space_subtitle(settings)).link(links::space_place()),
-            KeyItem::new("commit", "送出", fixed(&["Return"])).sub("固定"),
+            KeyItem::new("commit", "送出", fixed(&["Enter"])).sub("固定"),
             KeyItem::new("newline", "送出並換行", Keys::Command("commitWithNewline")),
             KeyItem::new("backspace", "刪掉注音符號，或游標前的字", fixed(&["⌫"])).sub("固定"),
             KeyItem::new("deleteWord", "刪掉一個詞", Keys::Command("deleteWord"))
@@ -289,7 +289,7 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
             )
             .sub("固定"),
             KeyItem::new("pick", "選字", Keys::Fixed(vec![selection_keys(settings)], Vec::new()))
-                .sub(format!("目前每頁 {} 個；Return 選取反白的字", settings.number("candidatesPerPage")))
+                .sub(format!("目前每頁 {} 個；Enter 選取反白的字", settings.number("candidatesPerPage")))
                 .link(links::selection_place()),
             KeyItem::new("move", "移動反白", fixed(if vertical { &["↑", "↓"] } else { &["←", "→"] }))
                 .sub(if vertical { "直式清單" } else { "橫式清單；↑ ↓ 翻頁" })
@@ -329,18 +329,24 @@ pub fn items(section: KeySection, settings: &Settings) -> Vec<KeyItem> {
         ],
         Page::Words => vec![
             KeyItem::new("selectLeft", "往左選取", Keys::Command("selectLeft"))
-                .sub("再按 Return 加入自訂詞")
+                .sub("再按 Enter 加入自訂詞")
                 .feature("feature.selectPhrase"),
             KeyItem::new("selectRight", "往右選取", Keys::Command("selectRight"))
-                .sub("再按 Return 加入自訂詞")
+                .sub("再按 Enter 加入自訂詞")
                 .feature("feature.selectPhrase"),
             KeyItem::new("addSelectedText", "選取的字加入自訂詞", Keys::Command("addSelectedText"))
                 .sub("在 App 裡選取 1 到 6 個字再按；預設沒有按鍵"),
             KeyItem::new("blockCandidate", "不要再推薦", Keys::Command("blockCandidate"))
-                .sub("反白的字詞不再出現在清單；5 秒內按 Ctrl+Z 復原"),
+                .sub("反白的字詞之後不再自動選用；也可以在候選字上按右鍵"),
             KeyItem::new("forgetCandidate", "忘記這個選字", Keys::Command("forgetCandidate")).sub("忘記選過反白的字詞"),
             KeyItem::new("addCandidatePhrase", "加入自訂詞", Keys::Command("addCandidatePhrase"))
-                .sub("反白的字詞；沒開清單時是整段組字"),
+                .sub("清單開著時，反白的字詞；要加入打的字，用選取"),
+            KeyItem::new(
+                "undoWordAction",
+                "復原上一個動作",
+                Keys::Fixed(vec![zt_core::shortcuts::UNDO_WORD_ACTION.label()], Vec::new()),
+            )
+            .sub("動作後 5 秒內，組字還在時"),
         ],
         _ => Vec::new(),
     }

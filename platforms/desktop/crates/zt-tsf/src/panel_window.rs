@@ -68,7 +68,7 @@ use zt_panel::a11y::{self, AccentChoice};
 use zt_panel::layout::{self as panel_layout, BADGE_H, BADGE_W, Frame, PanelLayout, RowLayout};
 use zt_panel::model::WORD_ACTIONS;
 use zt_panel::picker::{self, PickerHit, PickerLayout};
-use zt_panel::position::{Rect, popup_position_with_gap};
+use zt_panel::position::{Rect, anchor_in_window, popup_position_with_gap};
 use zt_panel::style::{Appearance, Panel};
 use zt_panel::tokens::{self, Colors, motion};
 
@@ -372,8 +372,10 @@ impl Surface {
             base.EndDraw(None, None)
         };
         if result.is_err() {
-            // The device went away (D2DERR_RECREATE_TARGET): a new target next time.
+            // The device went away (D2DERR_RECREATE_TARGET), or something drawn could not be (a font): a new target
+            // and new graphics next time.
             self.target.borrow_mut().take();
+            panel_draw::reset_graphics();
             // SAFETY: our own window.
             let _ = unsafe { InvalidateRect(Some(window), None, false) };
         }
@@ -588,6 +590,7 @@ impl Surface {
                 });
             } else {
                 self.target.borrow_mut().take();
+                panel_draw::reset_graphics();
             }
             SelectObject(memory, previous);
             let _ = DeleteObject(bitmap.into());
@@ -1010,8 +1013,12 @@ impl PanelWindow {
         }
         let width = (logical_w * scale).ceil() as i32;
         let height = (logical_h * scale).ceil() as i32;
+        // A caret the application reports outside its own window (the Start menu's empty search) is not where its
+        // text is: the window goes at the application's top instead.
+        let anchor =
+            owner_rect(self.owner.get()).map_or(to_rect(caret), |owner| anchor_in_window(to_rect(caret), owner));
         let (x, y) = popup_position_with_gap(
-            to_rect(caret),
+            anchor,
             f64::from(width),
             f64::from(height),
             panel.above,
@@ -1467,6 +1474,19 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
         }
         DefWindowProcW(window, message, wparam, lparam)
     }
+}
+
+/// The application window's rectangle (physical pixels, as the caret is), while it is shown.
+fn owner_rect(window: HWND) -> Option<Rect> {
+    if window.is_invalid() {
+        return None;
+    }
+    let mut frame = RECT::default();
+    // SAFETY: a window handle from the system; per-monitor awareness makes its rectangle physical.
+    let known = crate::composition::per_monitor(|| unsafe {
+        IsWindowVisible(window).as_bool() && GetWindowRect(window, &mut frame).is_ok()
+    });
+    known.then(|| to_rect(frame))
 }
 
 /// Whether `caret` (physical pixels) is a place in `window`, the application window being typed in.  Applications

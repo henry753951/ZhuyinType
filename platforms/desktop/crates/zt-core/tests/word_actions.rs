@@ -64,16 +64,29 @@ fn word_action_keys_pass_through_when_not_composing() {
 }
 
 #[test]
-fn adding_without_a_list_takes_the_whole_composition() {
+fn adding_is_for_the_highlighted_candidate_only() {
+    // With no list open nothing is highlighted: the key keeps the composition and adds nothing.  Adding characters of
+    // the composition is the selection's (⇧← ⇧→, then Enter).
     let mut f = Fixture::new();
     f.type_keys("gj zj6");
     let composition = f.composition();
-    assert!(f.press(code::RETURN, modifier::CONTROL), "Ctrl+Return is 加入自訂詞");
-    assert_eq!(f.input.presentation().notice.as_deref(), Some(format!("已加入自訂詞：{composition}").as_str()));
-    assert!(f.input.session().user_phrases().iter().any(|p| p.word == composition));
+    assert!(f.press(code::RETURN, modifier::CONTROL), "Ctrl+Enter is 加入自訂詞");
+    assert!(f.input.session().user_phrases().is_empty());
+    assert_eq!(f.composition(), composition);
     assert!(f.commits().is_empty());
+    // With a selection, too: Enter adds it, Ctrl+Enter does not add the whole composition instead.
+    assert!(f.press(code::LEFT, modifier::SHIFT));
+    assert!(f.press(code::RETURN, modifier::CONTROL));
+    assert!(f.input.session().user_phrases().is_empty());
+    // With the list open: the highlighted candidate, undone by Ctrl+Z.
+    f.press(code::ESCAPE, 0);
+    f.press(code::DOWN, 0);
+    let p = f.input.presentation();
+    let highlighted = p.rows[p.selected.unwrap()].text.clone();
+    assert!(f.press(code::RETURN, modifier::CONTROL));
+    assert!(f.input.session().user_phrases().iter().any(|p| p.word == highlighted), "{highlighted}");
     assert!(f.press(CTRL_Z.0, CTRL_Z.1));
-    assert!(!f.input.session().user_phrases().iter().any(|p| p.word == composition));
+    assert!(f.input.session().user_phrases().is_empty());
 }
 
 #[test]

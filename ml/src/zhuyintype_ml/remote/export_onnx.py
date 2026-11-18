@@ -131,7 +131,9 @@ def check_reranker(scorer: Scorer, vocabulary: int, path: Path) -> list[dict[str
         with torch.no_grad():
             expected = scorer(torch.from_numpy(x), torch.from_numpy(x)).numpy()
         actual = rr.run(None, {"ids": x, "targets": x})[0]
-        np.testing.assert_allclose(actual, expected, atol=2e-4, rtol=2e-5)
+        # Random tokens score down to about -40; fp32 sums in another order differ by about 1e-4 of that (the 0.7.2
+        # reranker: 0.0012 at -9.7).  The engine reads scores to about 0.01 nats.
+        np.testing.assert_allclose(actual, expected, atol=2e-4, rtol=2e-4)
         checks.append({"batch": batch, "length": length, "max_abs_error": float(np.max(abs(actual - expected)))})
     return checks
 

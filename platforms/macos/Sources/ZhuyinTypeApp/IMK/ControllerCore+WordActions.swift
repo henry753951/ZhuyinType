@@ -11,7 +11,7 @@ extension ControllerCore {
     static let wordActionHintLimit = 5
     static let wordActionHintKey = "wordActionHintCount"
 
-    /// Does `action` on candidate `index` (nil: the highlighted one, or the whole composition for adding).  Claims
+    /// Does `action` on candidate `index` of the open list (nil: the highlighted one; nothing with no list).  Claims
     /// the key only while composing; with nothing to compose it goes to the app.
     @discardableResult
     func wordAction(_ action: CandidateAction, at index: Int? = nil) -> Bool {
@@ -53,7 +53,7 @@ extension ControllerCore {
             return wordUndoOffered && notice != "已復原" ? notice + "　⌃Z 復原" : notice
         }
         guard listOpen else { return nil }
-        let defaults = UserDefaults.standard
+        let defaults = hintStorage
         let count = defaults.integer(forKey: Self.wordActionHintKey)
         guard count < Self.wordActionHintLimit else { return nil }
         if !listWasOpen { defaults.set(count + 1, forKey: Self.wordActionHintKey) }

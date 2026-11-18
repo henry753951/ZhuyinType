@@ -14,6 +14,10 @@ reranker parity sentences and a small prefix tree).  For each method, on the CPU
   the same comparison for the shipped models (`current`, against the fp16 method's reference), the usual Mac/Linux
   difference.
 
+- tree sizes: the prefix-tree package against PyTorch on the method's checkpoint over 600 trees shaped like the
+  engine's calls (`tree_sizes`): in fp16, Core ML's CPU kernels failed at single node counts that one small tree never
+  reaches (research log 2026-11-18, `chat-reranker`).  The check fails above 0.5 nats.
+
 Reported per model: the largest absolute difference of a log-probability the engine reads (valid candidates, real
 targets, tree edges) and, for v3, how often the top candidate agrees.  The report goes to <out>/parity-mac.json.
 Each method's v3/test_vectors.json is rewritten with its compressed Core ML outputs (the golden vectors of
@@ -34,6 +38,7 @@ from zhuyintype_ml.core import paths
 from zhuyintype_ml.training.v3.coreml import require_macos
 
 from .methods import output
+from .trees import check_trees
 
 TREE = {
     "ids": [[1, 3, 4, 5]],
@@ -136,6 +141,12 @@ def golden_vectors(v3: Path, got: dict[str, Any]) -> None:
     (v3 / "test_vectors.json").write_text(json.dumps(record) + "\n")
 
 
+def tree_sizes(reranker: Path, limit: float = 0.5) -> dict[str, Any]:
+    """The compiled prefix tree on the CPU against PyTorch on 600 engine-shaped trees (trees.py)."""
+    tree = model(reranker / "RerankerTree.mlmodelc")
+    return check_trees(reranker / "charlm.pt", lambda inputs: tree.predict(inputs)["logprob"], limit)
+
+
 def stored_weights(reranker: Path, v3: Path) -> dict[str, float]:
     """For each package, the largest difference between its decompressed weights and the uncompressed export's:
     0 means Core ML stores exactly the values the host evaluated."""
@@ -177,11 +188,16 @@ def main(argv: list[str] | None = None) -> int:
             entry["stored_weights_max_abs"] = stored_weights(reranker, v3)
             uncompressed = outputs(reranker, v3, ".uncompressed.mlpackage", reference)
             entry["uncompressed"] = differences(compressed, uncompressed)
+        entry["tree_sizes"] = tree_sizes(reranker)
         report[name] = entry
         print(name, json.dumps(entry), flush=True)
     record = args.out / "parity-mac.json"
     previous = json.loads(record.read_text()) if record.exists() else {}
     record.write_text(json.dumps({**previous, **report}, indent=2) + "\n")
+    failed = [name for name in args.method if report[name]["tree_sizes"]["failed_node_counts"]]
+    if failed:
+        print("prefix tree wrong on the CPU at some node counts:", ", ".join(failed), flush=True)
+        return 1
     return 0
 
 

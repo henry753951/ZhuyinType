@@ -106,6 +106,41 @@ fn unshifted(code: i32, modifiers: i32) -> i32 {
     code
 }
 
+/// What the text service knows of the host when it decides on a key: the last reply it applied, and what it shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Routing {
+    /// The reply's `composing`, or a composition in the document.
+    pub(crate) composing: bool,
+    /// 符號與 Emoji is on screen: the window the text service draws holds the picker's grid.
+    pub(crate) picker: bool,
+    /// 英 (Caps Lock counted only once the host has seen it).
+    pub(crate) english: bool,
+    /// A passive 聯想詞 list is shown (the reply's `associated`).
+    pub(crate) suggesting: bool,
+}
+
+impl Routing {
+    /// The host owns every key: a composition, or the picker, whose search, arrows, Tab, ⌫, Return and Esc are all
+    /// its keys in either mode.  The picker counts even if a reply said otherwise (an older host, or a reply that did
+    /// not reach the document): a key given to the application while the grid shows is a key the search never gets.
+    fn owns_keys(self) -> bool {
+        self.composing || self.picker
+    }
+}
+
+/// `OnTestKeyDown`/`OnTestKeyUp`: whether the text service takes the key from the application for the host.
+pub(crate) fn claims_key(key: &Key, routing: Routing, claims: &[(i32, i32)]) -> bool {
+    let owned = routing.owns_keys();
+    claimed_key(key, claims)
+        || (routing.suggesting && !owned && enters_suggestions(key))
+        || host_wants_key(key, owned, routing.english)
+}
+
+/// A key the application gets that the host is told about (`host_observes_key`); never while the host owns keys.
+pub(crate) fn observes_key(key: &Key, routing: Routing) -> bool {
+    host_observes_key(key, routing.owns_keys(), routing.english, routing.suggesting)
+}
+
 /// While a passive 聯想詞 list shows (the reply's `associated`): ↓ with no modifier enters it, so the text service
 /// claims it although nothing is composed.  Every other key the list leaves to the application.
 pub(crate) fn enters_suggestions(key: &Key) -> bool {
@@ -154,7 +189,7 @@ mod tests {
         release.release = true;
         assert!(!claimed_key(&release, &claims));
         assert!(!claimed_key(&key('Q' as i32, CONTROL | ALT), &[]));
-        // Ctrl+Delete is no command's: with nothing composed it reaches the application.
+        // Ctrl+Delete (不要再推薦) acts only on an open list: with nothing composed it reaches the application.
         assert!(!claimed_key(&key(KEY_DELETE, CONTROL), &claims));
         assert!(!host_wants_key(&key(KEY_DELETE, CONTROL), false, false));
     }
@@ -221,6 +256,79 @@ mod tests {
         assert!(!host_observes_key(&Key { release: true, ..key(KEY_LEFT, 0) }, false, false, true));
         // Once entered the list is a composition again: every key is claimed, none observed.
         assert!(!host_observes_key(&key(KEY_LEFT, 0), true, false, true));
+    }
+
+    /// Every key the picker acts on: its search (letters, Zhuyin keys on digits and symbols, Space), 1–9, the arrows,
+    /// Page Up/Down, Tab, ⌫, Return, Esc, and the releases.
+    fn picker_keys() -> Vec<Key> {
+        let mut keys: Vec<Key> = ['V', 'U', 'L', 'H', 'E', 'A', 'R', 'T']
+            .into_iter()
+            .map(|c| key(c as i32, 0))
+            .chain(b"1490-;,/".iter().copied().map(|c| key(i32::from(c), 0)))
+            .chain(
+                [
+                    0x20,
+                    KEY_LEFT,
+                    KEY_RIGHT,
+                    KEY_UP,
+                    KEY_DOWN,
+                    KEY_PAGE_UP,
+                    KEY_PAGE_DOWN,
+                    KEY_TAB,
+                    KEY_BACKSPACE,
+                    KEY_RETURN,
+                    KEY_ENTER,
+                    KEY_ESCAPE,
+                ]
+                .into_iter()
+                .map(|code| key(code, 0)),
+            )
+            .collect();
+        keys.push(key(KEY_TAB, SHIFT));
+        keys.push(key('V' as i32, SHIFT));
+        let releases: Vec<Key> = keys.iter().map(|k| Key { release: true, ..*k }).collect();
+        keys.extend(releases);
+        keys
+    }
+
+    #[test]
+    fn the_picker_takes_every_key_in_either_mode() {
+        let claims = [(i32::from(b'/'), CONTROL | SHIFT)];
+        for english in [false, true] {
+            // As the host replies while the picker is open (`composing`), and with the grid on screen alone.
+            for (composing, picker) in [(true, true), (true, false), (false, true)] {
+                let routing = Routing { composing, picker, english, suggesting: false };
+                for pressed in picker_keys() {
+                    assert!(claims_key(&pressed, routing, &claims), "{pressed:?} english={english} {routing:?}");
+                    assert!(!observes_key(&pressed, routing), "{pressed:?} is the picker's, not observed");
+                }
+                // The key that opened it closes it.
+                assert!(claims_key(&key('?' as i32, CONTROL | SHIFT), routing, &claims));
+            }
+        }
+    }
+
+    #[test]
+    fn a_picker_shown_over_a_stale_suggestion_list_still_takes_its_keys() {
+        let routing = Routing { composing: false, picker: true, english: false, suggesting: true };
+        for pressed in [key(KEY_ESCAPE, 0), key(KEY_RETURN, 0), key('V' as i32, 0), key(KEY_LEFT, 0)] {
+            assert!(claims_key(&pressed, routing, &[]));
+            assert!(!observes_key(&pressed, routing));
+        }
+    }
+
+    #[test]
+    fn without_the_picker_idle_keys_stay_the_applications() {
+        // The rules the picker overrides still hold once it closes.
+        let english = Routing { english: true, ..Routing::default() };
+        let chinese = Routing::default();
+        assert!(!claims_key(&key('V' as i32, 0), english, &[]));
+        assert!(claims_key(&key('V' as i32, 0), chinese, &[]));
+        for code in [KEY_ESCAPE, KEY_RETURN, KEY_LEFT, KEY_TAB, KEY_BACKSPACE] {
+            assert!(!claims_key(&key(code, 0), chinese, &[]), "{code:#x}");
+            assert!(!claims_key(&key(code, 0), english, &[]), "{code:#x}");
+        }
+        assert!(observes_key(&key(KEY_BACKSPACE, 0), chinese));
     }
 
     #[test]

@@ -232,8 +232,8 @@ public final class Composer {
         return zt_composer_revert_correction(handle)
     }
 
-    /// Whether `action` applies to candidate `index` of the open list (nil: the highlighted one; with no list open,
-    /// adding a custom word takes the whole composition).
+    /// Whether `action` applies to candidate `index` of the open list (nil: the highlighted one); never with no list
+    /// open.
     public func candidateActionAvailable(_ action: CandidateAction, at index: Int? = nil) -> Bool {
         zt_composer_candidate_action_available(handle, action.rawValue, index ?? -1)
     }

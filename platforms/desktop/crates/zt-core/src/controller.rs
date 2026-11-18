@@ -277,7 +277,9 @@ impl InputController {
         if self.session.composing() {
             let _ = self.session.reset();
         }
-        self.picker = Some(Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill));
+        let mut picker = Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill);
+        picker.set_english(self.english());
+        self.picker = Some(picker);
         self.sync_picker();
         true
     }
@@ -588,17 +590,20 @@ impl InputController {
             return self.pass_through();
         }
         // Ctrl+Z undoes a word action for a few seconds while still composing (a fixed key, not a command).
-        if crate::shortcuts::Binding::normalized(key.code, key.modifiers)
-            == Some(crate::shortcuts::Binding { key: i32::from(b'Z'), modifiers: modifier::CONTROL })
+        if crate::shortcuts::Binding::normalized(key.code, key.modifiers) == Some(crate::shortcuts::UNDO_WORD_ACTION)
             && self.word_undo_offered()
         {
             return self.undo_word_action();
         }
         if let Some(command) = command {
-            if !self.shortcuts.is_enabled(command.id) {
+            if self.shortcuts.is_enabled(command.id) {
+                return self.dispatch(command.id, command.action, key, time);
+            }
+            // Page Up and Page Down page the list anyway, as they do on macOS (DESIGN.md「可以關閉的功能」): with 翻頁 off
+            // only the other keys of 上一頁／下一頁 go to the app.
+            if !matches!(key.canonical(), (code::PAGE_UP | code::PAGE_DOWN, 0)) {
                 return self.pass_through();
             }
-            return self.dispatch(command.id, command.action, key, time);
         }
         // A command's input comes only through its key; its old default key, now unbound, is the app's.
         let Some(input) = key.input().filter(|input| !is_command_input(*input) && !self.turned_off(*input)) else {
@@ -805,8 +810,8 @@ impl InputController {
 
     // MARK: Word actions
 
-    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one; adding with no list open
-    /// takes the whole composition).  False when it does not apply.
+    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one).  False when it does not
+    /// apply (also with no list open).
     pub fn word_action(&mut self, action: CandidateAction, index: Option<usize>) -> bool {
         self.sync_settings();
         if self.secure || self.english() || !self.session.ready() || !self.session.composing() {

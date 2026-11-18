@@ -61,6 +61,9 @@ final class ControllerCore {
     var wordActionTime: Date?
     /// Whether the list was open at the last render, to count list openings for the word-action hint.
     var listWasOpen = false
+    /// Where the word-action hint counts list openings: the app's settings; the wizard's practice field keeps its
+    /// own, so practising never writes the user's settings.
+    var hintStorage: SettingsStorage = UserDefaults.standard
     /// 符號與 Emoji (ControllerCore+Symbols.swift): the symbols, nil when the engine has none; the open picker, which
     /// gets every key while it is open; where it was opened.
     var symbolSource: SymbolSource?

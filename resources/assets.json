@@ -1,10 +1,10 @@
 {
   "components": {
     "checkpoints": {
-      "file": "zhuyintype-checkpoints-14289bd6d5f7.tar.gz",
-      "release": "data-5",
-      "sha256": "14289bd6d5f7cc53c6c3a146056a65750a5d218771d87f0b4e98bcc0703851f3",
-      "size": 308375757
+      "file": "zhuyintype-checkpoints-ed22a033e152.tar.gz",
+      "release": "data-11",
+      "sha256": "ed22a033e15292a97855701191827bedee75d0254e4784a18bb14b4988fef461",
+      "size": 307322388
     },
     "eval-sets": {
       "file": "zhuyintype-eval-sets-e0612940c268.tar.gz",
@@ -25,22 +25,22 @@
       "size": 63940887
     },
     "lm_chat": {
-      "file": "zhuyintype-lm_chat-a93f6891b879.tar.gz",
-      "release": "data-2",
-      "sha256": "a93f6891b879e2f4c0d3127fde848feafaafbfdcdcead8c81d68c0210f976d32",
-      "size": 5210068
+      "file": "zhuyintype-lm_chat-41ecafbb2769.tar.gz",
+      "release": "data-11",
+      "sha256": "41ecafbb2769077bdf712d2b031cb71259da7da1469383a21cf18f61d161f224",
+      "size": 17318187
     },
     "onnx": {
-      "file": "zhuyintype-onnx-a132a6ca895c.tar.gz",
-      "release": "data-10",
-      "sha256": "a132a6ca895c5e760a1e2297d4a6174d100d1f4bc1fd506f791813b8b22006ff",
-      "size": 79705545
+      "file": "zhuyintype-onnx-feea795ec966.tar.gz",
+      "release": "data-11",
+      "sha256": "feea795ec9669c7d7b4b1427ff25d22934929a4a03ab4d8110ae16966d46f9f7",
+      "size": 78964520
     },
     "reranker": {
-      "file": "zhuyintype-reranker-2f2796febc6a.tar.gz",
-      "release": "data-8",
-      "sha256": "2f2796febc6a9f0d999d15a674f87465c4cd7836db0a0b8bf1da7cfbb7645b35",
-      "size": 27063472
+      "file": "zhuyintype-reranker-e432b6ba59da.tar.gz",
+      "release": "data-11",
+      "sha256": "e432b6ba59da9fb77c864c5b5f1ae388040086397613cda238686304cf96a13f",
+      "size": 26667422
     },
     "v3": {
       "file": "zhuyintype-v3-82ba074b7781.tar.gz",

@@ -191,9 +191,28 @@ enum UIPreviewRenderer {
                              to: directory.appendingPathComponent("candidate-a11y-\(name)-\(suffix).png"))
         }
         DisplayOptions.override = display
-        for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字")] {
+        for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字"),
+                               ("select-2", "Enter 加入自訂詞：哈囉"), ("select-6", "Enter 加入自訂詞：我們今天去看")] {
             try capturePanel(list: nil, keys: [], style: CandidateStyle(layout: .horizontal), notice: notice,
                              to: directory.appendingPathComponent("notice-\(file)-\(suffix).png"))
+        }
+        // The six-character phrase above a list, the list of one character (你) and a list of one candidate, and a
+        // long reading: the window is as wide as all of it, nothing cut short.
+        let single = ["你", "妳", "擬", "尼", "泥", "逆", "膩", "倪", "霓", "旎", "伱"].map { Candidate(text: $0) }
+        for layout in CandidateLayout.allCases {
+            try capturePanel(list: CandidateList(items: single, selection: 0, pageSize: 9, tolerant: false), keys: keys,
+                             style: CandidateStyle(layout: layout), zhuyinHint: "ㄋㄧˇ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-one-character-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "你好")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄋㄧˇ ㄏㄠˇ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-one-candidate-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "中華民國大學")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄓㄨㄥ ㄏㄨㄚˊ ㄇㄧㄣˊ ㄍㄨㄛˊ ㄉㄚˋ ㄒㄩㄝˊ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-long-reading-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "我們今天去看")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄨㄛˇ ㄇㄣ˙ ㄐㄧㄣ ㄊㄧㄢ ㄑㄩˋ ㄎㄢˋ",
+                             notice: "Enter 加入自訂詞：我們今天去看",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-notice-6-\(suffix).png"))
         }
         let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))
@@ -226,15 +245,20 @@ enum UIPreviewRenderer {
         let source = EngineSymbolSource()
         let browsing = SymbolPicker(source: source, recent: ["😂", "，", "→", "❤️"])
         browsing.selectTab(browsing.tabs.firstIndex { $0.id == "smileys" } ?? 0)
-        for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
+        // Into the grid, then the second row's third item.
+        for key: UInt16 in [125, 125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
         let searching = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
         let prefilled = SymbolPicker(source: source, recent: [], prefill: "笑")
-        let english = SymbolPicker(source: source, recent: [])
+        let digits = SymbolPicker(source: source, recent: ["😂", "，"])
+        for key: UInt16 in [25, 21] { _ = digits.handle(keyCode: key, modifiers: []) } // 9 4: ㄞˋ
+        let english = SymbolPicker(source: source, recent: [], english: true)
         for key: UInt16 in [4, 14, 0, 15, 17] { _ = english.handle(keyCode: key, modifiers: []) } // heart
         let empty = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [6, 6, 6, 7, 7] { _ = empty.handle(keyCode: key, modifiers: []) } // zzzxx
-        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("english", english), ("no-results", empty)] {
+        let pickers = [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("zhuyin-digits", digits),
+                       ("english", english), ("no-results", empty)]
+        for (name, picker) in pickers {
             let view = SymbolPickerView(frame: .zero)
             view.hoverEnabled = false
             view.update(picker)

@@ -42,7 +42,13 @@ CORPORA = {
     "chat": {"min_count": 5},
     "registry": {"min_count": 10},
     "places": {"min_count": 10},
+    # 2026-11-17 (docs/research/log.md `chat-words`): PTT Gossiping titles and pushes with TOCP, and the themed
+    # sentences Claude Haiku 5.5 wrote (data/build/private/gen*, without the seed-*.txt files built from the user's
+    # corrections).  Only with --option corpora=ptt,generated.
+    "ptt": {"min_count": 10},
+    "generated": {"min_count": 3},
 }
+DEFAULT_CORPORA = ("wiki", "chat", "registry", "places")
 EVALUATION = (
     "corpus/dev_colloquial.txt",
     "corpus/dev_wikipedia.txt",
@@ -70,9 +76,21 @@ def out(*parts: str) -> Callable[[Context], str]:
     return lambda ctx: str(ctx.out.joinpath(*parts))
 
 
+def selected(ctx: Context) -> list[str]:
+    """The corpora this run mines: --option corpora=a,b, else the four of the 2026-10 lexicon coverage work."""
+    names = [c for c in str(ctx.options.get("corpora", ",".join(DEFAULT_CORPORA))).split(",") if c]
+    unknown = set(names) - set(CORPORA)
+    if unknown:
+        raise ValueError(f"unknown corpora: {sorted(unknown)}")
+    return names
+
+
 def excludes(ctx: Context) -> list[str]:
     files = [ctx.data / p for p in EVALUATION if (ctx.data / p).exists()]
     files += sorted((paths.EVAL_SETS).rglob("*.txt"))
+    # the row sets of the loss analysis and the private correction holdout, as the chat model excludes them
+    files += sorted((ctx.data / "loss-analysis" / "rows").glob("*.txt"))
+    files += sorted((ctx.data / "private").glob("*holdout*.rows.txt"))
     extra = ctx.options.get("exclude")
     if extra:
         files += sorted(Path(str(extra)).rglob("*.txt"))
@@ -85,11 +103,17 @@ def corpus_files(name: str, ctx: Context) -> list[str]:
         return [str(p) for p in sorted(directory.glob("*.txt"))]
     if name == "chat":
         return [str(ctx.data / "lm_chat2" / "real_dialogues.jsonl"), str(ctx.data / "corpus" / "train_commonvoice.txt")]
+    if name == "ptt":
+        ptt = paths.raw("lm_chat2", "ptt")
+        return [str(ptt / "Gossiping-QA-Dataset-2_0.csv"), str(ptt / "reply"), str(ptt / "TOCP_v1.0.zip")]
+    if name == "generated":
+        themed = [p for p in sorted((ctx.data / "private" / "gen").glob("*.txt")) if not p.name.startswith("seed-")]
+        return [str(p) for p in themed + sorted((ctx.data / "private" / "gen2").glob("*.txt"))]
     return [str(sources.path("BGMOPEN1.zip"))]
 
 
 def prepare(ctx: Context) -> None:
-    for name in CORPORA:
+    for name in selected(ctx):
         field = ["--registry-field", "address"] if name == "places" else []
         ctx.python(
             "zhuyintype_ml.training.lexicon.mine",
@@ -106,7 +130,8 @@ def prepare(ctx: Context) -> None:
 
 
 def count(ctx: Context) -> None:
-    for name, settings in CORPORA.items():
+    for name in selected(ctx):
+        settings = CORPORA[name]
         ctx.python(
             "zhuyintype_ml.training.lexicon.mine",
             "count",
@@ -243,6 +268,101 @@ def language_models(ctx: Context) -> None:
     )
 
 
+def screen(ctx: Context) -> None:
+    """The colloquial packs screened with the review labels (review/labels-*.tsv) and TOCP's profane expressions."""
+    ctx.python(
+        "zhuyintype_ml.training.lexicon.screen",
+        "--packs",
+        str(ctx.out / str(ctx.options.get("packs_dir", "packs-colloquial"))),
+        "--corpus",
+        *selected(ctx),
+        "--labels",
+        str(ctx.out / "review"),
+        "--tocp",
+        str(paths.raw("lm_chat2", "ptt", "TOCP_v1.0.zip")),
+        "--out",
+        str(ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))),
+        *(["--variants", str(ctx.out / "variants")] if ctx.options.get("variants", "1") != "0" else []),
+    )
+
+
+def variants(ctx: Context) -> None:
+    """Variant and misspelt spellings among the colloquial packs' words, by their contexts in the corpus."""
+    ctx.python(
+        "zhuyintype_ml.training.lexicon.variants",
+        "--mined",
+        str(ctx.out / "mined"),
+        "--packs",
+        str(ctx.out / str(ctx.options.get("packs_dir", "packs-colloquial"))),
+        "--corpus",
+        *selected(ctx),
+        "--lexicon",
+        str(ctx.data / "lexicon.tsv"),
+        "--unihan",
+        str(sources.path("Unihan-18.0.0.zip")),
+        "--out",
+        str(ctx.out / "variants"),
+        group="train",
+        threads=1,
+    )
+
+
+def words_target(ctx: Context, packs: list[str]) -> Path:
+    """words-<packs>/, or --option words_dir=NAME."""
+    return ctx.out / str(ctx.options.get("words_dir", "words-" + "-".join(packs)))
+
+
+def words(ctx: Context) -> None:
+    """The colloquial packs in the candidate chat model and the shipped lexicon, for a paired comparison.
+
+    --option word_packs=ptt,generated (default) and --option chat_variant=ptt-cns-genpub (default): the chat model
+    re-counted from that variant's prepared text with its seed lexicon plus the packs' words, and the shipped
+    lexicon.tsv plus the packs' rows, both in words-<packs>/ (lm_chat-<variant>/ and lexicon.tsv)."""
+    packs = [p for p in str(ctx.options.get("word_packs", "ptt,generated")).split(",") if p]
+    variant = str(ctx.options.get("chat_variant", "ptt-cns-genpub"))
+    folder = ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))
+    target = words_target(ctx, packs)
+    # the chat model's vocabulary takes the screened words without the demoted vulgar ones (screen.py)
+    seed_args = [arg for p in packs for arg in ("--pack", str(folder / f"{p}.seed.tsv"))]
+    ctx.python(
+        "zhuyintype_ml.training.lexicon.lm",
+        "--base",
+        str(ctx.data / "lm_chat2" / "inputs" / "lexicon.tsv"),
+        *seed_args,
+        "--out",
+        str(target),
+        "--wiki-work",
+        str(target / "unused"),
+        "--dump",
+        str(target / "unused"),
+        "--chat-data",
+        str(ctx.data),
+        "--chat-variant",
+        variant,
+        "--only",
+        "chat",
+        "--workers",
+        str(ctx.options.get("workers", 24)),
+        group="train",
+    )
+    words_lexicon(ctx)
+
+
+def words_lexicon(ctx: Context) -> None:
+    """Only the lexicon half of `words`: the shipped lexicon.tsv plus the screened packs, lm/ linked beside it."""
+    packs = [p for p in str(ctx.options.get("word_packs", "ptt,generated")).split(",") if p]
+    folder = ctx.out / str(ctx.options.get("screened_dir", "packs-screened"))
+    target = words_target(ctx, packs)
+    ctx.python(
+        "zhuyintype_ml.training.lexicon.extend",
+        "--lexicon",
+        str(ctx.data / "lexicon.tsv"),
+        *[arg for p in packs for arg in ("--pack", str(folder / f"{p}.tsv"))],
+        "--out",
+        str(target / "lexicon.tsv"),
+    )
+
+
 def base(ctx: Context) -> None:
     ctx.python("zhuyintype_ml.data.lexicon", str(ctx.out / "base.tsv"), group="data")
 
@@ -298,9 +418,9 @@ PIPELINE = Pipeline(
                 "--lexicon",
                 out("base.tsv"),
                 "--corpus",
-                lambda ctx: list(CORPORA),
+                selected,
                 "--out",
-                out("packs"),
+                lambda ctx: str(ctx.out / str(ctx.options.get("packs_dir", "packs"))),
                 "--polyphone",
                 lambda ctx: str(ctx.data / "v3_030"),
                 "--check",
@@ -312,5 +432,21 @@ PIPELINE = Pipeline(
         ),
         Step("lm", "Wikipedia and chat bigrams re-segmented with the packs' words (GPU host)", language_models),
         Step("merge", "lexicon.tsv: base rows, channel variants, packs", merge),
+        Step(
+            "variants",
+            "variant and misspelt spellings among the colloquial packs, by corpus contexts (GPU host, numpy)",
+            variants,
+        ),
+        Step(
+            "screen",
+            "colloquial packs screened: fragments and variants out, vulgar words demoted (review labels, TOCP)",
+            screen,
+        ),
+        Step(
+            "words",
+            "colloquial packs (ptt, generated) in the candidate chat model and the shipped lexicon (GPU host)",
+            words,
+        ),
+        Step("words-lexicon", "only the lexicon of `words`, with lm/ linked beside it", words_lexicon),
     ),
 )

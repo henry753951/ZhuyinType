@@ -68,10 +68,17 @@ struct IntroFeature: Identifiable {
             : "⇧ 加符號鍵打出中文標點。標點預設全形，可切換全半形。"
         let wordKeys = [keys.text(.blockCandidate), keys.text(.addCandidatePhrase)].compactMap { $0 }
         let quick = keys.text(.quickSettings).map { "按 \($0) " } ?? "從輸入法選單"
+        // What the card says about corrections follows 標示自動修正 and ⌫ 還原自動修正 (Linux/Windows `intro.rs`).
+        let corrections = switch (preferences.showCorrections, preferences.undoCorrectionWithBackspace) {
+        case (true, true): "；修正過的字加點線，按 ⌫ 改回"
+        case (true, false): "；修正過的字加點線"
+        case (false, true): "；按 ⌫ 改回修正"
+        case (false, false): ""
+        }
         var features = [
             IntroFeature(title: "整句輸入", text: "一句話連續打完，依讀音與前後文選出最通順的寫法。", symbol: "text.word.spacing",
                          tint: .blue, place: .section(.choosing, "轉換")),
-            IntroFeature(title: "按錯鍵也能打對", text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先；修正過的字加點線，按 ⌫ 改回。",
+            IntroFeature(title: "按錯鍵也能打對", text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先\(corrections)。",
                          symbol: "wand.and.stars", tint: .indigo, place: SettingsPlace(.corrections, row: SettingsRow.typo)),
             IntroFeature(title: "依前文選字", text: "參考游標前最多 \(ContextPane.readLimit) 個字，並接續同一個 App 最近 \(ContextPane.minutes) 分鐘的前文。",
                          symbol: "text.alignleft", tint: .teal, place: SettingsPlace(.choosing, row: SettingsRow.context)),

@@ -8,7 +8,10 @@
 //! `vertical-end-50` … (`next`, `previous` or `end` at a percentage), and the word actions: `word-menu` (a row's
 //! right-click menu and the tip) and `word-undo` (the notice with 復原), and 符號與 Emoji: `picker` (the grid with recent
 //! symbols), `picker-emoji` (a later category, a row down), `picker-search` (a search typed), `picker-native` (the
-//! highlighted row as the native adapters' list).
+//! highlighted row as the native adapters' list), and the sizes that must fit: `notice-select-2` and `notice-select-6`
+//! (a two- and a six-character phrase), `vertical-one-character` (the list of 你), `vertical-long-reading` (one
+//! candidate under a six-syllable reading), `vertical-notice-6` (the six-character phrase above its list) and the same
+//! three `horizontal-…`.
 
 use std::rc::Rc;
 
@@ -90,6 +93,26 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
         "notice-saved" => (notice("已加入自訂詞：王小明"), None, None, None),
         "notice-select" => (notice("Enter 加入自訂詞：王小明"), None, None, None),
         "notice-invalid" => (notice("自訂詞需為 1 到 6 個字"), None, None, None),
+        "notice-select-2" => (notice("Enter 加入自訂詞：哈囉"), None, None, None),
+        "notice-select-6" => (notice("Enter 加入自訂詞：我們今天去看"), None, None, None),
+        _ if ["-one-character", "-long-reading", "-notice-6"].iter().any(|end| variant.ends_with(end)) => {
+            let (words, reading): (&[&str], &str) = if variant.ends_with("-one-character") {
+                (&["你", "妳", "擬", "尼", "泥", "逆", "膩", "倪", "霓", "旎", "伱"], "ㄋㄧˇ")
+            } else if variant.ends_with("-long-reading") {
+                (&["中華民國大學"], "ㄓㄨㄥ ㄏㄨㄚˊ ㄇㄧㄣˊ ㄍㄨㄛˊ ㄉㄚˋ ㄒㄩㄝˊ")
+            } else {
+                (&["我們今天去看"], "ㄨㄛˇ ㄇㄣ˙ ㄐㄧㄣ ㄊㄧㄢ ㄑㄩˋ ㄎㄢˋ")
+            };
+            let mut list = sample::list(words, &[], false, per_page, 0);
+            let entries =
+                words.iter().map(|text| zhuyin_core::api::Candidate { text: (*text).to_owned(), annotation: None });
+            list.present(entries.collect(), Some(reading.to_owned()), 0);
+            let mut presentation = list.presentation("", &keys);
+            if variant.ends_with("-notice-6") {
+                presentation.notice = Some("Enter 加入自訂詞：我們今天去看".to_owned());
+            }
+            (presentation, None, None, None)
+        }
         "mode-toast" => (Presentation::default(), None, Some("中"), None),
         "composing" => (Presentation::default(), Some("王小ㄇㄧㄥ".to_owned()), None, None),
         "corrected" => {

@@ -335,7 +335,10 @@ struct FeatureRow: View {
             if let availability { return availability.note }
             if !on {
                 if feature == .zhuyinRowClick { return "關閉時，點注音列不做事" }
-                return commands.isEmpty ? subtitle : "關閉時，\(CurrentKeys(preferences).assigned(commands[0]).joined()) 交給 App"
+                // Every key of the feature's commands; Page Up and Page Down page the list anyway.
+                let handed = commands.flatMap { preferences.bindings[$0] ?? [] }
+                    .filter { $0 != Shortcut("PageUp") && $0 != Shortcut("PageDown") }.map(\.compact)
+                return handed.isEmpty ? subtitle : "關閉時，\(handed.joined(separator: "、")) 交給 App"
             }
             return subtitle
         }()
