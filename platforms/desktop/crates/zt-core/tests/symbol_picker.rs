@@ -215,3 +215,123 @@ fn adapters_that_draw_the_window_get_the_grid_and_click_its_cells_and_tabs() {
     let reply = request(json!({"op": "action", "action": "symbol", "value": -1}));
     assert_eq!(reply["ok"], json!(false));
 }
+
+/// A broker request for the field `{A}` of connection 1.
+fn host_request(
+    host: &mut zt_core::broker::host::Host,
+    f: &mut Fixture,
+    fields: Value,
+) -> serde_json::Map<String, Value> {
+    let mut object = serde_json::json!({"v": 1, "context": "{A}", "secure": false});
+    for (key, value) in fields.as_object().unwrap() {
+        object[key] = value.clone();
+    }
+    host.dispatch(&mut f.input, 1, object.as_object().unwrap()).0
+}
+
+fn key_fields(code: i32, modifiers: u32, release: bool) -> Value {
+    serde_json::json!({"op": "key", "key": code, "modifiers": modifiers, "release": release})
+}
+
+/// The adapters that pass on only the keys they predict the service takes (TSF) decide on `composing`: every reply
+/// while the picker is open says so, for every key of the search and the grid, presses and releases, in either mode
+/// and in a private field, so none of them goes to the application.
+#[test]
+fn every_reply_while_open_keeps_the_keys_with_the_picker() {
+    use serde_json::json;
+    use zt_core::broker::host::Host;
+    let keys = [
+        ('V' as i32, 0),
+        ('U' as i32, 0),
+        ('L' as i32, 0),
+        (code::SPACE, 0),
+        (code::BACKSPACE, 0),
+        // Esc with a search clears it (with none it would close the picker).
+        (code::ESCAPE, 0),
+        (code::LEFT, 0),
+        (code::DOWN, 0),
+        (code::TAB, 0),
+        (code::TAB, modifier::SHIFT),
+        ('H' as i32, 0),
+        ('E' as i32, modifier::SHIFT),
+    ];
+    for (english, private) in [(false, false), (true, false), (false, true), (true, true)] {
+        let mut f = fixture();
+        let mut host = Host::default();
+        let focus = host_request(&mut host, &mut f, json!({"op": "focus", "panel": true, "private": private}));
+        assert_eq!(focus["ok"], json!(true));
+        if english {
+            f.input.set_english(true);
+        }
+        let open = host_request(&mut host, &mut f, key_fields(PICKER.0, PICKER.1, false));
+        assert_eq!((&open["handled"], &open["composing"]), (&json!(true), &json!(true)), "english={english}");
+        for (code, modifiers) in keys {
+            for release in [false, true] {
+                let reply = host_request(&mut host, &mut f, key_fields(code, modifiers, release));
+                assert_eq!(reply["ok"], json!(true));
+                assert_eq!(reply["composing"], json!(true), "{code:#x} release={release} english={english}");
+                assert_eq!(reply["candidates"], json!(true));
+                assert_eq!(reply["preedit"], json!(""));
+                assert_eq!(reply["commit"], json!(""));
+                assert!(reply.get("associated").is_none());
+                if !release {
+                    assert_eq!(reply["handled"], json!(true), "{code:#x} english={english}");
+                }
+            }
+            assert!(f.input.picker_open(), "{code:#x}");
+        }
+        assert_eq!(f.input.english(), english, "a Shift in the search does not switch 中/英");
+    }
+}
+
+/// English letters and Zhuyin keys reach the search the same way: typed into the picker, shown as the query.
+#[test]
+fn the_search_reads_keys_in_either_mode() {
+    for english in [false, true] {
+        let mut f = fixture();
+        f.input.set_english(english);
+        assert!(f.press(PICKER.0, PICKER.1));
+        for c in ['V', 'U', 'L'] {
+            assert!(f.press(c as i32, 0), "{c} english={english}");
+        }
+        let view = f.input.picker_view().unwrap();
+        assert_eq!(view.query, "vul");
+        assert_eq!(view.items[0].text, "😀");
+        assert!(f.press(code::RETURN, 0));
+        assert_eq!(f.commits(), ["😀"]);
+        assert!(!f.input.session().composing() && !f.input.picker_open());
+    }
+}
+
+/// A reset (the application ended the composition, or the field was reset) closes the picker; its reply hides the
+/// window and gives the keys back, and an adapter that draws the window must apply it (TSF did not: the grid stayed
+/// on screen with no picker behind it).
+#[test]
+fn a_reset_closes_the_picker_and_its_window() {
+    use serde_json::json;
+    use zt_core::service::{Service, ServiceConfig};
+    let dir = common::TempDir::new();
+    common::write_lexicon(dir.path(), common::CONTROLLER_LEXICON);
+    let config =
+        ServiceConfig { data_dir: Some(dir.path().to_path_buf()), in_memory: true, ..ServiceConfig::default() };
+    let (service, _events) = Service::start(config).unwrap();
+    service.with_controller(|input| input.set_symbol_source(Arc::new(Catalog)));
+    let request = |fields: Value| {
+        let mut object = json!({"v": 1, "context": "{A}", "secure": false});
+        for (key, value) in fields.as_object().unwrap() {
+            object[key] = value.clone();
+        }
+        service.request(1, object.as_object().unwrap())
+    };
+    request(json!({"op": "focus", "panel": true}));
+    let open = request(key_fields(PICKER.0, PICKER.1, false));
+    assert!(open["panel"]["picker"].is_object());
+    let typed = request(key_fields('V' as i32, 0, false));
+    assert_eq!(typed["panel"]["picker"]["query"], json!("v"), "the search follows each key");
+    let reset = request(json!({"op": "reset"}));
+    assert!(reset["panel"].is_null(), "the window closes with the picker");
+    assert_eq!(reset["composing"], json!(false));
+    let after = request(key_fields('V' as i32, 0, false));
+    assert_ne!(after["preedit"], json!(""), "the next key types again");
+    assert!(after.get("panel").is_none_or(|panel| panel.get("picker").is_none_or(Value::is_null)));
+}

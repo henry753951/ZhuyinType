@@ -54,7 +54,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{claimed_key, enters_suggestions, host_observes_key, host_wants_key};
+use crate::keys::{Routing, claims_key, observes_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
@@ -157,6 +157,8 @@ pub(crate) struct TextService {
     composing: Cell<bool>,
     /// A 聯想詞 list is shown but not entered (the reply's `associated`): ↓ is claimed, other keys observed.
     suggesting: Cell<bool>,
+    /// 符號與 Emoji's grid is on screen (the last panel applied holds it): every key is the host's.
+    picker: Cell<bool>,
     /// The keys claimed even when nothing is composed (IPC `claims`, already filtered by the host for this field and
     /// mode).
     claimed: RefCell<Vec<(i32, i32)>>,
@@ -215,6 +217,7 @@ impl TextService {
             english: Cell::new(false),
             composing: Cell::new(false),
             suggesting: Cell::new(false),
+            picker: Cell::new(false),
             claimed: RefCell::new(Vec::new()),
             caps_at_reply: Cell::new(false),
             lang_bar: RefCell::new(None),
@@ -272,11 +275,29 @@ impl TextService {
     /// `OnKeyDown`, never lost).
     fn claims(&self, vk: WPARAM, flags: LPARAM, release: bool) -> bool {
         let caps_changed = caps_lock_on() != self.caps_at_reply.get();
-        let composing = self.composing.get() || load(&self.composition).is_some();
+        let routing = Routing { english: self.english.get() && !caps_changed, ..self.routing() };
         let key = translate_key(vk, flags, release);
-        self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed))
-            || (self.suggesting.get() && !composing && enters_suggestions(&key))
-            || host_wants_key(&key, composing, self.english.get() && !caps_changed)
+        self.claimed.try_borrow().is_ok_and(|claimed| claims_key(&key, routing, &claimed))
+    }
+
+    /// The host's state as this text service last applied it.
+    fn routing(&self) -> Routing {
+        Routing {
+            composing: self.composing.get() || load(&self.composition).is_some(),
+            picker: self.picker.get(),
+            english: self.english.get(),
+            suggesting: self.suggesting.get(),
+        }
+    }
+
+    /// The host's window and key state are no longer known (the field lost focus, or a request failed: the host
+    /// starts over at the next focus): the window goes, and keys follow the idle rules until a reply says otherwise.
+    /// A picker left on screen would take keys its host no longer has.
+    fn forget_host_state(&self) {
+        self.panel.hide();
+        self.composing.set(false);
+        self.suggesting.set(false);
+        self.picker.set(false);
     }
 
     fn destroy_windows(&self) {
@@ -441,7 +462,7 @@ impl TextService_Impl {
         }
         self.bump();
         self.kill_timer();
-        self.panel.hide();
+        self.forget_host_state();
         let old_composition = self.composition.try_borrow_mut().ok().and_then(|mut slot| slot.take());
         if let Some(old) = current {
             let reply = if self.broker.connected() && self.host_focused.get() {
@@ -620,6 +641,28 @@ impl TextService_Impl {
                 == (last.english, last.composing, &last.preedit, last.cursor, &last.clauses, last.focus, last.target)
     }
 
+    /// A reply outside an edit session (an observed key, a reset when the application ended the composition):
+    /// nothing is composed in the document, so only the window and the key state follow it.  A reset closes
+    /// 符號與 Emoji in the host; its window must close here too, or the grid would stay on screen without a picker
+    /// behind it.
+    fn apply_outside(&self, reply: &Reply) {
+        if self.secure.get() {
+            return;
+        }
+        self.english.set(reply.english);
+        self.composing.set(reply.composing);
+        self.suggesting.set(reply.associated);
+        self.picker.set(reply.panel.shows_picker(self.picker.get()));
+        if let Some(claims) = &reply.claims
+            && let Ok(mut claimed) = self.claimed.try_borrow_mut()
+        {
+            claimed.clone_from(claims);
+        }
+        self.forget_reply();
+        self.panel.apply(&reply.panel, None, None, self.rect.get(), self.scale.get());
+        self.follow_list();
+    }
+
     fn apply(&self, cookie: u32, reply: &Reply) -> bool {
         let Some(context) = load(&self.context) else { return false };
         self.applying.set(true);
@@ -633,6 +676,7 @@ impl TextService_Impl {
         if result.is_err() {
             self.broker.disconnect(true);
             self.host_focused.set(false);
+            self.forget_host_state();
             return false;
         }
         // A commit that leaves only a list (聯想詞) ended the composition: the list goes at the caret after the
@@ -645,6 +689,7 @@ impl TextService_Impl {
         let switched = self.english.replace(reply.english) != reply.english;
         self.composing.set(reply.composing);
         self.suggesting.set(reply.associated && !self.secure.get());
+        self.picker.set(!self.secure.get() && reply.panel.shows_picker(self.picker.get()));
         let mut quick = reply.quick.unwrap_or(self.quick.get());
         quick.english = reply.english;
         quick.simplified = reply.simplified;
@@ -865,8 +910,12 @@ impl TextService_Impl {
         if self.focus_deferred.replace(false) {
             let next = self.deferred_context.try_borrow_mut().ok().and_then(|mut deferred| deferred.take());
             self.switch_context(next);
-        } else if self.reset_deferred.replace(false) && self.broker.connected() && self.host_focused.get() {
-            let _ = self.broker.request(&self.name(), "reset", Map::new());
+        } else if self.reset_deferred.replace(false)
+            && self.broker.connected()
+            && self.host_focused.get()
+            && let Some(reply) = self.broker.request(&self.name(), "reset", Map::new())
+        {
+            self.apply_outside(&reply);
         }
     }
 
@@ -970,6 +1019,7 @@ impl TextService_Impl {
                 let _ = composition::finish(cookie, &self.composition, false);
                 self.applying.set(false);
                 self.host_focused.set(false);
+                self.forget_host_state();
             }
         }
     }
@@ -1126,10 +1176,9 @@ impl TextService_Impl {
     /// composed, and every key while a passive 聯想詞 list shows (the host closes it; the window goes with the reply).
     /// Once per key, though TSF may test a key more than once.
     fn observe(&self, vk: WPARAM, flags: LPARAM, release: bool) {
-        let composing = self.composing.get() || load(&self.composition).is_some();
         let key = translate_key(vk, flags, release);
         let suggesting = self.suggesting.get();
-        if !host_observes_key(&key, composing, self.english.get(), suggesting)
+        if !observes_key(&key, self.routing())
             || !self.host_focused.get()
             || self.secure.get()
             || !self.broker.connected()
@@ -1151,10 +1200,7 @@ impl TextService_Impl {
             self.english.set(reply.english);
             if suggesting {
                 // No edit session here, and none is needed: nothing is composed, so the reply only closes the list.
-                self.composing.set(reply.composing);
-                self.suggesting.set(reply.associated);
-                self.panel.apply(&reply.panel, None, None, self.rect.get(), self.scale.get());
-                self.follow_list();
+                self.apply_outside(&reply);
             }
         }
     }
@@ -1388,8 +1434,8 @@ impl ITfCompositionSink_Impl for TextService_Impl {
                     if self.broker.busy() {
                         self.reset_deferred.set(true);
                         self.bump();
-                    } else {
-                        let _ = self.broker.request(&self.name(), "reset", Map::new());
+                    } else if let Some(reply) = self.broker.request(&self.name(), "reset", Map::new()) {
+                        self.apply_outside(&reply);
                     }
                 }
             }
