@@ -159,6 +159,13 @@ enum UIPreviewRenderer {
             try capturePanel(list: corrections, keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: hint,
                              to: directory.appendingPathComponent("candidate-\(layout.rawValue)-corrections-\(suffix).png"))
         }
+        // 聯想詞 after a commit: as it appears (no highlight, no key labels) and once ↓ entered it.
+        let suggestions = ["你", "大家", "你們", "您", "各位"].map { Candidate(text: $0) }
+        for (name, passive) in [("associated", true), ("associated-entered", false)] {
+            try capturePanel(list: CandidateList(items: suggestions, pageSize: 9, associated: true, passive: passive),
+                             keys: keys, style: CandidateStyle(layout: .vertical), zhuyinHint: nil,
+                             to: directory.appendingPathComponent("candidate-\(name)-\(suffix).png"))
+        }
         // Everything optional turned off, five to a page, large type.
         let minimal = CandidateStyle(layout: .vertical, fontSize: 24, density: .compact, showsZhuyinHint: false,
                                      showsAnnotations: false, showsListSwitches: false)

@@ -2,7 +2,7 @@
 //! UI renderer's `panels/` show it, for screenshots.  `--popup demo` drives the real floating windows instead.
 //!
 //! Variants: `vertical-standard`, `vertical-compact`, `vertical-corrections`, the same three `horizontal-…`, `minimal`,
-//! `associated` (聯想詞 after a commit), `composing`, `corrected` (a window on a corrected word: the typed reading under
+//! `associated` (聯想詞 after a commit) and `associated-entered` (after ↓), `composing`, `corrected` (a window on a corrected word: the typed reading under
 //! the list, the composition dotted under it), `notice-saved`, `notice-select`, `notice-invalid`, `mode-toast`,
 //! `quick-settings` (the 快速設定 panel), and the paging frames `vertical-next-35`, `horizontal-previous-20`,
 //! `vertical-end-50` … (`next`, `previous` or `end` at a percentage), and the word actions: `word-menu` (a row's
@@ -107,7 +107,10 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
             .with_correction_marks(true, true);
             (presentation, Some(composition.to_owned()), None, None)
         }
-        "associated" => {
+        "associated" | "associated-entered" => {
+            // Passive (just shown): no highlight and no key labels; entered with ↓: the first word highlighted and the
+            // keys that pick each word.
+            let entered = variant == "associated-entered";
             let rows: Vec<CandidateRow> = ["你", "大家", "你們", "您", "各位"]
                 .iter()
                 .enumerate()
@@ -115,7 +118,7 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
                     index,
                     text: (*text).to_owned(),
                     annotation: None,
-                    key: keys.get(index).copied(),
+                    key: keys.get(index).copied().filter(|_| entered),
                 })
                 .collect();
             let p = Presentation {
@@ -124,6 +127,8 @@ fn presentation_for(variant: &str, cx: &App) -> Content {
                 page_count: 1,
                 page_size: per_page,
                 associated: true,
+                selection: entered.then_some(0),
+                selected: entered.then_some(0),
                 ..Presentation::default()
             };
             (p, None, None, None)
