@@ -106,14 +106,23 @@ fn forget_removes_a_learned_choice_and_undo_puts_it_back() {
 }
 
 #[test]
-fn add_phrase_from_the_list_or_the_whole_composition() {
+fn add_phrase_from_the_list_only() {
     let engine = engine();
+    // With no list open there is nothing highlighted: adding characters of the composition is the selection's
+    // (⇧← ⇧→, then Return), so the action does not apply and nothing changes.
     let mut c = composer(&engine, "18 a8 ");
     assert_eq!(text(&c), "八媽");
-    assert!(c.candidate_action_available(CandidateAction::AddPhrase, None), "the whole composition");
-    assert_eq!(c.perform_candidate_action(CandidateAction::AddPhrase, None).as_deref(), Some("已加入自訂詞：八媽"));
-    assert!(engine.is_user_phrase("八媽", "ㄅㄚ ㄇㄚ"));
-    assert!(!c.candidate_action_available(CandidateAction::AddPhrase, None), "already a custom word");
+    assert!(!c.candidate_action_available(CandidateAction::AddPhrase, None), "not without a list");
+    assert_eq!(c.perform_candidate_action(CandidateAction::AddPhrase, None), None);
+    assert!(engine.user_phrases().is_empty());
+    assert!(!c.can_undo_candidate_action());
+
+    c.handle(KeyInput::Down);
+    let highlighted = items(&c)[0].clone();
+    assert_eq!(
+        c.perform_candidate_action(CandidateAction::AddPhrase, None),
+        Some(format!("已加入自訂詞：{highlighted}"))
+    );
     assert!(c.undo_candidate_action());
     assert!(engine.user_phrases().is_empty());
 

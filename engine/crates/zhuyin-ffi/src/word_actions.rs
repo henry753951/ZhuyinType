@@ -9,13 +9,13 @@ use crate::engine::{engine_ref, phrase_list};
 use crate::strings::{borrowed, owned};
 use crate::{ZtComposer, ZtEngine, ZtPhraseList};
 
-/// `index` from C: below zero is the highlighted candidate (or, with no list open, the whole composition).
+/// `index` from C: below zero is the highlighted candidate.
 fn candidate_index(index: isize) -> Option<usize> {
     usize::try_from(index).ok()
 }
 
 /// Whether `action` (0 block, 1 forget, 2 add a custom word) applies to candidate `index` of the open list; a
-/// negative `index` is the highlighted candidate, or with no list open the whole composition (adding only).
+/// negative `index` is the highlighted candidate.  None applies with no list open.
 ///
 /// # Safety
 /// `composer` is a live handle.
