@@ -4,6 +4,27 @@
 
 ## 2026-11-18
 
+### 0.7.2 的模型：出貨資料（data-11）
+
+使用者決定 0.7.2 改用 `ptt-cns-genpub` 聊天模型與 `reranker_chat` 重排模型（前綴樹 fp32 計算、int8 權重）。`data-11` 發布四個元件，其他維持原版本：
+
+- `lm_chat`：`zt train lm_chat2 ship --option variant=ptt-cns-genpub`。TSV 與評測用的模型逐位元相同；`NOTICE.md` 與 `source-manifest.json` 由 `manifest.extend` 加上 PTT、TOCP、三份簡體語料與 Claude Haiku 主題句的授權、下載收據與每個產生檔的 SHA-256（只有主題句四檔，沒有 `seed-*.txt`），以及各來源的句數。編譯後的 `lm.bin` 19.2 MB（0.7.1 是 7.3 MB）。
+- `reranker`：Mac 上以 `zt train compress quantize coreml` 匯出的 `RerankerTree.mlmodelc`，儲存 int8、計算 fp32（31.8 MB），`parity` 的 600 棵樹最大誤差 0.011 nats。
+- `checkpoints`：`reranker/charlm.pt` 換成同一份假量化檢查點（v3 的檔案不變），主機上 App 設定的評測與桌面版模型都從它來。
+- `onnx`：主機上以 `zt models export --tree` 與 `desktop_models.py` 產生新的 `RerankerTree.ort`；v3 的兩個 `.ort` 沿用 data-10 的檔案（同樣的檢查點，重建只差在位元組）。
+
+**桌面版的 ONNX Runtime（1.24.4）。** 同樣 600 棵樹在 CPU 上和 PyTorch 比，沒有 NaN，也沒有集中在某些節點數的錯誤；動態 int8 執行時量化輸入，每棵樹都有一些誤差：
+
+| 模型 | 每棵樹最大誤差的中位數 | 最大 |
+|---|---:|---:|
+| 0.7.1 的 `RerankerTree.ort` | 0.75 nats | 2.15 |
+| 0.7.2 的 `RerankerTree.ort` | 0.91 nats | 3.07 |
+| 0.7.2 的 fp32 匯出 | 0.00001 | 0.00003 |
+
+`desktop_models.py` 現在把這項檢查寫進 `manifest.json`，任何一棵樹超過 5 nats 或不是有限值就失敗。以桌面版實際的模型（`--backend cpu`，`.ort`）跑開發集與測試集（`desktop-072-*.json`），對 0.7.1 的桌面模型：口語 86.2% → 90.5%（23／6）、百科 81.0% → 81.8%（15／12）、百科前文 86.0% → 85.0%（8／12）、續寫 82.0% → 83.0%、聊天 72.2% → 74.8%（18／8），開發集合計 76／47；測試集 47／23。日常短句 68 句有一句改壞（說得 → 說的）。
+
+**Mac 的延遲**（EngineBench，延遲集 10 句，0.7.1 的資料與 0.7.2 的 App 交錯 6 輪）：每鍵 p95 10.75 → 13.72 ms，CPU 2.70 → 3.52 ms，能耗 12.0 → 14.8 mJ，記憶體 14 MB 不變。App 231 MB。
+
 ### 聯想詞（送出後列出常接的詞）
 
 新功能，預設關閉，不改變轉換：`engine/parity/gate.sh --quick` 和合併前的建置相比 12,572 行 0 差異。方法見 [ARCHITECTURE.md §9.0](../engine/ARCHITECTURE.md#90-聯想詞)。在 GPU 主機上以 App 的資料（`--models data/build`）對 30 個常用詞抽查（`zhuyin-cli --predict 9`，沒有個人資料）：

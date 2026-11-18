@@ -13,7 +13,11 @@ weights, in ONNX Runtime's own format so the app memory-maps them.
    stay file-backed pages the system can drop, as Core ML's do on macOS.
 3. manifest.json records the checkpoints' SHA-256, ONNX Runtime's version and each file's SHA-256.
 4. RerankerTree.ort is checked on the CPU against PyTorch on 600 engine-shaped trees (trees.py, as `parity` checks
-   the macOS tree); the result goes into manifest.json and a tree off by more than `--limit` nats fails the build.
+   the macOS tree); the result goes into manifest.json and a tree off by more than `--limit` nats, or not finite,
+   fails the build.  Dynamic int8 quantizes each call's activations, so every tree is somewhat off: the 0.7.1 model
+   by 0.75 nats (median of each tree's largest error; at most 2.2), the 0.7.2 one by 0.91 (at most 3.1), the fp32
+   export by 0.00003 (research log 2026-11-18, `chat-reranker`).  The limit, 5 nats, sits above that noise; it
+   catches NaN and the larger errors of the kind fp16 Core ML showed (up to 13 nats), not every smaller one.
 
 Measured (docs/research/log.md, 2026-11-17): the same outputs as the dynamic int8 ONNX files, 0.2–0.8 points below
 the macOS app's models on the development sets; the app's private memory grows by about 21 MB (folding the macOS
@@ -47,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, default=paths.data_dir(), help="data directory with the fp32 exports")
     parser.add_argument("--out", type=Path, default=None, help="output directory (default: <data>/onnx)")
-    parser.add_argument("--limit", type=float, default=1.0, help="largest error of the tree check, nats (default 1)")
+    parser.add_argument("--limit", type=float, default=5.0, help="largest error of the tree check, nats (default 5)")
     args = parser.parse_args(argv)
     import onnxruntime
     from onnxruntime.quantization import QuantType, quantize_dynamic
