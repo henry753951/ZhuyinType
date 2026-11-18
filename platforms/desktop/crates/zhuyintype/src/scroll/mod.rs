@@ -97,8 +97,9 @@ impl<H: Clone> Clone for SmoothScroll<H> {
 struct State {
     id: u64,
     running: Option<Running>,
-    /// The scroll position this module last wrote; another value means someone else moved the view.
-    written: Option<f64>,
+    /// The scroll position this module last wrote, snapped to device pixels, and the exact one it was asked for:
+    /// another position means someone else moved the view; the exact one keeps a touchpad's fractions.
+    written: Option<(f64, f64)>,
     /// A frame callback is pending.
     ticking: bool,
     /// The view that draws the scroll view (notified each frame), from its last paint.
@@ -220,7 +221,7 @@ impl<H: ScrollbarHandle + Clone> SmoothScroll<H> {
     /// Ends the animation if someone else moved the view since this module last did.
     fn yield_to_other_writers(&self) {
         let mut state = self.state.borrow_mut();
-        if let Some(written) = state.written
+        if let Some((written, _)) = state.written
             && (written - self.top()).abs() > OTHER_WRITER
         {
             state.running = None;
@@ -228,12 +229,23 @@ impl<H: ScrollbarHandle + Clone> SmoothScroll<H> {
         }
     }
 
-    fn write(&self, top: f64, window: &Window) {
-        let top = f64::from(f32::from(window.pixel_snap(px(top as f32))));
+    fn write(&self, exact: f64, window: &Window) {
+        let top = f64::from(f32::from(window.pixel_snap(px(exact as f32))));
         let offset = self.handle.offset();
         self.handle.set_offset(point(offset.x, px(-top as f32)));
         // Read back: a `ListState` stores the position as an item and an offset into it.
-        self.state.borrow_mut().written = Some(self.top());
+        let written = self.top();
+        self.state.borrow_mut().written = Some((written, exact));
+        log(format_args!("frame {} {written:.1}", self.id()));
+    }
+
+    /// Where the view is, with the fraction of a pixel the last write snapped away.
+    fn exact_top(&self) -> f64 {
+        let top = self.top();
+        match self.state.borrow().written {
+            Some((written, exact)) if (written - top).abs() < 0.01 => exact,
+            _ => top,
+        }
     }
 
     fn notify(&self, window: &mut Window, cx: &mut App) {
@@ -292,7 +304,6 @@ impl<H: ScrollbarHandle + Clone> SmoothScroll<H> {
         let t = running.t(now);
         let top = running.curve.value(t).clamp(0., self.max());
         self.write(top, window);
-        log(format_args!("frame {} {:.1} t {:.1}", self.id(), self.top(), t * 1000.));
         if running.curve.finished(t) {
             self.state.borrow_mut().running = None;
         } else {
@@ -376,7 +387,7 @@ impl<H: ScrollbarHandle + Clone> Owner for SmoothScroll<H> {
             // A touchpad takes over from a running animation where the content is (Chromium aborts it).
             Step::Precise(delta) => {
                 self.state.borrow_mut().running = None;
-                let top = (self.top() + delta).clamp(0., self.max());
+                let top = (self.exact_top() + delta).clamp(0., self.max());
                 self.write(top, window);
                 self.notify(window, cx);
             }
