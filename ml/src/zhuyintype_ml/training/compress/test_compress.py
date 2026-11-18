@@ -115,13 +115,10 @@ class Methods(unittest.TestCase):
             self.assertEqual(m.macos == "15.0", m.granularity in ("per_block", "per_grouped_channel"), m.name)
 
 
-HAS_COREMLTOOLS = HAS_TORCH and importlib.util.find_spec("coremltools") is not None
-
-
-@unittest.skipUnless(HAS_COREMLTOOLS, "needs coremltools")
+@unittest.skipUnless(HAS_TORCH, "needs PyTorch and NumPy")
 class TreeInputs(unittest.TestCase):
     def test_pack_matches_the_engine(self) -> None:
-        from zhuyintype_ml.training.compress.parity import pack
+        from zhuyintype_ml.training.compress.trees import pack
 
         # engine/crates/zhuyin-models/src/tree.rs shared_prefixes_and_state_nodes
         tree = pack([1, 9], [[3, 4], [3, 5], [6]])
@@ -132,7 +129,7 @@ class TreeInputs(unittest.TestCase):
         self.assertEqual(tree["ancestors"].reshape(-1).tolist(), [1, 0, 0, 1, 1, 0, 1, 1, 1])
 
     def test_sampled_trees_fit_the_model(self) -> None:
-        from zhuyintype_ml.training.compress.parity import sample_trees
+        from zhuyintype_ml.training.compress.trees import sample_trees
 
         trees = sample_trees(50)
         self.assertEqual(len(trees), 50)

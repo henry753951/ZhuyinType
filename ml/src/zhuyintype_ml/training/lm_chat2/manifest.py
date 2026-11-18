@@ -76,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
                 "commonvoice": "CC0 1.0",
                 "old_synthetic": "Qwen3-8B Apache-2.0 weights; no output-use restrictions",
                 "Taiwan_Tongues": "EXCLUDED from both new training variants; existing baseline/evaluation only",
+                "ptt_gossiping": (
+                    "Apache-2.0 (zake7749/Gossiping-Chinese-Corpus 2.0, compiler's statement); "
+                    "the titles and pushes belong to their PTT authors"
+                ),
+                "tocp": "CC BY-SA 4.0 (NTOU NLP Lab, Hsu Yang and Chuan-Jie Lin); sentences by PTT and Twitch users",
+                "zh_meme": "MIT tag on Hugging Face, Apache-2.0 badge in its README (GaryYang123)",
+                "lccc": "MIT tag (silver/lccc mirror); Tsinghua CoAI LCCC states research use",
+                "mnbvc_zhihu": "MIT tag (liwu/MNBVC); answers by Zhihu users",
+                "generated": "Anthropic Claude Haiku 5.5 output, used under Anthropic's terms",
             },
             "real_dialogues_sha256": digest(OUT / "real_dialogues.jsonl"),
         },
@@ -97,6 +106,24 @@ def main(argv: list[str] | None = None) -> int:
         "and inputs/local-input-manifest.json. Legacy Qwen synthetic text uses the existing project corpus; "
         "Qwen3-8B weight license is retained in inputs/Qwen3-8B-LICENSE. New generator pilots failed sample "
         "review and are not training data. Taiwan Tongues is excluded from both new model variants.\n\n"
+        "Since 0.7.2 (variant ptt-cns-genpub) the model also counts the following text; "
+        "source-manifest.json keeps each download's URL, revision and SHA-256, and the counts per source.\n\n"
+        "PTT Gossiping (八卦版) title/push pairs from zake7749/Gossiping-Chinese-Corpus 2.0, commit "
+        "65b7e3630a560223a2b4d702d78d120d5ff1e8dd, https://github.com/zake7749/Gossiping-Chinese-Corpus "
+        "(marked Apache-2.0 by the compiler; the titles and pushes belong to their PTT authors). Only the text "
+        "is read, never account names or votes.\n\n"
+        "TOCP v1.0, NTOU NLP Lab (Hsu Yang, Chuan-Jie Lin; LREC 2020 TRAC-2), "
+        "https://nlp.cse.ntou.edu.tw/resources/TOCP/ , CC BY-SA 4.0; the sentences are by PTT and Twitch users.\n\n"
+        "Simplified-Chinese corpora, converted with OpenCC s2twp and filtered to the Taiwan-like sentences "
+        "(cross-entropy difference, without mainland-specific words; select.py, about a fifth kept): "
+        "GaryYang123/zh-meme-sft-8k revision 84838bb5 (marked MIT on Hugging Face, Apache-2.0 in its README; "
+        "comments by Douyin, Xiaohongshu and Bilibili users, LLM-augmented); LCCC-base by Tsinghua CoAI "
+        "(CDial-GPT, Wang et al. 2020), silver/lccc mirror revision 5bd582fa (MIT tag; released for research; "
+        "Weibo users' posts); MNBVC by the liwu community, revision c153d877, 知乎 shard qa/20230196 "
+        "(MIT tag; Zhihu users' answers). MNBVC's game text is cached but not used.\n\n"
+        "Themed Taiwanese colloquial sentences written by Anthropic Claude Haiku 5.5 (2026-11-17) from topic "
+        "and category prompts only, used under Anthropic's terms. No user text went into the prompts, and the "
+        "sentences seeded with a user's corrections are excluded from this model.\n\n"
         "Seed lexicon: ZhuyinType, CC BY-SA 4.0; CC-CEDICT (CC BY-SA 4.0), Unihan "
         "(Unicode License v3), wordfreq data (CC BY-SA 4.0); preserve the existing component notices.\n\n"
         "Changes: speaker/thread extraction, removal of signatures/markup/quoted or procedural material, "

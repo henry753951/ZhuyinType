@@ -16,6 +16,7 @@ real variant in a fresh tree (control/), and `web` trains real plus that text (w
 
 from __future__ import annotations
 
+import json
 import shutil
 from collections.abc import Callable
 
@@ -85,7 +86,13 @@ PROVENANCE = ["NOTICE.md", "attribution.jsonl", "source-manifest.json"]
 
 
 def ship(ctx: Context) -> None:
-    """The real variant and its provenance into lm_chat/, as 0.4.0 ships it; the 0.3.0 model goes to lm_chat_v1/."""
+    """A variant and its provenance into lm_chat/: `--option variant=NAME` (0.7.2: ptt-cns-genpub; default real, as
+    0.4.0 shipped it).  The 0.3.0 model goes to lm_chat_v1/.  source-manifest.json gains the variant's name and its
+    per-source counts (prepared.json without the character list)."""
+    from .prepare import variant_directory
+
+    name = str(ctx.options.get("variant", "real"))
+    source = variant_directory(name)
     target = ctx.data / "lm_chat"
     archive = ctx.data / "lm_chat_v1"
     if not archive.exists():
@@ -93,11 +100,17 @@ def ship(ctx: Context) -> None:
         for name in SHIPPED + ["NOTICE.md"]:
             shutil.copy2(target / name, archive / name)
         ctx.log(f"0.3.0 chat model archived in {archive}")
-    for name in SHIPPED:
-        shutil.copy2(ctx.out / "no_generated" / name, target / name)
-    for name in PROVENANCE:
-        shutil.copy2(ctx.out / name, target / name)
-    ctx.log(f"chat2 (no generated text) → {target}")
+    for file in SHIPPED:
+        shutil.copy2(source / file, target / file)
+    for file in PROVENANCE:
+        shutil.copy2(ctx.out / file, target / file)
+    prepared = source / "work" / "prepared.json"
+    if prepared.exists():
+        manifest = json.loads((target / "source-manifest.json").read_text())
+        counts = {k: v for k, v in json.loads(prepared.read_text()).items() if k != "training_characters"}
+        manifest["shipped_variant"] = {"name": name, "counts": counts}
+        (target / "source-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
+    ctx.log(f"chat2 {name} ({source}) → {target}")
 
 
 PIPELINE = Pipeline(

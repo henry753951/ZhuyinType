@@ -38,6 +38,7 @@ from zhuyintype_ml.core import paths
 from zhuyintype_ml.training.v3.coreml import require_macos
 
 from .methods import output
+from .trees import check_trees
 
 TREE = {
     "ids": [[1, 3, 4, 5]],
@@ -140,80 +141,10 @@ def golden_vectors(v3: Path, got: dict[str, Any]) -> None:
     (v3 / "test_vectors.json").write_text(json.dumps(record) + "\n")
 
 
-def pack(prefix: list[int], candidates: list[list[int]]) -> dict[str, np.ndarray]:
-    """The model inputs of one prefix tree, as engine/crates/zhuyin-models/src/tree.rs packs them."""
-    ids, positions = list(prefix), list(range(len(prefix)))
-    parents = [max(0, i - 1) for i in range(len(prefix))]
-    children: dict[tuple[int, int], int] = {}
-    for candidate in candidates:
-        parent = len(prefix) - 1
-        for token in candidate:
-            if (parent, token) not in children:
-                children[parent, token] = len(ids)
-                ids.append(token)
-                positions.append(positions[parent] + 1)
-                parents.append(parent)
-            parent = children[parent, token]
-    states = sorted(set(parents))
-    index = {node: i for i, node in enumerate(states)}
-    ancestors = np.zeros((len(states), len(states)), np.int32)
-    for row, node in enumerate(states):
-        while True:
-            ancestors[row, index[node]] = 1
-            if node == 0:
-                break
-            node = parents[node]
-    return {
-        "ids": np.array([[ids[n] for n in states]], np.int32),
-        "positions": np.array([[positions[n] for n in states]], np.int32),
-        "ancestors": ancestors,
-        "parents": np.array([index[p] for p in parents], np.int32),
-        "targets": np.array(ids, np.int32),
-    }
-
-
-def sample_trees(count: int = 600, seed: int = 0) -> list[dict[str, np.ndarray]]:
-    """Trees shaped like the engine's calls: up to 24 context characters, then 1 to 16 candidates that share
-    prefixes and branch, within the model's 64 positions."""
-    rng = np.random.default_rng(seed)
-    trees: list[dict[str, np.ndarray]] = []
-    while len(trees) < count:
-        prefix = [1, *rng.integers(3, 3000, int(rng.integers(0, 25))).tolist()]
-        base = rng.integers(3, 3000, int(rng.integers(2, 31))).tolist()
-        candidates = []
-        for length in range(max(1, len(base) - int(rng.integers(1, 17)) + 1), len(base) + 1):
-            candidate = base[:length]
-            if rng.random() < 0.5:
-                candidate[int(rng.integers(0, length))] = int(rng.integers(3, 3000))
-            candidates.append(candidate)
-        if len(prefix) + len(base) <= 64:
-            trees.append(pack(prefix, candidates))
-    return trees
-
-
 def tree_sizes(reranker: Path, limit: float = 0.5) -> dict[str, Any]:
-    """The compiled prefix tree on the CPU against PyTorch on sampled trees: the largest error and the node counts
-    where some tree is wrong by more than `limit` nats or not finite."""
-    import torch
-
-    from zhuyintype_ml.training.reranker.export_tree import TreeScorer
-    from zhuyintype_ml.training.reranker.train import CharLM, Config
-
-    checkpoint = torch.load(reranker / "charlm.pt", map_location="cpu", weights_only=False)
-    charlm = CharLM(Config(**checkpoint["config"]))
-    charlm.load_state_dict(checkpoint["model"])
-    scorer, tree = TreeScorer(charlm.eval()), model(reranker / "RerankerTree.mlmodelc")
-    worst, failed = 0.0, dict[int, float]()
-    for inputs in sample_trees():
-        with torch.no_grad():
-            expected = scorer(*(torch.from_numpy(inputs[k]) for k in TREE)).numpy()
-        got = np.asarray(tree.predict(inputs)["logprob"], np.float64)
-        error = float(np.max(np.abs(got - expected)[1:])) if np.all(np.isfinite(got)) else float("inf")
-        worst = max(worst, error)
-        if not error <= limit:
-            nodes = int(inputs["ids"].shape[1])
-            failed[nodes] = max(failed.get(nodes, 0.0), error)
-    return {"trees": 600, "max_abs": worst, "failed_node_counts": dict(sorted(failed.items()))}
+    """The compiled prefix tree on the CPU against PyTorch on 600 engine-shaped trees (trees.py)."""
+    tree = model(reranker / "RerankerTree.mlmodelc")
+    return check_trees(reranker / "charlm.pt", lambda inputs: tree.predict(inputs)["logprob"], limit)
 
 
 def stored_weights(reranker: Path, v3: Path) -> dict[str, float]:
