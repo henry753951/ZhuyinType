@@ -1704,6 +1704,35 @@ enum ControllerCoreSelfTest {
             try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
         }
 
+        test("聯想詞 window: no key labels until ↓ enters the list, the label says how, and the size stays") {
+            _ = NSApplication.shared
+            let content = CandidateContentView(frame: .zero)
+            let window = HeadlessWindow(size: NSSize(width: 300, height: 400))
+            window.isReleasedWhenClosed = false
+            window.contentView = content
+            defer { window.contentView = nil; window.close() }
+            func texts(_ view: NSView) -> [String] {
+                view.subviews.flatMap { sub -> [String] in
+                    if sub.isHidden { return [] }
+                    if let field = sub as? NSTextField { return [field.stringValue] }
+                    if sub.accessibilityRole() == .button, let label = sub.accessibilityLabel() { return [label] }
+                    return texts(sub)
+                }
+            }
+            let items = ["你", "大家"].map { Candidate(text: $0) }
+            let style = CandidateStyle(layout: .vertical)
+            let passive = CandidateList(items: items, pageSize: 9, associated: true, passive: true)
+            let passiveSize = content.update(list: passive, preview: nil, keys: Array("123456789"), style: style)
+            let shown = texts(content)
+            try expect(shown.contains("聯想詞・按 ↓ 選擇") && shown.contains("你") && shown.contains("大家")
+                       && !shown.contains("1，你"), "passive list: \(shown)")
+            let entered = CandidateList(items: items, pageSize: 9, associated: true, passive: false)
+            let enteredSize = content.update(list: entered, preview: nil, keys: Array("123456789"), style: style)
+            let after = texts(content)
+            try expect(after.contains("聯想詞") && after.contains("1，你") && after.contains("2，大家"), "entered list: \(after)")
+            try expect(passiveSize == enteredSize, "↓ resized the window: \(passiveSize) → \(enteredSize)")
+        }
+
         test("hover: one row at most; scrolling, paging and leaving clear it") {
             _ = NSApplication.shared
             let state = HoverState()
@@ -1801,8 +1830,8 @@ enum ControllerCoreSelfTest {
             for query in ["半型", "全型", "全形", "全型半型", "Shift 空白", "Shift＋空白", "shift+space"] {
                 try expect(item.matches(query, CurrentKeys(p)), "width missing for query \(query)")
             }
-            for command in [ShortcutCommand.togglePunctuationWidth, .insertSpace] {
-                try expect(command.place.pane == .typing && command.place.subpage == nil,
+            for (command, pane) in [(ShortcutCommand.togglePunctuationWidth, SettingsPane.punctuation), (.insertSpace, .typing)] {
+                try expect(command.place.pane == pane && command.place.subpage == nil,
                            "command still hidden one level down")
                 try expect(SettingsRegistry.setting("keys." + command.rawValue)?.detail?(p) != nil,
                            "command has no explanation")
@@ -1902,8 +1931,10 @@ enum ControllerCoreSelfTest {
         // Contrast, accent colours, VoiceOver and the solid panel (UI/Accessibility).
         AccessibilitySelfTest.run(test: test)
 
-        // 關於 › 檢查輸入法 (Health).
+        // 檢查輸入法 (Health).
         HealthSelfTest.run(test: test)
+        // Every link of the settings window leads to a drawn row, which takes the focus (UI/Settings/SettingsLinks.swift).
+        SettingsLinksSelfTest.run(test: test)
 
         test("wizard: a choice reaches the practice field on its page at once — the same field, its composition kept") {
             _ = NSApplication.shared

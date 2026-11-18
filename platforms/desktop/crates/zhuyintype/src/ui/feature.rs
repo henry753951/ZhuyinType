@@ -2,16 +2,19 @@
 //! `KeysOverviewLink`, `PlaceLink` in `SettingsPages.swift`).
 //!
 //! A feature is its row (title, description, switch) followed by one indented 「快捷鍵」 row per command, shown only
-//! while the feature is on.  Turned off, the description says which keys go to the app; made unavailable by another
-//! setting, the row dims and links to that setting.
+//! while the feature is on; a command without a switch is one row of its own.  Either way the keys are edited right
+//! there with the shared key field (`ui::shortcuts`), with 「還原預設」 under the title while they differ from the
+//! defaults; the row's anchor is `keys-<command>` (`pages::links::command_place`).  Turned off, the description says
+//! which keys go to the app; made unavailable by another setting, the row dims and links to that setting.
 
 use gpui_kit::{AnyElement, App, IntoElement, SharedString};
 use zt_core::settings;
 
-use super::current_keys::{Command, CurrentKeys, compact, shortcut_chip};
+use super::current_keys::{Command, CurrentKeys, compact};
+use super::shortcuts::{self, restore_link, store};
 use super::{Row, controls, row};
 use crate::app::{self, Place};
-use crate::pages::Page;
+use crate::pages::{Page, links};
 
 /// Why a feature is not in use although its switch may be on: another setting turns it off or changes it (macOS
 /// `KeyAvailability`).
@@ -27,8 +30,8 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
     match key {
         "feature.zhuyinRowClick" if !settings.bool("showsZhuyinHint") => Some(Availability {
             note: "「顯示注音」已關閉，候選字視窗沒有注音列",
-            place: Place::row(Page::Candidates, "showsZhuyin"),
-            link_title: "視窗與提示",
+            place: links::shows_zhuyin_place(),
+            link_title: "候選字視窗",
         }),
         "feature.correctionsList"
             if settings.string("typoTolerance") == "off"
@@ -38,8 +41,8 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
         {
             Some(Availability {
                 note: "「按錯鍵修正」關閉且沒有開啟模糊音：這個鍵開啟一般清單",
-                place: Place::row(Page::Choosing, "typo"),
-                link_title: "選字",
+                place: links::typo_place(),
+                link_title: "修正",
             })
         }
         _ => None,
@@ -73,19 +76,10 @@ pub fn feature_row(key: &'static str) -> FeatureRow {
     }
 }
 
-/// Commands that cannot be turned off, under a row of their own (「送出並換行」).
-pub fn command_feature_row(title: impl Into<SharedString>, subtitle: impl Into<SharedString>) -> FeatureRow {
-    FeatureRow { title: title.into(), subtitle: subtitle.into(), feature: None, commands: Vec::new(), anchor: None }
-}
-
 impl FeatureRow {
-    pub fn commands(mut self, commands: impl IntoIterator<Item = Command>) -> Self {
-        self.commands = commands.into_iter().collect();
-        self
-    }
-
-    pub fn anchor(mut self, anchor: impl Into<SharedString>) -> Self {
-        self.anchor = Some(anchor.into());
+    /// The description while the feature is on, in place of the registry's (it names the current keys).
+    pub fn subtitle(mut self, subtitle: impl Into<SharedString>) -> Self {
+        self.subtitle = subtitle.into();
         self
     }
 
@@ -116,6 +110,7 @@ impl FeatureRow {
         if let Some(anchor) = self.anchor.clone() {
             main = main.anchor(anchor);
         }
+        let unavailable = available.is_some();
         if let Some(availability) = available {
             let place = availability.place.clone();
             main = main.link(controls::text_link(
@@ -127,39 +122,54 @@ impl FeatureRow {
         }
         let mut rows = vec![main.into_any_element()];
         if on {
-            rows.extend(command_key_rows(&self.commands, cx).into_iter().map(IntoElement::into_any_element));
+            rows.extend(
+                command_key_rows(&self.commands, unavailable, cx).into_iter().map(IntoElement::into_any_element),
+            );
         }
         rows
     }
 }
 
-/// The indented 「快捷鍵」 rows of a setting: one per command, named after the command when there are several.
-pub fn command_key_rows(commands: &[Command], cx: &App) -> Vec<Row> {
+/// The indented 「快捷鍵」 rows of a feature: one per command (named after the command when there are several), each
+/// with the command's key field.  `unavailable`: another setting keeps the feature from working, so the keys dim.
+pub fn command_key_rows(commands: &[Command], unavailable: bool, cx: &App) -> Vec<Row> {
     let several = commands.len() > 1;
     commands
         .iter()
         .map(|&command| {
-            row(
-                SharedString::from(format!("keysrow-{}", command.id())),
-                if several { command.label() } else { "快捷鍵" },
-            )
-            .indent(true)
-            .anchor(command.keys_row())
-            .trailing(shortcut_chip(command, cx))
+            keys_row(command, if several { command.label() } else { "快捷鍵" }, unavailable, cx).indent(true)
         })
         .collect()
 }
 
-/// A row for one command's keys as a setting of its own (「標點全半形」「插入空白」 on 打字): title, description and
-/// the keys.
-pub fn command_row(command: Command, subtitle: impl Into<SharedString>, cx: &App) -> Row {
-    row(SharedString::from(format!("command-{}", command.id())), command.label())
-        .subtitle(subtitle)
-        .anchor(command.keys_row())
-        .trailing(shortcut_chip(command, cx))
+/// A command without a switch as one row: its title and description, and its key field (「切換標點全半形」, 「不要再推薦」).
+pub fn command_row(
+    command: Command,
+    title: impl Into<SharedString>,
+    subtitle: impl Into<SharedString>,
+    cx: &App,
+) -> Row {
+    keys_row(command, title, false, cx).subtitle(subtitle)
 }
 
-/// A row that opens one of the page's sub-pages: title, description, the current state and ›.
+/// The row that holds `command`'s key field, anchored `keys-<command>`.
+fn keys_row(command: Command, title: impl Into<SharedString>, unavailable: bool, cx: &App) -> Row {
+    let id = command.id();
+    let group = SharedString::from(format!("keys-row-{id}"));
+    let field = shortcuts::shortcut_field(id).without_restore().disabled(unavailable).hover_group(group.clone());
+    let mut row = row(SharedString::from(format!("keysrow-{id}")), title)
+        .anchor(command.keys_row())
+        .hover_group(group)
+        .marked(store::store(cx).is_customised(id))
+        .trailing(field);
+    if let Some(link) = restore_link(id, cx).filter(|_| !unavailable) {
+        row = row.link(link);
+    }
+    row
+}
+
+/// A row that opens one of the page's sub-pages: title, description, the current state and ›.  Its anchor is the
+/// sub-page's id.
 pub fn drill_row(
     page: Page,
     subpage: &'static str,
@@ -169,7 +179,7 @@ pub fn drill_row(
 ) -> Row {
     let title: SharedString = title.into();
     let value: SharedString = value.into();
-    let row = row(SharedString::from(format!("drill-{subpage}")), title).subtitle(subtitle);
+    let row = row(SharedString::from(format!("drill-{subpage}")), title).subtitle(subtitle).anchor(subpage);
     let row = if value.is_empty() { row } else { row.value(value) };
     row.on_click(move |_, _, cx| app::go(Place::subpage(page, subpage), cx))
 }
@@ -185,7 +195,7 @@ pub fn place_link(
     controls::text_link(id, title, move |_, _, cx| app::go(place.clone(), cx), cx)
 }
 
-/// The page's one link to the overview of all keys, at its foot.
-pub fn keys_overview_link(cx: &App) -> impl IntoElement {
-    place_link("keys-overview", "在快捷鍵總覽中查看全部按鍵", Place::page(Page::Keys), cx)
+/// The page's one link to the overview of all keys, at its foot: to the overview's section named like `page`.
+pub fn keys_overview_link(page: Page, cx: &App) -> impl IntoElement {
+    place_link("keys-overview", "在快捷鍵總覽中查看全部按鍵", links::keys_section_place(page), cx)
 }

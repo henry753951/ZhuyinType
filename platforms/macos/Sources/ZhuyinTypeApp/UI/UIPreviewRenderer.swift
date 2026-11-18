@@ -71,8 +71,12 @@ enum UIPreviewRenderer {
                 }
             }
             if only == "health" {
-                // 關於 › 檢查輸入法 and 回報問題, with everything in place and with problems.
+                // 檢查輸入法 and 回報問題, with everything in place and with problems.
                 try renderHealth(settings, to: directory.appendingPathComponent("health"))
+            }
+            if only == "links" {
+                // The window on every page, and links arriving at their rows (SETTINGS_IA.md §4.1), light and dark.
+                try renderLinks(settings, to: directory.appendingPathComponent("links"))
             }
             if only == "symbols" {
                 for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
@@ -158,6 +162,13 @@ enum UIPreviewRenderer {
             }
             try capturePanel(list: corrections, keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: hint,
                              to: directory.appendingPathComponent("candidate-\(layout.rawValue)-corrections-\(suffix).png"))
+        }
+        // 聯想詞 after a commit: as it appears (no highlight, no key labels) and once ↓ entered it.
+        let suggestions = ["你", "大家", "你們", "您", "各位"].map { Candidate(text: $0) }
+        for (name, passive) in [("associated", true), ("associated-entered", false)] {
+            try capturePanel(list: CandidateList(items: suggestions, pageSize: 9, associated: true, passive: passive),
+                             keys: keys, style: CandidateStyle(layout: .vertical), zhuyinHint: nil,
+                             to: directory.appendingPathComponent("candidate-\(name)-\(suffix).png"))
         }
         // Everything optional turned off, five to a page, large type.
         let minimal = CandidateStyle(layout: .vertical, fontSize: 24, density: .compact, showsZhuyinHint: false,
@@ -454,11 +465,12 @@ enum UIPreviewRenderer {
 
     /// Every page and sub-page, and how tall it is drawn (wide); narrow pages get more room for wrapping.
     private static let pages: [(SettingsPane, SettingsSubpage?, CGFloat)] = [
-        (.intro, nil, 1320), (.typing, nil, 1260), (.choosing, nil, 1180), (.candidates, nil, 1720), (.words, nil, 440),
-        (.analytics, nil, 2500), (.keys, nil, 2500), (.advanced, nil, 660), (.about, nil, 640),
-        (.typing, .punctuation, 820), (.typing, .typingKeys, 760), (.choosing, .fuzzy, 680), (.choosing, .context, 780),
+        (.intro, nil, 1700), (.analytics, nil, 2500), (.typing, nil, 760), (.punctuation, nil, 900), (.mode, nil, 820),
+        (.choosing, nil, 640), (.corrections, nil, 980), (.words, nil, 1040), (.candidates, nil, 1600), (.colors, nil, 760),
+        (.keys, nil, 2700), (.health, nil, 900), (.advanced, nil, 660), (.about, nil, 560),
+        (.typing, .typingKeys, 760), (.corrections, .fuzzy, 680), (.choosing, .context, 780),
         (.words, .learnedWords, 620), (.words, .phrases, 620),
-        (.analytics, .performance, 760), (.advanced, .apps, 460), (.about, .health, 900),
+        (.analytics, .performance, 760), (.advanced, .apps, 460),
     ]
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
@@ -576,7 +588,7 @@ enum UIPreviewRenderer {
         Preferences.shared.resetToDefaults()
         // Non-default keys (two and three keys for some actions): every key shown must follow.
         customKeys(Preferences.shared)
-        try renderPages(settings, pages.filter { [.typing, .choosing, .candidates, .keys, .intro].contains($0.0) && $0.1 == nil },
+        try renderPages(settings, pages.filter { [.typing, .punctuation, .mode, .corrections, .words, .candidates, .keys, .intro].contains($0.0) && $0.1 == nil },
                         to: directory, label: "-custom-keys", suffix: suffix)
         Preferences.shared.resetToDefaults()
         // Features turned off, and a conflict between two actions.
@@ -586,14 +598,14 @@ enum UIPreviewRenderer {
         bindings[.selectLeft] = [Shortcut("←", shift: true), Shortcut("←", control: true, shift: true)]
         Preferences.shared.bindings = bindings
         Preferences.shared.setEnabled(.selectPhrase, true)
-        try renderPages(settings, pages.filter { [.typing, .choosing, .candidates, .keys, .intro].contains($0.0) && $0.1 == nil }
-                        + [(.typing, .punctuation, 820)], to: directory, label: "-features-off", suffix: suffix)
+        try renderPages(settings, pages.filter { [.typing, .punctuation, .mode, .corrections, .words, .candidates, .keys, .intro]
+                            .contains($0.0) && $0.1 == nil }, to: directory, label: "-features-off", suffix: suffix)
         // A key field while recording, accepted and refused.
         Preferences.shared.resetToDefaults()
         DemoPinning.fieldStates = [.singleCharacterList: .recording(index: 0, held: ["⌃", "⇧"]),
                                    .correctionsList: .refused("已用於「打出注音本身」"), .typeZhuyin: .accepted(index: 0),
                                    .deleteWord: .hover]
-        try renderPages(settings, [(.choosing, nil, 1180), (.candidates, nil, 1720), (.typing, nil, 1260)], to: directory,
+        try renderPages(settings, [(.corrections, nil, 980), (.candidates, nil, 1600), (.typing, nil, 760)], to: directory,
                         label: "-field-states", suffix: suffix)
         DemoPinning.fieldStates = [:]
         // Key chips in every state, on the overview and on the feature pages: at rest (with +N), the row hovered
@@ -610,23 +622,68 @@ enum UIPreviewRenderer {
         DemoPinning.fieldStates = [.previousPage: .expanded, .selectLeft: .chipHover(0), .selectRight: .hover,
                                    .typeZhuyin: .hover, .correctionsList: .recording(index: 1, held: ["⌥"]),
                                    .deleteWord: .accepted(index: 0), .commitWithNewline: .refused("已用於「下一頁」")]
-        try renderPages(settings, [(.keys, nil, 2600), (.choosing, nil, 1300), (.typing, nil, 1300)], to: directory,
-                        label: "-chips", suffix: suffix)
+        try renderPages(settings, [(.keys, nil, 2800), (.corrections, nil, 1100), (.words, nil, 1100), (.typing, nil, 800)],
+                        to: directory, label: "-chips", suffix: suffix)
         DemoPinning.fieldStates = [:]
         Preferences.shared.resetToDefaults()
         // The arrival cue, frame by frame: on a row (its section's header in the accent colour), then on a section.
-        for (target, row, section) in [("row", Optional(ShortcutCommand.correctionsList.keysRow), "按錯鍵"),
-                                       ("section", nil, "前文")] {
+        for (target, row, section) in [("row", Optional(ShortcutCommand.correctionsList.keysRow), "修正過的字"),
+                                       ("section", nil, "改字")] {
             for (frame, opacity) in [("before", 0.0), ("rising", 0.09), ("peak", ArrivalHighlight.peakOpacity), ("fading", 0.05)] {
                 settings.model.arrivedRow = frame == "before" ? nil : row
                 settings.model.arrivedSection = frame == "before" ? nil : section
                 DemoPinning.arrivalOpacity = opacity
-                try renderPages(settings, [(.choosing, nil, 1180)], to: directory, label: "-arrival-\(target)-\(frame)", suffix: suffix)
+                try renderPages(settings, [(.corrections, nil, 980)], to: directory, label: "-arrival-\(target)-\(frame)", suffix: suffix)
             }
         }
         settings.model.arrivedRow = nil
         settings.model.arrivedSection = nil
         DemoPinning.arrivalOpacity = nil
+        settings.model.subpage = nil
+    }
+
+    /// The window (sidebar included) on each page, then after following a few links: the page switched, the row
+    /// scrolled into view and lit, as `SettingsWindowController.open` leaves it.
+    private static func renderLinks(_ settings: SettingsWindowController, to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        Preferences.shared.resetToDefaults()
+        let links: [(String, SettingsPlace)] = [
+            ("overview-correctionsList", ShortcutCommand.correctionsList.overviewPlace),
+            ("page-correctionsList", ShortcutCommand.correctionsList.place),
+            ("keys-section-words", .keysSection(.words)),
+            ("intro-quickSettings", ShortcutCommand.quickSettings.place),
+            ("fixed-key", SettingsPlace(.keys, row: "row-cursor")),
+            ("overview-bottom", SettingsPlace(.keys, row: ShortcutCommand.addCandidatePhrase.keysRow)),
+            ("words-pauseLearning", SettingsPlace(.words, row: SettingsRow.pauseLearning)),
+        ]
+        for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            for pane in SettingsPane.allCases {
+                settings.model.subpage = nil
+                let window = settings.makeWindow(pane: pane)
+                window.setContentSize(NSSize(width: 760, height: 600))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                settings.model.reloadLists()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.4))
+                try capture(window: window, to: directory.appendingPathComponent("window-\(pane.rawValue)-\(name).png"))
+                retire(window)
+            }
+            for (label, place) in links {
+                let window = settings.makeWindow(pane: .intro)
+                window.setContentSize(NSSize(width: 760, height: 600))
+                window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
+                window.alphaValue = 0
+                window.orderFrontRegardless()
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+                settings.open(place)
+                // The tint peaks 0.6 s after the link and holds for 0.8 s.
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.9))
+                try capture(window: window, to: directory.appendingPathComponent("link-\(label)-\(name).png"))
+                retire(window)
+            }
+        }
         settings.model.subpage = nil
     }
 
@@ -658,38 +715,59 @@ enum UIPreviewRenderer {
         settings.model.subpage = nil
     }
 
-    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet: everything in place, then problems
-    /// (secure input on, the input source not added, a model missing, per-document input sources).
+    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet and its text: everything in place,
+    /// then problems (secure input on, the input source not added, a model missing, per-document input sources,
+    /// another copy, a quarantined bundle), with every row's 詳細資料 open.
     private static func renderHealth(_ settings: SettingsWindowController, to directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let monitor = HealthMonitor.shared
         let saved = monitor.pinned
-        defer { monitor.pinned = saved }
+        defer {
+            monitor.pinned = saved
+            HealthRow.showsDetailsInitially = false
+        }
         var problems = HealthFacts.sample()
         problems.secureInput = .on(owner: "鑰匙圈存取")
         problems.inputSource = .registered(enabled: false, selectable: false)
+        problems.currentInputSource = "com.apple.keylayout.ABC"
+        problems.enabledInputSources = ["com.apple.keylayout.ABC", "com.apple.inputmethod.TCIM.Zhuyin"]
         problems.perDocumentInputSource = true
         problems.missingModels = [.reranker]
+        if let index = problems.dataItems.firstIndex(where: { $0.name == HealthFacts.Model.reranker.name }) {
+            problems.dataItems[index].url = nil
+            problems.dataItems[index].bytes = nil
+        }
+        problems.loadTimes?.reranker = nil
+        problems.copies.append(URL(fileURLWithPath: "/Users/sample/Downloads/ZhuyinType.app"))
+        problems.app.quarantined = true
+        problems.changedSettings += [HealthSettings.Change(key: "popupCompositionApps", value: nil),
+                                     HealthSettings.Change(key: "typoTolerance", value: "aggressive")]
+        problems.display = HealthFacts.Display(scale: 2, dark: true, panelAppearance: .system, voiceOver: true,
+                                               reduceMotion: true, increaseContrast: false, reduceTransparency: true)
         let errors = [HealthReport.LogLine(date: problems.now.addingTimeInterval(-600),
-                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened.")]
+                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened."),
+                      HealthReport.LogLine(date: problems.now.addingTimeInterval(-540),
+                                           message: "Engine reload: /Users/sample/Library/Application Support/ZhuyinType/Models is empty")]
         for (state, facts) in [("ok", HealthFacts.sample()), ("problems", problems)] {
             monitor.pinned = facts
+            HealthRow.showsDetailsInitially = state == "problems"
+            try HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts), errors: state == "ok" ? [] : errors)
+                .write(to: directory.appendingPathComponent("report-\(state).txt"), atomically: true, encoding: .utf8)
             for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 NSApp.appearance = NSAppearance(named: appearanceName)
-                for subpage in [nil, SettingsSubpage.health] {
+                for pane in [SettingsPane.about, .health] {
                     settings.model.subpage = nil
-                    let window = settings.makeWindow(pane: .about)
+                    let window = settings.makeWindow(pane: pane)
                     window.setContentSize(NSSize(width: 760, height: 600))
                     window.setFrameOrigin(NSPoint(x: -30000, y: -30000))
                     window.alphaValue = 0
                     window.orderFrontRegardless()
-                    settings.model.subpage = subpage
                     RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
-                    try capture(window: window, to: directory.appendingPathComponent(
-                        "\(subpage == nil ? "about" : "health")-\(state)-\(name).png"))
+                    try capture(window: window, to: directory.appendingPathComponent("\(pane.rawValue)-\(state)-\(name).png"))
                     retire(window)
                 }
-                try renderPages(settings, [(.about, .health, 900)], to: directory, label: "-\(state)", suffix: name)
+                try renderPages(settings, [(.health, nil, state == "ok" ? 900 : 1500)], to: directory, label: "-\(state)",
+                                suffix: name)
                 let text = HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts),
                                              errors: state == "ok" ? [] : errors)
                 try capture(swiftUI: HealthReportSheet(text: text).frame(width: 620, height: 520)

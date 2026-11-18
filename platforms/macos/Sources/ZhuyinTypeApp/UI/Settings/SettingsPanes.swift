@@ -216,7 +216,6 @@ enum CorrectionLogActions {
 struct AboutPane: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject private var updater = Updater.shared
-    @ObservedObject private var health = HealthMonitor.shared
     @State private var document: LicenseDocument?
 
     private var sourceURL: URL {
@@ -244,10 +243,6 @@ struct AboutPane: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-            }
-            SettingsSection {
-                DrillRow(model: model, title: "檢查輸入法", subtitle: "確認輸入法可以正常使用，或回報問題",
-                         value: health.summary, subpage: .health)
             }
             if updater.isAvailable {
                 SettingsSection("更新") {

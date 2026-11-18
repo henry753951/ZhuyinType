@@ -8,17 +8,11 @@
 // Shared with the 快捷鍵 and 視窗與提示 pages, which use the parts these pages do not.
 #![allow(dead_code)]
 
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{
-    App, InteractiveElement, IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, div,
-};
+use gpui_kit::{App, SharedString};
 use serde_json::Value;
 use zt_core::settings;
 
-use super::h;
-use crate::app::{self, Place};
-use crate::pages::Page;
-use crate::theme::{self, space, text};
+use crate::app;
 
 /// A command with a rebindable key (macOS `ShortcutCommand`, most used first).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -121,9 +115,9 @@ impl Command {
         }
     }
 
-    /// The anchor of the command's 「快捷鍵」 row on its feature's page.
+    /// The anchor of the command's 「快捷鍵」 row, on its feature's page and on 快捷鍵.
     pub fn keys_row(self) -> String {
-        format!("keys-{}", self.id())
+        crate::pages::links::keys_anchor(self.id())
     }
 
     /// The toggle setting that turns the command off: the descriptor whose `commands` lists it.
@@ -220,19 +214,4 @@ impl<'a> CurrentKeys<'a> {
     pub fn mode_key(&self) -> Option<&'static str> {
         self.shift_tap().or_else(|| app::settings(self.cx).bool("feature.capsLockEnglish").then_some("Caps Lock"))
     }
-}
-
-/// The keys of a command at the end of its row, as key caps (「⇧」「Return」).  Until keys can be recorded here, a
-/// click goes to the command's row on the 快捷鍵 page, where they are changed.
-pub fn shortcut_chip(command: Command, cx: &App) -> impl IntoElement {
-    let p = theme::palette(cx);
-    let keys = CurrentKeys::new(cx).all(command);
-    h().id(SharedString::from(format!("chip-{}", command.id())))
-        .gap(space::S12)
-        .cursor_pointer()
-        .on_click(move |_, _, cx| app::go(Place::row(Page::Keys, command.keys_row()), cx))
-        .when(keys.is_empty(), |this| {
-            this.child(div().text_size(text::SUBTITLE).text_color(p.text_tertiary).child("沒有按鍵"))
-        })
-        .children(keys.into_iter().map(super::keycap::key_combo))
 }

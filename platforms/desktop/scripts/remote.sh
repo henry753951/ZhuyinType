@@ -9,7 +9,9 @@
 #
 # The host is ZHUYIN_REMOTE_HOST in .remote.env (an ssh alias or user@host).  Each checkout gets its own work
 # directory (~/zhuyintype/work/desktop-<checkout>) and cargo target directory (~/zhuyintype/target/desktop-<checkout>),
-# so worktrees never rebuild each other's artefacts.
+# so worktrees never rebuild each other's artefacts.  cargo-xwin's MSVC headers and libraries live in that target
+# directory too (XWIN_CACHE_DIR=<target>/xwin-cache, first copied from ~/.cache/cargo-xwin when that exists): one
+# shared cache unpacked by several builds at once ends up corrupt.
 set -euo pipefail
 # The checkout's root from this file's place (not git: a git hook's GIT_DIR would make that answer the current
 # directory).
@@ -26,4 +28,8 @@ rsync -az --delete -e "ssh ${ssh_opts[*]}" \
   --exclude .git --exclude .reference --exclude target/ --exclude /data --exclude /dist --exclude .venv \
   --exclude /references --exclude '.build*' --exclude .remote.env --exclude 'platforms/macos/.build' \
   "$root/" "$host:zhuyintype/work/$name/"
-exec ssh "${ssh_opts[@]}" "$host" "export PATH=\$HOME/.cargo/bin:\$PATH CARGO_TARGET_DIR=\$HOME/zhuyintype/target/$name ZT_WORK=\$HOME/zhuyintype/work/$name; cd \$ZT_WORK/platforms/desktop && $(printf '%q ' "$@")"
+target=\$HOME/zhuyintype/target/$name
+xwin='export XWIN_CACHE_DIR=${XWIN_CACHE_DIR:-$CARGO_TARGET_DIR/xwin-cache};
+  [ -d "$XWIN_CACHE_DIR" ] || [ ! -d ~/.cache/cargo-xwin ] || { mkdir -p "$CARGO_TARGET_DIR" &&
+    cp -a ~/.cache/cargo-xwin "$XWIN_CACHE_DIR.tmp.$$" && mv "$XWIN_CACHE_DIR.tmp.$$" "$XWIN_CACHE_DIR"; } || true'
+exec ssh "${ssh_opts[@]}" "$host" "export PATH=\$HOME/.cargo/bin:\$PATH CARGO_TARGET_DIR=$target ZT_WORK=\$HOME/zhuyintype/work/$name; $xwin; cd \$ZT_WORK/platforms/desktop && $(printf '%q ' "$@")"

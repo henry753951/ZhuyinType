@@ -9,6 +9,7 @@ use zt_core::service::Service;
 use zt_core::settings::Settings;
 
 use crate::pages::Page;
+use crate::scroll::SmoothScroll;
 
 /// Shared state, installed once at start-up.
 pub struct AppState {
@@ -68,11 +69,6 @@ impl Place {
     pub fn row(page: Page, row: impl Into<SharedString>) -> Self {
         Self { page, subpage: None, row: Some(row.into()) }
     }
-
-    pub fn in_subpage(mut self, subpage: impl Into<SharedString>) -> Self {
-        self.subpage = Some(subpage.into());
-        self
-    }
 }
 
 /// Which way the last navigation went, for the push/pop motion.
@@ -99,14 +95,31 @@ pub struct Navigation {
     pub query: SharedString,
     /// The page's scroll position; links scroll the arrival row into view.
     pub scroll: ScrollHandle,
-    /// The row still to scroll to after the next layout.
-    pub pending_scroll: Option<SharedString>,
+    /// The page's wheel, keys and animated scroll-to (the same handle as `scroll`).
+    pub scroller: SmoothScroll<ScrollHandle>,
+    /// The arrival still to scroll to and to give the keyboard focus, after the next layout.
+    arrive: Option<Arrive>,
+    /// The title of the section the arrival row is in: its heading turns accent with the row's tint.
+    heading: Option<SharedString>,
+}
+
+/// What an arrival still has to do once its row is laid out (SETTINGS_IA.md §4.1).
+struct Arrive {
+    anchor: SharedString,
+    scrolled: bool,
+    focused: bool,
+    /// Where each titled section of the page was laid out, so a row's section heading stays in view.
+    sections: Vec<(SharedString, Bounds<Pixels>)>,
 }
 
 impl Global for Navigation {}
 
+/// How long a link waits for its row to be drawn before it gives up scrolling to it.
+const ARRIVE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+
 impl Navigation {
     pub fn new(page: Page) -> Self {
+        let scroll = ScrollHandle::new();
         Self {
             page,
             subpage: None,
@@ -114,12 +127,15 @@ impl Navigation {
             direction: Direction::Switch,
             arrival: None,
             query: SharedString::default(),
-            scroll: ScrollHandle::new(),
-            pending_scroll: None,
+            scroll: scroll.clone(),
+            scroller: SmoothScroll::new(scroll),
+            arrive: None,
+            heading: None,
         }
     }
 
-    /// Goes to `place`.
+    /// Goes to `place`: the page (and its sub-page) at the top; with a row, the arrival: scroll to it, focus it, tint
+    /// it once.
     pub fn go(&mut self, place: Place) {
         let direction = if place.page != self.page {
             Direction::Switch
@@ -139,9 +155,12 @@ impl Navigation {
         if moved {
             self.direction = direction;
             self.generation += 1;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
-        self.pending_scroll = place.row.clone();
+        self.arrive =
+            place.row.clone().map(|anchor| Arrive { anchor, scrolled: false, focused: false, sections: Vec::new() });
+        self.heading = None;
         self.arrival = place.row.map(|row| (row, Instant::now()));
     }
 
@@ -152,24 +171,110 @@ impl Navigation {
             self.direction = Direction::Pop;
             self.generation += 1;
             self.arrival = None;
+            self.arrive = None;
+            self.heading = None;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
     }
+
+    /// The arrival still waiting to be scrolled to, if it has not waited too long.
+    fn waiting(&mut self) -> Option<&mut Arrive> {
+        let fresh = self.arrival.as_ref().is_some_and(|(_, at)| at.elapsed() < ARRIVE_WAIT);
+        if !fresh {
+            self.arrive = None;
+        }
+        self.arrive.as_mut()
+    }
+
+    /// Whether `title` is the heading of the section a link's row is in (it turns accent while the row tints).
+    pub fn is_arrival_heading(&self, title: &str) -> bool {
+        self.heading.as_deref() == Some(title)
+    }
+
+    /// The anchor a link just led to, while it is still to be scrolled to or focused.
+    pub fn arriving(&self) -> Option<&str> {
+        self.arrive.as_ref().filter(|arrive| !arrive.scrolled || !arrive.focused).map(|arrive| arrive.anchor.as_ref())
+    }
 }
 
-/// Called by a row or section with `anchor` once laid out: if a link is waiting to show it, scroll it near the top.
-pub fn scroll_into_view(anchor: &str, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-    let nav = cx.global_mut::<Navigation>();
-    if nav.pending_scroll.as_deref() != Some(anchor) {
-        return;
+/// What a link leads to: one row, or a whole section (its heading goes near the top).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Target {
+    Row,
+    Section,
+}
+
+/// Called by every titled section once laid out while a link waits: where it is, so the row's heading stays in view.
+pub fn section_laid_out(title: SharedString, bounds: Bounds<Pixels>, cx: &mut App) {
+    if let Some(arrive) = cx.global_mut::<Navigation>().waiting()
+        && !arrive.scrolled
+    {
+        // Every frame lays the page out again; the newest bounds of the sections are at the end.
+        if arrive.sections.len() > 512 {
+            arrive.sections.clear();
+        }
+        arrive.sections.push((title, bounds));
     }
-    nav.pending_scroll = None;
+}
+
+/// Called by a row or section with `anchor` once laid out: if a link is waiting to show it, scroll it to about the
+/// top third with its section's heading in view (a section: its heading near the top).  The scroll is a jump, so
+/// it is the same under reduced motion.
+pub fn scroll_into_view(anchor: &str, target: Target, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    let nav = cx.global_mut::<Navigation>();
+    let scroller = nav.scroller.clone();
     let viewport = nav.scroll.bounds();
     let offset = nav.scroll.offset();
-    let target = offset.y - (bounds.origin.y - viewport.origin.y - px(56.));
     let max = nav.scroll.max_offset().y;
-    nav.scroll.set_offset(point(offset.x, target.min(px(0.)).max(-max)));
-    window.refresh();
+    let Some(arrive) = nav.waiting().filter(|arrive| arrive.anchor.as_ref() == anchor && !arrive.scrolled) else {
+        return;
+    };
+    arrive.scrolled = true;
+    let sections = std::mem::take(&mut arrive.sections);
+    // The section the row is in: the last one laid out around it.
+    let section = (target == Target::Row)
+        .then(|| sections.into_iter().rev().find(|(_, s)| s.top() <= bounds.top() && s.bottom() >= bounds.bottom()))
+        .flatten();
+    let y = arrival_offset(target, bounds, section.as_ref().map(|(_, s)| *s), viewport, offset.y, max);
+    nav.heading = section.map(|(title, _)| title);
+    // Glides (DESIGN.md 到達提示); at once under reduced motion.
+    scroller.scroll_to(-y, window, cx);
+}
+
+/// The scroll offset that shows `bounds` as an arrival (see [`scroll_into_view`]), within `[-max, 0]`.
+/// `section`: where the row's section is, heading included.
+pub fn arrival_offset(
+    target: Target,
+    bounds: Bounds<Pixels>,
+    section: Option<Bounds<Pixels>>,
+    viewport: Bounds<Pixels>,
+    offset: Pixels,
+    max: Pixels,
+) -> Pixels {
+    let margin = px(24.);
+    let height = viewport.size.height;
+    let top = match target {
+        Target::Section => margin,
+        Target::Row => {
+            let heading = section.map_or(bounds.top(), |section| section.top());
+            let below_heading = bounds.top() - heading + margin;
+            (height / 3.).max(below_heading).min(height - bounds.size.height - margin).max(margin)
+        }
+    };
+    (offset - (bounds.top() - (viewport.top() + top))).min(px(0.)).max(-max)
+}
+
+/// Called by a row or section with `anchor` when drawn: if a link led to it, give `focus` the keyboard focus once
+/// (the row, not a Tab stop itself, hands Tab on to its control).
+pub fn focus_on_arrival(anchor: &str, focus: &gpui_kit::FocusHandle, window: &mut Window, cx: &mut App) {
+    let Some(arrive) = cx.global_mut::<Navigation>().waiting().filter(|a| a.anchor.as_ref() == anchor && !a.focused)
+    else {
+        return;
+    };
+    arrive.focused = true;
+    let focus = focus.clone();
+    window.defer(cx, move |window, cx| window.focus(&focus, cx));
 }
 
 /// Scrolls the page just enough to show `bounds` (something the keyboard moved to), keeping a margin; the top wins
@@ -188,8 +293,7 @@ pub fn reveal(bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
     }
     let y = y.min(px(0.)).max(-nav.scroll.max_offset().y);
     if y != offset.y {
-        nav.scroll.set_offset(point(offset.x, y));
-        window.refresh();
+        nav.scroller.clone().scroll_to(-y, window, cx);
     }
 }
 

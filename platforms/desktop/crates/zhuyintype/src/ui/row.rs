@@ -163,18 +163,44 @@ impl Row {
     }
 }
 
+/// How long ago the link was followed; screenshots hold the arrival cue at one moment with `ZT_ARRIVAL_AT=SECONDS`.
+fn since_arrival(at: std::time::Instant) -> Duration {
+    static PINNED: std::sync::OnceLock<Option<Duration>> = std::sync::OnceLock::new();
+    let pinned = PINNED.get_or_init(|| {
+        std::env::var("ZT_ARRIVAL_AT").ok().and_then(|value| value.parse::<f32>().ok()).map(Duration::from_secs_f32)
+    });
+    pinned.unwrap_or_else(|| at.elapsed())
+}
+
 /// Whether a link just led to `anchor` (the row or its section), and the navigation generation to key its animation.
 pub(crate) fn arrived(anchor: &str, cx: &App) -> Option<usize> {
     let nav = app::nav(cx);
     nav.arrival
         .as_ref()
-        .filter(|(row, at)| row.as_ref() == anchor && at.elapsed() < Duration::from_secs(3))
+        .filter(|(row, at)| row.as_ref() == anchor && since_arrival(*at) < Duration::from_secs(3))
         .map(|_| nav.generation)
 }
 
+/// The anchors drawn while the link test records them (`pages::links`), with the focus a link gives them; no
+/// recorder outside tests.
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct DrawnAnchors(pub std::collections::BTreeMap<String, gpui_kit::FocusHandle>);
+
+#[cfg(test)]
+impl gpui_kit::Global for DrawnAnchors {}
+
+/// Notes that `anchor` was drawn, with its focus (tests only).
+#[cfg(test)]
+pub(crate) fn record_anchor(anchor: &str, focus: &gpui_kit::FocusHandle, cx: &mut App) {
+    if cx.has_global::<DrawnAnchors>() {
+        cx.global_mut::<DrawnAnchors>().0.insert(anchor.to_owned(), focus.clone());
+    }
+}
+
 /// An invisible layer that reports where `anchor` is once laid out, so a waiting link can scroll to it.
-pub(crate) fn anchor_probe(anchor: SharedString) -> impl IntoElement {
-    canvas(move |bounds, window, cx| app::scroll_into_view(&anchor, bounds, window, cx), |_, _, _, _| {})
+pub(crate) fn anchor_probe(anchor: SharedString, target: app::Target) -> impl IntoElement {
+    canvas(move |bounds, window, cx| app::scroll_into_view(&anchor, target, bounds, window, cx), |_, _, _, _| {})
         .absolute()
         .size_full()
 }
@@ -189,7 +215,7 @@ pub(crate) fn arrival_tint(window: &mut Window, cx: &App) -> impl IntoElement {
     let t = app::nav(cx)
         .arrival
         .as_ref()
-        .map_or(1., |(_, at)| (at.elapsed().as_secs_f32() / ARRIVAL.as_secs_f32()).min(1.));
+        .map_or(1., |(_, at)| (since_arrival(*at).as_secs_f32() / ARRIVAL.as_secs_f32()).min(1.));
     if t < 1. {
         window.request_animation_frame();
     }
@@ -232,6 +258,14 @@ impl RenderOnce for Row {
         }
         let focus_handle = focus.read(cx).handle.clone();
         let arrival = self.anchor.as_ref().and_then(|anchor| arrived(anchor, cx).map(|g| (anchor.clone(), g)));
+        #[cfg(test)]
+        if let Some(anchor) = &self.anchor {
+            record_anchor(anchor, &focus_handle, cx);
+        }
+        // A link led here: the keyboard focus comes to the row (Tab goes on to its control).
+        if let Some((anchor, _)) = &arrival {
+            app::focus_on_arrival(anchor, &focus_handle, window, cx);
+        }
         let chevron = match self.accessory {
             Accessory::Chevron => Some(controls::chevron(cx).into_any_element()),
             Accessory::Disclosure(open) => {
@@ -283,7 +317,9 @@ impl RenderOnce for Row {
                         .group_active(group.clone(), |style| style.bg(p.pressed)),
                 )
             })
-            .when_some(arrival, |this, (anchor, _)| this.child(arrival_tint(window, cx)).child(anchor_probe(anchor)))
+            .when_some(arrival, |this, (anchor, _)| {
+                this.child(arrival_tint(window, cx)).child(anchor_probe(anchor, app::Target::Row))
+            })
             .when(self.dimmed, |this| this.opacity(0.5))
             .track_focus(&focus_handle)
             .when(reveal, |this| this.child(canvas(app::reveal, |_, _, _, _| {}).absolute().size_full()))

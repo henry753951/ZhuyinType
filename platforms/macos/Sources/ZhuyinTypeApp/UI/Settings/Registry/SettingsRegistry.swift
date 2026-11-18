@@ -124,63 +124,65 @@ enum SettingsRegistry {
                           detail: { $0.escapeClearsComposition ? "先清除注音，再按一次清除整段組字" : "只清除還沒打完的注音" },
                           read: { .bool($0.escapeClearsComposition) },
                           write: { p, v in if case .bool(let on) = v { p.escapeClearsComposition = on } }),
-        choice("punctuationKeys", "標點按法", place(.typing, SettingsRow.punctuationKeys), \.punctuationKeys,
+        choice("punctuationKeys", "標點按法", place(.punctuation, SettingsRow.punctuationKeys), \.punctuationKeys,
                [(PunctuationKeys.windows, "Windows"), (.mac, "macOS")], demo: "punctuation",
                detail: { $0.punctuationKeys == .windows ? "⇧ 加符號鍵打出鍵上的符號，例如 ＜" : "⇧ 加符號鍵打出中文標點，例如 ，" },
                keywords: ["標點", "全形"]),
         feature(.controlPunctuation, "⌃ 加符號鍵打中文標點"),
         feature(.optionSymbols, "⌥ 加數字或符號鍵打鍵上的符號"),
         feature(.symbolPicker, "符號與 Emoji"),
-        toggle("shiftSwitch", "單按 Shift 切換中英", place(.typing, SettingsRow.shiftTap), \.shiftSwitchEnabled, preview: .mode,
+        toggle("shiftSwitch", "單按 Shift 切換中英", place(.mode, SettingsRow.shiftTap), \.shiftSwitchEnabled, preview: .mode,
                detail: { $0.shiftSwitchEnabled ? "在可以打字的地方單按一下" : "關閉時，Shift 只當作 Shift" }, keywords: ["中英", "Shift"]),
-        choice("shiftToggle", "使用的 Shift", place(.typing, SettingsRow.shiftTap), \.shiftToggle,
+        choice("shiftToggle", "使用的 Shift", place(.mode, SettingsRow.shiftSide), \.shiftToggle,
                [(ShiftToggle.both, "左右 Shift"), (.left, "左 Shift"), (.right, "右 Shift"), (.none, "不使用")], preview: .mode),
         feature(.capsLockEnglish, "Caps Lock 打英文"),
-        toggle("showModeToast", "中英提示", place(.candidates, SettingsRow.modeToast), \.showModeToast, preview: .mode,
+        toggle("showModeToast", "中英提示", place(.mode, SettingsRow.modeToast), \.showModeToast, preview: .mode,
                detail: { p in CurrentKeys(p).modeKey.map { "按 \($0) 切換時，在游標旁顯示「中」或「英」" } ?? "切換時在游標旁顯示「中」或「英」" }),
-        toggle("startInEnglish", "開始輸入時使用英文", place(.typing), \.startInEnglish),
+        toggle("startInEnglish", "開始輸入時使用英文", place(.mode, SettingsRow.startInEnglish), \.startInEnglish),
         feature(.deleteWord, "刪掉一個詞"),
     ]
 
     // MARK: 選字
 
     static let choosing: [SettingDescriptor] = [
-        choice("candidateAnchor", "游標在句中時改", place(.choosing), \.candidateAnchor,
+        choice("candidateAnchor", "游標在句中時改", place(.choosing, SettingsRow.candidateAnchor), \.candidateAnchor,
                [(AnchorSetting.after, "游標右邊的字"), (.before, "游標左邊的字")], demo: "anchor", detail: { _ in "要改的字以底線標出" }),
         choice("characterForms", "台／臺", place(.choosing), \.characterForms, [(CharacterForms.common, "台"), (.standard, "臺")],
                detail: { _ in "顯示與送出的寫法" }),
-        choice("outputScript", "繁／簡", place(.choosing), \.outputScript, [(OutputScript.traditional, "繁體"), (.simplified, "簡體")],
+        choice("outputScript", "繁／簡", place(.choosing, SettingsRow.outputScript), \.outputScript, [(OutputScript.traditional, "繁體"), (.simplified, "簡體")],
                detail: { $0.outputScript == .simplified ? "組字、候選字與送出的字換成簡體字；詞庫與學習仍用繁體" : "顯示與送出正體字" },
                keywords: ["簡體", "繁體", "簡繁", "繁簡"]),
-        choice("typoTolerance", "按錯鍵修正", place(.choosing, SettingsRow.typo), \.typoTolerance,
+        choice("typoTolerance", "按錯鍵修正", place(.corrections, SettingsRow.typo), \.typoTolerance,
                [(TypoSetting.off, "關閉"), (.standard, "標準"), (.aggressive, "積極")], preview: .corrections, demo: "typo",
                detail: { OptionDemos.typoSubtitle($0.typoTolerance) }, keywords: ["按錯", "容錯"]),
-        toggle("readingChannel", "接受常見的其他讀法", place(.choosing, SettingsRow.otherReadings), \.readingChannel,
+        toggle("readingChannel", "接受常見的其他讀法", place(.corrections, SettingsRow.otherReadings), \.readingChannel,
                detail: { $0.readingChannel ? "有邊讀邊、輕聲照本調打，也找得到要的詞" : "只照字典的讀音找詞" },
                keywords: ["讀音", "讀法", "有邊讀邊", "輕聲", "台灣讀音"]),
         feature(.correctionsList, "列出修正的字"),
-        toggle("showCorrections", "標示自動修正", place(.choosing, SettingsRow.showCorrections), \.showCorrections,
+        toggle("showCorrections", "標示自動修正", place(.corrections, SettingsRow.showCorrections), \.showCorrections,
                detail: { _ in "按錯鍵修正過的字，下方加一條點線；開啟候選字視窗時顯示你打的注音" },
                keywords: ["修正", "點線", "你打的是", "自動修正"]),
-        toggle("undoCorrectionWithBackspace", "⌫ 還原自動修正", place(.choosing, SettingsRow.undoCorrection),
+        toggle("undoCorrectionWithBackspace", "⌫ 還原自動修正", place(.corrections, SettingsRow.undoCorrection),
                \.undoCorrectionWithBackspace, detail: { _ in "修正剛出現時按 ⌫，改回你打的注音；再按一次才刪除" },
                keywords: ["還原", "復原", "退格", "Backspace", "自動修正"]),
         SettingDescriptor(id: "fuzzySounds", title: "模糊音",
                           kind: .flags([(1 << 0, "ㄗ 與 ㄓ"), (1 << 1, "ㄘ 與 ㄔ"), (1 << 2, "ㄙ 與 ㄕ"), (1 << 3, "ㄣ 與 ㄥ"),
                                         (1 << 4, "ㄢ 與 ㄤ")].map { (bit: $0.0, title: $0.1) }),
-                          place: place(.choosing, SettingsRow.fuzzy), demo: "fuzzy", keywords: ["ㄗㄓ", "ㄣㄥ"],
+                          place: place(.corrections, SettingsRow.fuzzy), demo: "fuzzy", keywords: ["ㄗㄓ", "ㄣㄥ"],
                           read: { .number(Double($0.fuzzySounds.rawValue)) },
                           write: { p, v in if case .number(let raw) = v { p.fuzzySounds = FuzzySounds(rawValue: Int(raw)) } }),
         toggle("usesPrecedingText", "參考游標前的文字", place(.choosing, nil, .context), \.usesPrecedingText, keywords: ["前文"]),
         toggle("associatedPhrases", "送出後列出聯想詞", place(.choosing, SettingsRow.associatedPhrases), \.associatedPhrases,
-               detail: { _ in "送出後列出常接在後面的詞，按 ↓ 進入清單再選；其他鍵照常輸入" },
+               detail: { _ in
+                   "送出後列出常接在後面的詞。先按 ↓ 進入清單，再按詞前面標出的鍵送出；沒按 ↓ 時每個鍵照常輸入（1 仍是 ㄅ）"
+               },
                keywords: ["聯想", "聯想詞", "下一個詞"]),
         feature(.typeZhuyin, "打出注音本身"),
         feature(.selectPhrase, "選取加入自訂詞"),
         feature(.deleteAfterCommit, "送出後刪掉重打"),
     ]
 
-    // MARK: 視窗與提示
+    // MARK: 候選字視窗、色彩
 
     static let candidates: [SettingDescriptor] = [
         choice("candidateLayout", "排列", place(.candidates, SettingsRow.layout), \.candidateLayout,
@@ -213,10 +215,10 @@ enum SettingsRegistry {
         choice("candidatePlacement", "位置", place(.candidates, SettingsRow.placement), \.candidatePlacement,
                [(CandidatePlacement.below, "游標下方"), (.above, "游標上方")], preview: .list,
                detail: { _ in "空間不足時換到另一邊，一律留在螢幕內" }),
-        choice("panelAppearance", "外觀", place(.candidates, SettingsRow.appearance), \.panelAppearance,
+        choice("panelAppearance", "外觀", place(.colors, SettingsRow.appearance), \.panelAppearance,
                [(PanelAppearance.system, "跟隨系統"), (.light, "淺色"), (.dark, "深色")], preview: .list,
                detail: { _ in "也套用到加入自訂詞的提示與「中」「英」提示" }),
-        choice("accentColor", "強調色", place(.candidates, SettingsRow.appearance), \.accentColor,
+        choice("accentColor", "強調色", place(.colors, SettingsRow.accentColor), \.accentColor,
                [(AccentColorSetting.system, "跟隨系統"), (.zhuyintype, "ZhuyinType 藍")], preview: .list,
                detail: { _ in "候選字的反白與開關的顏色" }, keywords: ["顏色", "反白", "對比"]),
         toggle("panelAnimation", "動畫", place(.candidates, SettingsRow.motion), \.panelAnimation, preview: .paging,
@@ -227,7 +229,7 @@ enum SettingsRegistry {
     // MARK: 字詞, 進階, 分析
 
     static let words: [SettingDescriptor] = [
-        toggle("learningEnabled", "記住選過的字詞", place(.words), \.learningEnabled, detail: { _ in "下次打同樣的讀音時排在前面；只存在這台 Mac" },
+        toggle("learningEnabled", "記住選過的字詞", place(.words, SettingsRow.learning), \.learningEnabled, detail: { _ in "下次打同樣的讀音時排在前面；只存在這台 Mac" },
                keywords: ["學習"]),
     ]
 
@@ -242,7 +244,7 @@ enum SettingsRegistry {
 
     static let keys: [SettingDescriptor] = ShortcutCommand.allCases.map { command in
         SettingDescriptor(id: "keys." + command.rawValue, title: command.label, kind: .keys(command), place: command.place,
-                          preview: command.section == .list ? .list : nil,
+                          preview: command.showsInListPreview ? .list : nil,
                           detail: { _ in
                               switch command {
                               case .togglePunctuationWidth: return "中文預設全形標點；英數、空白與英文模式維持半形"

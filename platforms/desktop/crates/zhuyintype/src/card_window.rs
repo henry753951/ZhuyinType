@@ -6,7 +6,7 @@ use gpui_kit::{
     WindowBounds, WindowOptions, div, px, relative, size,
 };
 
-use crate::pages::{choosing, typing};
+use crate::pages::{choosing, corrections, punctuation, typing};
 use crate::theme::{self, size as sz, space};
 use crate::ui;
 use crate::ui::demo::InfoContent;
@@ -15,7 +15,7 @@ type Card = (&'static str, InfoContent);
 
 /// The card `id` of any page that has cards.
 fn card(id: &str) -> Option<Card> {
-    typing::info(id).or_else(|| choosing::info(id))
+    typing::info(id).or_else(|| punctuation::info(id)).or_else(|| choosing::info(id)).or_else(|| corrections::info(id))
 }
 
 pub struct CardWindow {

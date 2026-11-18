@@ -177,6 +177,8 @@ struct Shared {
     app_version: String,
     /// The app shows the 快速設定 panel ([`UiEvent::QuickPanel`]) until the next key.
     quick_open: AtomicBool,
+    /// Uptime, the last key and the adapters connected, for 回報問題 (`health::activity`).
+    activity: crate::health::activity::Activity,
 }
 
 /// Returned by [`Service::start`] when another instance serves this user; it was asked to show its settings.
@@ -197,13 +199,17 @@ struct Serving(Weak<Shared>);
 impl Handler for Serving {
     fn request(&self, connection: ConnectionId, request: &Map<String, Value>) -> Map<String, Value> {
         match self.0.upgrade() {
-            Some(inner) => Service { inner }.request(connection, request),
+            Some(inner) => {
+                inner.activity.seen(connection);
+                Service { inner }.request(connection, request)
+            }
             None => Map::from_iter([("ok".to_owned(), false.into()), ("handled".to_owned(), false.into())]),
         }
     }
 
     fn closed(&self, connection: ConnectionId) {
         if let Some(inner) = self.0.upgrade() {
+            inner.activity.closed(connection);
             let service = Service { inner };
             service.with_core(|core| core.host.disconnected(&mut core.controller, connection));
         }
@@ -307,6 +313,7 @@ impl Service {
                 broker: Mutex::new(None),
                 app_version: config.app_version.clone(),
                 quick_open: AtomicBool::new(false),
+                activity: crate::health::activity::Activity::default(),
             }),
         };
         // A changed setting reaches the composition at once (a list open with the old page size, English mode turned
@@ -411,6 +418,15 @@ impl Service {
         // The panel the app shows closes at the next key or when the field changes.
         let op = request.get("op").and_then(Value::as_str).unwrap_or_default();
         let press = op == "key" && request.get("release") == Some(&Value::Bool(false));
+        if op == "diagnostics" {
+            // Not counting the connection that asks.
+            let mut diagnostics = self.diagnostics();
+            diagnostics.connections = diagnostics.connections.saturating_sub(1);
+            return diagnostics.reply();
+        }
+        if press {
+            self.inner.activity.key();
+        }
         if (press || matches!(op, "focus" | "blur" | "secure" | "reset"))
             && self.inner.quick_open.swap(false, Ordering::AcqRel)
         {
@@ -642,6 +658,20 @@ impl Service {
     #[must_use]
     pub fn corrections(&self) -> &CorrectionLog {
         &self.inner.corrections
+    }
+
+    /// Uptime, the last key, the adapters connected and the recent warnings and errors (回報問題; the broker's
+    /// `diagnostics`).
+    #[must_use]
+    pub fn diagnostics(&self) -> crate::health::activity::Diagnostics {
+        self.inner.activity.diagnostics(&self.inner.app_version)
+    }
+
+    /// Why the neural models are missing although their files are there (ONNX Runtime not found, a model that
+    /// failed to load), once they have been loaded.
+    #[must_use]
+    pub fn model_error(&self) -> Option<String> {
+        self.inner.data.as_ref().and_then(|data| data.loaded_models()).and_then(|models| models.error.clone())
     }
 
     /// The app's version, as given at start.

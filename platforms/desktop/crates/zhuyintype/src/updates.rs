@@ -44,7 +44,7 @@ fn state_file() -> Option<std::path::PathBuf> {
     zt_core::paths::data_dir().map(|dir| dir.join("update.json"))
 }
 
-fn load_last_check() -> Option<DateTime<Local>> {
+pub(crate) fn load_last_check() -> Option<DateTime<Local>> {
     let text = std::fs::read_to_string(state_file()?).ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;
     DateTime::parse_from_rfc3339(value.get("lastCheck")?.as_str()?).ok().map(|time| time.with_timezone(&Local))

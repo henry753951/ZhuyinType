@@ -119,7 +119,7 @@ enum CorrectionUndoSelfTest {
             try expect(!preferences.composerOptions.undoCorrectionWithBackspace, "turning it off did not reach the composer")
             for id in ["showCorrections", "undoCorrectionWithBackspace"] {
                 guard let setting = SettingsRegistry.setting(id) else { throw Failure(description: "\(id) is not registered") }
-                try expect(setting.place.pane == .choosing, "\(id) is not on 選字")
+                try expect(setting.place.pane == .corrections, "\(id) is not on 修正")
             }
         }
     }

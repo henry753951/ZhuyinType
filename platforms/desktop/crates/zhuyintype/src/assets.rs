@@ -82,6 +82,12 @@ icon_assets!(
         CornerDownLeft,
         Zap,
         Map,
+        Languages,
+        Palette,
+        Stethoscope,
+        SpellCheck,
+        MessageSquareText,
+        Shapes,
         Ellipsis,
     ]
 );

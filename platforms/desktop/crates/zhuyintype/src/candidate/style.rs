@@ -97,6 +97,7 @@ impl CurrentKeys {
     }
 
     /// The keys `command` has whether or not its feature is on (what 「關閉時，… 交給 App」 hands over).
+    #[cfg(test)]
     pub fn assigned(&self, command: &str) -> Vec<String> {
         match &self.service {
             Some(shortcuts) => shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect(),

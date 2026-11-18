@@ -5,10 +5,12 @@
 use gpui_kit::base::{SelectableText, TextSelectionHandle};
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::{
-    App, ClipboardItem, IntoElement, ListAlignment, ListState, ParentElement, SharedString, Styled, Window, list, px,
+    App, ClipboardItem, IntoElement, ListAlignment, ListState, ParentElement, SharedString, Styled, Window, div, list,
+    px,
 };
 
 use super::legal::Document;
+use crate::scroll::SmoothScroll;
 use crate::ui::actions::{ButtonKind, push_button};
 use crate::ui::content::document_frame;
 
@@ -21,6 +23,7 @@ pub fn open(document: Document, entry: impl Into<SharedString>, window: &mut Win
         .map(|line| SharedString::from(if line.is_empty() { " ".to_owned() } else { line.to_owned() }))
         .collect();
     let state = ListState::new(lines.len(), ListAlignment::Top, px(400.));
+    let smooth = SmoothScroll::new(state.clone());
     let selection = TextSelectionHandle::new(text.clone(), cx);
     let markdown = document.markdown();
     let name: SharedString = document.file_name().to_owned().into();
@@ -29,7 +32,7 @@ pub fn open(document: Document, entry: impl Into<SharedString>, window: &mut Win
     window.open_dialog(cx, move |dialog, window, cx| {
         let lines = lines.clone();
         let selection = selection.clone();
-        let body = list(state.clone(), move |index, _, _| {
+        let rows = list(state.clone(), move |index, _, _| {
             SelectableText::with_handle(
                 SharedString::from(format!("line-{index}")),
                 selection.clone(),
@@ -39,6 +42,8 @@ pub fn open(document: Document, entry: impl Into<SharedString>, window: &mut Win
             .into_any_element()
         })
         .size_full();
+        // After the lines: sees their wheel events before the list does.
+        let body = div().size_full().child(rows).child(smooth.wheel());
         let copy_text = text.clone();
         let reveal_path = path.clone();
         let mut buttons = vec![
@@ -78,6 +83,12 @@ pub fn open(document: Document, entry: impl Into<SharedString>, window: &mut Win
             window,
             cx,
         );
-        dialog.w(frame.width).p(px(0.)).gap(px(0.)).close_button(false).on_ok(|_, _, _| true).child(frame.element)
+        crate::ui::alert::surface(dialog, cx)
+            .w(frame.width)
+            .p(px(0.))
+            .gap(px(0.))
+            .close_button(false)
+            .on_ok(|_, _, _| true)
+            .child(frame.element)
     });
 }

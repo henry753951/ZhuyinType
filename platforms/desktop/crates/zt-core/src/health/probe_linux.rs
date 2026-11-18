@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use super::linux::{FcitxStatus, KIMPANEL_EXTENSION, LinuxFacts};
+use super::linux::{FcitxProfile, FcitxStatus, IM_VARIABLES, KIMPANEL_EXTENSION, LinuxFacts};
 use super::report::System;
 
 /// The facts; `helper` is `fcitx5-setup` when it is installed.
@@ -24,7 +24,40 @@ pub fn probe(helper: Option<&Path>) -> LinuxFacts {
     let wayland = std::env::var("XDG_SESSION_TYPE").is_ok_and(|kind| kind == "wayland");
     let gnome = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktop| desktop.to_uppercase().contains("GNOME"));
     let kimpanel = (wayland && gnome).then(kimpanel_enabled).flatten();
-    LinuxFacts { fcitx, other_modules, wayland, gnome, kimpanel }
+    let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+    LinuxFacts {
+        fcitx,
+        other_modules,
+        wayland,
+        gnome,
+        kimpanel,
+        fcitx_version: fcitx_version(),
+        profile: profile(),
+        im_variables: IM_VARIABLES
+            .iter()
+            .map(|name| ((*name).to_owned(), std::env::var(name).ok().filter(|value| !value.is_empty())))
+            .collect(),
+        session_type: std::env::var("XDG_SESSION_TYPE").unwrap_or_default(),
+        wayland_display: set("WAYLAND_DISPLAY"),
+        x_display: set("DISPLAY"),
+    }
+}
+
+/// `fcitx5 --version`, its first line.
+fn fcitx_version() -> Option<String> {
+    let output = Command::new("fcitx5").arg("--version").output().ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let line = text.lines().next()?.trim();
+    (output.status.success() && !line.is_empty()).then(|| line.to_owned())
+}
+
+/// This user's Fcitx 5 profile.
+fn profile() -> Option<FcitxProfile> {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| std::env::home_dir().map(|home| home.join(".config")))?;
+    std::fs::read_to_string(config.join("fcitx5/profile")).ok().map(|text| FcitxProfile::parse(&text))
 }
 
 fn kimpanel_enabled() -> Option<bool> {

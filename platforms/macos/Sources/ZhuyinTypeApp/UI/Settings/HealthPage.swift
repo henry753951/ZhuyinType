@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// 關於 › 檢查輸入法: the checks (Health/HealthChecks.swift) as rows with their buttons, and 回報問題.  Views only; the
+// 檢查輸入法 (a sidebar page): the checks (Health/HealthChecks.swift) as rows with their buttons, and 回報問題.  Views only; the
 // checks and the report text come from HealthMonitor.
 
 struct HealthPage: View {
@@ -19,7 +19,7 @@ struct HealthPage: View {
                 ForEach(monitor.checks) { HealthRow(check: $0) }
             }
             SettingsSection {
-                SettingRow(title: "回報問題", subtitle: "把檢查結果、版本與最近的錯誤整理成一段文字，可以拷貝或存成檔案") {
+                SettingRow(title: "回報問題", subtitle: "把檢查結果、詳細資料與最近的錯誤整理成一段文字，可以拷貝或存成檔案") {
                     Button("回報問題…") {
                         reportText = nil
                         showingReport = true
@@ -61,9 +61,12 @@ private struct HealthSummary: View {
     }
 }
 
-/// One check: its status icon, title and sentence, and its buttons below.
+/// One check: its status icon, title and sentence, its buttons below, and 「詳細資料」 (what was checked) folded.
 struct HealthRow: View {
     let check: HealthCheck
+    /// The UI previews draw every row's details open.
+    static var showsDetailsInitially = false
+    @State private var showsDetails = HealthRow.showsDetailsInitially
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -83,12 +86,68 @@ struct HealthRow: View {
                     }
                     .padding(.top, 5)
                 }
+                if !check.details.isEmpty {
+                    HealthDetailsDisclosure(details: check.details, expanded: $showsDetails)
+                        .padding(.top, 2)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: RowMetrics.minHeight)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(check.status.label)：\(check.title)")
+    }
+}
+
+/// 「詳細資料」: a small disclosure button, and under it the check's label–value lines in two columns.
+private struct HealthDetailsDisclosure: View {
+    let details: [HealthDetail]
+    @Binding var expanded: Bool
+
+    /// The widest label, so the values line up in one column.
+    private var labelWidth: CGFloat {
+        let font = NSFont.preferredFont(forTextStyle: .callout)
+        return ceil(details.map { ($0.label as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0) + 1
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { expanded.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text("詳細資料")
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("詳細資料")
+            .accessibilityValue(expanded ? "已展開" : "已收合")
+            if expanded {
+                // Rows of their own rather than a Grid: a Grid measures a wrapping value (a long path) one line short.
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(detail.label)
+                                .foregroundStyle(.secondary)
+                                .frame(width: labelWidth, alignment: .leading)
+                            Text(detail.value)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .font(.callout)
+                .padding(.leading, 13)
+                .transition(.opacity)
+            }
+        }
     }
 }
 

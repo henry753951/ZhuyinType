@@ -10,6 +10,10 @@ enum HealthFactsReader {
         var inputSource: HealthFacts.InputSource
         var secureInput: HealthFacts.SecureInput
         var updates: HealthFacts.Updates
+        var currentInputSource: String?
+        var enabledInputSources: [String]
+        var loadTimes: HealthFacts.LoadTimes?
+        var display: HealthFacts.Display
     }
 
     static func readOnMain() -> MainFacts {
@@ -21,8 +25,24 @@ enum HealthFactsReader {
         let updates: HealthFacts.Updates = updater.isAvailable
             ? .available(automaticChecks: updater.automaticallyChecks, lastCheck: updater.lastCheck, pending: updater.pendingVersion)
             : .unavailable
+        let current = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+        let durations = EngineHost.loadDurations
+        let workspace = NSWorkspace.shared
+        let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
+        let display = HealthFacts.Display(
+            scale: NSScreen.main.map { Double($0.backingScaleFactor) },
+            dark: appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+            panelAppearance: Preferences.shared.panelAppearance, voiceOver: workspace.isVoiceOverEnabled,
+            reduceMotion: workspace.accessibilityDisplayShouldReduceMotion,
+            increaseContrast: workspace.accessibilityDisplayShouldIncreaseContrast,
+            reduceTransparency: workspace.accessibilityDisplayShouldReduceTransparency)
         return MainFacts(inputSource: mode.map { .registered(enabled: $0.enabled, selectable: $0.selectable) } ?? .notRegistered,
-                         secureInput: secure, updates: updates)
+                         secureInput: secure, updates: updates, currentInputSource: current.flatMap(sourceID),
+                         enabledInputSources: enabledKeyboardSources(),
+                         loadTimes: durations.engine == nil ? nil
+                             : HealthFacts.LoadTimes(engine: durations.engine, reranker: durations.reranker,
+                                                     characters: durations.characters),
+                         display: display)
     }
 
     /// The rest, from files and LaunchServices; off the main thread (a few milliseconds).
@@ -31,7 +51,8 @@ enum HealthFactsReader {
         let data = EngineHost.dataFiles()
         let info = Bundle.main.infoDictionary
         let os = ProcessInfo.processInfo.operatingSystemVersion
-        return HealthFacts(
+        let preferences = home.appendingPathComponent("Library/Preferences/\(bundleID).plist")
+        var facts = HealthFacts(
             home: home.path,
             inputSource: main.inputSource,
             running: Bundle.main.bundleURL,
@@ -42,7 +63,7 @@ enum HealthFactsReader {
             perDocumentInputSource: perDocumentInputSource(),
             lexicon: lexicon(in: data.root),
             missingModels: missingModels(data),
-            settings: settingsFile(home: home),
+            settings: settingsFile(preferences),
             version: info?["CFBundleShortVersionString"] as? String,
             build: info?["CFBundleVersion"] as? String,
             updates: main.updates,
@@ -50,6 +71,21 @@ enum HealthFactsReader {
             systemBuild: sysctl("kern.osversion") ?? "?",
             architecture: machine(),
             now: Date())
+        facts.user = NSUserName()
+        facts.inputModeID = bundleID + ".Zhuyin"
+        facts.currentInputSource = main.currentInputSource
+        facts.enabledInputSources = main.enabledInputSources
+        facts.dataFolder = data.root
+        facts.dataItems = dataItems(root: data.root)
+        facts.bundledData = bundledData()
+        facts.loadTimes = main.loadTimes
+        facts.app = appBundle(Bundle.main.bundleURL)
+        facts.preferencesFile = preferences
+        facts.userData = EngineHost.userDirectory
+        facts.started = processStart()
+        facts.changedSettings = HealthSettings.changes(UserDefaults.standard.persistentDomain(forName: bundleID) ?? [:])
+        facts.display = main.display
+        return facts
     }
 
     private static var bundleID: String { Bundle.main.bundleIdentifier ?? "org.zhuyintype.inputmethod.ZhuyinType" }
@@ -92,8 +128,7 @@ enum HealthFactsReader {
     }
 
     /// The app's settings file: none yet, a property list, or something that is not one.
-    private static func settingsFile(home: URL) -> HealthFacts.SettingsFile {
-        let file = home.appendingPathComponent("Library/Preferences/\(bundleID).plist")
+    private static func settingsFile(_ file: URL) -> HealthFacts.SettingsFile {
         guard FileManager.default.fileExists(atPath: file.path) else { return .none }
         guard let data = try? Data(contentsOf: file),
               (try? PropertyListSerialization.propertyList(from: data, format: nil)) is [String: Any] else {
@@ -114,6 +149,96 @@ enum HealthFactsReader {
         var name = utsname()
         uname(&name)
         return withUnsafeBytes(of: &name.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }
+
+    // MARK: The report's sections
+
+    private static func sourceID(_ source: TISInputSource) -> String? { property(source, kTISPropertyInputSourceID) }
+
+    private static func property(_ source: TISInputSource, _ key: CFString) -> String? {
+        guard let value = TISGetInputSourceProperty(source, key) else { return nil }
+        return Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String
+    }
+
+    /// The enabled keyboard input sources and input methods, by ID (palettes and dictation left out).
+    private static func enabledKeyboardSources() -> [String] {
+        guard let list = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] else { return [] }
+        return list.filter { property($0, kTISPropertyInputSourceCategory) == (kTISCategoryKeyboardInputSource as String) }
+            .compactMap(sourceID)
+    }
+
+    /// Every file and folder the engine would load, where it would load it from (EngineHost.sources), with its size.
+    private static func dataItems(root: URL?) -> [HealthFacts.DataItem] {
+        let manager = FileManager.default
+        func first(_ candidates: [URL?]) -> URL? {
+            candidates.compactMap { $0 }.first { manager.fileExists(atPath: $0.path) }
+        }
+        func folder(_ name: String, marker: String) -> URL? {
+            [EngineHost.modelsDirectory, Bundle.main.resourceURL].compactMap { $0 }
+                .map { $0.appendingPathComponent(name, isDirectory: true) }
+                .first { manager.fileExists(atPath: $0.appendingPathComponent(marker).path) }
+        }
+        let items: [(String, URL?)] = [
+            ("詞庫", first(["lexicon.bin", "lexicon.tsv"].map { root?.appendingPathComponent($0) })),
+            (HealthFacts.Model.languageModel.name, first(["lm/lm.bin", "lm/bigram.tsv"].map { root?.appendingPathComponent($0) })),
+            (HealthFacts.Model.chatModel.name,
+             first(["lm_chat/lm.bin", "lm_chat/bigram.tsv"].map { root?.appendingPathComponent($0) })),
+            (HealthFacts.Model.readingChannel.name, first([root?.appendingPathComponent("channel.bin")])),
+            (HealthFacts.Model.reranker.name, folder("reranker", marker: "vocab.json")),
+            (HealthFacts.Model.characterModel.name, folder("v3", marker: "chars.json")),
+        ]
+        return items.map { name, url in HealthFacts.DataItem(name: name, url: url, bytes: url.flatMap(size)) }
+    }
+
+    /// A file's size, or the total of the files in a folder.
+    private static func size(_ url: URL) -> Int64? {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .isDirectoryKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
+        guard values.isDirectory == true else { return values.fileSize.map(Int64.init) }
+        let files = FileManager.default.enumerator(at: url, includingPropertiesForKeys: Array(keys))
+        var total: Int64 = 0
+        while let file = files?.nextObject() as? URL {
+            total += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        return total
+    }
+
+    /// The data versions build-app.sh wrote into manifest.json from resources/assets.json.
+    private static func bundledData() -> [HealthFacts.BundledData] {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("manifest.json"),
+              let data = try? Data(contentsOf: url),
+              let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let assets = manifest["assets"] as? [String: [String: Any]] else { return [] }
+        return assets.keys.sorted().compactMap { component in
+            guard let release = assets[component]?["release"] as? String,
+                  let hash = assets[component]?["sha256"] as? String else { return nil }
+            return HealthFacts.BundledData(component: component, release: release, hash: String(hash.prefix(12)))
+        }
+    }
+
+    /// The bundle's owner, its permissions as `ls` writes them, and whether it carries the quarantine attribute.
+    private static func appBundle(_ url: URL) -> HealthFacts.AppBundle {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        var permissions: String?
+        if let mode = (attributes?[.posixPermissions] as? NSNumber)?.intValue {
+            let directory = attributes?[.type] as? FileAttributeType == .typeDirectory
+            permissions = (directory ? "d" : "-") + (0..<9).map { bit in
+                mode & (1 << (8 - bit)) != 0 ? String(Array("rwx")[bit % 3]) : "-"
+            }.joined()
+        }
+        let quarantined = getxattr(url.path, "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW) >= 0
+        return HealthFacts.AppBundle(owner: attributes?[.ownerAccountName] as? String, permissions: permissions,
+                                     quarantined: attributes == nil ? nil : quarantined)
+    }
+
+    /// When this process started, from the kernel.
+    private static func processStart() -> Date? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        guard Darwin.sysctl(&name, u_int(name.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(start.tv_sec) + TimeInterval(start.tv_usec) / 1_000_000)
     }
 
     // MARK: The report's recent errors

@@ -4,13 +4,13 @@
 
 ## 和 macOS 版的關係
 
-- **功能與版面相同**：九個主頁、子頁面、設定列的順序與文字、ⓘ 說明與示範、頁面之間的連結、候選字視窗的各種樣式、設定嚮導，都依照 macOS 版（本文件 [DESIGN.md](DESIGN.md) 與 `platforms/macos/Sources/ZhuyinTypeApp/UI/`）。
+- **功能與版面相同**：側欄的十四頁、下一層頁面、設定列的順序與文字、ⓘ 說明與示範、頁面之間的連結、候選字視窗的各種樣式、設定嚮導，都依照 macOS 版（本文件 [DESIGN.md](DESIGN.md) 與 `platforms/macos/Sources/ZhuyinTypeApp/UI/`）。
 - **視覺不同**：Linux／Windows 版是 ZhuyinType 自己的一套現代設計語言，不模仿 macOS，也不模仿 Windows 原生外觀。暖色中性的表面、單色線條圖示、以細分隔線區隔設定列、強調色只用在少數地方；視窗不用系統邊框，標題列與視窗按鈕由 App 自己繪製。macOS 版維持原生外觀。
 - **用語**：⌥ 寫成 Alt、⌃ 寫成 Ctrl、「這台 Mac」寫成「這台電腦」、Finder 寫成「檔案管理員」（Windows：「檔案總管」）。
 
 ## 主題與透明效果
 
-「視窗與提示 › 外觀」有三列，macOS 版只有其中的「外觀」（在這裡叫「候選字視窗」）：
+「色彩 › 主題」有三列，macOS 版只有其中的「外觀」（在這裡叫「候選字視窗」）：
 
 | 設定 | 選項 | 預設 | 內容 |
 |---|---|---|---|
@@ -18,7 +18,7 @@
 | 透明效果（`transparency`） | 跟隨系統、開啟、關閉 | 跟隨系統 | 視窗背景透出桌面的顏色。「跟隨系統」在 Windows 依照「設定 › 個人化 › 色彩 › 透明效果」（`EnableTransparency`），在 KDE Plasma 為開啟 |
 | 候選字視窗（`panelAppearance`） | 跟隨主題、淺色、深色 | 跟隨主題 | 只改候選字視窗與中英提示（Wayland 工作階段中由 Fcitx 5 顯示，不受這個設定影響），和 macOS 的「外觀」是同一個設定與值（`system` 在這裡表示跟隨主題） |
 
-改設定立即套用，不需要重新開啟。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
+改設定立即套用，不需要重新開啟。「色彩」頁上方是候選字清單與中英提示的預覽；下面的「無障礙」唯讀列出高對比與減少動態效果目前是否開啟，Windows 另有「打開系統的輔助使用設定」（`ms-settings:easeofaccess`），Linux 沒有這個按鈕。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
 
 透明效果的材質：
 
@@ -85,9 +85,41 @@
 
 候選字視窗的每一列可以按右鍵，選單有「不要再推薦」「忘記這個選字」「加入自訂詞」，這一列用不到的項目變灰。鍵盤也可以：Ctrl+Delete 不要再推薦、Ctrl+Shift+Delete 忘記這個選字、Ctrl+Return 加入自訂詞（反白的字詞；沒開清單時是整段組字），可在「快捷鍵」改，只在組字時有作用，沒在組字時按鍵照常交給程式。做完後視窗的提示列顯示結果（「不再推薦「八」」）與「復原」，5 秒內點「復原」或按 Ctrl+Z 就還原。前 5 次開清單時，清單下方有一行「Ctrl+Del 不要再推薦・右鍵看更多」（次數記在 `wordActionHintCount`）。設為不要再推薦的字詞列在「字詞」→「記住的字詞」，標示「不推薦」，移除就恢復推薦。
 
-「選取的字加入自訂詞」（快捷鍵 › 編輯，預設沒有按鍵）：在 App 裡選取 1 到 6 個字再按它的鍵，設定視窗開在「字詞」→「自訂詞」，「加入自訂詞」已填好選取的字與第一個讀音，可以修改；字數或讀音不對時，表單上方直接說明（例如「讀音的音節數要和字數相同（2 個字，1 個音節）」），沒選取時表單是空的並顯示「沒有選取文字」。組字時按這個鍵沒有作用；密碼與私人欄位不讀取選取的文字。
+「選取的字加入自訂詞」（「字詞 › 自訂詞」或「快捷鍵 › 字詞」，預設沒有按鍵）：在 App 裡選取 1 到 6 個字再按它的鍵，設定視窗開在「字詞」→「自訂詞」，「加入自訂詞」已填好選取的字與第一個讀音，可以修改；字數或讀音不對時，表單上方直接說明（例如「讀音的音節數要和字數相同（2 個字，1 個音節）」），沒選取時表單是空的並顯示「沒有選取文字」。組字時按這個鍵沒有作用；密碼與私人欄位不讀取選取的文字。
 
 Linux（X11）的選單畫在候選字視窗裡，視窗不取得焦點；Windows 的 TSF DLL 用系統選單，同樣不讓應用程式失去焦點。Wayland 工作階段的清單由 Fcitx 5 顯示，沒有右鍵選單與「復原」，但按鍵照常可用。
+
+## 捲動
+
+設定視窗的捲動區域（頁面、側邊欄、清單、文件檢視、回報問題的文字）和同一台電腦上的 Chrome、Edge 一樣捲動（`platforms/desktop/crates/zhuyintype/src/scroll/`）。曲線、時間與距離都取自 Chromium 的原始碼，不是自訂的效果：
+
+| 輸入 | 距離 | 時間與曲線 |
+|---|---|---|
+| 滑鼠滾輪轉一格 | Windows：每行 100/3 px，乘上系統的「一次捲動的行數」（預設 3 行，即 100 px；設成一次一個畫面時捲 7/8 個畫面）。Linux：120 px | 120 px 以內 0.2 秒，480 px 以上 0.1 秒，之間依距離縮短；`cubic-bezier(0.42, 0, 0.58, 1)` |
+| 前一格還在動時再轉一格 | 目標往後加一格 | 從目前的位置與速度接下去，不停頓也不重新起步 |
+| 觸控板、高解析度滾輪 | 照送來的量 | 直接跟著手指，不加動畫 |
+| Page Up／Page Down、Home／End | 7/8 個畫面；頭尾 | 0.15 秒，`cubic-bezier(0.42, 0, 0.58, 1)` |
+| 連結到某一列、鍵盤焦點移到畫面外 | 到目標 | 距離（px）的平方根 ÷ 60 秒，最長 1.5 秒；`cubic-bezier(0.4, 0, 0, 1)` |
+
+- **觸控板**：Windows 的精確式觸控板（GPUI 經由 DirectManipulation）與 Wayland 的觸控板送來像素；X11 的觸控板與高解析度滾輪送來不到一格的量。兩種都直接套用。Chromium 在 Windows 也替不到一格的滾輪事件加動畫（它分不出來源），這裡不加，觸控板才不會慢半拍。
+- **文字欄位**：Home、End 照常移動游標；Page Up／Page Down 和 Home／End 只在焦點所在的元件沒有用到時才捲動頁面。
+- **巢狀區域**（頁面裡的清單）：同一串滾動（間隔不到 0.5 秒、指標移動不超過 10 px）留在開始時能往那個方向捲的最內層區域，捲到底也不帶動頁面，滾輪停下後再轉才捲頁面；頁面開始捲動後，清單移到指標下也不會接手（Chromium 的 wheel latching）。
+- **減少動態效果**：Windows 的「動畫效果」關閉、桌面入口的 `reduced-motion`、GNOME 的「動畫」關閉（`ZT_REDUCE_MOTION=1` 可強制）時，一律直接到位，距離不變，和 Chromium 相同。
+- **來源**：`cc/animation/scroll_offset_animation_curve.cc` 與 `scroll_offset_animation_curve_factory.cc`（曲線、時間、接續）、`cc/base/features.cc`（捲到目標的曲線）、`ui/events/blink/web_input_event_builders_win.cc`（Windows 每行 100/3 px）、`ui/events/event.cc`（Linux 每格 120）、`cc/input/scroll_utils.h`（7/8 個畫面）、`components/input/mouse_wheel_phase_handler.h`（0.5 秒、10 px）、`ui/gfx/animation/animation_win.cc`（`SPI_GETCLIENTAREAANIMATION`）。唯一省略的是輸入事件到動畫開始那一格之間的延遲（GPUI 不提供）。
+- **為什麼不用現成的**：GPUI（gpui-pre 0.3.12 與 0.3.13）、gpui-component 與 gpui-base（0.9.1 與 0.10.0）都沒有滾輪動畫，GPUI 把一格當成 3 行文字（設定視窗是 63 px）一次跳到位；Zed 的平滑捲動 PR 只針對編輯器，沒有合併。WinUI 的 ScrollViewer 把滾輪交給系統的 InteractionTracker，曲線沒有公開，也要把畫面接到 Windows.UI.Composition，所以不採用。
+
+2026-11-18 在 Windows 11 虛擬機以 SendInput 送出同樣的輸入量測（每格畫面的位置）：
+
+| | ZhuyinType 0.7.0（GPUI） | 現在 | Edge 157 |
+|---|---|---|---|
+| 一格 | 63 px，一次到位 | 100 px，約 0.2 秒 | 100 px，約 0.19 秒，曲線相同 |
+| 連轉三格（間隔 0.05 秒） | 189 px，三次跳動 | 300 px，約 0.34 秒連續移動 | 300 px，約 0.31 秒 |
+| 24 個 1/12 格（觸控板式） | 126 px | 200 px，跟著事件 | 200 px，最後一個事件後再動 0.15 秒 |
+| End／Home | 不捲動 | 0.15 秒 | 0.16 秒 |
+
+Linux（X11 的虛擬顯示器，xdotool 送出滾輪的 4／5 鍵）：一格 120 px，約 0.2 秒；0.7.0 是 63 px 一次到位。
+
+測試用的環境變數：`ZT_SCROLL_LOG=檔案` 記錄每個事件與每次寫入的位置；`ZT_SMOOTH_SCROLL=0` 交回 GPUI 自己處理（0.7.0 的行為），只記錄。
 
 ## 和 macOS 版不同的地方
 
@@ -99,15 +131,15 @@ Linux（X11）的選單畫在候選字視窗裡，視窗不取得焦點；Window
 
 ## 快速設定
 
-「開啟快速設定」快捷鍵（「快捷鍵」頁「其他」，預設沒有按鍵）與輸入法選單都有「英文」「半形標點」「簡體」「暫停學習」四個勾選項目：
+「開啟快速設定」快捷鍵（「中英切換 › 快速設定」或「快捷鍵 › 中英切換」，預設沒有按鍵）與輸入法選單都有「英文」「半形標點」「簡體」「暫停學習」四個勾選項目：
 
 - Linux（X11）：快捷鍵在游標旁開一個小視窗，標題「快速設定」，四個勾選項目之後是「設定…」與「自訂詞與學到的詞…」。視窗不取得焦點，按鍵仍交給原本的程式；點一個項目、按下一個鍵或換欄位就關閉。Fcitx 5 的輸入法選單（系統匣與狀態列）在原有的項目之前列出同樣四個勾選項目；簡體輸出時狀態標示是「简」，暫停學習時狀態說明加上「（暫停學習）」。
 - Windows：見 [ARCHITECTURE.md](../../platforms/desktop/ARCHITECTURE.md) 的 TSF 說明（中／英按鈕的選單與游標旁的選單）。
-- 暫停學習期間每個欄位都當成私人欄位（照常打字，不學習、不讀取前文、不記錄改字），服務重新啟動後恢復學習。
+- 暫停學習期間每個欄位都當成私人欄位（照常打字，不學習、不讀取前文、不記錄改字），服務重新啟動後恢復學習。設定「字詞 › 暫停學習」是同一個開關（讀寫執行中的服務），服務沒有執行時變暗。
 
 ## 符號與 Emoji
 
-按 Ctrl+Shift+/（「快捷鍵」可改；「打字 › 標點與符號 › 符號與 Emoji 面板」可關閉）開啟符號與 Emoji 面板，正在打字的 App 保持焦點。方向鍵移動、PgUp／PgDn 翻一頁、Tab／Shift+Tab 換類別、1–9 選反白那一列的第幾個、Return（或沒有搜尋時的空白）送出、Esc 先清除搜尋再關閉，再按一次快捷鍵也會關閉；其他鍵打進搜尋，可打注音（標準鍵盤）或英文。組字中開啟時，目前的字成為搜尋內容，組字取消不送出。資料與搜尋在引擎的 `zhuyin-symbols`，和 macOS 相同。
+按 Ctrl+Shift+/（「快捷鍵」可改；「標點與符號 › 符號與 Emoji」可關閉）開啟符號與 Emoji 面板，正在打字的 App 保持焦點。方向鍵移動、PgUp／PgDn 翻一頁、Tab／Shift+Tab 換類別、1–9 選反白那一列的第幾個、Return（或沒有搜尋時的空白）送出、Esc 先清除搜尋再關閉，再按一次快捷鍵也會關閉；其他鍵打進搜尋，可打注音（標準鍵盤）或英文。組字中開啟時，目前的字成為搜尋內容，組字取消不送出。資料與搜尋在引擎的 `zhuyin-symbols`，和 macOS 相同。
 
 Linux（X11）在候選字視窗畫完整的格子：搜尋列、類別、每列 9 個、反白符號的名稱，可以點選。Windows 的文字服務在自己的候選字視窗畫同樣的格子（能出現在開始功能表的搜尋框上；回覆的 `panel.picker`），Emoji 為彩色，點符號插入、點類別切換。Linux 的 Wayland 工作階段由 Fcitx 畫候選字清單，面板以反白的那一列（1–9）呈現，類別與列數在提示裡。預設不用 Alt：Windows 的 WinUI App（例如記事本）看到 Alt 放開會顯示選單的按鍵提示並取走焦點，面板隨即關閉，所以 Linux／Windows 的預設是 Ctrl+Shift+/（macOS 仍是 ⌃⌥,）。沒有組字或在英文模式時，文字服務原本不把這類按鍵交給程式；回覆中的 `claims` 列出這時也要取得的按鍵（見 `platforms/desktop/IPC.md`）。
 
@@ -122,4 +154,5 @@ Linux（X11）在候選字視窗畫完整的格子：搜尋列、類別、每列
 - 程式碼簽章。
 - 引擎載入期間（登入後的頭一兩秒）打的鍵直接交給程式；macOS 會先保留最多 64 個鍵。
 - 替換用的資料夾（macOS 的 `Models/`）與資料更新時自動重新載入。
+- 捲動只用模擬的事件驗證過（SendInput 的滾輪、XTEST 的 4／5 鍵、小於一格的 WHEEL_DELTA）：真正的精確式觸控板（DirectManipulation）、Wayland 的觸控板與高解析度滾輪還要在實機上確認。
 - 透明效果只在虛擬機（基本顯示卡，DWM 畫材質的不透明底色）與沒有合成器的 Linux 上驗證過：真正的 Mica、候選字視窗的 Acrylic 與 KDE Plasma 的模糊還要在有 GPU 的 Windows 11 與 KDE 上確認文字對比。

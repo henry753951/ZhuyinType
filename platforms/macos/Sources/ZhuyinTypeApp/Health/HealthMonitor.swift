@@ -80,16 +80,44 @@ final class HealthMonitor: ObservableObject {
 extension HealthFacts {
     /// Made-up facts for the UI previews and self-tests: an installed, enabled copy, everything in place, the update
     /// checked an hour before `now`.  Tests change one fact at a time.
-    static func sample(now: Date = Date(timeIntervalSince1970: 1_795_500_000)) -> HealthFacts {
-        let home = "/Users/sample"
+    static func sample(now: Date = Date(timeIntervalSince1970: 1_795_500_000), user: String = "sample") -> HealthFacts {
+        let home = "/Users/" + user
         let app = URL(fileURLWithPath: home + "/Library/Input Methods/ZhuyinType.app")
-        return HealthFacts(
+        let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
+        var facts = HealthFacts(
             home: home, inputSource: .registered(enabled: true, selectable: true), running: app,
             installLocations: [app, URL(fileURLWithPath: "/Library/Input Methods/ZhuyinType.app")], copies: [app],
             secureInput: .off, perDocumentInputSource: false,
-            lexicon: .readable(app.appendingPathComponent("Contents/Resources/lexicon.bin")), missingModels: [],
+            lexicon: .readable(resources.appendingPathComponent("lexicon.bin")), missingModels: [],
             settings: .readable, version: "0.6.1", build: "123",
             updates: .available(automaticChecks: true, lastCheck: now.addingTimeInterval(-3600), pending: nil),
             systemVersion: "26.1", systemBuild: "25B78", architecture: "arm64", now: now)
+        facts.user = user
+        facts.inputModeID = "org.zhuyintype.inputmethod.ZhuyinType.Zhuyin"
+        facts.currentInputSource = "org.zhuyintype.inputmethod.ZhuyinType.Zhuyin"
+        facts.enabledInputSources = ["com.apple.keylayout.ABC", "org.zhuyintype.inputmethod.ZhuyinType",
+                                     "org.zhuyintype.inputmethod.ZhuyinType.Zhuyin"]
+        facts.dataFolder = resources
+        facts.dataItems = [("詞庫", "lexicon.bin", 17_594_752), ("語言模型", "lm/lm.bin", 37_648_528),
+                           ("口語語言模型", "lm_chat/lm.bin", 7_289_736), ("其他讀法表", "channel.bin", 861_224),
+                           ("選字模型", "reranker/", 1_024_380), ("單字模型", "v3/", 43_120_771)]
+            .map { name, path, bytes in
+                HealthFacts.DataItem(name: name, url: resources.appendingPathComponent(path, isDirectory: path.hasSuffix("/")),
+                                     bytes: Int64(bytes))
+            }
+        facts.bundledData = [("lexicon", "data-7", "fb263aaa0525"), ("lm", "data-8", "68d981d14b78"),
+                             ("lm_chat", "data-2", "a93f6891b879"), ("reranker", "data-8", "2f2796febc6a"),
+                             ("v3", "data-8", "82ba074b7781")]
+            .map { HealthFacts.BundledData(component: $0.0, release: $0.1, hash: $0.2) }
+        facts.loadTimes = HealthFacts.LoadTimes(engine: 0.118, reranker: 0.081, characters: 0.064)
+        facts.app = HealthFacts.AppBundle(owner: user, permissions: "drwxr-xr-x", quarantined: false)
+        facts.preferencesFile = URL(fileURLWithPath: home + "/Library/Preferences/org.zhuyintype.inputmethod.ZhuyinType.plist")
+        facts.userData = URL(fileURLWithPath: home + "/Library/Application Support/ZhuyinType", isDirectory: true)
+        facts.started = now.addingTimeInterval(-(4 * 3600 + 51 * 60))
+        facts.changedSettings = [HealthSettings.Change(key: "candidateFontSize", value: "20"),
+                                 HealthSettings.Change(key: "keyBindings", value: nil)]
+        facts.display = HealthFacts.Display(scale: 2, dark: false, panelAppearance: .system, voiceOver: false,
+                                            reduceMotion: false, increaseContrast: false, reduceTransparency: false)
+        return facts
     }
 }

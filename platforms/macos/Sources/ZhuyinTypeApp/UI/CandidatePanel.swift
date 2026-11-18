@@ -523,6 +523,8 @@ final class CandidateContentView: InputMaterialView {
     private let previewLabel = NSTextField(labelWithString: "")
     /// 「聯想詞」 above a list of next-word suggestions, so they are not taken for conversions.
     private let associationLabel = NSTextField(labelWithString: "")
+    /// The label above a passive 聯想詞 list (as `zt_panel::layout::ASSOCIATION_HINT` on Windows and Linux).
+    static let associationHint = "聯想詞・按 ↓ 選擇"
     private let noticeView = NoticeView()
     private let zhuyinButton = ZhuyinHintButton()
     /// 「你打的是 ㄊㄜˇ · ⌫ 還原」 under the list, while it is open on an automatic correction (標示自動修正).
@@ -688,13 +690,18 @@ final class CandidateContentView: InputMaterialView {
         }
         let hintY = y
         if hasHint { y += hintHeight }
-        // 聯想詞 have no reading to show: the label takes the reading's place.
+        // 聯想詞 have no reading to show: the label takes the reading's place.  Until ↓ enters the list (passive) it
+        // says how to select, and the rows have no key labels: their selection keys still type Zhuyin.
         let hasAssociation = list?.associated == true && listOpen && !hasHint
+        let passive = hasAssociation && list?.passive == true
         associationLabel.isHidden = !hasAssociation
         if hasAssociation {
             associationLabel.font = .systemFont(ofSize: (fontSize * 0.72).rounded())
-            associationLabel.stringValue = "聯想詞・↓ 選擇"
+            // The passive text's width either way, so the window keeps its width when ↓ enters the list.
+            associationLabel.stringValue = Self.associationHint
             width = max(width, ceil(associationLabel.intrinsicContentSize.width) + 28)
+            associationLabel.stringValue = passive ? Self.associationHint : "聯想詞"
+            associationLabel.setAccessibilityLabel(passive ? "聯想詞，按向下鍵選擇" : "聯想詞")
             y += hintHeight
         }
         for (offset, row) in rows.enumerated() {
@@ -703,7 +710,7 @@ final class CandidateContentView: InputMaterialView {
             let index = indices[offset]
             var candidate = list.items[index]
             if !style.showsAnnotations { candidate.annotation = nil }
-            row.update(candidate: candidate, key: offset < keys.count ? String(keys[offset]) : "",
+            row.update(candidate: candidate, key: offset < keys.count && !passive ? String(keys[offset]) : "",
                        fontSize: fontSize, compact: compact, selected: index == list.selection && !list.passive,
                        accent: style.accentColor)
             row.action = { [weak self] in self?.onSelect?(index) }

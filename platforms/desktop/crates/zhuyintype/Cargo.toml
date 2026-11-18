@@ -45,5 +45,10 @@ windows = { version = "0.62", features = [
 [build-dependencies]
 embed-resource = "3"
 
+# `pages::links` renders every page headlessly with GPUI's test platform to check that every link has its row.
+[dev-dependencies]
+# GPUI itself (gpui-kit's own `test-support` also turns on its optional backends).
+gpui = { package = "gpui-pre", version = "=0.3.12", features = ["test-support"] }
+
 [lints]
 workspace = true

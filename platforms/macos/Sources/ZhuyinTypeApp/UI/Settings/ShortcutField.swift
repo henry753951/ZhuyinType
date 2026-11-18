@@ -441,15 +441,24 @@ extension Preferences {
 }
 
 extension ShortcutCommand {
-    /// The section of the 快捷鍵 page the command is listed in.
+    /// The section of the 快捷鍵 page the command is listed in: the page where its keys are set.
     var section: KeySection {
+        switch place.pane {
+        case .punctuation: return .punctuation
+        case .mode: return .mode
+        case .candidates: return .candidates
+        case .corrections: return .corrections
+        case .words: return .words
+        default: return .typing
+        }
+    }
+
+    /// Commands used while the candidate list is open: the 候選字視窗 preview shows the list for them.
+    var showsInListPreview: Bool {
         switch self {
-        case .commitWithNewline, .deleteWord: return .composing
-        case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter: return .list
-        case .blockCandidate, .forgetCandidate, .addCandidatePhrase: return .list
-        case .typeZhuyin, .selectLeft, .selectRight, .addSelectedText: return .editing
-        case .togglePunctuationWidth, .symbolPicker: return .punctuation
-        case .insertSpace, .quickSettings: return .other
+        case .nextPage, .previousPage, .singleCharacterList, .correctionsList, .previousCharacter, .nextCharacter,
+             .blockCandidate, .forgetCandidate, .addCandidatePhrase: return true
+        default: return false
         }
     }
 }

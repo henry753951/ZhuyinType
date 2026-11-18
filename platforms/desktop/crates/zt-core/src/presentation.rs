@@ -69,7 +69,7 @@ pub struct Presentation {
     /// The word actions' tip under the list, the first few times a list opens.
     pub tip: Option<String>,
     /// The list is next-word suggestions after a commit (聯想詞): no composition; ↓ enters it.  While it is not
-    /// entered (passive) nothing is highlighted: `selection` and `selected` are `None`.
+    /// entered (passive) nothing is highlighted (`selection` and `selected` are `None`) and the rows have no `key`.
     pub associated: bool,
     /// UTF-16 ranges of `composition` shown through an automatic typing correction or fuzzy sound (「標示自動修正」
     /// marks them); empty when that setting is off.
@@ -159,6 +159,9 @@ impl Presentation {
             self.selection = None;
             self.selected = None;
         }
+        // A passive 聯想詞 list has no key labels: its selection keys type Zhuyin until ↓ enters it, and a label is
+        // always the key that picks its row.
+        let keys = if list.passive() { &[][..] } else { selection_keys };
         self.rows = list.items()[range.clone()]
             .iter()
             .zip(range)
@@ -167,7 +170,7 @@ impl Presentation {
                 index,
                 text: text.clone(),
                 annotation: annotation.clone(),
-                key: selection_keys.get(row).copied(),
+                key: keys.get(row).copied(),
             })
             .collect();
     }
@@ -196,6 +199,12 @@ impl Presentation {
     #[must_use]
     pub fn has_list(&self) -> bool {
         self.count > 0
+    }
+
+    /// A 聯想詞 list is shown but not entered: every key but ↓ closes it and does what it does with no list.
+    #[must_use]
+    pub fn passive_suggestions(&self) -> bool {
+        self.associated && self.has_list() && self.selection.is_none() && self.is_empty()
     }
 
     /// The text of clause `index`, if it is a valid range.
