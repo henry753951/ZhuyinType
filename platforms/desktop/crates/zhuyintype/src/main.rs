@@ -14,6 +14,7 @@ mod health;
 mod motion;
 mod pages;
 mod platform;
+mod scroll;
 mod shell;
 mod theme;
 mod ui;

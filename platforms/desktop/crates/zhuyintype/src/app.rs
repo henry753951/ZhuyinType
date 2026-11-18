@@ -9,6 +9,7 @@ use zt_core::service::Service;
 use zt_core::settings::Settings;
 
 use crate::pages::Page;
+use crate::scroll::SmoothScroll;
 
 /// Shared state, installed once at start-up.
 pub struct AppState {
@@ -99,14 +100,19 @@ pub struct Navigation {
     pub query: SharedString,
     /// The page's scroll position; links scroll the arrival row into view.
     pub scroll: ScrollHandle,
+    /// The page's wheel, keys and animated scroll-to (the same handle as `scroll`).
+    pub scroller: SmoothScroll<ScrollHandle>,
     /// The row still to scroll to after the next layout.
     pub pending_scroll: Option<SharedString>,
+    /// Whether that scroll glides (a link within the page shown) or jumps (the page itself is arriving).
+    pub pending_scroll_glides: bool,
 }
 
 impl Global for Navigation {}
 
 impl Navigation {
     pub fn new(page: Page) -> Self {
+        let scroll = ScrollHandle::new();
         Self {
             page,
             subpage: None,
@@ -114,8 +120,10 @@ impl Navigation {
             direction: Direction::Switch,
             arrival: None,
             query: SharedString::default(),
-            scroll: ScrollHandle::new(),
+            scroll: scroll.clone(),
+            scroller: SmoothScroll::new(scroll),
             pending_scroll: None,
+            pending_scroll_glides: false,
         }
     }
 
@@ -139,9 +147,11 @@ impl Navigation {
         if moved {
             self.direction = direction;
             self.generation += 1;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
         self.pending_scroll = place.row.clone();
+        self.pending_scroll_glides = !moved;
         self.arrival = place.row.map(|row| (row, Instant::now()));
     }
 
@@ -152,6 +162,7 @@ impl Navigation {
             self.direction = Direction::Pop;
             self.generation += 1;
             self.arrival = None;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
     }
@@ -164,12 +175,14 @@ pub fn scroll_into_view(anchor: &str, bounds: Bounds<Pixels>, window: &mut Windo
         return;
     }
     nav.pending_scroll = None;
+    let (scroller, glides) = (nav.scroller.clone(), nav.pending_scroll_glides);
     let viewport = nav.scroll.bounds();
-    let offset = nav.scroll.offset();
-    let target = offset.y - (bounds.origin.y - viewport.origin.y - px(56.));
-    let max = nav.scroll.max_offset().y;
-    nav.scroll.set_offset(point(offset.x, target.min(px(0.)).max(-max)));
-    window.refresh();
+    let top = -nav.scroll.offset().y + (bounds.origin.y - viewport.origin.y - px(56.));
+    if glides {
+        scroller.scroll_to(top, window, cx);
+    } else {
+        scroller.jump_to(top, window, cx);
+    }
 }
 
 /// Scrolls the page just enough to show `bounds` (something the keyboard moved to), keeping a margin; the top wins
@@ -188,8 +201,7 @@ pub fn reveal(bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
     }
     let y = y.min(px(0.)).max(-nav.scroll.max_offset().y);
     if y != offset.y {
-        nav.scroll.set_offset(point(offset.x, y));
-        window.refresh();
+        nav.scroller.clone().scroll_to(-y, window, cx);
     }
 }
 

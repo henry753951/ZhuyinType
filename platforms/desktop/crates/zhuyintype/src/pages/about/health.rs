@@ -5,14 +5,15 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClipboardItem, Hsla, InteractiveElement as _, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, div, px,
+    AnyElement, App, ClipboardItem, Hsla, InteractiveElement as _, IntoElement, ParentElement, ScrollHandle,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use zt_core::health::{self, Check, Status};
 
 use super::super::Page;
 use crate::app::{self, Place};
 use crate::health::{self as state, Health};
+use crate::scroll::SmoothScroll;
 use crate::theme::{self, Palette, size, space, text};
 use crate::ui::actions::{ButtonKind, push_button};
 use crate::ui::alert::notice;
@@ -123,6 +124,7 @@ pub fn page(cx: &App) -> AnyElement {
 /// 回報問題: the exact text, with 拷貝, 儲存為檔案… and 關閉.
 fn show_report(window: &mut Window, cx: &mut App) {
     let report: SharedString = state::report(cx).into();
+    let scroll = SmoothScroll::new(ScrollHandle::new());
     window.open_dialog(cx, move |dialog, _, cx| {
         let p = theme::palette(cx);
         let copy = report.clone();
@@ -139,6 +141,8 @@ fn show_report(window: &mut Window, cx: &mut App) {
                     .id("health-report-text")
                     .h(size::REPORT_TEXT_H)
                     .overflow_y_scroll()
+                    .track_scroll(scroll.handle())
+                    .child(scroll.wheel())
                     .p(space::S12)
                     .rounded(size::R_SM)
                     .border_1()
