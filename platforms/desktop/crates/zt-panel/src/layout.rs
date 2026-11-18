@@ -33,16 +33,50 @@ impl Frame {
 /// Measures text in the window's font (`medium`: the medium weight).
 pub trait Measure {
     fn width(&mut self, text: &str, size: f32, medium: bool) -> f32;
+
+    /// The width of `text` in the Zhuyin font, which draws the reading row, the typed reading and the annotations
+    /// (the system's CJK font first, whose tone marks are as wide as a Bopomofo letter, where the UI font's are
+    /// narrow Latin marks).  A front end that draws them in the UI font keeps this default.
+    fn zhuyin_width(&mut self, text: &str, size: f32) -> f32 {
+        self.width(text, size, false)
+    }
+}
+
+/// A measure that never sizes visible text as nothing: a width of 0 for text with something to draw (a font that
+/// could not be read, as in some sandboxed applications) becomes the [`Estimate`], so the window still makes room
+/// for everything it draws.
+struct Sane<'a>(&'a mut dyn Measure);
+
+impl Sane<'_> {
+    fn checked(text: &str, size: f32, measured: f32) -> f32 {
+        if measured > 0. || text.chars().all(char::is_whitespace) {
+            measured
+        } else {
+            Estimate.width(text, size, false)
+        }
+    }
+}
+
+impl Measure for Sane<'_> {
+    fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+        let measured = self.0.width(text, size, medium);
+        Self::checked(text, size, measured)
+    }
+
+    fn zhuyin_width(&mut self, text: &str, size: f32) -> f32 {
+        let measured = self.0.zhuyin_width(text, size);
+        Self::checked(text, size, measured)
+    }
 }
 
 /// The width of a key's label as it is drawn (`keys::pieces`: its arrows are glyphs of `size × 0.95`, ⇧ is the word
-/// 「Shift」).
+/// 「Shift」), in the medium weight every key cap draws its label in.
 pub fn key_width(measure: &mut dyn Measure, key: &str, size: f32) -> f32 {
     keys::pieces(key)
         .iter()
         .map(|piece| match piece {
             Piece::Glyph(_) => keys::glyph_size(size),
-            Piece::Text(text) => measure.width(text, size, false),
+            Piece::Text(text) => measure.width(text, size, true),
             Piece::Gap => keys::gap(size),
         })
         .sum()
@@ -130,12 +164,35 @@ pub struct NoticeLayout {
     pub keycap_h: f32,
     pub lead: f32,
     pub label_w: f32,
-    /// The 「復原」 link at the row's end (window coordinates), after a word action.
+    /// The 「Ctrl+Z 復原」 link at the row's end (window coordinates), after a word action, and its text.
     pub undo: Option<Frame>,
+    pub undo_label: String,
 }
 
-/// The link that undoes a word action.
+impl NoticeLayout {
+    /// The action's box (window coordinates), after the key cap or the check.
+    #[must_use]
+    pub fn label_frame(&self) -> Frame {
+        Frame::new(self.frame.x + self.lead, self.frame.y, self.label_w, self.frame.h)
+    }
+
+    /// The phrase's box: from the end of the action to the end of the row, which the layout made wide enough for
+    /// the whole phrase.
+    #[must_use]
+    pub fn value_frame(&self) -> Frame {
+        let x = self.frame.x + self.lead + self.label_w;
+        Frame::new(x, self.frame.y, (self.frame.x + self.frame.w - x).max(0.), self.frame.h)
+    }
+}
+
+/// The link that undoes a word action, after its key (`undo_label`).
 pub const UNDO_LABEL: &str = "復原";
+
+/// 「Ctrl+Z 復原」: the link with the key that does the same (`keys::prose`), or 「復原」 without one.
+#[must_use]
+pub fn undo_label(key: &str) -> String {
+    if key.is_empty() { UNDO_LABEL.to_owned() } else { format!("{} {UNDO_LABEL}", keys::prose(key)) }
+}
 
 /// The right-click menu of a candidate, drawn inside the window under the list.
 #[derive(Clone, Debug, PartialEq)]
@@ -186,6 +243,25 @@ pub struct HintLayout {
     pub keycap_right: f32,
     pub clickable: bool,
 }
+
+impl HintLayout {
+    /// The key cap, the gap after it and the key's name.
+    #[must_use]
+    pub fn key_group_width(&self) -> f32 {
+        self.keycap_w + KEYCAP_GAP + self.key_label_w
+    }
+
+    /// The width the reading is drawn in: the row less its inset and, with a key cap, the key group, its distance
+    /// from the right edge and the gap before it.
+    #[must_use]
+    pub fn reading_width(&self) -> f32 {
+        let key_room = if self.keycap_w > 0. { READING_GAP + self.key_group_width() + self.keycap_right } else { 0. };
+        (self.frame.w - self.text_x - key_room).max(0.)
+    }
+}
+
+/// Between the reading and the key group at the reading row's end.
+const READING_GAP: f32 = 16.;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PagerLayout {
@@ -266,6 +342,7 @@ pub fn compute(
     steady: (f32, f32),
     measure: &mut dyn Measure,
 ) -> PanelLayout {
+    let measure = &mut Sane(measure);
     let (layout, natural) = compute_fitted(p, style, max_width, steady, measure);
     if style.layout == Layout::Horizontal && style.shows_list_switches && natural > max_width {
         let style = PanelStyle { shows_list_switches: false, ..style.clone() };
@@ -354,7 +431,8 @@ fn compute_fitted(
         let widest = WORD_ACTIONS.iter().map(|(_, title)| measure.width(title, menu_font, false)).fold(0., f32::max);
         width = width.max(ceil(widest) + padding * 2. + key_inset * 2.);
     }
-    let undo_w = if p.undo { ceil(measure.width(UNDO_LABEL, (fs * 0.72).round(), true)) } else { 0. };
+    let undo_text = undo_label(&keys.undo);
+    let undo_w = if p.undo { ceil(measure.width(&undo_text, (fs * 0.72).round(), true)) } else { 0. };
     if let Some(notice) = &notice
         && p.undo
     {
@@ -374,10 +452,13 @@ fn compute_fitted(
     let hint_label = "注音";
     let hint_label_w = if hint_key.is_empty() { 0. } else { ceil(measure.width(hint_label, SMALL_FONT, false)) };
     if has_hint {
-        // Measured in the UI font while drawn in the CJK one: a little room for the tone marks.
-        let reading_w = measure.width(p.reading.as_deref().unwrap_or_default(), SMALL_FONT, false) + 4.;
-        let key_room =
-            if hint_key.is_empty() { 0. } else { 16. + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right };
+        // In the Zhuyin font it is drawn in, and a little room for rounding.
+        let reading_w = measure.zhuyin_width(p.reading.as_deref().unwrap_or_default(), SMALL_FONT) + 2.;
+        let key_room = if hint_key.is_empty() {
+            0.
+        } else {
+            READING_GAP + hint_keycap_w + KEYCAP_GAP + hint_label_w + hint_keycap_right
+        };
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
         y += hint_height;
     } else if association {
@@ -387,7 +468,7 @@ fn compute_fitted(
         y += hint_height;
     }
     if let Some(text) = typed {
-        let typed_w = measure.width(text, SMALL_FONT, false) + 4.;
+        let typed_w = measure.zhuyin_width(text, SMALL_FONT) + 2.;
         width = width.max(ceil(padding * 2. + key_inset * 2. + typed_w));
     }
 
@@ -403,7 +484,7 @@ fn compute_fitted(
         .map(|row| {
             let annotation = row.annotation.as_deref().filter(|_| style.shows_annotations);
             let text_w = measure.width(&row.text, fs, false);
-            let annotation_w = annotation.map_or(0., |text| measure.width(text, annotation_font(fs), false));
+            let annotation_w = annotation.map_or(0., |text| measure.zhuyin_width(text, annotation_font(fs)));
             let preferred = ceil(
                 text_inset
                     + text_w
@@ -464,6 +545,7 @@ fn compute_fitted(
             notice.layout.frame.w = (notice_frame.w - undo_w - 12.).max(0.);
             notice.layout.undo =
                 Some(Frame::new(notice_frame.x + notice_frame.w - undo_w, notice_frame.y, undo_w, notice_frame.h));
+            notice.layout.undo_label = undo_text;
         }
     }
     // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them.
@@ -699,7 +781,9 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
         0.
     };
     let label_w = measure.width(&label, font_size, false);
-    let preferred = ceil(lead + label_w + measure.width(&value, font_size, false));
+    // The phrase is never cut short (it has at most 6 characters): a little room for where the drawn text's
+    // pixels round to.
+    let preferred = ceil(lead + label_w + measure.width(&value, font_size, false)) + 2.;
     ParsedNotice {
         layout: NoticeLayout {
             frame: Frame::default(),
@@ -713,6 +797,7 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
             lead,
             label_w,
             undo: None,
+            undo_label: String::new(),
         },
         preferred,
     }
@@ -979,5 +1064,313 @@ mod tests {
         let undo = compute(&notice, &style, 4000., (0., 0.), &mut Fixed).notice.expect("a notice");
         let link = undo.undo.expect("復原");
         assert!(link.x >= undo.frame.x + undo.frame.w, "after the notice's text");
+    }
+
+    /// Widths like the real fonts' at a screen scale: Latin about 0.6 em (the medium weight a little wider), CJK and
+    /// Bopomofo 1 em, the tone marks narrow in the UI font but a full em in the Zhuyin font, every width rounded up
+    /// to the screen's pixels.  `broken_latin`: the UI font's regular Latin measures nothing (a font file the
+    /// application's sandbox could not read).
+    struct Fonts {
+        scale: f32,
+        broken_latin: bool,
+    }
+
+    impl Fonts {
+        fn at(scale: f32) -> Self {
+            Self { scale, broken_latin: false }
+        }
+
+        fn snap(&self, width: f32) -> f32 {
+            (width * self.scale).ceil() / self.scale
+        }
+    }
+
+    impl Measure for Fonts {
+        fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+            let weight = if medium { 1.06 } else { 1. };
+            let width: f32 = text
+                .chars()
+                .map(|c| match c {
+                    _ if c.is_ascii() && self.broken_latin && !medium => 0.,
+                    _ if c.is_ascii() => size * 0.6 * weight,
+                    'ˇ' | 'ˊ' | 'ˋ' | '˙' => size * 0.35,
+                    _ => size,
+                })
+                .sum();
+            self.snap(width)
+        }
+
+        fn zhuyin_width(&mut self, text: &str, size: f32) -> f32 {
+            let width: f32 = text
+                .chars()
+                .map(|c| {
+                    if c == ' ' {
+                        size * 0.3
+                    } else if c.is_ascii() {
+                        size * 0.5
+                    } else {
+                        size
+                    }
+                })
+                .sum();
+            self.snap(width)
+        }
+    }
+
+    /// `rows` candidates on the first page of a list `pages` pages long, a long reading, every switch.
+    fn candidates(rows: usize, pages: usize, reading: &str, annotated: bool) -> PanelModel {
+        let words = ["你", "妳", "擬", "尼", "泥", "逆", "膩", "倪", "霓"];
+        PanelModel {
+            rows: (0..rows)
+                .map(|row| Row {
+                    key: char::from_digit(row as u32 + 1, 10),
+                    text: if row % 3 == 2 { "你好嗎今天".to_owned() } else { words[row].to_owned() },
+                    annotation: (annotated && row == 1).then(|| "ㄋㄧˇ".to_owned()),
+                    ..Row::default()
+                })
+                .collect(),
+            count: rows * pages,
+            page: 0,
+            page_count: pages,
+            page_size: 9.max(rows),
+            selected: Some(0),
+            reading: Some(reading.to_owned()),
+            tolerant: Some(false),
+            ..PanelModel::default()
+        }
+    }
+
+    const LONG_READING: &str = "ㄓㄨㄥ ㄏㄨㄚˊ ㄇㄧㄣˊ ㄍㄨㄛˊ ㄉㄚˋ ㄒㄩㄝˊ";
+
+    fn inside(frame: Frame, outer: Frame) -> bool {
+        const E: f32 = 0.01;
+        frame.w >= 0.
+            && frame.h >= 0.
+            && frame.x >= outer.x - E
+            && frame.y >= outer.y - E
+            && frame.x + frame.w <= outer.x + outer.w + E
+            && frame.y + frame.h <= outer.y + outer.h + E
+    }
+
+    /// Everything the window draws is inside it, in boxes as wide as its text measures, and the footer's controls
+    /// neither overlap one another nor the rows.
+    fn assert_fits(layout: &PanelLayout, m: &mut dyn Measure, case: &str) {
+        let window = Frame::new(0., 0., layout.width, layout.height);
+        let check = |frame: Frame, what: &str| {
+            assert!(
+                inside(frame, window),
+                "{case}: {what} {frame:?} is outside the {}×{} window",
+                layout.width,
+                layout.height
+            );
+        };
+        if let Some(hint) = &layout.hint {
+            check(hint.frame, "the reading row");
+            let reading = m.zhuyin_width(&hint.hint, SMALL_FONT);
+            assert!(
+                reading <= hint.reading_width() + 0.01,
+                "{case}: the reading ({reading}) has {}",
+                hint.reading_width()
+            );
+            if hint.keycap_w > 0. {
+                assert!(hint.keycap_w >= key_width(m, &hint.key, tokens::KEYCAP_FONT), "{case}: the reading row's cap");
+                assert!(hint.key_label_w >= m.width(hint.key_label, SMALL_FONT, false), "{case}: 「注音」");
+                let group_x = hint.frame.w - hint.keycap_right - hint.key_group_width();
+                assert!(
+                    group_x >= hint.text_x + hint.reading_width() - 0.01,
+                    "{case}: the key group overlaps the reading"
+                );
+                assert!(group_x >= 0., "{case}: the key group starts before the row");
+            }
+        }
+        if layout.list_open {
+            let area = layout.rows_area;
+            check(area, "the rows");
+            assert!(!layout.rows.is_empty(), "{case}: an open list draws rows");
+            let local = Frame::new(0., 0., area.w, area.h);
+            for row in &layout.rows {
+                assert!(
+                    inside(row.frame, local),
+                    "{case}: row {} {:?} outside the rows {area:?}",
+                    row.index,
+                    row.frame
+                );
+                let text_w = m.width(&row.text, layout.font_size, false);
+                assert!(row.main_width >= text_w - 0.01, "{case}: row {} 「{}」 squeezed", row.index, row.text);
+                let mut right = row.text_inset + row.main_width;
+                if let Some(annotation) = &row.annotation {
+                    let annotation_w = m.zhuyin_width(annotation, annotation_font(layout.font_size));
+                    assert!(row.annotation_width >= annotation_w - 0.01, "{case}: row {}'s annotation", row.index);
+                    right += ANNOTATION_GAP + row.annotation_width;
+                }
+                assert!(
+                    right <= row.frame.w + 0.01,
+                    "{case}: row {}'s text ends at {right}, past {}",
+                    row.index,
+                    row.frame.w
+                );
+                assert!(row.key_inset + layout.number_width <= row.text_inset, "{case}: row {}'s key", row.index);
+            }
+        }
+        let mut controls: Vec<(Frame, &str)> = Vec::new();
+        for toggle in [&layout.single, &layout.corrections].into_iter().flatten() {
+            check(toggle.frame, toggle.label);
+            assert!(
+                toggle.keycap_w >= key_width(m, &toggle.key, tokens::KEYCAP_FONT) + 10. - 0.01,
+                "{case}: {}'s cap",
+                toggle.label
+            );
+            let needed = toggle.keycap_w + KEYCAP_GAP + m.width(toggle.label, SMALL_FONT, false);
+            assert!(toggle.frame.w >= needed - 0.01, "{case}: {} needs {needed}, has {}", toggle.label, toggle.frame.w);
+            controls.push((toggle.frame, toggle.label));
+        }
+        if let Some(pager) = &layout.pager {
+            for (frame, what) in [(pager.previous, "‹"), (pager.label_frame, "the page label"), (pager.next, "›")] {
+                check(frame, what);
+                controls.push((frame, what));
+            }
+            assert!(
+                m.width(&pager.label, SMALL_FONT, false) <= pager.label_frame.w + 0.01,
+                "{case}: 「{}」",
+                pager.label
+            );
+        }
+        controls.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
+        for pair in controls.windows(2) {
+            assert!(pair[0].0.x + pair[0].0.w <= pair[1].0.x + 0.01, "{case}: {} overlaps {}", pair[0].1, pair[1].1);
+        }
+        if !layout.vertical
+            && let (Some(last), Some(first)) = (layout.rows.last(), controls.first())
+        {
+            let rows_end = layout.rows_area.x + last.frame.x + last.frame.w;
+            assert!(
+                rows_end <= first.0.x + 0.01,
+                "{case}: the rows end at {rows_end}, past {} at {}",
+                first.1,
+                first.0.x
+            );
+            if let Some(rule) = layout.footer_rule {
+                assert!(rows_end <= rule.x && rule.x + rule.w <= first.0.x + 0.01, "{case}: the hairline");
+            }
+        }
+        if let Some(rule) = layout.footer_rule {
+            check(rule, "the footer's hairline");
+        }
+        if let Some(notice) = &layout.notice {
+            check(notice.frame, "the notice");
+            let value = m.width(&notice.value, notice.font_size, false);
+            let label = notice.label_frame();
+            assert!(label.w >= m.width(&notice.label, notice.font_size, false) - 0.01, "{case}: the notice's label");
+            let room = notice.value_frame().w;
+            assert!(notice.value_frame().x >= label.x + label.w - 0.01, "{case}: the phrase overlaps the action");
+            assert!(value <= room + 0.01, "{case}: 「{}」 ({value}) has {room}", notice.value);
+            if let Some(undo) = notice.undo {
+                check(undo, "the undo link");
+                assert!(undo.x >= notice.frame.x + notice.frame.w, "{case}: the undo link overlaps the notice");
+                let text = m.width(&notice.undo_label, notice.font_size, true);
+                assert!(text <= undo.w + 0.01, "{case}: 「{}」 ({text}) has {}", notice.undo_label, undo.w);
+            }
+        }
+        if let Some((frame, text)) = &layout.typed {
+            check(*frame, "the typed reading");
+            let inset = layout.rows.first().map_or(8., |row| row.key_inset);
+            assert!(m.zhuyin_width(text, SMALL_FONT) <= frame.w - inset * 2. + 0.01, "{case}: 「{text}」");
+        }
+        if let Some((frame, ..)) = &layout.tip {
+            check(*frame, "the tip");
+        }
+    }
+
+    #[test]
+    fn everything_fits_inside_the_window() {
+        for layout_kind in [Layout::Vertical, Layout::Horizontal] {
+            for compact in [false, true] {
+                for font_size in [13., 18., 28., 36.] {
+                    for scale in [1., 1.25, 1.5, 2.] {
+                        for rows in 1..=9 {
+                            for (pages, reading, annotated) in
+                                [(1, "ㄋㄧˇ", false), (5, "ㄋㄧˇ ㄏㄠˇ", true), (3, LONG_READING, false)]
+                            {
+                                let style =
+                                    PanelStyle { layout: layout_kind, compact, font_size, ..PanelStyle::default() };
+                                let p = candidates(rows, pages, reading, annotated);
+                                let case = format!(
+                                    "{layout_kind:?} compact={compact} {font_size}px ×{scale} {rows} rows {pages} pages 「{reading}」"
+                                );
+                                let layout = compute(&p, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                                assert_eq!(layout.rows.len(), rows, "{case}");
+                                assert_fits(&layout, &mut Fonts::at(scale), &case);
+                                // The typed reading of an automatic correction, under the list.
+                                let p = PanelModel { typed: Some("你打的是 ㄊㄜˇ · ⌫ 還原".into()), ..p };
+                                let layout = compute(&p, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                                assert_fits(&layout, &mut Fonts::at(scale), &format!("{case} typed"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn one_character_composition_draws_its_rows() {
+        // 「你」 alone: a full page of single characters, several pages, the reading row and every footer control.
+        for layout_kind in [Layout::Vertical, Layout::Horizontal] {
+            for broken_latin in [false, true] {
+                let style = PanelStyle { layout: layout_kind, ..PanelStyle::default() };
+                let p = candidates(9, 5, "ㄋㄧˇ", false);
+                let mut fonts = Fonts { scale: 1.5, broken_latin };
+                let layout = compute(&p, &style, 4000., (0., 0.), &mut fonts);
+                let case = format!("{layout_kind:?}, Latin measured as nothing: {broken_latin}");
+                assert!(layout.list_open && layout.rows.len() == 9, "{case}");
+                assert!(layout.rows.iter().all(|row| row.frame.w > 0. && row.frame.h > 0.), "{case}");
+                assert!(layout.single.is_some() && layout.corrections.is_some() && layout.pager.is_some(), "{case}");
+                // A font that measures nothing still gets room for what it draws: what the window draws with a
+                // readable font fits the window laid out with the unreadable one.
+                assert_fits(&layout, &mut Fonts::at(1.5), &case);
+            }
+        }
+    }
+
+    #[test]
+    fn the_undo_link_names_its_key_and_fits() {
+        for font_size in [13., 18., 36.] {
+            for scale in [1., 1.5, 2.] {
+                let style = PanelStyle { font_size, ..PanelStyle::default() };
+                let mut p = candidates(3, 1, "ㄒㄧㄠˇ ㄇㄧㄥˊ", false);
+                p.notice = Some("不再推薦「小明」".into());
+                p.undo = true;
+                let layout = compute(&p, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                assert_eq!(layout.notice.as_ref().map(|notice| notice.undo_label.as_str()), Some("Ctrl+Z 復原"));
+                assert_fits(&layout, &mut Fonts::at(scale), &format!("undo {font_size}px ×{scale}"));
+            }
+        }
+        // Without a key: the link alone.
+        assert_eq!(undo_label(""), UNDO_LABEL);
+    }
+
+    #[test]
+    fn a_six_character_phrase_is_never_cut_short() {
+        for font_size in [13., 18., 28., 36.] {
+            for scale in [1., 1.25, 1.5, 2.] {
+                for message in
+                    ["Enter 加入自訂詞：哈囉", "Enter 加入自訂詞：我們今天去看", "已加入自訂詞：我們今天去看"]
+                {
+                    let style = PanelStyle { font_size, ..PanelStyle::default() };
+                    let case = format!("{message} {font_size}px ×{scale}");
+                    // On its own (the pill) and above a list.
+                    let alone = PanelModel { notice: Some(message.into()), ..PanelModel::default() };
+                    let layout = compute(&alone, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                    assert_eq!(layout.height, tokens::NOTICE_H, "{case}");
+                    assert_fits(&layout, &mut Fonts::at(scale), &format!("{case} alone"));
+                    let notice = layout.notice.expect("a notice");
+                    assert!(notice.value.ends_with(message.rsplit('：').next().unwrap_or_default()), "{case}");
+                    let listed =
+                        PanelModel { notice: Some(message.into()), ..candidates(1, 1, "ㄏㄚ ㄌㄨㄛ˙", false) };
+                    let layout = compute(&listed, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                    assert_fits(&layout, &mut Fonts::at(scale), &format!("{case} above a list"));
+                }
+            }
+        }
     }
 }

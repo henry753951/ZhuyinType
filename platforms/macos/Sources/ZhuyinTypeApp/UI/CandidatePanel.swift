@@ -636,9 +636,10 @@ final class CandidateContentView: InputMaterialView {
         let hasPreview = !(preview ?? "").isEmpty
         let listOpen = !indices.isEmpty
         let hasPages = (list?.pageCount ?? 1) > 1 && listOpen
-        // The reading being changed heads the list and never sets the width; the footer holds only fixed-width
-        // controls, so nothing moves as the reading grows or the page count changes.  With the switches hidden, a
-        // switch still shows while it is on, so the list in use is always visible.
+        // The window is as wide as everything it shows: the reading being changed (its key cap and the whole
+        // reading), the rows and the footer, whose controls have fixed widths, so nothing moves as the page count
+        // changes.  With the switches hidden, a switch still shows while it is on, so the list in use is always
+        // visible.
         let readable = !(zhuyinHint ?? "").isEmpty && listOpen
         let hasHint = readable && style.showsZhuyinHint
         // A switch whose list is turned off on the 快捷鍵 page has no key and is not shown.
@@ -689,7 +690,10 @@ final class CandidateContentView: InputMaterialView {
             y += rowHeight + (listOpen ? 5 : 0)
         }
         let hintY = y
-        if hasHint { y += hintHeight }
+        if hasHint {
+            width = max(width, ceil(zhuyinButton.preferredWidth) + padding * 2 + 8)
+            y += hintHeight
+        }
         // 聯想詞 have no reading to show: the label takes the reading's place.  Until ↓ enters the list (passive) it
         // says how to select, and the rows have no key labels: their selection keys still type Zhuyin.
         let hasAssociation = list?.associated == true && listOpen && !hasHint

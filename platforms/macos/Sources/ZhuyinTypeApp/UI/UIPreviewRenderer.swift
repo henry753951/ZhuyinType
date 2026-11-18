@@ -191,9 +191,28 @@ enum UIPreviewRenderer {
                              to: directory.appendingPathComponent("candidate-a11y-\(name)-\(suffix).png"))
         }
         DisplayOptions.override = display
-        for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字")] {
+        for (file, notice) in [("select", "Enter 加入自訂詞：王小明"), ("saved", "已加入自訂詞：王小明"), ("invalid", "自訂詞需為 1 到 6 個字"),
+                               ("select-2", "Enter 加入自訂詞：哈囉"), ("select-6", "Enter 加入自訂詞：我們今天去看")] {
             try capturePanel(list: nil, keys: [], style: CandidateStyle(layout: .horizontal), notice: notice,
                              to: directory.appendingPathComponent("notice-\(file)-\(suffix).png"))
+        }
+        // The six-character phrase above a list, the list of one character (你) and a list of one candidate, and a
+        // long reading: the window is as wide as all of it, nothing cut short.
+        let single = ["你", "妳", "擬", "尼", "泥", "逆", "膩", "倪", "霓", "旎", "伱"].map { Candidate(text: $0) }
+        for layout in CandidateLayout.allCases {
+            try capturePanel(list: CandidateList(items: single, selection: 0, pageSize: 9, tolerant: false), keys: keys,
+                             style: CandidateStyle(layout: layout), zhuyinHint: "ㄋㄧˇ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-one-character-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "你好")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄋㄧˇ ㄏㄠˇ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-one-candidate-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "中華民國大學")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄓㄨㄥ ㄏㄨㄚˊ ㄇㄧㄣˊ ㄍㄨㄛˊ ㄉㄚˋ ㄒㄩㄝˊ",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-long-reading-\(suffix).png"))
+            try capturePanel(list: CandidateList(items: [Candidate(text: "我們今天去看")], selection: 0, pageSize: 9, tolerant: false),
+                             keys: keys, style: CandidateStyle(layout: layout), zhuyinHint: "ㄨㄛˇ ㄇㄣ˙ ㄐㄧㄣ ㄊㄧㄢ ㄑㄩˋ ㄎㄢˋ",
+                             notice: "Enter 加入自訂詞：我們今天去看",
+                             to: directory.appendingPathComponent("candidate-\(layout.rawValue)-notice-6-\(suffix).png"))
         }
         let badge = InputSurface.modeBadge()
         try capture(view: Backdrop(content: badge), to: directory.appendingPathComponent("mode-toast-\(suffix).png"))

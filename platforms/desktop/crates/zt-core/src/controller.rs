@@ -588,8 +588,7 @@ impl InputController {
             return self.pass_through();
         }
         // Ctrl+Z undoes a word action for a few seconds while still composing (a fixed key, not a command).
-        if crate::shortcuts::Binding::normalized(key.code, key.modifiers)
-            == Some(crate::shortcuts::Binding { key: i32::from(b'Z'), modifiers: modifier::CONTROL })
+        if crate::shortcuts::Binding::normalized(key.code, key.modifiers) == Some(crate::shortcuts::UNDO_WORD_ACTION)
             && self.word_undo_offered()
         {
             return self.undo_word_action();

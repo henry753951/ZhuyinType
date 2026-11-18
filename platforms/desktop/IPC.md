@@ -52,7 +52,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 選取的字加入自訂詞：沒在組字時按下 `addSelectedText` 的鍵，`key` 的回應多一個 `selection: true`，原生端接著送 `selection`（TSF 以 `ITfContext::GetSelection` 與 `ITfRange::GetText` 讀，Fcitx 5 以 surrounding text 的 `selectedText()`）。這個指令預設沒有按鍵；它的鍵列在 `claims`（〈攔截的按鍵〉），只限中文模式、非私人欄位。
 
-字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「復原」，原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
+字詞動作（`zt_panel::model`）：`model.rows[].actions` 是這一列的右鍵選單裡能用的動作，第 n 位是 `WORD_ACTIONS[n]`（0 `block`、1 `forget`、2 `addPhrase`），沒有時省略；`model.undo` 為 `true` 時提示（例如「不再推薦「八」」）後面有可點的「Ctrl+Z 復原」（按鍵是 `style.keys.undo`，舊版 App 沒送時是 Ctrl+Z），原生端 5 秒後自己把它拿掉（服務那時也不再接受 Ctrl+Z）；`model.tip` 是清單下方的一行說明（「Ctrl+Del 不要再推薦・右鍵看更多」），只在前 5 次開清單時有。三個欄位在沒有內容時都省略，所以舊的原生端照樣能讀。
 
 「符號與 Emoji」面板開著時，回應的 `composing` 與 `candidates` 為真、`preedit` 為空，原生端把每個鍵都送給服務；App 畫的視窗顯示面板的格子（`PopupState::picker`），原生端畫的視窗收到反白的那一列（最多 9 個，按鍵 1–9）當成候選字清單、類別與列數在 `notice`，點選照常送 `pick`；`panel.picker` 另帶整個格子（`zt_panel::picker::PickerView`，和 App 畫的同一份：類別、搜尋、顯示的列、反白），認得它的原生端（Windows 文字服務）改畫格子，點格子送 `symbol`、點類別送 `symbolTab`。舊的原生端忽略 `picker`，照舊畫那一列。
 
