@@ -45,6 +45,22 @@ enum HealthAction: Hashable {
     }
 }
 
+/// One fact behind a check or in a report section: what was looked at and what it was, 「已加入：是」.
+struct HealthDetail: Equatable, Hashable {
+    var label: String
+    var value: String
+
+    init(_ label: String, _ value: String) {
+        self.label = label
+        self.value = value
+    }
+
+    /// 是 / 否.
+    static func yesNo(_ label: String, _ value: Bool) -> HealthDetail { HealthDetail(label, value ? "是" : "否") }
+    /// 開啟 / 關閉.
+    static func onOff(_ label: String, _ value: Bool) -> HealthDetail { HealthDetail(label, value ? "開啟" : "關閉") }
+}
+
 struct HealthCheck: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
         case inputSource, installedCopy, secureInput, perDocumentSource, dataFiles, settings, version
@@ -58,6 +74,8 @@ struct HealthCheck: Identifiable, Equatable {
     /// The sentence as the problem report writes it, when it differs: without other apps' names.
     var reportExplanation: String?
     var actions: [HealthAction] = []
+    /// What was checked and what it was, under 「詳細資料」 on the page and indented under the line in the report.
+    var details: [HealthDetail] = []
 
     var id: Kind { kind }
 
@@ -135,13 +153,89 @@ struct HealthFacts: Equatable {
     var systemBuild: String
     var architecture: String
     var now: Date
+
+    // The report's sections (HealthReport) and the checks' details.  Defaults: not read.
+
+    /// The account's short name, written 「<使用者>」 in the report.
+    var user = ""
+    /// Our input mode's ID, `org.zhuyintype.inputmethod.ZhuyinType.Zhuyin`.
+    var inputModeID = ""
+    /// The selected keyboard input source's ID, and the IDs of the enabled ones in the system's order.
+    var currentInputSource: String?
+    var enabledInputSources: [String] = []
+    /// The folder holding the lexicon the engine loads, and every data file it would load (or 「缺少」).
+    var dataFolder: URL?
+    var dataItems: [DataItem] = []
+    /// The data versions this build bundles (resources/assets.json at build time, in manifest.json).
+    var bundledData: [BundledData] = []
+    /// How long the last engine load took (EngineHost.loadDurations); nil before the first load.
+    var loadTimes: LoadTimes?
+    var app = AppBundle()
+    /// The settings file and the user data folder (記住的字詞, 自訂詞).
+    var preferencesFile: URL?
+    var userData: URL?
+    /// When this process started.
+    var started: Date?
+    /// Stored settings that differ from their defaults (`HealthSettings.changes`).
+    var changedSettings: [HealthSettings.Change] = []
+    var display = Display()
+
+    struct DataItem: Equatable {
+        /// 「詞庫」, 「語言模型」…
+        var name: String
+        /// The file or folder; nil: missing.
+        var url: URL?
+        var bytes: Int64?
+    }
+
+    struct BundledData: Equatable {
+        /// assets.json's component: `lexicon`, `lm`…
+        var component: String
+        /// `data-7`.
+        var release: String
+        /// The archive's SHA-256, first 12 digits.
+        var hash: String
+    }
+
+    struct LoadTimes: Equatable {
+        var engine: TimeInterval?
+        var reranker: TimeInterval?
+        var characters: TimeInterval?
+    }
+
+    /// The running bundle on disk.
+    struct AppBundle: Equatable {
+        /// The owner's account name.
+        var owner: String?
+        /// `drwxr-xr-x`.
+        var permissions: String?
+        /// It carries `com.apple.quarantine` (downloaded and not yet opened through Gatekeeper).
+        var quarantined: Bool?
+    }
+
+    struct Display: Equatable {
+        /// The main screen's backing scale, 2 for Retina.
+        var scale: Double?
+        /// The system appearance is dark.
+        var dark: Bool?
+        /// The floating panels' 外觀 setting.
+        var panelAppearance: PanelAppearance?
+        var voiceOver: Bool?
+        var reduceMotion: Bool?
+        var increaseContrast: Bool?
+        var reduceTransparency: Bool?
+    }
 }
 
 enum HealthChecks {
     /// The checks, in the page's order.
     static func evaluate(_ facts: HealthFacts) -> [HealthCheck] {
         [inputSource(facts), installedCopy(facts), secureInput(facts), perDocumentSource(facts), dataFiles(facts),
-         settings(facts), version(facts)]
+         settings(facts), version(facts)].map { check in
+            var check = check
+            check.details = details(check.kind, facts)
+            return check
+        }
     }
 
     /// The 關於 page's row: 「全部正常」 or 「有 2 個項目需要處理」.
@@ -178,9 +272,7 @@ enum HealthChecks {
     private static func installedCopy(_ facts: HealthFacts) -> HealthCheck {
         let installed = Set(facts.installLocations.map(\.standardizedFileURL.path))
         let running = facts.running.standardizedFileURL
-        let others = facts.copies.map(\.standardizedFileURL)
-            .filter { $0.path != running.path && !$0.path.contains("/.Trash/") }
-            .reduce(into: [URL]()) { list, url in if !list.contains(url) { list.append(url) } }
+        let others = otherCopies(facts)
         let otherInstalled = others.filter { installed.contains($0.path) }
         func shown(_ url: URL) -> String { abbreviate(url.path, home: facts.home) }
         if !installed.contains(running.path) {
@@ -281,6 +373,81 @@ enum HealthChecks {
         }
     }
 
+    // MARK: Details
+
+    /// What each check looked at, as short label–value lines; paths with 「~」.
+    private static func details(_ kind: HealthCheck.Kind, _ facts: HealthFacts) -> [HealthDetail] {
+        func shown(_ url: URL) -> String { abbreviate(url.path, home: facts.home) }
+        switch kind {
+        case .inputSource:
+            var lines: [HealthDetail] = []
+            if !facts.inputModeID.isEmpty { lines.append(HealthDetail("輸入方式 ID", facts.inputModeID)) }
+            switch facts.inputSource {
+            case .notRegistered:
+                lines.append(.yesNo("已登記", false))
+            case .registered(let enabled, let selectable):
+                lines += [.yesNo("已登記", true), .yesNo("已加入", enabled), .yesNo("可選用", selectable)]
+            }
+            return lines
+        case .installedCopy:
+            let installed = Set(facts.installLocations.map(\.standardizedFileURL.path))
+            let others = otherCopies(facts)
+            return [HealthDetail("位置", shown(facts.running)),
+                    .yesNo("在輸入法資料夾中", installed.contains(facts.running.standardizedFileURL.path)),
+                    HealthDetail("其他副本", others.isEmpty ? "沒有" : others.map(shown).joined(separator: "、"))]
+        case .secureInput:
+            guard case .on(let owner) = facts.secureInput else { return [.onOff("狀態", false)] }
+            return [.onOff("狀態", true), HealthDetail("開啟者", owner ?? "不明")]
+        case .perDocumentSource:
+            return [.onOff("自動切換成文件的輸入方式", facts.perDocumentInputSource)]
+        case .dataFiles:
+            var lines: [HealthDetail] = []
+            if let folder = facts.dataFolder { lines.append(HealthDetail("資料夾", shown(folder))) }
+            switch facts.lexicon {
+            case .missing: lines.append(HealthDetail("詞庫", "缺少"))
+            case .unreadable(let url): lines.append(HealthDetail("詞庫", "\(url.lastPathComponent)，無法讀取"))
+            case .readable(let url): lines.append(HealthDetail("詞庫", url.lastPathComponent))
+            }
+            if !facts.missingModels.isEmpty {
+                lines.append(HealthDetail("缺少", facts.missingModels.map(\.name).joined(separator: "、")))
+            }
+            return lines
+        case .settings:
+            var lines: [HealthDetail] = []
+            switch facts.settings {
+            case .none:
+                if let file = facts.preferencesFile { lines.append(HealthDetail("檔案", shown(file))) }
+                lines.append(HealthDetail("狀態", "尚未建立"))
+            case .readable:
+                if let file = facts.preferencesFile { lines.append(HealthDetail("檔案", shown(file))) }
+                lines.append(HealthDetail("狀態", "可以讀取"))
+            case .unreadable(let url):
+                lines += [HealthDetail("檔案", shown(url)), HealthDetail("狀態", "無法讀取")]
+            }
+            lines.append(HealthDetail("改過的設定", "\(facts.changedSettings.count) 項"))
+            return lines
+        case .version:
+            return updateDetails(facts)
+        }
+    }
+
+    /// The copies other than the running one, each once, without those in the Trash.
+    private static func otherCopies(_ facts: HealthFacts) -> [URL] {
+        let running = facts.running.standardizedFileURL
+        return facts.copies.map(\.standardizedFileURL)
+            .filter { $0.path != running.path && !$0.path.contains("/.Trash/") }
+            .reduce(into: [URL]()) { list, url in if !list.contains(url) { list.append(url) } }
+    }
+
+    /// 自動檢查, 上次檢查 and 已下載的更新: the version check's details and the report's 更新 section.
+    static func updateDetails(_ facts: HealthFacts) -> [HealthDetail] {
+        guard case .available(let automatic, let last, let pending) = facts.updates else {
+            return [HealthDetail("自動檢查", "不提供（沒有更新來源）")]
+        }
+        return [.onOff("自動檢查", automatic), HealthDetail("上次檢查", last.map(timestamp) ?? "還沒有檢查過"),
+                HealthDetail("已下載的更新", pending ?? "沒有")]
+    }
+
     // MARK: Text
 
     /// 「0.6.1（建置 123）」, or 「開發版」 without a version.
@@ -306,43 +473,5 @@ enum HealthChecks {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = format
         return formatter
-    }
-}
-
-/// 回報問題: the text the sheet shows, copies and saves.  The same layout as the Linux and Windows versions.
-/// Never typed text, the user's words, correction logs, context or other apps' identifiers or names; paths with 「~」.
-enum HealthReport {
-    /// Our own recent errors (error and fault level, this process), or nil when the log could not be read in time.
-    struct LogLine: Equatable {
-        var date: Date
-        var message: String
-    }
-
-    static func text(facts: HealthFacts, checks: [HealthCheck], errors: [LogLine]?) -> String {
-        var lines = [
-            "ZhuyinType 問題回報",
-            "產生時間：\(HealthChecks.timestamp(facts.now))",
-            "版本：\(HealthChecks.versionText(facts))",
-            "系統：macOS \(facts.systemVersion)（\(facts.systemBuild)）",
-            "架構：\(facts.architecture)",
-            "",
-            "檢查結果",
-        ]
-        lines += checks.map(\.reportLine)
-        lines += ["", "最近的錯誤"]
-        if let errors {
-            let time = HealthChecks.formatter("HH:mm:ss")
-            lines += errors.isEmpty ? ["（沒有）"] : errors.map { "\(time.string(from: $0.date)) \(scrub($0.message, home: facts.home))" }
-        } else {
-            lines.append("（無法讀取）")
-        }
-        return lines.joined(separator: "\n") + "\n"
-    }
-
-    /// A log message on one line, with the home directory written as 「~」.
-    static func scrub(_ message: String, home: String) -> String {
-        var text = message.replacingOccurrences(of: "\n", with: " ")
-        if !home.isEmpty, home != "/" { text = text.replacingOccurrences(of: home + "/", with: "~/") }
-        return text
     }
 }
