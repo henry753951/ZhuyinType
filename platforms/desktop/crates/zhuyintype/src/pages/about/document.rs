@@ -83,6 +83,12 @@ pub fn open(document: Document, entry: impl Into<SharedString>, window: &mut Win
             window,
             cx,
         );
-        dialog.w(frame.width).p(px(0.)).gap(px(0.)).close_button(false).on_ok(|_, _, _| true).child(frame.element)
+        crate::ui::alert::surface(dialog, cx)
+            .w(frame.width)
+            .p(px(0.))
+            .gap(px(0.))
+            .close_button(false)
+            .on_ok(|_, _, _| true)
+            .child(frame.element)
     });
 }

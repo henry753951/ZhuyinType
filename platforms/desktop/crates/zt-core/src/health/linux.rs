@@ -55,6 +55,102 @@ pub struct LinuxFacts {
     pub gnome: bool,
     /// The Kimpanel extension is enabled (GNOME on Wayland only; None: not asked).
     pub kimpanel: Option<bool>,
+    /// `fcitx5 --version` (「fcitx5 5.1.7」).
+    pub fcitx_version: Option<String>,
+    /// This user's Fcitx 5 profile (`~/.config/fcitx5/profile`), when it could be read.
+    pub profile: Option<FcitxProfile>,
+    /// Every input method variable of the session, set or not (`GTK_IM_MODULE`, `QT_IM_MODULE`, …).
+    pub im_variables: Vec<(String, Option<String>)>,
+    /// `XDG_SESSION_TYPE` (`wayland`, `x11`).
+    pub session_type: String,
+    /// `WAYLAND_DISPLAY` and `DISPLAY` are set.
+    pub wayland_display: bool,
+    pub x_display: bool,
+}
+
+/// The variables that pick an input method framework.
+pub const IM_VARIABLES: [&str; 6] =
+    ["GTK_IM_MODULE", "QT_IM_MODULE", "XMODIFIERS", "SDL_IM_MODULE", "GLFW_IM_MODULE", "INPUT_METHOD"];
+
+/// The input methods of the user's Fcitx 5 profile, in order, every group's (the groups' own names are left out:
+/// the user names them).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FcitxProfile {
+    /// `keyboard-us`, `zhuyintype`, …
+    pub methods: Vec<String>,
+    /// Each group's `DefaultIM` and `Default Layout`.
+    pub default_methods: Vec<String>,
+    pub layouts: Vec<String>,
+}
+
+impl FcitxProfile {
+    /// Reads the profile's INI text.
+    #[must_use]
+    pub fn parse(text: &str) -> Self {
+        let mut profile = Self::default();
+        let mut section = "";
+        for line in text.lines().map(str::trim) {
+            if let Some(name) = line.strip_prefix('[').and_then(|line| line.strip_suffix(']')) {
+                section = name;
+                continue;
+            }
+            let Some((key, value)) = line.split_once('=') else { continue };
+            let (key, value) = (key.trim(), value.trim().to_owned());
+            if value.is_empty() {
+                continue;
+            }
+            let item = section.starts_with("Groups/") && section.contains("/Items/");
+            let group = section.starts_with("Groups/") && !item;
+            match key {
+                "Name" if item => profile.methods.push(value),
+                "DefaultIM" if group => profile.default_methods.push(value),
+                "Default Layout" if group => profile.layouts.push(value),
+                _ => {}
+            }
+        }
+        profile
+    }
+}
+
+/// The report's 輸入法 lines.
+#[must_use]
+pub fn input_lines(facts: &LinuxFacts) -> Vec<(String, String)> {
+    let mut lines = Vec::new();
+    let flag = |value: bool| super::yes_no(value).to_owned();
+    match &facts.fcitx {
+        None => lines.push(("Fcitx 5".to_owned(), "無法檢查（找不到 fcitx5-setup）".to_owned())),
+        Some(fcitx) => {
+            lines.push(("Fcitx 5 已安裝".to_owned(), flag(fcitx.installed)));
+            lines.push(("Fcitx 5 執行中".to_owned(), flag(fcitx.running)));
+            lines.push((
+                "輸入法框架".to_owned(),
+                if fcitx.framework.is_empty() { "不明".to_owned() } else { fcitx.framework.clone() },
+            ));
+            lines.push(("Fcitx 5 已載入 ZhuyinType".to_owned(), super::details::flag(fcitx.addon_loaded)));
+        }
+    }
+    lines.push(("Fcitx 5 版本".to_owned(), facts.fcitx_version.clone().unwrap_or_else(|| "不明".to_owned())));
+    if let Some(profile) = &facts.profile {
+        let list = |items: &[String]| if items.is_empty() { "沒有".to_owned() } else { items.join("、") };
+        lines.push(("Fcitx 5 的輸入法".to_owned(), list(&profile.methods)));
+        lines.push(("預設的輸入法".to_owned(), list(&profile.default_methods)));
+        lines.push(("鍵盤配置".to_owned(), list(&profile.layouts)));
+    } else {
+        lines.push(("Fcitx 5 的輸入法".to_owned(), "無法讀取設定檔".to_owned()));
+    }
+    for (name, value) in &facts.im_variables {
+        lines.push((name.clone(), value.clone().unwrap_or_else(|| "未設定".to_owned())));
+    }
+    lines.push((
+        "工作階段".to_owned(),
+        if facts.session_type.is_empty() { "不明".to_owned() } else { facts.session_type.clone() },
+    ));
+    lines.push(("WAYLAND_DISPLAY".to_owned(), if facts.wayland_display { "已設定" } else { "未設定" }.to_owned()));
+    lines.push(("DISPLAY".to_owned(), if facts.x_display { "已設定" } else { "未設定" }.to_owned()));
+    if let Some(kimpanel) = facts.kimpanel {
+        lines.push(("Kimpanel 擴充功能".to_owned(), super::on_off(kimpanel).to_owned()));
+    }
+    lines
 }
 
 /// The checks, in the order the page lists them.
@@ -76,10 +172,22 @@ pub fn checks(facts: &LinuxFacts) -> Vec<Check> {
             "ZhuyinType 透過 Fcitx 5 接收按鍵。請以套件管理員安裝 fcitx5，再登出、登入一次。",
         )];
     }
-    let mut checks = vec![framework(fcitx)];
+    let version = facts.fcitx_version.clone().unwrap_or_else(|| "不明".to_owned());
+    let framework = framework(fcitx)
+        .with_detail("執行中", super::yes_no(fcitx.running))
+        .with_detail("輸入法框架", if fcitx.framework.is_empty() { "不明" } else { fcitx.framework.as_str() })
+        .with_detail("版本", version);
+    let methods = facts.profile.as_ref().map_or_else(
+        || "無法讀取設定檔".to_owned(),
+        |profile| if profile.methods.is_empty() { "沒有".to_owned() } else { profile.methods.join("、") },
+    );
+    let profile = profile(fcitx)
+        .with_detail("在清單中", super::yes_no(fcitx.in_profile))
+        .with_detail("Fcitx 5 的輸入法", methods);
+    let mut checks = vec![framework];
     checks.extend(modules(facts, fcitx));
-    checks.push(profile(fcitx));
-    checks.extend(addon(fcitx));
+    checks.push(profile);
+    checks.extend(addon(fcitx).map(|check| check.with_detail("已載入", super::details::flag(fcitx.addon_loaded))));
     checks.extend(wayland(facts));
     checks
 }
@@ -120,7 +228,8 @@ fn modules(facts: &LinuxFacts, fcitx: &FcitxStatus) -> Option<Check> {
                 facts.other_modules.join("、")
             ),
         )
-        .with_fix(Fix::UseFcitx),
+        .with_fix(Fix::UseFcitx)
+        .with_detail("環境變數", facts.other_modules.join("、")),
     )
 }
 
@@ -200,6 +309,7 @@ mod tests {
             wayland: false,
             gnome: false,
             kimpanel: None,
+            ..LinuxFacts::default()
         }
     }
 
@@ -263,6 +373,34 @@ mod tests {
         assert_eq!((missing.len(), missing[0].status), (1, Status::Error));
         let unknown = checks(&LinuxFacts { fcitx: None, ..fine() });
         assert_eq!((unknown.len(), unknown[0].status), (1, Status::Info));
+    }
+
+    #[test]
+    fn the_profile_lists_methods_without_group_names() {
+        let profile = FcitxProfile::parse(
+            "[Groups/0]\nName=我的群組\nDefault Layout=us\nDefaultIM=zhuyintype\n\n[Groups/0/Items/0]\nName=keyboard-us\nLayout=\n\n\
+             [Groups/0/Items/1]\nName=zhuyintype\nLayout=\n\n[GroupOrder]\n0=我的群組\n",
+        );
+        assert_eq!(profile.methods, ["keyboard-us", "zhuyintype"]);
+        assert_eq!(
+            (profile.default_methods.as_slice(), profile.layouts.as_slice()),
+            (&["zhuyintype".to_owned()][..], &["us".to_owned()][..])
+        );
+        let facts = LinuxFacts {
+            profile: Some(profile),
+            fcitx_version: Some("fcitx5 5.1.7".into()),
+            im_variables: vec![("GTK_IM_MODULE".into(), Some("fcitx".into())), ("SDL_IM_MODULE".into(), None)],
+            session_type: "wayland".into(),
+            wayland_display: true,
+            ..fine()
+        };
+        let lines = input_lines(&facts);
+        let text = format!("{lines:?}");
+        assert!(!text.contains("我的群組"), "{text}");
+        assert!(lines.contains(&("Fcitx 5 的輸入法".to_owned(), "keyboard-us、zhuyintype".to_owned())));
+        assert!(lines.contains(&("SDL_IM_MODULE".to_owned(), "未設定".to_owned())));
+        let checks = checks(&facts);
+        assert!(find(&checks, "fcitx").unwrap().details.contains(&("版本".to_owned(), "fcitx5 5.1.7".to_owned())));
     }
 
     #[test]

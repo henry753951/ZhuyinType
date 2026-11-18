@@ -21,7 +21,7 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETTHREADLOCALINPUTSETTINGS, SystemParametersInfoW};
 
 use super::report::System;
-use super::windows::{SmartAppControl, WindowsFacts, ZHUYINTYPE};
+use super::windows::{FolderAccess, SmartAppControl, WindowsFacts, ZHUYINTYPE};
 use crate::update::WINDOWS_SERVICE;
 
 const CLASS_KEY: &str = r"Software\Classes\CLSID\{25BC3548-B611-4F92-91D0-C9291D427EA8}\InprocServer32";
@@ -137,9 +137,69 @@ fn user_list() -> Option<Vec<String>> {
     Some(list)
 }
 
-/// The text service's COM class in one registry view, with its DLL on disk.
-fn registered(view: u32) -> bool {
-    read_string(HKEY_LOCAL_MACHINE, CLASS_KEY, None, view).is_some_and(|path| PathBuf::from(path).is_file())
+/// The DLL the text service's COM class names in one registry view.
+fn class_dll(view: u32) -> Option<String> {
+    read_string(HKEY_LOCAL_MACHINE, CLASS_KEY, None, view).filter(|path| !path.is_empty())
+}
+
+/// Our files beside this program, with their sizes.
+fn install_files(dir: &std::path::Path) -> Vec<(String, Option<u64>)> {
+    ["zhuyintype.exe", "zhuyintype-tsf-x64.dll", "zhuyintype-tsf-x86.dll", "onnxruntime.dll"]
+        .into_iter()
+        .map(|name| (name.to_owned(), std::fs::metadata(dir.join(name)).ok().map(|metadata| metadata.len())))
+        .collect()
+}
+
+/// Who the folder's security descriptor lets read it (its DACL as SDDL).
+fn folder_access(dir: &std::path::Path) -> Option<FolderAccess> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSecurityDescriptorToStringSecurityDescriptorW, GetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT,
+    };
+    use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR};
+    let path = wide(&dir.to_string_lossy());
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    // SAFETY: a valid path; only the descriptor is asked for, freed with LocalFree below.
+    let status = unsafe {
+        GetNamedSecurityInfoW(
+            path.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != ERROR_SUCCESS || descriptor.is_null() {
+        return None;
+    }
+    let mut text: *mut u16 = null_mut();
+    let mut length = 0u32;
+    // SAFETY: the descriptor read above; the string is allocated by the call and freed with LocalFree.
+    let converted = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            &mut text,
+            &mut length,
+        )
+    };
+    let sddl = (converted != 0 && !text.is_null()).then(|| {
+        // SAFETY: `text` holds `length` UTF-16 units (with the terminator).
+        let units = unsafe { std::slice::from_raw_parts(text, length as usize) };
+        String::from_utf16_lossy(units).trim_end_matches('\0').to_owned()
+    });
+    // SAFETY: both were allocated by the calls above.
+    unsafe {
+        if !text.is_null() {
+            LocalFree(text.cast());
+        }
+        LocalFree(descriptor);
+    }
+    sddl.map(|sddl| FolderAccess::from_sddl(&sddl))
 }
 
 fn service_exists() -> bool {
@@ -198,9 +258,18 @@ pub fn probe() -> WindowsFacts {
     let installed = [RRF_SUBKEY_WOW6464KEY, RRF_SUBKEY_WOW6432KEY]
         .into_iter()
         .any(|view| read_string(HKEY_LOCAL_MACHINE, ACTIVE_SETUP_KEY, Some("Version"), view).is_some());
+    let (dll_64, dll_32) = (class_dll(RRF_SUBKEY_WOW6464KEY), class_dll(RRF_SUBKEY_WOW6432KEY));
+    let on_disk = |dll: &Option<String>| dll.as_ref().is_some_and(|path| PathBuf::from(path).is_file());
+    let install_dir = std::env::current_exe().ok().and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
     WindowsFacts {
-        registered_64: registered(RRF_SUBKEY_WOW6464KEY),
-        registered_32: registered(RRF_SUBKEY_WOW6432KEY),
+        registered_64: on_disk(&dll_64),
+        registered_32: on_disk(&dll_32),
+        dll_64,
+        dll_32,
+        languages: read_multi(HKEY_CURRENT_USER, USER_PROFILE, "Languages"),
+        install_files: install_dir.as_deref().map(install_files).unwrap_or_default(),
+        folder_access: install_dir.as_deref().and_then(folder_access),
+        install_dir: install_dir.map(|dir| dir.display().to_string()),
         in_user_list,
         user_list: user_list.unwrap_or_default(),
         default_override: read_string(HKEY_CURRENT_USER, USER_PROFILE, Some("InputMethodOverride"), 0)

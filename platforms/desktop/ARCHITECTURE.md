@@ -70,7 +70,23 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 
 ## 檢查輸入法
 
-`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`）與 `probe_linux`（`fcitx5-setup status`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次，結果放在全域狀態供「檢查輸入法」頁與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
+`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`、安裝資料夾的安全描述元）與 `probe_linux`（`fcitx5-setup status`、`fcitx5 --version`、使用者的 Fcitx 5 `profile`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。每個檢查除了狀態與說明，還帶著「詳細資料」（`Check::details`：檢查了什麼、看到的值），頁面上展開才顯示。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次（`health::run` 回傳檢查結果與報告的其他段落），結果放在全域狀態供「檢查輸入法」頁與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在，並記下來回時間；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
+
+「回報問題」的文字是 Markdown（`health::report`，和 macOS 的 `HealthReport.swift` 同樣的段落與名稱），貼到 GitHub 時顯示成標題與清單：開頭是時間、結果、版本與系統，接著「檢查結果」（每項一行，詳細資料縮排在下面），再來是 `health::details` 組出的段落：
+
+| 段落 | 內容 |
+|---|---|
+| 版本與資料 | 資料夾、每個資料檔與大小（或缺少）、建置時 `resources/assets.json` 固定的資料版本、引擎與模型的載入時間、模型錯誤、ONNX Runtime 的位置 |
+| 安裝 | 程式的位置（Linux：擁有者與權限；Windows：安裝資料夾、哪些帳號群組可讀取它、資料夾中的檔案與大小、登入時啟動、更新服務）、設定檔、使用者資料夾 |
+| 輸入法 | Windows：語言、這位使用者的輸入法清單（已知的寫出名稱）、預設的輸入法、每個視窗各自記住輸入法、兩個文字服務的 DLL、智慧型應用程式控制。Linux：Fcitx 5 的狀態與版本、Fcitx 5 的輸入法與鍵盤配置（不含群組名稱）、輸入法相關的環境變數、工作階段 |
+| 服務 | 狀態、啟動時間與已執行多久、最近一次按鍵、連線數、回應時間、端點（`health::activity`；`zhuyintype --health` 以 `diagnostics` 向執行中的服務讀取，IPC.md） |
+| 更新 | 自動檢查、上次檢查與結果 |
+| 改過的設定 | 和預設值不同的設定，以鍵名列出；只有開關、選項與數字寫出值，其他（文字、清單、不在 `settings.json` 中的鍵）寫「（已設定）」 |
+| 顯示與輔助功能 | 縮放、主題、透明效果、螢幕閱讀器、減少動態效果、高對比（`--health` 沒有視窗，省略） |
+
+最後是「最近的錯誤」，放在 `text` 程式碼區塊中。家目錄寫成 `~`，其他路徑中的使用者名稱與 Windows 的 SID 寫成 `<使用者>`。`tests/health_report.rs` 以有自訂詞、記住的字詞、App 清單與改過設定的設定檔產生報告，確認這些內容與使用者名稱都不出現。
+
+設定視窗的對話框（提示、程式授權、回報問題）都經過 `ui::alert::surface`，填上頁面不透明的底色：元件庫以主題的背景色畫對話框，而有透明效果（Mica、KDE 的模糊）時那個顏色是透明的。
 
 ## 介面規則
 

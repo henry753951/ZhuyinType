@@ -11,9 +11,13 @@
 //! | `windows` | registered, in this user's list, per-app input, autostart, the update service, Smart App Control |
 //! | `linux` | Fcitx 5 running and chosen, ZhuyinType in its list and loaded, Wayland notes |
 //! | `report` | 回報問題: the diagnostics text (never typed text or personal data) |
+//! | `details` | the report's sections beside the checks: versions and data, installation, service, updates, changed settings, display |
 //! | `recent` | the app's own recent warnings and errors, kept in memory for the report |
+//! | `activity` | the service's uptime, last key and adapters, answered to the broker's `diagnostics` |
 
+pub mod activity;
 pub mod common;
+pub mod details;
 pub mod linux;
 pub mod recent;
 pub mod report;
@@ -104,13 +108,15 @@ pub struct Check {
     pub status: Status,
     /// One or two sentences: what it means and what to do.
     pub detail: String,
+    /// What was checked and what was found (「64 位元」, the DLL's path), for the page's 詳細資料 and the report.
+    pub details: Vec<(String, String)>,
     pub fix: Option<Fix>,
 }
 
 impl Check {
     #[must_use]
     pub fn new(id: &'static str, status: Status, title: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self { id, title: title.into(), status, detail: detail.into(), fix: None }
+        Self { id, title: title.into(), status, detail: detail.into(), details: Vec::new(), fix: None }
     }
 
     #[must_use]
@@ -123,6 +129,25 @@ impl Check {
         self.fix = Some(fix);
         self
     }
+
+    /// Adds a line to 詳細資料: `label` and the observed value.
+    #[must_use]
+    pub fn with_detail(mut self, label: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.push((label.into(), value.into()));
+        self
+    }
+}
+
+/// 是 or 否.
+#[must_use]
+pub fn yes_no(value: bool) -> &'static str {
+    if value { "是" } else { "否" }
+}
+
+/// 開啟 or 關閉.
+#[must_use]
+pub fn on_off(value: bool) -> &'static str {
+    if value { "開啟" } else { "關閉" }
 }
 
 /// What the app gives a run of the checks: what it knows itself (the service, the data in use, the settings and
@@ -139,37 +164,78 @@ pub struct Inputs {
     pub updates: common::UpdateFacts,
     /// Linux: the package's `fcitx5-setup`.
     pub fcitx_helper: Option<PathBuf>,
+    /// The rest of what the app knows, for the report's other sections.
+    pub about: details::AppFacts,
+}
+
+/// A run's results: the checks, and the report's other sections.
+#[derive(Clone, Debug, Default)]
+pub struct Outcome {
+    pub checks: Vec<Check>,
+    pub sections: Vec<report::Section>,
 }
 
 /// Reads the system and runs every check (off the UI thread: it runs helpers and connects to the broker).  The
 /// system's own checks come first: they are the usual reason typing does not reach ZhuyinType.
 #[must_use]
-pub fn run(inputs: &Inputs) -> Vec<Check> {
-    let mut checks = platform_checks(inputs);
+pub fn run(inputs: &Inputs) -> Outcome {
+    let (mut checks, platform) = platform_checks(inputs);
     let mut service = inputs.service.clone();
-    if service.running {
-        service.reachable = inputs.endpoint.as_deref().map(answers);
+    let mut about = inputs.about.clone();
+    if service.running
+        && let Some(endpoint) = inputs.endpoint.as_deref()
+    {
+        let started = std::time::Instant::now();
+        let reachable = answers(endpoint);
+        service.reachable = Some(reachable);
+        if reachable {
+            about.response_ms = Some(started.elapsed().as_secs_f64() * 1000.0);
+        }
     }
+    let settings = common::settings_check(&inputs.settings);
+    let changed = details::changed_settings(&about.stored_settings);
     checks.push(common::service_check(&service));
     checks.push(common::data_check(&inputs.data));
-    checks.push(common::settings_check(&inputs.settings));
+    checks.push(settings.with_detail("改過的設定", format!("{} 項", changed.len())));
     checks.push(common::update_check(&inputs.version, &inputs.updates));
-    checks
+    let mut sections = vec![
+        details::data_section(&inputs.data, &about),
+        details::install_section(&inputs.settings, &about, platform.install),
+    ];
+    sections.push(report::Section::new("輸入法", platform.input_method));
+    sections.push(details::service_section(&service, inputs.endpoint.as_deref(), &about));
+    sections.push(details::update_section(&inputs.updates, &about));
+    sections.push(report::Section::new("改過的設定", changed));
+    sections.push(details::display_section(&about.display));
+    sections.retain(|section| !section.lines.is_empty());
+    Outcome { checks, sections }
+}
+
+/// The platform's checks and its lines for the report.
+#[derive(Default)]
+struct Platform {
+    input_method: Vec<(String, String)>,
+    install: Vec<(String, String)>,
 }
 
 #[cfg(windows)]
-fn platform_checks(_: &Inputs) -> Vec<Check> {
-    windows::checks(&probe_windows::probe())
+fn platform_checks(_: &Inputs) -> (Vec<Check>, Platform) {
+    let facts = probe_windows::probe();
+    (
+        windows::checks(&facts),
+        Platform { input_method: windows::input_lines(&facts), install: windows::install_lines(&facts) },
+    )
 }
 
 #[cfg(target_os = "linux")]
-fn platform_checks(inputs: &Inputs) -> Vec<Check> {
-    linux::checks(&probe_linux::probe(inputs.fcitx_helper.as_deref()))
+fn platform_checks(inputs: &Inputs) -> (Vec<Check>, Platform) {
+    let facts = probe_linux::probe(inputs.fcitx_helper.as_deref());
+    (linux::checks(&facts), Platform { input_method: linux::input_lines(&facts), install: Vec::new() })
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
-fn platform_checks(_: &Inputs) -> Vec<Check> {
-    Vec::new()
+fn platform_checks(_: &Inputs) -> (Vec<Check>, Platform) {
+    (Vec::new(), Platform::default())
 }
 
 /// This computer, for the report.

@@ -133,6 +133,12 @@ impl EngineData {
             .get_or_init(|| crate::models::load(self.files.reranker.as_deref(), self.files.character_model.as_deref()))
     }
 
+    /// The neural models if they have been loaded, without loading them (檢查輸入法 reads this).
+    #[must_use]
+    pub fn loaded_models(&self) -> Option<&crate::models::NeuralModels> {
+        self.models.get()
+    }
+
     /// Starts loading the neural models on a thread of their own, so they load while the first session opens the
     /// lexicon and language models instead of after them; the session's [`models`](Self::models) waits for them.
     pub fn load_models_in_background(self: &Arc<Self>) {
