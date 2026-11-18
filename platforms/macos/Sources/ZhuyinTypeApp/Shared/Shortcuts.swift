@@ -143,7 +143,8 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
     /// With the list open, list the previous or next character instead (← → do it in a vertical list too).
     case previousCharacter, nextCharacter
     case togglePunctuationWidth, insertSpace
-    /// Word actions on the highlighted candidate (adding also takes the whole composition with no list open).
+    /// Word actions on the highlighted candidate of the open list.  Adding characters of the composition is selectLeft
+    /// and selectRight, then Return.
     case blockCandidate, forgetCandidate, addCandidatePhrase
     /// The text selected in the app, into the 加入自訂詞 form.  No key by default.
     case addSelectedText
@@ -171,7 +172,7 @@ enum ShortcutCommand: String, CaseIterable, Codable, Identifiable {
         case .insertSpace: return "在組字中放一個空白"
         case .blockCandidate: return "不要再推薦反白的字詞"
         case .forgetCandidate: return "忘記選過反白的字詞"
-        case .addCandidatePhrase: return "把反白的字詞或整段組字加入自訂詞"
+        case .addCandidatePhrase: return "把反白的字詞加入自訂詞"
         case .addSelectedText: return "把 App 裡選取的字加入自訂詞"
         case .quickSettings: return "開啟快速設定"
         case .symbolPicker: return "開啟符號與 Emoji 面板"
