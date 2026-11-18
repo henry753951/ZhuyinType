@@ -1,6 +1,6 @@
 import Foundation
 
-// 檢查輸入法 (關於 › 檢查輸入法): what the system and this copy of ZhuyinType look like, as plain facts
+// 檢查輸入法 (the settings page of that name): what the system and this copy of ZhuyinType look like, as plain facts
 // (`HealthFacts`, read by `HealthFactsReader`), and a pure function from the facts to the checks the page lists and the
 // problem report writes.  No side effects here, so every status can be tested with made-up facts (HealthSelfTest).
 

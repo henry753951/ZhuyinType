@@ -1,5 +1,5 @@
 //! 檢查輸入法: the common reasons typing does not reach ZhuyinType, each explained in a sentence, with a fix where
-//! one is safe (the settings window's 關於 › 檢查輸入法, docs/product/DESIGN.md).
+//! one is safe (the settings window's 檢查輸入法 page, docs/product/DESIGN.md).
 //!
 //! Reading the system and judging it are kept apart: the `probe` functions (side effects, per system) gather plain
 //! facts structs, and the `checks` functions turn facts into [`Check`]s without touching anything, so every verdict

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// 關於 › 檢查輸入法: the checks (Health/HealthChecks.swift) as rows with their buttons, and 回報問題.  Views only; the
+// 檢查輸入法 (a sidebar page): the checks (Health/HealthChecks.swift) as rows with their buttons, and 回報問題.  Views only; the
 // checks and the report text come from HealthMonitor.
 
 struct HealthPage: View {

@@ -71,7 +71,7 @@ enum UIPreviewRenderer {
                 }
             }
             if only == "health" {
-                // 關於 › 檢查輸入法 and 回報問題, with everything in place and with problems.
+                // 檢查輸入法 and 回報問題, with everything in place and with problems.
                 try renderHealth(settings, to: directory.appendingPathComponent("health"))
             }
             if only == "links" {
