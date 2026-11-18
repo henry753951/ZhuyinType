@@ -21,7 +21,7 @@ platforms/desktop/scripts/remote.sh --fetch zhuyintype/work/desktop-<checkout �
 4. 以 ImageMagick 從 App 圖示做安裝程式的側圖與頁首圖（沒有 ImageMagick 時用 NSIS 預設圖）。
 5. `makensis -INPUTCHARSET UTF8 installer.nsi`，輸出到版本庫的 `dist/desktop/`。版本取自 `platforms/desktop/Cargo.toml` 的 `[workspace.package]`。
 
-主機需要 `cargo-xwin`（`cargo +1.98.0 install cargo-xwin --locked`）、LLVM 的 `clang-cl`、`lld-link`、`llvm-rc`，以及 `makensis`（`apt install nsis`）。cargo-xwin 第一次執行時下載 MSVC 與 Windows SDK 的標頭與程式庫到 `~/.cache/cargo-xwin`；`XWIN_ARCH=x86,x86_64` 只下載這裡用到的兩種。
+主機需要 `cargo-xwin`（`cargo +1.98.0 install cargo-xwin --locked`）、LLVM 的 `clang-cl`、`lld-link`、`llvm-rc`，以及 `makensis`（`apt install nsis`）。cargo-xwin 第一次執行時下載 MSVC 與 Windows SDK 的標頭與程式庫到 `~/.cache/cargo-xwin`；`XWIN_ARCH=x86,x86_64` 只下載這裡用到的兩種。經由 `scripts/remote.sh` 執行時，每份 checkout 用自己 target 目錄下的 `xwin-cache`（第一次從 `~/.cache/cargo-xwin` 複製），幾個建置同時解開同一份快取會把它弄壞。
 
 ### 安裝的檔案
 
