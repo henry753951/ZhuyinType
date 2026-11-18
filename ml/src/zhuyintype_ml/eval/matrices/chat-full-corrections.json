@@ -1,0 +1,95 @@
+{
+ "evaluator": "corrections",
+ "configurations": [
+  {
+   "name": "shipped",
+   "config": "app"
+  },
+  {
+   "name": "ptt",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt"
+   ]
+  },
+  {
+   "name": "ptt14",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt14"
+   ]
+  },
+  {
+   "name": "ptt-cn0",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cn0"
+   ]
+  },
+  {
+   "name": "ptt-cn20",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cn20"
+   ]
+  },
+  {
+   "name": "ptt-gen",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-gen"
+   ]
+  },
+  {
+   "name": "ptt-cn20-gen",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cn20-gen"
+   ]
+  },
+  {
+   "name": "ptt-cns",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns"
+   ]
+  },
+  {
+   "name": "ptt-cns-gen",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-gen"
+   ]
+  },
+  {
+   "name": "ptt-genpub",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-genpub"
+   ]
+  },
+  {
+   "name": "ptt-cns-genpub",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "private-log",
+   "set": "data/build/private/corrections.jsonl"
+  }
+ ]
+}

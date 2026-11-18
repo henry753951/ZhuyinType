@@ -1,0 +1,75 @@
+{
+ "evaluator": "typing-errors",
+ "configurations": [
+  {
+   "name": "shipped",
+   "config": "app"
+  },
+  {
+   "name": "cand",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "cand-v3-0_3-rr-1_0",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.3",
+    "--rerank-weight",
+    "1.0"
+   ]
+  },
+  {
+   "name": "cand-v3-0_5-rr-0_7",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.5",
+    "--rerank-weight",
+    "0.7"
+   ]
+  },
+  {
+   "name": "cand-v3-0_3-rr-0_7",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.3",
+    "--rerank-weight",
+    "0.7"
+   ]
+  },
+  {
+   "name": "cand-v3-0_2-rr-0_5",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.2",
+    "--rerank-weight",
+    "0.5"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  }
+ ]
+}

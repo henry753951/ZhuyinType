@@ -7,12 +7,22 @@
 The shipped model is v2b (0.3.0): 8 layers, 512 wide, 90,000 steps, sentence weight 1.0 and 16 candidates
 (config.json).  REPORT_v2.md compares it with v1/v2a/v2c; REPORT_tree.md covers the prefix-tree scorer (0.4.0).
 ONNX for Linux comes from ml/src/zhuyintype_ml/remote's export.  Training needs CUDA; compile needs macOS.
+
+Options (--option KEY=VALUE):
+    workers      prepare processes (default 32)
+    out          model directory in the data directory (default: reranker); another name keeps the shipped model
+    chat         a chat model variant whose training sentences join the text (lm_chat2/<variant>/work/sentences,
+                 e.g. ptt-cns-genpub; default: none, as shipped)
+    chat_repeat  how many times the chat text is repeated (default 1)
+
+    zt --remote train reranker prepare train --option out=reranker_chat --option chat=ptt-cns-genpub
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 from zhuyintype_ml.core import paths
 from zhuyintype_ml.training.pipeline import Context, Pipeline, Step
@@ -24,9 +34,14 @@ MODEL = ["--steps", "90000", "--layers", "8", "--width", "512", "--heads", "8", 
 CONFIG = {"weight": 1.0, "count": 16}
 
 
+def target(ctx: Context) -> Path:
+    """The model directory: --option out=NAME in the data directory, else reranker/."""
+    return paths.data(str(ctx.options["out"])) if "out" in ctx.options else ctx.out
+
+
 def module(name: str, *args: str, group: str = "train") -> Callable[[Context], None]:
     def run(ctx: Context) -> None:
-        ctx.python(f"{MODULE}.{name}", "--data", str(ctx.out), *args, group=group)
+        ctx.python(f"{MODULE}.{name}", "--data", str(target(ctx)), *args, group=group)
 
     return run
 
@@ -45,19 +60,27 @@ def tests(ctx: Context) -> None:
 
 def prepare(ctx: Context) -> None:
     workers = str(ctx.options.get("workers", 32))
-    ctx.python(f"{MODULE}.prepare", "--out", str(ctx.out), "--workers", workers, group="train")
+    chat = []
+    if "chat" in ctx.options:
+        from zhuyintype_ml.training.lm_chat2.prepare import variant_directory
+
+        sentences = variant_directory(str(ctx.options["chat"])) / "work" / "sentences"
+        chat = ["--chat", str(sentences), "--chat-repeat", str(ctx.options.get("chat_repeat", 1))]
+    ctx.python(f"{MODULE}.prepare", "--out", str(target(ctx)), "--workers", workers, *chat, group="train")
+    # zhuyin-cli --reranker DIR reads the weight and count here (export writes the same file again)
+    (target(ctx) / "config.json").write_text(json.dumps(CONFIG) + "\n")
 
 
 def export(ctx: Context) -> None:
-    ctx.python(f"{MODULE}.export", "--data", str(ctx.out), group="export")
-    (ctx.out / "config.json").write_text(json.dumps(CONFIG) + "\n")
+    ctx.python(f"{MODULE}.export", "--data", str(target(ctx)), group="export")
+    (target(ctx) / "config.json").write_text(json.dumps(CONFIG) + "\n")
 
 
 def compile_models(ctx: Context) -> None:
     from zhuyintype_ml.training.v3.coreml import compile_package
 
     for name in ["Reranker", "RerankerTree"]:
-        compile_package(ctx.out / f"{name}.mlpackage", ctx.out)
+        compile_package(target(ctx) / f"{name}.mlpackage", target(ctx))
 
 
 PIPELINE = Pipeline(

@@ -1,0 +1,69 @@
+{
+ "evaluator": "conversion",
+ "configurations": [
+  {
+   "name": "rr-shipped",
+   "config": "app",
+   "cli_args": [
+    "--reranker",
+    "{data}/reranker_chat"
+   ]
+  },
+  {
+   "name": "rr-cand",
+   "config": "app",
+   "cli_args": [
+    "--reranker",
+    "{data}/reranker_chat",
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  },
+  {
+   "name": "wiki-context",
+   "set": "wiki-dev",
+   "options": [
+    "--context",
+    "line"
+   ]
+  },
+  {
+   "name": "continue",
+   "set": "colloquial-dev",
+   "options": [
+    "--split",
+    "continue"
+   ]
+  },
+  {
+   "name": "chat",
+   "set": "chat-dev"
+  },
+  {
+   "name": "smoke",
+   "set": "smoke"
+  },
+  {
+   "name": "test-colloquial",
+   "set": "colloquial-test"
+  },
+  {
+   "name": "test-wikipedia",
+   "set": "wiki-test"
+  },
+  {
+   "name": "test-chat",
+   "set": "chat-test"
+  }
+ ]
+}

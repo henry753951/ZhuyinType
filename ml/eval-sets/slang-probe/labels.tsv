@@ -1,0 +1,348 @@
+class	freq	truth	target	typed	in_lexicon	typed_in_lexicon	unigram_wiki	unigram_chat	note
+slang	H	這樣母湯喔	母湯	ㄇㄨˇ ㄊㄤ	yes	yes	-15.22	-16.95	台語「毋通」
+slang	H	期末考全部歐趴	歐趴	ㄡ ㄆㄚ	no	no	-	-	all pass
+slang	M	你是在哈囉	是在哈囉	ㄕˋ ㄗㄞˋ ㄏㄚ ㄌㄡˊ	no	no	-	-	迷因；哈囉照口語打 ㄌㄡˊ
+slang	H	我真的傻眼貓咪	傻眼貓咪	ㄕㄚˇ ㄧㄢˇ ㄇㄠ ㄇㄧ	no	no	-	-	
+slang	H	原來是醬喔	醬	ㄐㄧㄤˋ	yes	yes	-10.38	-9.70	「這樣」的合音
+slang	M	你在說蝦米	蝦米	ㄒㄧㄚ ㄇㄧˇ	yes	yes	-12.88	-13.55	台語「啥物」
+slang	H	我吃飽惹	惹	ㄖㄜˇ	yes	yes	-10.67	-10.42	「了」的撒嬌寫法
+slang	H	這家的滷味粉好吃	粉	ㄈㄣˇ	yes	yes	-9.67	-9.39	「很」
+slang	M	晚安啾咪	啾咪	ㄐㄧㄡ ㄇㄧ	no	no	-	-	
+slang	M	不要再尬聊了	尬聊	ㄍㄚˋ ㄌㄧㄠˊ	yes	yes	-16.61	-13.95	
+slang	M	這家拉麵很頂	很頂	ㄏㄣˇ ㄉㄧㄥˇ	no	no	-	-	
+slang	M	看完直接破防	破防	ㄆㄛˋ ㄈㄤˊ	yes	yes	-14.08	-11.94	來自中國網路用語
+slang	M	當場社死	社死	ㄕㄜˋ ㄙˇ	yes	yes	-19.60	-16.95	來自中國網路用語
+slang	M	他今天超派	超派	ㄔㄠ ㄆㄞˋ	no	no	-	-	台語「歹」
+slang	H	這個理由很瞎	很瞎	ㄏㄣˇ ㄒㄧㄚ	no	no	-	-	
+slang	H	真的好扯	好扯	ㄏㄠˇ ㄔㄜˇ	no	no	-	-	
+slang	H	你很機車耶	機車	ㄐㄧ ㄔㄜ	yes	yes	-9.85	-7.68	詞庫有，義項不同
+slang	M	不要自己腦補	腦補	ㄋㄠˇ ㄅㄨˇ	yes	yes	-14.31	-11.94	
+slang	H	他又已讀不回	已讀不回	ㄧˇ ㄉㄨˊ ㄅㄨˋ ㄏㄨㄟˊ	no	no	-	-	
+slang	H	月底只能吃土	吃土	ㄔ ㄊㄨˇ	yes	yes	-14.53	-16.95	
+slang	M	反正我就是魯蛇	魯蛇	ㄌㄨˇ ㄕㄜˊ	yes	yes	-13.47	-13.95	loser
+slang	H	這是今天的小確幸	小確幸	ㄒㄧㄠˇ ㄑㄩㄝˋ ㄒㄧㄥˋ	yes	yes	-14.74	-10.77	
+slang	M	網路上的鍵盤俠很多	鍵盤俠	ㄐㄧㄢˋ ㄆㄢˊ ㄒㄧㄚˊ	yes	yes	-14.90	-16.95	
+slang	M	乾脆躺平算了	躺平	ㄊㄤˇ ㄆㄧㄥˊ	yes	yes	-13.10	-9.83	
+slang	H	這家店踩雷了	踩雷	ㄘㄞˇ ㄌㄟˊ	yes	yes	-15.22	-11.39	
+slang	H	拜託不要爆雷	爆雷	ㄅㄠˋ ㄌㄟˊ	yes	yes	-13.52	-13.55	
+slang	M	我現在是佛系玩家	佛系	ㄈㄛˊ ㄒㄧˋ	yes	yes	-14.47	-12.25	
+slang	M	我真的森氣氣	森氣氣	ㄙㄣ ㄑㄧˋ ㄑㄧˋ	no	no	-	-	「生氣」的撒嬌寫法
+slang	H	笑死我了	笑死	ㄒㄧㄠˋ ㄙˇ	no	no	-	-	
+slang	M	他只會嘴砲	嘴砲	ㄗㄨㄟˇ ㄆㄠˋ	no	no	-	-	
+slang	M	你好棒棒喔	好棒棒	ㄏㄠˇ ㄅㄤˋ ㄅㄤˋ	no	no	-	-	反諷
+slang	M	這個我婉拒了哈	婉拒了哈	ㄨㄢˇ ㄐㄩˋ ㄌㄜ˙ ㄏㄚ	no	no	-	-	2023 年迷因
+slang	H	有夠扯的	有夠	ㄧㄡˇ ㄍㄡˋ	yes	yes	-12.97	-8.48	
+slang	M	他是斜槓青年	斜槓	ㄒㄧㄝˊ ㄍㄤˋ	yes	yes	-13.11	-13.03	
+slang	H	這間是網美餐廳	網美	ㄨㄤˇ ㄇㄟˇ	no	no	-	-	
+slang	H	這篇是業配文	業配	ㄧㄝˋ ㄆㄟˋ	yes	yes	-13.56	-13.55	
+slang	H	我先發個懶人包	懶人包	ㄌㄢˇ ㄖㄣˊ ㄅㄠ	yes	yes	-13.49	-11.65	
+slang	M	隊友有夠雷包	雷包	ㄌㄟˊ ㄅㄠ	no	no	-	-	
+slang	M	他被當盤子	盤子	ㄆㄢˊ ㄗ˙	yes	yes	-12.04	-10.65	「凱子」義
+slang	H	週末在家耍廢	耍廢	ㄕㄨㄚˇ ㄈㄟˋ	yes	yes	-15.69	-13.03	
+slang	H	連續加班好爆肝	爆肝	ㄅㄠˋ ㄍㄢ	no	no	-	-	
+slang	M	這手機用起來很絲滑	絲滑	ㄙ ㄏㄨㄚˊ	yes	yes	-14.01	-13.95	善解保留集的新詞
+slang	M	網路酸民太多了	酸民	ㄙㄨㄢ ㄇㄧㄣˊ	yes	yes	-13.78	-16.95	
+slang	M	這個留言是神回覆	神回覆	ㄕㄣˊ ㄏㄨㄟˊ ㄈㄨˋ	no	no	-	-	
+slang	M	這道菜好口愛	口愛	ㄎㄡˇ ㄞˋ	no	no	-	-	「可愛」
+slang	M	現在的年輕人很內捲	內捲	ㄋㄟˋ ㄐㄩㄢˇ	no	no	-	-	
+particle	H	呃我不知道	呃	ㄜˋ	yes	yes	-13.43	-12.45	
+particle	H	欸你在哪裡	欸	ㄝˋ	yes	no	-13.37	-7.54	教育部讀音
+particle	H	欸你在哪裡	欸	ㄟˋ	yes	yes	-13.37	-7.54	常見打法
+particle	H	嗯好啊	嗯	ㄣ	yes	yes	-13.52	-11.28	
+particle	H	嗯好啊	嗯	ㄣˋ	yes	yes	-13.52	-11.28	常見打法
+particle	H	齁你很煩耶	齁	ㄏㄡ	yes	yes	-14.66	-11.01	
+particle	H	蛤你說什麼	蛤	ㄏㄚˊ	yes	yes	-11.35	-13.26	
+particle	H	好啦我知道了	啦	ㄌㄚ˙	yes	yes	-10.48	-5.64	
+particle	H	好啦我知道了	啦	ㄌㄚ	yes	yes	-10.48	-5.64	一聲打法
+particle	H	好喔明天見	喔	ㄛ	yes	yes	-11.45	-6.77	
+particle	H	好喔明天見	喔	ㄛˋ	yes	no	-11.45	-6.77	常見打法
+particle	H	好棒耶	耶	ㄧㄝ˙	yes	yes	-9.57	-6.90	
+particle	H	好棒耶	耶	ㄧㄝ	yes	yes	-9.57	-6.90	一聲打法
+particle	H	對啊	啊	ㄚ	yes	yes	-9.73	-6.19	一聲打法
+particle	H	我們走吧	吧	ㄅㄚ	yes	yes	-9.30	-6.11	一聲打法
+particle	H	就說嘛	嘛	ㄇㄚ	yes	no	-11.27	-6.76	一聲打法
+particle	H	你有空嗎	嗎	ㄇㄚ	yes	no	-9.17	-5.18	一聲打法
+particle	H	那我先走囉	囉	ㄌㄨㄛ˙	yes	yes	-11.61	-9.10	教育部讀音
+particle	H	那我先走囉	囉	ㄌㄡ	yes	no	-11.61	-9.10	常見打法
+particle	M	加油唷	唷	ㄧㄛ	yes	yes	-13.10	-12.85	
+particle	M	那你咧	咧	ㄌㄧㄝ˙	yes	yes	-12.78	-10.06	
+particle	M	那你咧	咧	ㄌㄝ˙	yes	no	-12.78	-10.06	常見打法
+particle	H	哈哈哈好好笑	哈哈哈	ㄏㄚ ㄏㄚ ㄏㄚ	no	no	-	-	
+particle	M	呵呵你說呢	呵呵	ㄏㄜ ㄏㄜ	yes	yes	-13.64	-13.26	
+particle	M	嘿嘿被我抓到了	嘿嘿	ㄏㄟ ㄏㄟ	yes	yes	-14.41	-13.95	
+particle	M	噗我笑了	噗	ㄆㄨ	yes	yes	-12.43	-12.45	
+particle	M	哼不理你了	哼	ㄏㄥ	yes	yes	-12.11	-9.72	
+particle	M	唉算了啦	唉	ㄞ	yes	yes	-13.81	-11.35	
+particle	M	哎呀我忘了	哎呀	ㄞ ㄧㄚ	yes	yes	-14.36	-12.34	
+particle	M	哇好漂亮	哇	ㄨㄚ	yes	yes	-11.42	-11.65	
+particle	M	喂你好	喂	ㄨㄟˊ	yes	yes	-11.80	-9.63	接電話的聲調
+particle	M	喂你好	喂	ㄨㄟˋ	yes	yes	-11.80	-9.63	教育部讀音
+particle	M	哦原來如此	哦	ㄛˊ	yes	yes	-11.84	-9.00	
+particle	H	嘿對啊	嘿	ㄏㄟˋ	yes	no	-12.65	-13.95	台灣口語的「是」
+particle	H	嗨大家好	嗨	ㄏㄞ	yes	yes	-12.25	-11.06	
+particle	H	掰掰明天見	掰掰	ㄅㄞ ㄅㄞ	yes	yes	-14.82	-11.94	
+particle	H	是喔好吧	是喔	ㄕˋ ㄛ	no	no	-	-	
+particle	H	對吼我忘了	吼	ㄏㄡˇ	yes	yes	-11.67	-10.79	
+particle	H	厚你很煩欸	厚	ㄏㄡˋ	yes	yes	-9.55	-10.05	
+particle	M	嗚嗚好難過	嗚嗚	ㄨ ㄨ	yes	yes	-13.84	-11.35	
+particle	M	嘖真麻煩	嘖	ㄗㄜˊ	yes	yes	-13.84	-13.95	
+particle	M	怎樣啦	啦	ㄌㄚ˙	yes	yes	-10.48	-5.64	
+loan	H	晚餐吃蚵仔煎	蚵仔煎	ㄜˊ ㄚˇ ㄐㄧㄢ	yes	yes	-13.78	-10.98	仔 照台語打 ㄚˇ
+loan	H	晚餐吃蚵仔煎	蚵仔煎	ㄜˊ ㄗㄞˇ ㄐㄧㄢ	yes	yes	-13.78	-10.98	
+loan	M	這隻狗好古錐	古錐	ㄍㄨˇ ㄓㄨㄟ	no	no	-	-	
+loan	H	我們來揪團	揪團	ㄐㄧㄡ ㄊㄨㄢˊ	no	no	-	-	
+loan	M	我快凍未條了	凍未條	ㄉㄨㄥˋ ㄨㄟˋ ㄊㄧㄠˊ	no	no	-	-	
+loan	H	歹勢我遲到了	歹勢	ㄉㄞˇ ㄕˋ	yes	yes	-15.51	-12.25	
+loan	M	拍謝啦	拍謝	ㄆㄞ ㄒㄧㄝˋ	yes	yes	-14.74	-14.64	
+loan	H	有什麼撇步嗎	撇步	ㄆㄧㄝ ㄅㄨˋ	yes	no	-15.22	-13.95	
+loan	H	這家最近很夯	夯	ㄏㄤ	yes	yes	-12.19	-11.65	
+loan	H	我阿嬤很會煮	阿嬤	ㄚ ㄇㄚˋ	yes	no	-12.03	-9.81	
+loan	H	我阿公八十歲了	阿公	ㄚ ㄍㄨㄥ	yes	yes	-12.09	-9.19	
+loan	H	彰化肉圓很好吃	肉圓	ㄖㄡˋ ㄩㄢˊ	yes	yes	-12.89	-11.75	
+loan	M	早餐吃碗粿	碗粿	ㄨㄢˇ ㄍㄨㄟˇ	yes	no	-14.12	-13.03	
+loan	H	晚餐吃滷肉飯	滷肉飯	ㄌㄨˇ ㄖㄡˋ ㄈㄢˋ	no	no	-	-	
+loan	M	台南的擔仔麵	擔仔麵	ㄉㄢˋ ㄗㄞˇ ㄇㄧㄢˋ	yes	yes	-14.41	-12.85	
+loan	M	過年要吃菜頭粿	菜頭粿	ㄘㄞˋ ㄊㄡˊ ㄍㄨㄟˇ	yes	no	-15.22	-16.95	
+loan	H	宵夜買鹹酥雞	鹹酥雞	ㄒㄧㄢˊ ㄙㄨ ㄐㄧ	yes	yes	-14.36	-12.56	
+loan	H	我想喝珍奶	珍奶	ㄓㄣ ㄋㄞˇ	yes	yes	-14.53	-13.55	
+loan	M	他劈腿被抓猴	抓猴	ㄓㄨㄚ ㄏㄡˊ	yes	yes	-15.22	-13.95	
+loan	H	好家在沒事	好家在	ㄏㄠˇ ㄐㄧㄚ ㄗㄞˋ	no	no	-	-	
+loan	H	我媽一直碎碎念	碎碎念	ㄙㄨㄟˋ ㄙㄨㄟˋ ㄋㄧㄢˋ	yes	yes	-14.53	-12.34	
+loan	M	自己做錯不要牽拖	牽拖	ㄑㄧㄢ ㄊㄨㄛ	no	no	-	-	
+loan	M	你很番耶	番	ㄈㄢ	yes	yes	-9.80	-11.31	
+loan	H	放假到處趴趴走	趴趴走	ㄆㄚ ㄆㄚ ㄗㄡˇ	yes	yes	-14.53	-10.91	
+loan	M	這道菜很搞剛	搞剛	ㄍㄠˇ ㄍㄤ	no	no	-	-	台語「厚工」
+loan	H	不要再盧了	盧	ㄌㄨˊ	yes	yes	-9.10	-11.09	
+loan	M	這家俗擱大碗	俗擱大碗	ㄙㄨˊ ㄍㄜ ㄉㄚˋ ㄨㄢˇ	no	no	-	-	
+loan	H	不要黑白講	黑白講	ㄏㄟ ㄅㄞˊ ㄐㄧㄤˇ	no	no	-	-	
+loan	M	他看情況不對就落跑	落跑	ㄌㄨㄛˋ ㄆㄠˇ	yes	yes	-12.70	-13.03	
+loan	H	這是古早味	古早味	ㄍㄨˇ ㄗㄠˇ ㄨㄟˋ	yes	yes	-13.66	-12.25	
+loan	M	巷口的柑仔店	柑仔店	ㄍㄢ ㄗㄞˇ ㄉㄧㄢˋ	no	no	-	-	
+loan	M	美濃的粄條	粄條	ㄅㄢˇ ㄊㄧㄠˊ	no	no	-	-	客語
+loan	M	去北埔喝擂茶	擂茶	ㄌㄟˊ ㄔㄚˊ	yes	yes	-13.78	-14.64	客語
+loan	L	這就是硬頸精神	硬頸	ㄧㄥˋ ㄐㄧㄥˇ	no	no	-	-	客語
+loan	L	沾桔醬比較好吃	桔醬	ㄐㄩˊ ㄐㄧㄤˋ	no	no	-	-	客語
+loan	L	我們鬥陣來去	鬥陣	ㄉㄡˋ ㄓㄣˋ	no	no	-	-	
+japanese	M	這隻貓好卡哇伊	卡哇伊	ㄎㄚˇ ㄨㄚ ㄧ	yes	yes	-14.74	-14.64	
+japanese	M	隔壁的歐巴桑	歐巴桑	ㄡ ㄅㄚ ㄙㄤ	yes	yes	-13.59	-13.95	
+japanese	M	有個歐吉桑在問路	歐吉桑	ㄡ ㄐㄧˊ ㄙㄤ	yes	yes	-14.41	-14.64	
+japanese	H	他是料理達人	達人	ㄉㄚˊ ㄖㄣˊ	yes	yes	-19.60	-16.95	
+japanese	H	我是宅男	宅男	ㄓㄞˊ ㄋㄢˊ	yes	yes	-12.39	-11.70	
+japanese	H	這隻貓好萌	萌	ㄇㄥˊ	yes	yes	-10.35	-12.34	
+japanese	M	他做事很阿莎力	阿莎力	ㄚ ㄕㄚ ㄌㄧˋ	yes	yes	-19.60	-13.26	
+japanese	M	計程車運將很熱心	運將	ㄩㄣˋ ㄐㄧㄤˋ	yes	yes	-19.60	-16.95	
+japanese	M	關東煮的黑輪	黑輪	ㄏㄟ ㄌㄨㄣˊ	yes	yes	-13.49	-13.55	
+japanese	M	夜市的甜不辣	甜不辣	ㄊㄧㄢˊ ㄅㄨˋ ㄌㄚˋ	yes	yes	-14.04	-13.26	不 不變調
+japanese	M	這個口味一級棒	一級棒	ㄧ ㄐㄧˊ ㄅㄤˋ	yes	yes	-14.12	-13.03	
+japanese	L	今天奇摩子不好	奇摩子	ㄑㄧˊ ㄇㄛˊ ㄗ˙	no	no	-	-	
+japanese	M	他還在中二期	中二	ㄓㄨㄥ ㄦˋ	no	no	-	-	
+japanese	M	她是傲嬌角色	傲嬌	ㄠˋ ㄐㄧㄠ	yes	yes	-12.16	-13.03	
+japanese	M	這一季的新番	新番	ㄒㄧㄣ ㄈㄢ	no	no	-	-	
+japanese	M	她是腐女	腐女	ㄈㄨˇ ㄋㄩˇ	yes	yes	-12.93	-16.95	
+japanese	H	我想吃拉麵	拉麵	ㄌㄚ ㄇㄧㄢˋ	yes	yes	-11.02	-12.00	
+japanese	H	我想喝抹茶拿鐵	抹茶	ㄇㄛˇ ㄔㄚˊ	yes	yes	-12.68	-10.34	
+japanese	H	他是正妹	正妹	ㄓㄥˋ ㄇㄟˋ	yes	yes	-13.41	-13.55	
+entity	H	這是在蝦皮買的	蝦皮	ㄒㄧㄚ ㄆㄧˊ	yes	yes	-13.33	-12.45	電商
+entity	H	我在酷澎下單了	酷澎	ㄎㄨˋ ㄆㄥ	no	no	-	-	電商
+entity	H	我去全聯買菜	全聯	ㄑㄩㄢˊ ㄌㄧㄢˊ	yes	yes	-12.72	-11.43	超市
+entity	H	我去小七買早餐	小七	ㄒㄧㄠˇ ㄑㄧ	no	no	-	-	超商
+entity	H	週末去好市多	好市多	ㄏㄠˇ ㄕˋ ㄉㄨㄛ	yes	yes	-13.00	-13.55	量販
+entity	M	我在寶雅買的	寶雅	ㄅㄠˇ ㄧㄚˇ	no	no	-	-	
+entity	M	去屈臣氏買洗面乳	屈臣氏	ㄑㄩ ㄔㄣˊ ㄕˋ	no	no	-	-	
+entity	M	這件是優衣庫的	優衣庫	ㄧㄡ ㄧ ㄎㄨˋ	yes	yes	-13.47	-12.70	
+entity	M	我去迪卡儂買帳篷	迪卡儂	ㄉㄧˊ ㄎㄚˇ ㄋㄨㄥˊ	no	no	-	-	
+entity	H	要不要去星巴克	星巴克	ㄒㄧㄥ ㄅㄚ ㄎㄜˋ	yes	yes	-11.96	-12.00	
+entity	M	我去路易莎買咖啡	路易莎	ㄌㄨˋ ㄧˋ ㄕㄚ	no	no	-	-	
+entity	M	我要喝五十嵐	五十嵐	ㄨˇ ㄕˊ ㄌㄢˊ	no	no	-	-	手搖飲
+entity	M	清心福全的綠茶	清心福全	ㄑㄧㄥ ㄒㄧㄣ ㄈㄨˊ ㄑㄩㄢˊ	no	no	-	-	手搖飲
+entity	M	迷客夏的鮮奶茶	迷客夏	ㄇㄧˊ ㄎㄜˋ ㄒㄧㄚˋ	no	no	-	-	手搖飲
+entity	H	晚餐叫熊貓外送	熊貓外送	ㄒㄩㄥˊ ㄇㄠ ㄨㄞˋ ㄙㄨㄥˋ	no	no	-	-	
+entity	H	我在臉書看到的	臉書	ㄌㄧㄢˇ ㄕㄨ	yes	yes	-11.35	-9.72	
+entity	H	我在抖音看到的	抖音	ㄉㄡˇ ㄧㄣ	yes	yes	-11.82	-11.09	
+entity	M	小紅書上很多人推	小紅書	ㄒㄧㄠˇ ㄏㄨㄥˊ ㄕㄨ	yes	yes	-13.08	-11.28	
+entity	H	悠遊卡沒錢了	悠遊卡	ㄧㄡ ㄧㄡˊ ㄎㄚˇ	yes	yes	-11.86	-8.35	
+entity	M	我用街口付款	街口	ㄐㄧㄝ ㄎㄡˇ	no	no	-	-	支付
+entity	H	台積電又漲了	台積電	ㄊㄞˊ ㄐㄧ ㄉㄧㄢˋ	yes	yes	-12.10	-9.91	
+entity	H	輝達的新顯卡	輝達	ㄏㄨㄟ ㄉㄚˊ	no	no	-	-	
+entity	M	聯發科的晶片	聯發科	ㄌㄧㄢˊ ㄈㄚ ㄎㄜ	no	no	-	-	
+entity	M	我的手機是遠傳的	遠傳	ㄩㄢˇ ㄔㄨㄢˊ	no	no	-	-	電信
+entity	M	在博客來買書	博客來	ㄅㄛˊ ㄎㄜˋ ㄌㄞˊ	no	no	-	-	
+entity	H	我很喜歡周杰倫	周杰倫	ㄓㄡ ㄐㄧㄝˊ ㄌㄨㄣˊ	yes	yes	-11.83	-11.70	
+entity	H	我去看五月天演唱會	五月天	ㄨˇ ㄩㄝˋ ㄊㄧㄢ	no	no	-	-	
+entity	M	伍佰的歌很好聽	伍佰	ㄨˇ ㄅㄞˇ	no	no	-	-	
+entity	H	黃仁勳來台灣了	黃仁勳	ㄏㄨㄤˊ ㄖㄣˊ ㄒㄩㄣ	no	no	-	-	
+entity	H	賴清德發表談話	賴清德	ㄌㄞˋ ㄑㄧㄥ ㄉㄜˊ	yes	yes	-11.86	-9.59	
+entity	H	柯文哲的新聞	柯文哲	ㄎㄜ ㄨㄣˊ ㄓㄜˊ	yes	yes	-11.34	-10.75	
+entity	M	盧秀燕今天去視察	盧秀燕	ㄌㄨˊ ㄒㄧㄡˋ ㄧㄢˋ	no	no	-	-	
+entity	H	我們約在西門町	西門町	ㄒㄧ ㄇㄣˊ ㄉㄧㄥ	yes	yes	-12.35	-12.45	
+entity	H	週末去九份走走	九份	ㄐㄧㄡˇ ㄈㄣˋ	yes	yes	-12.28	-12.00	
+entity	H	暑假去墾丁玩	墾丁	ㄎㄣˇ ㄉㄧㄥ	yes	yes	-12.37	-11.35	
+entity	M	我住在汐止	汐止	ㄒㄧˋ ㄓˇ	yes	yes	-11.63	-11.18	台灣讀音
+entity	M	我在中壢上班	中壢	ㄓㄨㄥ ㄌㄧˋ	no	no	-	-	
+entity	M	他搬去竹北了	竹北	ㄓㄨˊ ㄅㄟˇ	yes	yes	-12.18	-11.75	
+entity	M	我們去礁溪泡溫泉	礁溪	ㄐㄧㄠ ㄒㄧ	no	no	-	-	
+entity	H	在北車等你	北車	ㄅㄟˇ ㄔㄜ	yes	yes	-13.39	-16.95	台北車站的簡稱
+entity	H	北捷又誤點了	北捷	ㄅㄟˇ ㄐㄧㄝˊ	no	no	-	-	
+entity	M	我住在南崁	南崁	ㄋㄢˊ ㄎㄢˋ	no	no	-	-	
+entity	M	去松菸看展覽	松菸	ㄙㄨㄥ ㄧㄢ	no	no	-	-	
+entity	H	你有在玩原神嗎	原神	ㄩㄢˊ ㄕㄣˊ	no	no	-	-	遊戲
+entity	H	來打傳說對決	傳說對決	ㄔㄨㄢˊ ㄕㄨㄛ ㄉㄨㄟˋ ㄐㄩㄝˊ	no	no	-	-	遊戲
+entity	H	我在抓寶可夢	寶可夢	ㄅㄠˇ ㄎㄜˇ ㄇㄥˋ	yes	yes	-11.01	-12.25	遊戲
+entity	M	薩爾達的新作	薩爾達	ㄙㄚˋ ㄦˇ ㄉㄚˊ	yes	yes	-12.40	-14.64	遊戲
+entity	H	鬼滅之刃的電影	鬼滅之刃	ㄍㄨㄟˇ ㄇㄧㄝˋ ㄓ ㄖㄣˋ	no	no	-	-	動畫
+entity	M	我在追咒術迴戰	咒術迴戰	ㄓㄡˋ ㄕㄨˋ ㄏㄨㄟˊ ㄓㄢˋ	no	no	-	-	動畫
+entity	M	間諜家家酒好好看	間諜家家酒	ㄐㄧㄢˋ ㄉㄧㄝˊ ㄐㄧㄚ ㄐㄧㄚ ㄐㄧㄡˇ	no	no	-	-	動畫
+entity	M	動森的島很漂亮	動森	ㄉㄨㄥˋ ㄙㄣ	no	no	-	-	遊戲簡稱
+newword	H	我快篩是陽性	快篩	ㄎㄨㄞˋ ㄕㄞ	yes	yes	-12.57	-11.06	
+newword	M	元宇宙的概念	元宇宙	ㄩㄢˊ ㄩˇ ㄓㄡˋ	yes	yes	-19.60	-13.95	
+newword	M	生成式人工智慧	生成式	ㄕㄥ ㄔㄥˊ ㄕˋ	no	no	-	-	
+newword	M	這個提示詞要怎麼寫	提示詞	ㄊㄧˊ ㄕˋ ㄘˊ	no	no	-	-	
+newword	H	外送員到樓下了	外送員	ㄨㄞˋ ㄙㄨㄥˋ ㄩㄢˊ	no	no	-	-	
+newword	H	騎微笑單車去上課	微笑單車	ㄨㄟ ㄒㄧㄠˋ ㄉㄢ ㄔㄜ	no	no	-	-	
+newword	H	發票存在載具	載具	ㄗㄞˋ ㄐㄩˋ	yes	yes	-10.84	-10.41	
+newword	H	我用行動支付	行動支付	ㄒㄧㄥˊ ㄉㄨㄥˋ ㄓ ㄈㄨˋ	no	no	-	-	
+newword	H	我選超商取貨	超商取貨	ㄔㄠ ㄕㄤ ㄑㄩˇ ㄏㄨㄛˋ	no	no	-	-	
+newword	M	新買的降噪耳機	降噪耳機	ㄐㄧㄤˋ ㄗㄠˋ ㄦˇ ㄐㄧ	no	no	-	-	
+newword	H	我忘了帶行動電源	行動電源	ㄒㄧㄥˊ ㄉㄨㄥˋ ㄉㄧㄢˋ ㄩㄢˊ	yes	yes	-19.60	-16.95	
+newword	H	我截圖給你看	截圖	ㄐㄧㄝˊ ㄊㄨˊ	yes	yes	-11.52	-10.86	
+newword	H	有事私訊我	私訊	ㄙ ㄒㄩㄣˋ	yes	yes	-13.45	-10.47	
+newword	H	我有發限動	限動	ㄒㄧㄢˋ ㄉㄨㄥˋ	no	no	-	-	IG 限時動態
+newword	M	他把我退追了	退追	ㄊㄨㄟˋ ㄓㄨㄟ	no	no	-	-	
+newword	H	記得幫我按讚	按讚	ㄢˋ ㄗㄢˋ	yes	yes	-13.02	-10.71	
+newword	M	不要在群組洗版	洗版	ㄒㄧˇ ㄅㄢˇ	no	no	-	-	
+newword	H	我傳貼圖給你	貼圖	ㄊㄧㄝ ㄊㄨˊ	yes	yes	-11.94	-11.43	
+newword	H	晚上要視訊嗎	視訊	ㄕˋ ㄒㄩㄣˋ	yes	yes	-11.00	-9.13	
+newword	M	這段程式碼要版控	版控	ㄅㄢˇ ㄎㄨㄥˋ	no	no	-	-	善解使用者回報
+newword	M	按鈕被反灰了	反灰	ㄈㄢˇ ㄏㄨㄟ	no	no	-	-	善解使用者回報
+newword	M	他是百萬網紅	網紅	ㄨㄤˇ ㄏㄨㄥˊ	yes	yes	-11.36	-9.18	
+newword	H	我在追這部陸劇	陸劇	ㄌㄨˋ ㄐㄩˋ	no	no	-	-	
+newword	H	這是剛出的新品	新品	ㄒㄧㄣ ㄆㄧㄣˇ	no	no	-	-	
+newword	M	他是大谷翔平的粉絲	大谷翔平	ㄉㄚˋ ㄍㄨˇ ㄒㄧㄤˊ ㄆㄧㄥˊ	no	no	-	-	
+newword	M	這台電腦要重灌	重灌	ㄔㄨㄥˊ ㄍㄨㄢˋ	no	no	-	-	
+newword	M	這個帳號被盜了	被盜	ㄅㄟˋ ㄉㄠˋ	no	no	-	-	
+newword	M	他在開直播	開直播	ㄎㄞ ㄓˊ ㄅㄛ	no	no	-	-	
+newword	M	這是我的副業	副業	ㄈㄨˋ ㄧㄝˋ	yes	yes	-12.41	-11.35	
+newword	M	我在做重訓	重訓	ㄓㄨㄥˋ ㄒㄩㄣˋ	yes	yes	-14.17	-11.87	
+reading	H	你在幹什麼	什麼	ㄕㄜˊ ㄇㄜ˙	yes	yes	-9.83	-7.21	口語
+reading	H	你在幹什麼	什麼	ㄕㄣˊ ㄇㄛˊ	yes	no	-9.83	-7.21	輕聲打成二聲
+reading	H	我去倒垃圾	垃圾	ㄌㄜˋ ㄙㄜˋ	yes	yes	-10.16	-8.33	台灣讀音
+reading	H	我去倒垃圾	垃圾	ㄌㄚ ㄐㄧ	yes	yes	-10.16	-8.33	
+reading	H	我和你一起去	和	ㄏㄢˋ	yes	yes	-6.28	-6.57	台灣讀音
+reading	H	我去剪頭髮	頭髮	ㄊㄡˊ ㄈㄚˇ	yes	yes	-10.39	-9.07	台灣讀音
+reading	H	下星期見	星期	ㄒㄧㄥ ㄑㄧˊ	yes	yes	-11.91	-12.00	台灣讀音
+reading	H	你是誰	誰	ㄕㄟˊ	yes	yes	-9.92	-8.15	
+reading	H	這個很好用	這個	ㄓㄟˋ ㄍㄜ˙	yes	no	-8.39	-6.71	
+reading	H	那個我不要	那個	ㄋㄟˋ ㄍㄜ˙	yes	no	-10.19	-7.49	
+reading	M	你要哪個	哪個	ㄋㄟˇ ㄍㄜ˙	yes	no	-11.16	-8.49	
+reading	H	等我一下	一下	ㄧˊ ㄒㄧㄚˋ	yes	yes	-10.25	-6.87	打變調
+reading	H	我不要去	不要	ㄅㄨˊ ㄧㄠˋ	yes	yes	-9.42	-7.68	打變調
+reading	M	用微波爐加熱	微	ㄨㄟˊ	yes	yes	-9.36	-10.29	
+reading	M	這間企業很大	企業	ㄑㄧˇ ㄧㄝˋ	yes	yes	-8.86	-8.79	
+reading	M	我在研究這個	研究	ㄧㄢˊ ㄐㄧㄡ	yes	yes	-8.08	-8.46	台灣讀音
+reading	M	他演的角色很好	角色	ㄐㄧㄠˇ ㄙㄜˋ	yes	yes	-8.74	-8.68	口語
+reading	M	我暫時不回去	暫時	ㄓㄢˋ ㄕˊ	yes	yes	-9.12	-9.17	常見讀音
+reading	M	他得了癌症	癌症	ㄧㄢˊ ㄓㄥˋ	yes	yes	-10.43	-10.05	台灣讀音
+reading	M	手指流血了	血	ㄒㄧㄝˇ	yes	yes	-9.60	-9.66	口語
+reading	M	這是液晶螢幕	液晶	ㄧˋ ㄐㄧㄥ	yes	yes	-11.51	-13.95	台灣讀音
+reading	M	給你一個擁抱	擁抱	ㄩㄥˇ ㄅㄠˋ	yes	yes	-10.75	-11.60	台灣讀音
+reading	M	我點了綜合果汁	綜合	ㄗㄨㄥˋ ㄏㄜˊ	yes	yes	-8.95	-9.70	台灣讀音
+reading	M	地上有蝸牛	蝸牛	ㄍㄨㄚ ㄋㄧㄡˊ	yes	yes	-11.27	-13.03	台灣讀音
+reading	M	我們來擲骰子	骰子	ㄕㄞˇ ㄗ˙	yes	yes	-11.62	-10.50	
+reading	M	這間店的品質很好	品質	ㄆㄧㄣˇ ㄓˋ	yes	yes	-9.74	-8.48	舊讀音
+reading	M	我買了新的東西	東西	ㄉㄨㄥ ㄒㄧ	yes	yes	-9.44	-7.89	輕聲打一聲
+reading	M	這件衣服很好看	衣服	ㄧ ㄈㄨˊ	yes	yes	-10.22	-8.28	輕聲打本調
+reading	M	她今天很漂亮	漂亮	ㄆㄧㄠˋ ㄌㄧㄤˋ	yes	yes	-10.91	-9.86	輕聲打本調
+reading	H	我不知道	知道	ㄓ ㄉㄠˋ	yes	yes	-9.15	-8.54	輕聲打本調
+reading	M	很高興認識你	認識	ㄖㄣˋ ㄕˋ	yes	yes	-9.29	-9.09	輕聲打本調
+reading	M	我很喜歡這首歌	喜歡	ㄒㄧˇ ㄏㄨㄢ	yes	yes	-9.29	-8.66	輕聲打本調
+reading	M	不好意思麻煩你	麻煩	ㄇㄚˊ ㄈㄢˊ	yes	yes	-10.97	-8.93	輕聲打本調
+reading	M	你什麼時候到	時候	ㄕˊ ㄏㄡˋ	yes	yes	-10.17	-9.96	輕聲打本調
+reading	M	我跟朋友出去	朋友	ㄆㄥˊ ㄧㄡˇ	yes	yes	-9.60	-8.44	輕聲打本調
+variant	H	我住在台灣	台灣	ㄊㄞˊ ㄨㄢ	yes	yes	-8.51	-14.64	台／臺
+variant	H	你要吃什麼	什麼	ㄕㄣˊ ㄇㄜ˙	yes	yes	-9.83	-7.21	什麼／甚麼
+variant	M	妳今天好漂亮	妳	ㄋㄧˇ	yes	yes	-11.21	-8.94	你／妳，要看對象
+variant	H	他在房間裡	裡	ㄌㄧˇ	yes	yes	-7.74	-7.07	裡／裏
+variant	H	我在等著你	著	ㄓㄜ˙	yes	yes	-8.36	-8.41	著／着
+variant	H	好哦我知道了	哦	ㄛ˙	yes	yes	-11.84	-9.00	喔／哦
+variant	H	欸你看	欸	ㄟˋ	yes	yes	-13.37	-7.54	欸／誒
+variant	H	好啦好啦	好啦好啦	ㄏㄠˇ ㄌㄚ˙ ㄏㄠˇ ㄌㄚ˙	no	no	-	-	啦／拉
+variant	H	這個計畫要改	計畫	ㄐㄧˋ ㄏㄨㄚˋ	yes	yes	-8.73	-7.42	計畫／計劃
+variant	H	請出示身分證	身分證	ㄕㄣ ㄈㄣˋ ㄓㄥˋ	yes	yes	-11.89	-9.53	身分／身份
+variant	M	這裡禁止抽菸	抽菸	ㄔㄡ ㄧㄢ	yes	yes	-11.69	-10.98	菸／煙
+variant	H	週末要做什麼	週末	ㄓㄡ ㄇㄛˋ	yes	yes	-10.55	-9.24	週／周
+variant	M	政府公布了新規定	公布	ㄍㄨㄥ ㄅㄨˋ	yes	yes	-19.60	-16.95	布／佈
+variant	M	大部分的人都同意	大部分	ㄉㄚˋ ㄅㄨˋ ㄈㄣˋ	yes	yes	-8.76	-9.43	分／份
+variant	M	這是我們的秘密	秘密	ㄇㄧˋ ㄇㄧˋ	yes	yes	-9.10	-10.71	秘／祕
+variant	M	那隻貓是它的嗎	它	ㄊㄚ	yes	yes	-9.05	-7.23	他／她／它
+variant	M	他跑得很快	得	ㄉㄜ˙	yes	yes	-8.19	-7.05	的／得
+variant	M	這件事我來做	做	ㄗㄨㄛˋ	yes	yes	-7.88	-6.64	做／作
+variant	M	那我們就這麼辦吧	這麼	ㄓㄜˋ ㄇㄜ˙	yes	yes	-10.06	-7.42	
+zhuyinwen	M	好ㄉ	ㄉ	ㄉ	no	no	-13.78	-13.26	「的」的注音文
+zhuyinwen	M	我先走ㄌ	ㄌ	ㄌ	no	no	-14.04	-9.49	「了」的注音文
+zhuyinwen	M	ㄏㄏ	ㄏㄏ	ㄏ ㄏ	no	no	-	-	呵呵
+zhuyinwen	M	ㄎㄎ	ㄎㄎ	ㄎ ㄎ	no	no	-	-	
+zhuyinwen	L	ㄅㄅ	ㄅㄅ	ㄅ ㄅ	no	no	-	-	掰掰
+zhuyinwen	M	我想睡ㄌ	ㄌ	ㄌ	no	no	-14.04	-9.49	
+zhuyinwen	L	你好ㄇ	ㄇ	ㄇ	no	no	-13.26	-12.85	「嗎」的注音文
+zhuyinwen	L	ㄘ飯了沒	ㄘ	ㄘ	no	no	-14.59	-12.70	「吃」的注音文
+tech	H	請在設定裡開啟自動選字	選字	ㄒㄩㄢˇ ㄗˋ	no	no	-	-	軟體介面
+tech	H	填完表單後按送出	送出	ㄙㄨㄥˋ ㄔㄨ	no	no	-	-	軟體介面
+tech	H	這個選項可以自訂	自訂	ㄗˋ ㄉㄧㄥˋ	no	no	-	-	軟體介面
+tech	M	從下拉選單選一個	下拉選單	ㄒㄧㄚˋ ㄌㄚ ㄒㄩㄢˇ ㄉㄢ	no	no	-	-	軟體介面
+tech	M	勾選這個核取方塊	核取方塊	ㄏㄜˊ ㄑㄩˇ ㄈㄤ ㄎㄨㄞˋ	no	no	-	-	軟體介面
+tech	M	網頁一直跳出彈出視窗	彈出視窗	ㄊㄢˊ ㄔㄨ ㄕˋ ㄔㄨㄤ	no	no	-	-	軟體介面
+tech	M	把設定檔備份起來	設定檔	ㄕㄜˋ ㄉㄧㄥˋ ㄉㄤˇ	no	no	-	-	軟體介面
+tech	M	按這個捷徑鍵就好	捷徑鍵	ㄐㄧㄝˊ ㄐㄧㄥˋ ㄐㄧㄢˋ	no	no	-	-	軟體介面
+tech	M	點這個按鈕會轉跳到首頁	轉跳	ㄓㄨㄢˇ ㄊㄧㄠˋ	no	no	-	-	軟體介面
+tech	H	這份資料集有一萬張圖	資料集	ㄗ ㄌㄧㄠˋ ㄐㄧˊ	no	no	-	-	機器學習
+tech	H	先把訓練集和驗證集分開	驗證集	ㄧㄢˋ ㄓㄥˋ ㄐㄧˊ	no	no	-	-	機器學習
+tech	M	模型好像過擬合了	過擬合	ㄍㄨㄛˋ ㄋㄧˇ ㄏㄜˊ	no	no	-	-	機器學習
+tech	M	換一個損失函數試試看	損失函數	ㄙㄨㄣˇ ㄕ ㄏㄢˊ ㄕㄨˋ	no	no	-	-	機器學習
+tech	M	把學習率調小一點	學習率	ㄒㄩㄝˊ ㄒㄧˊ ㄌㄩˋ	no	no	-	-	機器學習
+tech	M	批次大小設成三十二	批次大小	ㄆㄧ ㄘˋ ㄉㄚˋ ㄒㄧㄠˇ	no	no	-	-	機器學習
+tech	M	推論速度還是太慢	推論	ㄊㄨㄟ ㄌㄨㄣˋ	yes	yes	-10.86	-11.51	機器學習
+tech	M	我們用自己的資料微調	微調	ㄨㄟ ㄊㄧㄠˊ	yes	yes	-11.34	-11.24	機器學習
+tech	M	這些圖片還沒標註	標註	ㄅㄧㄠ ㄓㄨˋ	no	no	-	-	機器學習
+tech	M	把文字轉成嵌入向量	嵌入向量	ㄑㄧㄢ ㄖㄨˋ ㄒㄧㄤˋ ㄌㄧㄤˋ	no	no	-	-	機器學習
+tech	M	這是單目相機拍的	單目	ㄉㄢ ㄇㄨˋ	no	no	-	-	電腦視覺
+tech	M	先做相機標定	相機標定	ㄒㄧㄤˋ ㄐㄧ ㄅㄧㄠ ㄉㄧㄥˋ	no	no	-	-	電腦視覺
+tech	M	內參和外參都要估計	外參	ㄨㄞˋ ㄘㄢ	no	no	-	-	電腦視覺
+tech	M	用三角測量算出深度	三角測量	ㄙㄢ ㄐㄧㄠˇ ㄘㄜˋ ㄌㄧㄤˊ	no	no	-	-	電腦視覺
+tech	M	每張圖抓出特徵點	特徵點	ㄊㄜˋ ㄓㄥ ㄉㄧㄢˇ	no	no	-	-	電腦視覺
+tech	M	用光流追蹤物體	光流	ㄍㄨㄤ ㄌㄧㄡˊ	no	no	-	-	電腦視覺
+tech	M	首幀的偵測結果不準	首幀	ㄕㄡˇ ㄓㄥ	no	no	-	-	電腦視覺
+tech	M	只在關鍵幀做計算	關鍵幀	ㄍㄨㄢ ㄐㄧㄢˋ ㄓㄥ	no	no	-	-	電腦視覺
+tech	M	影片的幀率是六十	幀率	ㄓㄥ ㄌㄩˋ	yes	no	-12.80	-12.85	電腦視覺
+tech	M	把結果視覺化比較好懂	視覺化	ㄕˋ ㄐㄩㄝˊ ㄏㄨㄚˋ	no	no	-	-	資料分析
+tech	H	這台電腦有雙顯卡	雙顯卡	ㄕㄨㄤ ㄒㄧㄢˇ ㄎㄚˇ	no	no	-	-	硬體
+tech	M	系統碟的空間不夠了	系統碟	ㄒㄧˋ ㄊㄨㄥˇ ㄉㄧㄝˊ	no	no	-	-	硬體
+tech	M	我換了一張新的主機板	主機板	ㄓㄨˇ ㄐㄧ ㄅㄢˇ	yes	yes	-11.52	-11.75	硬體
+tech	M	固態硬碟比較快	固態硬碟	ㄍㄨˋ ㄊㄞˋ ㄧㄥˋ ㄉㄧㄝˊ	no	no	-	-	硬體
+tech	M	散熱膏要重新塗	散熱膏	ㄙㄢˋ ㄖㄜˋ ㄍㄠ	yes	yes	-15.36	-14.64	硬體
+tech	M	這台伺服器的組態不同	組態	ㄗㄨˇ ㄊㄞˋ	no	no	-	-	系統
+tech	M	先設定環境變數	環境變數	ㄏㄨㄢˊ ㄐㄧㄥˋ ㄅㄧㄢˋ ㄕㄨˋ	no	no	-	-	系統
+tech	M	相依套件裝不起來	相依套件	ㄒㄧㄤ ㄧ ㄊㄠˋ ㄐㄧㄢˋ	no	no	-	-	開發
+tech	M	這段程式碼要版控	版控	ㄅㄢˇ ㄎㄨㄥˋ	no	no	-	-	開發
+tech	M	合併時發生衝突	合併	ㄏㄜˊ ㄅㄧㄥˋ	yes	yes	-8.77	-9.35	開發
+tech	M	我開了一個新分支	分支	ㄈㄣ ㄓ	yes	yes	-9.58	-11.18	開發
+tech	M	改完記得提交	提交	ㄊㄧˊ ㄐㄧㄠ	yes	yes	-9.52	-9.42	開發
+tech	M	今天晚上要部署	部署	ㄅㄨˋ ㄕㄨˇ	yes	yes	-9.49	-11.15	開發
+tech	M	在這一行設中斷點	中斷點	ㄓㄨㄥ ㄉㄨㄢˋ ㄉㄧㄢˇ	no	no	-	-	開發
+tech	M	每個函式都要寫單元測試	單元測試	ㄉㄢ ㄩㄢˊ ㄘㄜˋ ㄕˋ	no	no	-	-	開發
+tech	M	這段程式需要重構	重構	ㄔㄨㄥˊ ㄍㄡˋ	yes	yes	-11.16	-11.87	開發
+tech	M	按鈕放在元件庫裡	元件庫	ㄩㄢˊ ㄐㄧㄢˋ ㄎㄨˋ	no	no	-	-	開發
+tech	M	這個選擇器抓不到元素	選擇器	ㄒㄩㄢˇ ㄗㄜˊ ㄑㄧˋ	no	no	-	-	開發
+tech	M	先畫一張架構圖	架構圖	ㄐㄧㄚˋ ㄍㄡˋ ㄊㄨˊ	no	no	-	-	開發
+tech	M	前端和後端分開部署	前端	ㄑㄧㄢˊ ㄉㄨㄢ	yes	yes	-10.59	-10.86	開發
+tech	M	這是純軟體的解法	純軟體	ㄔㄨㄣˊ ㄖㄨㄢˇ ㄊㄧˇ	no	no	-	-	開發
+tech	M	輸入輸出都要檢查	輸入輸出	ㄕㄨ ㄖㄨˋ ㄕㄨ ㄔㄨ	no	no	-	-	開發
+tech	M	程式卡在無窮迴圈	無窮迴圈	ㄨˊ ㄑㄩㄥˊ ㄏㄨㄟˊ ㄑㄩㄢ	no	no	-	-	開發
+tech	M	這個專案用容器部署	容器	ㄖㄨㄥˊ ㄑㄧˋ	yes	yes	-10.41	-10.82	開發
+tech	M	這個模型的評測結果	評測	ㄆㄧㄥˊ ㄘㄜˋ	no	no	-	-	研究
+tech	M	報告要有批判性思考	批判性思考	ㄆㄧ ㄆㄢˋ ㄒㄧㄥˋ ㄙ ㄎㄠˇ	no	no	-	-	學術
+tech	M	第二章是文獻回顧	文獻回顧	ㄨㄣˊ ㄒㄧㄢˋ ㄏㄨㄟˊ ㄍㄨˋ	no	no	-	-	學術
+tech	M	下週要跟指導教授討論	指導教授	ㄓˇ ㄉㄠˇ ㄐㄧㄠˋ ㄕㄡˋ	yes	yes	-12.81	-13.55	學術
+tech	M	我的口試在下個月	口試	ㄎㄡˇ ㄕˋ	yes	yes	-12.51	-11.12	學術
+tech	M	每一組的組別要先登記	組別	ㄗㄨˇ ㄅㄧㄝˊ	no	no	-	-	學術
+tech	M	請附上估價單	估價單	ㄍㄨ ㄐㄧㄚˋ ㄉㄢ	no	no	-	-	一般
+tech	M	費用的細項列在後面	細項	ㄒㄧˋ ㄒㄧㄤˋ	no	no	-	-	一般

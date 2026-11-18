@@ -1,0 +1,283 @@
+{
+ "evaluator": "rows",
+ "configurations": [
+  {
+   "name": "shipped",
+   "config": "app"
+  },
+  {
+   "name": "cand",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub"
+   ]
+  },
+  {
+   "name": "cand-v3-0_3-rr-1_0",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.3",
+    "--rerank-weight",
+    "1.0"
+   ]
+  },
+  {
+   "name": "cand-v3-0_5-rr-0_7",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.5",
+    "--rerank-weight",
+    "0.7"
+   ]
+  },
+  {
+   "name": "cand-v3-0_3-rr-0_7",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.3",
+    "--rerank-weight",
+    "0.7"
+   ]
+  },
+  {
+   "name": "cand-v3-0_2-rr-0_5",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub",
+    "--v3-weight",
+    "0.2",
+    "--rerank-weight",
+    "0.5"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "slang-slang",
+   "set": "slang-slang"
+  },
+  {
+   "name": "slang-particle",
+   "set": "slang-particle"
+  },
+  {
+   "name": "slang-loan",
+   "set": "slang-loan"
+  },
+  {
+   "name": "slang-japanese",
+   "set": "slang-japanese"
+  },
+  {
+   "name": "slang-entity",
+   "set": "slang-entity"
+  },
+  {
+   "name": "slang-newword",
+   "set": "slang-newword"
+  },
+  {
+   "name": "slang-reading",
+   "set": "slang-reading"
+  },
+  {
+   "name": "slang-variant",
+   "set": "slang-variant"
+  },
+  {
+   "name": "slang-zhuyinwen",
+   "set": "slang-zhuyinwen"
+  },
+  {
+   "name": "slang-tech",
+   "set": "slang-tech"
+  },
+  {
+   "name": "oc-chat_dev",
+   "set": "data/build/loss-analysis/rows/oc-chat_dev.txt"
+  },
+  {
+   "name": "oc-chat_test",
+   "set": "data/build/loss-analysis/rows/oc-chat_test.txt"
+  },
+  {
+   "name": "oc-colloquial_dev",
+   "set": "data/build/loss-analysis/rows/oc-colloquial_dev.txt"
+  },
+  {
+   "name": "oc-colloquial_test",
+   "set": "data/build/loss-analysis/rows/oc-colloquial_test.txt"
+  },
+  {
+   "name": "oc-reference_public",
+   "set": "data/build/loss-analysis/rows/oc-reference_public.txt"
+  },
+  {
+   "name": "oc-smoke_test",
+   "set": "data/build/loss-analysis/rows/oc-smoke_test.txt"
+  },
+  {
+   "name": "oc-wiki_dev",
+   "set": "data/build/loss-analysis/rows/oc-wiki_dev.txt"
+  },
+  {
+   "name": "oc-wiki_test",
+   "set": "data/build/loss-analysis/rows/oc-wiki_test.txt"
+  },
+  {
+   "name": "sj-bench-suite-v1-dev302",
+   "set": "data/build/loss-analysis/rows/sj-bench-suite-v1-dev302.txt"
+  },
+  {
+   "name": "sj-bench-suite-v1-probe",
+   "set": "data/build/loss-analysis/rows/sj-bench-suite-v1-probe.txt"
+  },
+  {
+   "name": "sj-bench-suite-v1-typing76",
+   "set": "data/build/loss-analysis/rows/sj-bench-suite-v1-typing76.txt"
+  },
+  {
+   "name": "sj-bench-suite-v2-fw",
+   "set": "data/build/loss-analysis/rows/sj-bench-suite-v2-fw.txt"
+  },
+  {
+   "name": "sj-bench-suite-v2-user-reported",
+   "set": "data/build/loss-analysis/rows/sj-bench-suite-v2-user-reported.txt"
+  },
+  {
+   "name": "sj-dev-acg-character-parts",
+   "set": "data/build/loss-analysis/rows/sj-dev-acg-character-parts.txt"
+  },
+  {
+   "name": "sj-dev-acg-characters",
+   "set": "data/build/loss-analysis/rows/sj-dev-acg-characters.txt"
+  },
+  {
+   "name": "sj-dev-acg-interpunct",
+   "set": "data/build/loss-analysis/rows/sj-dev-acg-interpunct.txt"
+  },
+  {
+   "name": "sj-dev-acg-recent",
+   "set": "data/build/loss-analysis/rows/sj-dev-acg-recent.txt"
+  },
+  {
+   "name": "sj-dev-acg-works",
+   "set": "data/build/loss-analysis/rows/sj-dev-acg-works.txt"
+  },
+  {
+   "name": "sj-dev-existing",
+   "set": "data/build/loss-analysis/rows/sj-dev-existing.txt"
+  },
+  {
+   "name": "sj-dev-holdout-2026-10-03-holdout",
+   "set": "data/build/loss-analysis/rows/sj-dev-holdout-2026-10-03-holdout.txt"
+  },
+  {
+   "name": "sj-dev-homophones",
+   "set": "data/build/loss-analysis/rows/sj-dev-homophones.txt"
+  },
+  {
+   "name": "sj-dev-it-words",
+   "set": "data/build/loss-analysis/rows/sj-dev-it-words.txt"
+  },
+  {
+   "name": "sj-dev-names-creators",
+   "set": "data/build/loss-analysis/rows/sj-dev-names-creators.txt"
+  },
+  {
+   "name": "sj-dev-names-names",
+   "set": "data/build/loss-analysis/rows/sj-dev-names-names.txt"
+  },
+  {
+   "name": "sj-dev-names-stores",
+   "set": "data/build/loss-analysis/rows/sj-dev-names-stores.txt"
+  },
+  {
+   "name": "sj-dev-net-slang-round2",
+   "set": "data/build/loss-analysis/rows/sj-dev-net-slang-round2.txt"
+  },
+  {
+   "name": "sj-dev-net-slang-words",
+   "set": "data/build/loss-analysis/rows/sj-dev-net-slang-words.txt"
+  },
+  {
+   "name": "sj-dev-neutral-words",
+   "set": "data/build/loss-analysis/rows/sj-dev-neutral-words.txt"
+  },
+  {
+   "name": "sj-dev-oov",
+   "set": "data/build/loss-analysis/rows/sj-dev-oov.txt"
+  },
+  {
+   "name": "sj-dev-user-reported",
+   "set": "data/build/loss-analysis/rows/sj-dev-user-reported.txt"
+  },
+  {
+   "name": "sj-holdout-news",
+   "set": "data/build/loss-analysis/rows/sj-holdout-news.txt"
+  },
+  {
+   "name": "sj-holdout-next-shard-2-news",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-2-news.txt"
+  },
+  {
+   "name": "sj-holdout-next-shard-2-talk",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-2-talk.txt"
+  },
+  {
+   "name": "sj-holdout-next-shard-3-news",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-3-news.txt"
+  },
+  {
+   "name": "sj-holdout-next-shard-3-talk",
+   "set": "data/build/loss-analysis/rows/sj-holdout-next-shard-3-talk.txt"
+  },
+  {
+   "name": "sj-holdout-talk",
+   "set": "data/build/loss-analysis/rows/sj-holdout-talk.txt"
+  },
+  {
+   "name": "sj-learn-cases-stateless",
+   "set": "data/build/loss-analysis/rows/sj-learn-cases-stateless.txt"
+  },
+  {
+   "name": "sj-learn-newword-boundary-teach",
+   "set": "data/build/loss-analysis/rows/sj-learn-newword-boundary-teach.txt"
+  },
+  {
+   "name": "sj-learn-newword-probe",
+   "set": "data/build/loss-analysis/rows/sj-learn-newword-probe.txt"
+  },
+  {
+   "name": "sj-learn-newword-probe-boundary",
+   "set": "data/build/loss-analysis/rows/sj-learn-newword-probe-boundary.txt"
+  },
+  {
+   "name": "sj-sets-daily",
+   "set": "data/build/loss-analysis/rows/sj-sets-daily.txt"
+  },
+  {
+   "name": "sj-sets-moedict",
+   "set": "data/build/loss-analysis/rows/sj-sets-moedict.txt"
+  },
+  {
+   "name": "sj-sets-trap",
+   "set": "data/build/loss-analysis/rows/sj-sets-trap.txt"
+  },
+  {
+   "name": "private-holdout",
+   "set": "data/build/private/corrections-holdout.rows.txt"
+  }
+ ]
+}

@@ -9,7 +9,12 @@ Writes RerankerTree.mlpackage or RerankerTree.onnx beside the reranker.
 Inputs are one packed trie: ids/positions [1,N], ancestors [N,N] (1 allowed, 0 masked), parents/targets [E] (root
 points to itself).  Terminal leaves need no hidden state.  Output [E] scores each token at its parent's hidden state;
 context/root outputs are ignored by Swift.  Before exporting, the scorer is checked against the batched model on a
-small tree (2e-5).  The Core ML export keeps int32 gather indices (see REPORT_tree.md).
+small tree (2e-5).  The Core ML export keeps int32 gather indices (see REPORT_tree.md) and computes in fp32: in fp16,
+Core ML on the CPU (the app's compute unit) scores the tree 4 to 8 nats off, or NaN, at some node counts (28, 29, 36,
+37, 43, 49, 58, 62 among the first 63, for every v2b weights tried), about 5% of the app's calls.  Keeping only the
+attention matmuls, or those and the softmax, in fp32 still leaves NaN on branching trees, and int8 weights bring the
+error back through the linear layers; fp32 throughout is correct with fp16 or int8 weights, for about a quarter more
+time per key (research log 2026-11-18, `chat-reranker`; `zt train compress parity` checks every node count).
 
 TreeScorer and example are also imported by ml/src/zhuyintype_ml/remote's ONNX export.
 """
@@ -123,7 +128,6 @@ def main(argv: list[str] | None = None) -> int:
         n = ct.RangeDim(1, 2017, default=128)
         e = ct.RangeDim(1, 2017, default=144)
         shapes = [(1, n), (1, n), (n, n), (e,), (e,)]
-        # shortcut: fp16 score parity exceeds 0.01 nats, tighten precision before production bundling.
         # Flattened parent*vocab indices exceed 65535; symbolic shapes fool the int16 cast pass.
         pipeline = ct.PassPipeline.DEFAULT
         pipeline.remove_passes({"common::add_int16_cast"})
@@ -132,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             inputs=[ct.TensorType(name=name, shape=shape, dtype=np.int32) for name, shape in zip(names, shapes)],
             outputs=[ct.TensorType(name="logprob", dtype=np.float32)],
             minimum_deployment_target=getattr(ct.target, a.target),
-            compute_precision=ct.precision.FLOAT16,
+            compute_precision=ct.precision.FLOAT32,
             convert_to="mlprogram",
             pass_pipeline=pipeline,
         )

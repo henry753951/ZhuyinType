@@ -5,6 +5,15 @@
     wikipedia    Chinese Wikipedia talk pages of at least 8,000 bytes (CC BY-SA 4.0), --batches API pages of 50,
                  ten seconds apart, honouring HTTP 429 Retry-After
     similar      one data.gov.tw meeting-minutes ODT, to check whether it holds speech (it holds only decisions)
+    join         公共政策網路參與平臺「提點子」proposals written by the public, one JSON per year (data.gov.tw/58036,
+                 OGDL v1); the platform's open data has no comments
+    vtaiwan      the one vTaiwan conversation in compdemocracy/openData (vtaiwan.uberx comments, CC BY 4.0)
+    ptt          PTT Gossiping title/push pairs, zake7749/Gossiping-Chinese-Corpus 2.0 (repository Apache-2.0; the
+                 posts belong to their authors) and the NTOU TOCP profanity sentences (CC BY-SA 4.0); used for
+                 training by the maintainer's decision of 2026-11-17 (docs/research/corpus-sources.md)
+    others       the other suggested corpora, pinned Hugging Face revisions: zh-meme-sft-8k (MIT tag), LCCC-base
+                 (silver/lccc mirror, MIT tag; Tsinghua CoAI states research use) and the first 知乎 QA shard of
+                 MNBVC (MIT tag); prints each file's record format
 
 Every response is kept under data/raw/lm_chat2 with a .receipt.json (URL, licence, SHA-256, size, date, headers); a
 cached file whose hash no longer matches its receipt is an error.  Standard library only; may run on the Mac.
@@ -151,9 +160,111 @@ def similar(directory: Path) -> None:
     fetch(url, directory / "data-gov-16827-sample.odt", "Taiwan OGDL v1")
 
 
+JOIN = "https://join.gov.tw/toOpenData/v2/ey/idea?year={year}"
+OPEN_DATA = "3be5785c3f5975d31f4578ee8bbf4426d45b7bf2"  # compdemocracy/openData, 2026-03-08
+
+
+def join(directory: Path, first: int, last: int) -> None:
+    fetch("https://data.gov.tw/license", directory / "ogdl.html", "Taiwan OGDL v1")
+    for year in range(first, last + 1):
+        body = fetch(
+            JOIN.format(year=year),
+            directory / "join" / f"idea-{year}.json",
+            "Taiwan OGDL v1; 國家發展委員會 公共政策網路參與平臺 (data.gov.tw/58036)",
+        )
+        print("join", year, len(json.loads(body)), "proposals", flush=True)
+        time.sleep(2)
+
+
+def vtaiwan(directory: Path) -> None:
+    base = f"https://raw.githubusercontent.com/compdemocracy/openData/{OPEN_DATA}/"
+    fetch(base + "README.md", directory / "vtaiwan" / "README.md", "CC BY 4.0; The Computational Democracy Project")
+    fetch(
+        base + "vtaiwan.uberx/comments.csv",
+        directory / "vtaiwan" / "uberx-comments.csv",
+        "CC BY 4.0; The Computational Democracy Project (vTaiwan)",
+    )
+
+
+GOSSIPING = "65b7e3630a560223a2b4d702d78d120d5ff1e8dd"  # zake7749/Gossiping-Chinese-Corpus, 2024-10-18
+
+
+def ptt(directory: Path) -> None:
+    base = f"https://raw.githubusercontent.com/zake7749/Gossiping-Chinese-Corpus/{GOSSIPING}/"
+    licence = "Apache-2.0 (zake7749, repository); PTT Gossiping posts and pushes belong to their authors"
+    fetch(base + "LICENSE", directory / "ptt" / "Gossiping-LICENSE", licence)
+    fetch(base + "README.md", directory / "ptt" / "Gossiping-README.md", licence)
+    fetch(base + "data/Gossiping-QA-Dataset-2_0.csv", directory / "ptt" / "Gossiping-QA-Dataset-2_0.csv", licence)
+    fetch(
+        "https://nlp.cse.ntou.edu.tw/resources/TOCP/TOCP_v1.0.zip",
+        directory / "ptt" / "TOCP_v1.0.zip",
+        "CC BY-SA 4.0; NTOU NLP Lab (Hsu Yang, Chuan-Jie Lin, LREC 2020 TRAC-2); sentences from PTT and Twitch users",
+    )
+
+
+def ptt_replies(directory: Path) -> None:
+    """Every push of the PTT Gossiping articles the QA pairs came from (reply.7z, the Kaggle corpus' reply/ files)."""
+    base = f"https://raw.githubusercontent.com/zake7749/Gossiping-Chinese-Corpus/{GOSSIPING}/"
+    fetch(
+        base + "data/source_replies/reply.7z",
+        directory / "ptt" / "reply.7z",
+        "Apache-2.0 (zake7749, repository; Kaggle lists the same corpus as GPL 2); "
+        "PTT Gossiping titles and pushes belong to their authors",
+    )
+
+
+HF = "https://huggingface.co/datasets/{repo}/resolve/{rev}/{path}"
+OTHERS = [
+    (
+        "GaryYang123/zh-meme-sft-8k",
+        "84838bb5b1b023325499012ba956c485bbf592b4",
+        "train.jsonl",
+        "MIT (GaryYang123); comments from Douyin, Xiaohongshu and Bilibili users, LLM-augmented",
+    ),
+    ("GaryYang123/zh-meme-sft-8k", "84838bb5b1b023325499012ba956c485bbf592b4", "validation.jsonl", "same"),
+    ("GaryYang123/zh-meme-sft-8k", "84838bb5b1b023325499012ba956c485bbf592b4", "README.md", "same"),
+    (
+        "silver/lccc",
+        "5bd582fa28cd7143f2f9c852e08e23089d677c44",
+        "lccc_base_train.jsonl.gz",
+        "MIT tag (mirror); Tsinghua CoAI LCCC, research use; Weibo users' posts",
+    ),
+    ("silver/lccc", "5bd582fa28cd7143f2f9c852e08e23089d677c44", "README.md", "same"),
+    (
+        "liwu/MNBVC",
+        "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0",
+        "qa/20230196/zhihu/0.jsonl.gz",
+        "MIT tag (MNBVC); Zhihu users' answers",
+    ),
+    (
+        "liwu/MNBVC",
+        "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0",
+        "game/Genshin_Anime/20230901/Genshin_AnimeGameData.jsonl.gz",
+        "MIT tag (MNBVC); game text of HoYoverse",
+    ),
+    ("liwu/MNBVC", "c153d877b4af9c66026ee6fa4eefbc29dd8c11b0", "README.md", "MIT tag (MNBVC)"),
+]
+
+
+def others(directory: Path) -> None:
+    import gzip
+
+    for repo, rev, path, licence in OTHERS:
+        target = directory / "others" / repo.replace("/", "__") / path
+        body = fetch(HF.format(repo=repo, rev=rev, path=quote(path)), target, licence)
+        if path.endswith((".jsonl", ".jsonl.gz")):
+            text = gzip.decompress(body).decode("utf-8") if path.endswith(".gz") else body.decode("utf-8")
+            first = text.split("\n", 1)[0]
+            print(path, len(body), "bytes; first record:", first[:600], flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", choices=["government", "wikipedia", "similar"])
+    parser.add_argument(
+        "source", choices=["government", "wikipedia", "similar", "join", "vtaiwan", "ptt", "ptt-replies", "others"]
+    )
+    parser.add_argument("--first-year", type=int, default=2015)
+    parser.add_argument("--last-year", type=int, default=2026)
     parser.add_argument("--documents", type=int, default=800)
     parser.add_argument("--batches", type=int, default=100)
     parser.add_argument("--raw", type=Path, default=raw("lm_chat2"), help="default: data/raw/lm_chat2")
@@ -163,6 +274,16 @@ def main(argv: list[str] | None = None) -> int:
         government(a.raw, a.documents)
     elif a.source == "wikipedia":
         wikipedia(a.raw, a.batches)
+    elif a.source == "join":
+        join(a.raw, a.first_year, a.last_year)
+    elif a.source == "vtaiwan":
+        vtaiwan(a.raw)
+    elif a.source == "ptt":
+        ptt(a.raw)
+    elif a.source == "ptt-replies":
+        ptt_replies(a.raw)
+    elif a.source == "others":
+        others(a.raw)
     else:
         similar(a.raw)
     return 0
