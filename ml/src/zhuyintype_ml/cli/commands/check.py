@@ -1,7 +1,7 @@
 """zt check: engine behaviour, the app, the Python tools, lint, types and privacy.
 
 zt check engine                   # the engine's tests, release (ZHUYIN_CHECKS_TIMING=warn on slow or busy machines)
-zt check app                      # the built app's self-test and packaging check (after `zt build app`)
+zt check app                      # the built app's self-test (fresh settings, as on CI) and packaging check
 zt check desktop                  # the Linux/Windows app: cargo test and the Fcitx 5 addon's tests (Linux)
 zt check python                   # unittest over ml/src/**/test_*.py
 zt check python --group train     # with PyTorch, for the training tests
@@ -14,8 +14,12 @@ zt check all                      # python, lint, types and public: what CI runs
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
+import tempfile
+import uuid
+from pathlib import Path
 
 from zhuyintype_ml.core import desktop, paths
 
@@ -82,14 +86,41 @@ def app(_args: argparse.Namespace) -> int:
     bundle = paths.DIST / "ZhuyinType.app"
     if sys.platform != "darwin" or not bundle.exists():
         raise SystemExit("zt: no dist/ZhuyinType.app; run `zt build app` (macOS) first")
-    lexicon = paths.data("lexicon.tsv")
-    status = subprocess.run(
-        [str(bundle / "Contents" / "MacOS" / "ZhuyinType"), "--self-test", "--lexicon", str(lexicon)]
-    ).returncode
+    status = self_test(bundle, paths.data("lexicon.tsv"))
     return (
         status
         or subprocess.run(["swift", str(paths.CLIENT / "scripts" / "check-packaging.swift"), str(bundle)]).returncode
     )
+
+
+def self_test(bundle: Path, lexicon: Path) -> int:
+    """The app's --self-test, run from a copy with a bundle identifier of its own.
+
+    The copy's settings (UserDefaults.standard) start empty, as on a fresh CI runner, and the test never reads or
+    writes the settings of the ZhuyinType installed on this Mac, nor sees it as the selected input source.  The copy
+    and its settings are removed afterwards.
+    """
+    identifier = f"org.zhuyintype.selftest.{uuid.uuid4().hex[:12]}"
+    with tempfile.TemporaryDirectory(prefix="zt-self-test-") as work:
+        copy = Path(work) / bundle.name
+        subprocess.run(["ditto", str(bundle), str(copy)], check=True)
+        plist = copy / "Contents" / "Info.plist"
+        subprocess.run(
+            ["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleIdentifier {identifier}", str(plist)], check=True
+        )
+        subprocess.run(
+            ["codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", str(copy)],
+            check=True,
+            capture_output=True,
+        )
+        try:
+            return subprocess.run(
+                [str(copy / "Contents" / "MacOS" / "ZhuyinType"), "--self-test", "--lexicon", str(lexicon)], cwd=work
+            ).returncode
+        finally:
+            subprocess.run(["defaults", "delete", identifier], capture_output=True)
+            (Path.home() / "Library" / "Preferences" / f"{identifier}.plist").unlink(missing_ok=True)
+            shutil.rmtree(Path.home() / "Library" / "Caches" / identifier, ignore_errors=True)
 
 
 def test_start(start: str) -> str:
