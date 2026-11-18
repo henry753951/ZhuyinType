@@ -36,11 +36,25 @@ jobs:
         with:
           path: /opt/onnxruntime
           key: ort-linux-x64-${{ env.ORT_VERSION }}
+      # Microsoft's release archive, or (as platforms/desktop/packaging/neural.sh does) the same build from NuGet's
+      # Microsoft.ML.OnnxRuntime package laid out as the SDK (include/, lib/) when GitHub does not serve it.
       - run: |
           if [ ! -d /opt/onnxruntime/lib ]; then
             sudo mkdir -p /opt && sudo chown "$USER" /opt
-            curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-linux-x64-$ORT_VERSION.tgz" | tar -xz -C /opt
-            mv "/opt/onnxruntime-linux-x64-$ORT_VERSION" /opt/onnxruntime
+            if curl -fsSL -o /tmp/ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-linux-x64-$ORT_VERSION.tgz"; then
+              tar -xzf /tmp/ort.tgz -C /opt
+              mv "/opt/onnxruntime-linux-x64-$ORT_VERSION" /opt/onnxruntime
+            else
+              echo "ONNX Runtime $ORT_VERSION from NuGet"
+              curl -fsSL -o /tmp/ort.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/microsoft.ml.onnxruntime.$ORT_VERSION.nupkg"
+              echo "4b978d5065b85e7004b6c6f60ca494bd978fbe6836cbf0a0b52d82b61ab99638  /tmp/ort.nupkg" | sha256sum -c -
+              mkdir -p /tmp/ort-nuget /opt/onnxruntime/lib /opt/onnxruntime/include
+              unzip -q /tmp/ort.nupkg 'build/native/include/*' 'runtimes/linux-x64/native/*' -d /tmp/ort-nuget
+              cp /tmp/ort-nuget/build/native/include/* /opt/onnxruntime/include/
+              cp /tmp/ort-nuget/runtimes/linux-x64/native/libonnxruntime.so "/opt/onnxruntime/lib/libonnxruntime.so.$ORT_VERSION"
+              ln -s "libonnxruntime.so.$ORT_VERSION" /opt/onnxruntime/lib/libonnxruntime.so.1
+              ln -s libonnxruntime.so.1 /opt/onnxruntime/lib/libonnxruntime.so
+            fi
           fi
       - name: Data assets
         uses: actions/cache@v6
