@@ -65,6 +65,12 @@ fn runtime_candidates() -> Vec<PathBuf> {
     paths
 }
 
+/// Where ONNX Runtime is, if it is in one of the places the app loads it from (檢查輸入法).
+#[must_use]
+pub fn runtime_path() -> Option<PathBuf> {
+    runtime_candidates().into_iter().find(|path| path.is_file())
+}
+
 /// Loads ONNX Runtime once for the process.
 fn runtime() -> Result<(), String> {
     static LOADED: OnceLock<Result<(), String>> = OnceLock::new();

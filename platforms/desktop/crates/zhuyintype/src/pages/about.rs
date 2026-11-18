@@ -3,7 +3,7 @@
 //! app); 原始碼 (this version on GitHub); and the 授權與資料來源 sub-page.
 
 mod document;
-mod health;
+pub(crate) mod health;
 mod legal;
 
 use std::collections::BTreeSet;

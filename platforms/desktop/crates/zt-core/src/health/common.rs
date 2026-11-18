@@ -15,6 +15,8 @@ pub struct DataFacts {
     pub lexicon_readable: bool,
     /// Why the engine did not start, if it did not.
     pub engine_error: Option<String>,
+    /// Why the neural models did not load although their files are there (ONNX Runtime missing), once loaded.
+    pub model_error: Option<String>,
 }
 
 impl DataFacts {
@@ -25,7 +27,7 @@ impl DataFacts {
             let path = if files.compiled { files.directory.join("lexicon.bin") } else { files.lexicon.clone() };
             readable(&path)
         });
-        Self { files, lexicon_readable, engine_error }
+        Self { files, lexicon_readable, engine_error, model_error: None }
     }
 }
 
@@ -84,9 +86,39 @@ pub enum UpdateFacts {
     Failed(String),
 }
 
-/// The data files.
+/// The data files, with what was looked at.
 #[must_use]
 pub fn data_check(facts: &DataFacts) -> Check {
+    let check = data_verdict(facts);
+    let Some(files) = &facts.files else { return check.with_detail("詞庫", "找不到") };
+    let lexicon = if files.compiled { "lexicon.bin" } else { "lexicon.tsv" };
+    let check = check
+        .with_detail("資料夾", files.directory.display().to_string())
+        .with_detail("詞庫", if facts.lexicon_readable { lexicon.to_owned() } else { format!("{lexicon}，無法讀取") });
+    let missing = missing_models(files);
+    let check = if missing.is_empty() { check } else { check.with_detail("缺少", missing.join("、")) };
+    let check = match &facts.engine_error {
+        Some(error) => check.with_detail("引擎錯誤", error.clone()),
+        None => check,
+    };
+    match &facts.model_error {
+        Some(error) => check.with_detail("模型錯誤", error.clone()),
+        None => check,
+    }
+}
+
+fn missing_models(files: &DataFiles) -> Vec<&'static str> {
+    [
+        (files.language_model.is_none(), "語言模型"),
+        (files.reranker.is_none(), "整句重排模型"),
+        (files.character_model.is_none(), "逐字模型"),
+    ]
+    .into_iter()
+    .filter_map(|(missing, name)| missing.then_some(name))
+    .collect()
+}
+
+fn data_verdict(facts: &DataFacts) -> Check {
     let Some(files) = &facts.files else {
         return Check::new("data", Status::Error, "找不到詞庫", "沒有詞庫就無法轉換注音。請重新安裝 ZhuyinType。");
     };
@@ -101,14 +133,17 @@ pub fn data_check(facts: &DataFacts) -> Check {
     if let Some(error) = &facts.engine_error {
         return Check::new("data", Status::Error, "引擎沒有啟動", format!("{error}。請重新安裝 ZhuyinType。"));
     }
-    let missing: Vec<&str> = [
-        (files.language_model.is_none(), "語言模型"),
-        (files.reranker.is_none(), "整句重排模型"),
-        (files.character_model.is_none(), "逐字模型"),
-    ]
-    .into_iter()
-    .filter_map(|(missing, name)| missing.then_some(name))
-    .collect();
+    let missing = missing_models(files);
+    if missing.is_empty()
+        && let Some(error) = &facts.model_error
+    {
+        return Check::new(
+            "data",
+            Status::Warning,
+            "模型沒有載入",
+            format!("仍然可以打字，但選字較不準確：{error}。重新安裝 ZhuyinType 可以補回。"),
+        );
+    }
     if missing.is_empty() {
         Check::ok("data", "詞庫與模型都在", "選字用到的資料都已載入。")
     } else {
@@ -121,9 +156,25 @@ pub fn data_check(facts: &DataFacts) -> Check {
     }
 }
 
-/// The settings file.
+/// The settings file, with where it is and how it read.
 #[must_use]
 pub fn settings_check(facts: &SettingsFacts) -> Check {
+    let state = match (facts.unreadable, &facts.path) {
+        (true, _) => "無法讀取，使用預設值",
+        (false, None) => "只在記憶體中",
+        (false, Some(path)) if path.is_file() => "可以讀取",
+        (false, Some(_)) => "尚未建立（全部是預設值）",
+    };
+    let check = settings_verdict(facts)
+        .with_detail("檔案", facts.path.as_ref().map_or_else(|| "沒有".to_owned(), |path| path.display().to_string()))
+        .with_detail("狀態", state);
+    match &facts.set_aside {
+        Some(aside) => check.with_detail("留下的檔案", aside.display().to_string()),
+        None => check,
+    }
+}
+
+fn settings_verdict(facts: &SettingsFacts) -> Check {
     if facts.unreadable {
         let check = Check::new(
             "settings",
@@ -148,9 +199,17 @@ pub fn settings_check(facts: &SettingsFacts) -> Check {
     Check::ok("settings", "設定檔正常", "設定與按鍵都已讀取。")
 }
 
-/// The input method service and its endpoint.
+/// The input method service and its endpoint, with what was tried.
 #[must_use]
 pub fn service_check(facts: &ServiceFacts) -> Check {
+    let answered = match facts.reachable {
+        Some(answered) => super::yes_no(answered),
+        None => "沒有試",
+    };
+    service_verdict(facts).with_detail("執行中", super::yes_no(facts.running)).with_detail("有回應", answered)
+}
+
+fn service_verdict(facts: &ServiceFacts) -> Check {
     if !facts.running {
         let reason = facts.error.as_deref().unwrap_or("原因不明");
         return Check::new(
@@ -171,9 +230,21 @@ pub fn service_check(facts: &ServiceFacts) -> Check {
     }
 }
 
-/// The version and updates.
+/// The version and updates, with the version and what the last check found.
 #[must_use]
 pub fn update_check(version: &str, facts: &UpdateFacts) -> Check {
+    let found = match facts {
+        UpdateFacts::Unknown => "還沒有檢查".to_owned(),
+        UpdateFacts::ChecksOff => "自動檢查已關閉".to_owned(),
+        UpdateFacts::Current => "已是最新版本".to_owned(),
+        UpdateFacts::Newer(next) => format!("有新版本 {next}"),
+        UpdateFacts::Unsupported => "無法自動更新".to_owned(),
+        UpdateFacts::Failed(error) => format!("無法檢查：{error}"),
+    };
+    update_verdict(version, facts).with_detail("目前的版本", version).with_detail("上次檢查的結果", found)
+}
+
+fn update_verdict(version: &str, facts: &UpdateFacts) -> Check {
     let title = format!("版本 {version}");
     match facts {
         UpdateFacts::Newer(next) => Check::new(
@@ -214,9 +285,10 @@ mod tests {
         let dir = Path::new("/data");
         let missing = data_check(&DataFacts::default());
         assert_eq!((missing.status, missing.title.as_str()), (Status::Error, "找不到詞庫"));
-        let unreadable = DataFacts { files: Some(files(dir)), lexicon_readable: false, engine_error: None };
+        let unreadable =
+            DataFacts { files: Some(files(dir)), lexicon_readable: false, engine_error: None, model_error: None };
         assert_eq!(data_check(&unreadable).title, "無法讀取詞庫");
-        let fine = DataFacts { files: Some(files(dir)), lexicon_readable: true, engine_error: None };
+        let fine = DataFacts { files: Some(files(dir)), lexicon_readable: true, engine_error: None, model_error: None };
         assert_eq!(data_check(&fine).status, Status::Ok);
         let mut partial = fine.clone();
         if let Some(files) = partial.files.as_mut() {
@@ -225,8 +297,11 @@ mod tests {
         }
         let check = data_check(&partial);
         assert_eq!((check.status, check.title.as_str()), (Status::Warning, "缺少整句重排模型、逐字模型"));
-        let broken = DataFacts { engine_error: Some("詞庫格式不符".into()), ..fine };
+        let broken = DataFacts { engine_error: Some("詞庫格式不符".into()), ..fine.clone() };
         assert_eq!(data_check(&broken).status, Status::Error);
+        let no_runtime = DataFacts { model_error: Some("找不到 ONNX Runtime".into()), ..fine };
+        let check = data_check(&no_runtime);
+        assert_eq!((check.status, check.title.as_str()), (Status::Warning, "模型沒有載入"));
     }
 
     #[test]
@@ -278,6 +353,27 @@ mod tests {
         assert_eq!(service_check(&silent).title, "輸入法服務沒有回應");
         let fine = ServiceFacts { running: true, error: None, reachable: Some(true) };
         assert_eq!(service_check(&fine).status, Status::Ok);
+    }
+
+    #[test]
+    fn each_check_says_what_it_looked_at() {
+        let dir = Path::new("/data");
+        let fine = DataFacts { files: Some(files(dir)), lexicon_readable: true, engine_error: None, model_error: None };
+        assert_eq!(
+            data_check(&fine).details,
+            [("資料夾".to_owned(), "/data".to_owned()), ("詞庫".to_owned(), "lexicon.bin".to_owned())]
+        );
+        let mut partial = fine;
+        if let Some(files) = partial.files.as_mut() {
+            files.reranker = None;
+        }
+        assert!(data_check(&partial).details.contains(&("缺少".to_owned(), "整句重排模型".to_owned())));
+        let service = service_check(&ServiceFacts { running: true, error: None, reachable: Some(true) });
+        assert_eq!(service.details, [("執行中".to_owned(), "是".to_owned()), ("有回應".to_owned(), "是".to_owned())]);
+        let update = update_check("0.7.1", &UpdateFacts::Newer("0.7.2".into()));
+        assert!(update.details.contains(&("上次檢查的結果".to_owned(), "有新版本 0.7.2".to_owned())));
+        let settings = settings_check(&SettingsFacts { path: None, unreadable: false, set_aside: None });
+        assert!(settings.details.contains(&("狀態".to_owned(), "只在記憶體中".to_owned())));
     }
 
     #[test]

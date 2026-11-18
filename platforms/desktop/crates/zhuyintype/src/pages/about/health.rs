@@ -1,5 +1,6 @@
-//! 關於 › 檢查輸入法 (macOS `HealthPage`): each check with its status, one or two sentences and its fix, 重新檢查 and
-//! 回報問題…, which shows the exact text before it is copied or saved (nothing is sent anywhere).
+//! 關於 › 檢查輸入法 (macOS `HealthPage`): each check with its status, one or two sentences and its fix, and under a
+//! 「詳細資料」 link what was checked and found; 重新檢查 and 回報問題…, which shows the exact text before it is copied
+//! or saved (nothing is sent anywhere).
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, WindowExt as _};
@@ -13,9 +14,10 @@ use zt_core::health::{self, Check, Status};
 use super::super::Page;
 use crate::app::{self, Place};
 use crate::health::{self as state, Health};
-use crate::theme::{self, Palette, size, space, text};
+use crate::theme::{self, Palette, size, space, text, weight};
 use crate::ui::actions::{ButtonKind, push_button};
-use crate::ui::alert::notice;
+use crate::ui::alert::{notice, surface};
+use crate::ui::controls::text_link;
 use crate::ui::{self, Row, h, v};
 
 /// The sub-page's id under 關於.
@@ -51,6 +53,7 @@ pub fn page(cx: &App) -> AnyElement {
     let running = health.is_some_and(|health| health.running);
     let fixing = health.and_then(|health| health.fixing);
     let fix_error = health.and_then(|health| health.fix_error.clone());
+    let open = health.map(|health| health.open.clone()).unwrap_or_default();
     let checks = state::checks(cx).map(<[Check]>::to_vec).unwrap_or_default();
     let summary = if checks.is_empty() { "檢查中…".to_owned() } else { health::summary(&checks) };
     let header = ui::section("").first().row(
@@ -97,12 +100,21 @@ pub fn page(cx: &App) -> AnyElement {
                 .child(Icon::new(icon).size(size::ICON_SM))
                 .child(check.status.label()),
         );
-        section = section.row(
-            ui::row(SharedString::from(format!("health-{}", check.id)), check.title.clone())
-                .subtitle(check.detail.clone())
-                .anchor(check.id)
-                .trailing(trailing),
-        );
+        let id = check.id;
+        let shown = open.contains(id);
+        let mut row = ui::row(SharedString::from(format!("health-{id}")), check.title.clone())
+            .subtitle(check.detail.clone())
+            .anchor(id)
+            .trailing(trailing);
+        if !check.details.is_empty() {
+            row = row.link(text_link(
+                SharedString::from(format!("health-details-{id}")),
+                if shown { "隱藏詳細資料" } else { "詳細資料" },
+                move |_, _, cx| state::toggle(id, cx),
+                cx,
+            ));
+        }
+        section = section.row(v().w_full().child(row).when(shown, |this| this.child(details(&check, &p))));
     }
     v().gap(size::SECTION_GAP)
         .child(header)
@@ -120,30 +132,63 @@ pub fn page(cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// A check's 詳細資料: what was checked and what was found, label and value, under the row's text.
+fn details(check: &Check, p: &Palette) -> impl IntoElement {
+    v().w_full()
+        .pl(size::ROW_PADDING_X)
+        .pr(size::ROW_PADDING_X)
+        .pb(size::ROW_PADDING_Y)
+        .gap(space::S2)
+        .text_size(text::CAPTION)
+        .children(check.details.iter().map(|(label, value)| {
+            h().w_full()
+                .items_start()
+                .gap(space::S8)
+                .child(
+                    div()
+                        .w(DETAIL_LABEL_W)
+                        .flex_shrink_0()
+                        .text_color(p.text_tertiary)
+                        .child(SharedString::from(label.clone())),
+                )
+                .child(
+                    div().flex_1().min_w(px(0.)).text_color(p.text_secondary).child(SharedString::from(value.clone())),
+                )
+        }))
+}
+
+/// The labels' column in 詳細資料 (the longest, 「每個應用程式視窗使用不同的輸入法」, wraps).
+const DETAIL_LABEL_W: gpui_kit::Pixels = px(150.);
+
 /// 回報問題: the exact text, with 拷貝, 儲存為檔案… and 關閉.
-fn show_report(window: &mut Window, cx: &mut App) {
-    let report: SharedString = state::report(cx).into();
-    window.open_dialog(cx, move |dialog, _, cx| {
+pub(crate) fn show_report(window: &mut Window, cx: &mut App) {
+    let report: SharedString = state::report(window.scale_factor(), cx).into();
+    window.open_dialog(cx, move |dialog, window, cx| {
         let p = theme::palette(cx);
         let copy = report.clone();
         let save = report.clone();
+        let viewport = window.viewport_size();
+        // The text as tall as the window allows (the title, the note, the buttons and the margins take about 260
+        // px): the report runs to a hundred lines.
+        let text_h = (viewport.height - px(260.)).clamp(px(200.), size::REPORT_TEXT_H * 1.5);
+        let width = size::REPORT_W.min(viewport.width - space::S16 * 2.);
         let body = v()
             .gap(space::S12)
             .p(space::S20)
-            .child(div().text_size(text::BODY).text_color(p.text).child("回報問題"))
+            .child(div().text_size(text::HEADLINE).font_weight(weight::SEMIBOLD).text_color(p.text).child("回報問題"))
             .child(div().text_size(text::SUBTITLE).text_color(p.text_secondary).child(
-                "以下是會拷貝或存下的全部內容：版本、系統、檢查結果與 ZhuyinType 最近的錯誤，不含你打的字或個人字詞。不會自動送出。",
+                "以下是會拷貝或存下的全部內容，可以直接貼到 GitHub 的問題回報。不含你打的字、自訂詞或記住的字詞，也不會自動送出。",
             ))
             .child(
                 div()
                     .id("health-report-text")
-                    .h(size::REPORT_TEXT_H)
+                    .h(text_h)
                     .overflow_y_scroll()
                     .p(space::S12)
                     .rounded(size::R_SM)
                     .border_1()
                     .border_color(p.surface_border)
-                    .bg(p.subtle)
+                    .bg(p.card)
                     .font_family(ui::content::mono_font())
                     .text_size(text::SUBTITLE)
                     .text_color(p.text)
@@ -177,7 +222,7 @@ fn show_report(window: &mut Window, cx: &mut App) {
                         cx,
                     )),
             );
-        dialog.w(size::REPORT_W).p(px(0.)).gap(px(0.)).close_button(false).on_ok(|_, _, _| true).child(body)
+        surface(dialog, cx).w(width).p(px(0.)).gap(px(0.)).close_button(false).on_ok(|_, _, _| true).child(body)
     });
 }
 

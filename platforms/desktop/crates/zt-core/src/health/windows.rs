@@ -45,12 +45,133 @@ pub struct WindowsFacts {
     pub smart_app_control: SmartAppControl,
     /// Code Integrity events naming our files (blocked or would be blocked), when the log could be read.
     pub blocked_files: Option<Vec<String>>,
+    /// The DLLs the 64- and 32-bit COM classes name (registered or not).
+    pub dll_64: Option<String>,
+    pub dll_32: Option<String>,
+    /// This user's languages, in order (`zh-Hant-TW`, `en-US`).
+    pub languages: Vec<String>,
+    /// The program's folder and our files in it, with their sizes (None: missing).
+    pub install_dir: Option<String>,
+    pub install_files: Vec<(String, Option<u64>)>,
+    /// Who may read the program's folder: app containers (`ALL APPLICATION PACKAGES`, which Start's search and
+    /// Store apps run as) and users, from its security descriptor; None when it could not be read.
+    pub folder_access: Option<FolderAccess>,
+}
+
+/// Read access to the program's folder, as its security descriptor grants it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FolderAccess {
+    /// `ALL APPLICATION PACKAGES` (`AC`).
+    pub app_packages: bool,
+    /// `ALL RESTRICTED APPLICATION PACKAGES` (`S-1-15-2-2`).
+    pub restricted_packages: bool,
+    /// `Users` (`BU`).
+    pub users: bool,
+}
+
+impl FolderAccess {
+    /// Reads an SDDL string's allow entries.
+    #[must_use]
+    pub fn from_sddl(sddl: &str) -> Self {
+        let allows = |trustee: &str| {
+            sddl.split('(')
+                .filter_map(|ace| ace.strip_suffix(')').or(Some(ace)))
+                .any(|ace| ace.starts_with("A;") && ace.trim_end_matches(')').ends_with(&format!(";;;{trustee}")))
+        };
+        Self {
+            app_packages: allows("AC") || allows("S-1-15-2-1"),
+            restricted_packages: allows("S-1-15-2-2"),
+            users: allows("BU") || allows("S-1-5-32-545"),
+        }
+    }
+}
+
+/// A profile ID with its name when it is a known one.
+#[must_use]
+pub fn profile_name(profile: &str) -> String {
+    if profile.eq_ignore_ascii_case(ZHUYINTYPE) {
+        format!("ZhuyinType（{profile}）")
+    } else if profile.eq_ignore_ascii_case(MICROSOFT_BOPOMOFO) {
+        format!("微軟注音（{profile}）")
+    } else {
+        profile.to_owned()
+    }
+}
+
+/// The report's 輸入法 lines.
+#[must_use]
+pub fn input_lines(facts: &WindowsFacts) -> Vec<(String, String)> {
+    let list = |items: &[String]| if items.is_empty() { "不明".to_owned() } else { items.join("、") };
+    let profiles: Vec<String> = facts.user_list.iter().map(|profile| profile_name(profile)).collect();
+    vec![
+        ("語言".to_owned(), list(&facts.languages)),
+        ("輸入法清單".to_owned(), list(&profiles)),
+        (
+            "預設的輸入法".to_owned(),
+            facts.default_override.as_deref().map_or_else(|| "清單中的第一個".to_owned(), profile_name),
+        ),
+        ("每個應用程式視窗使用不同的輸入法".to_owned(), facts.per_app_input.map_or("不明", super::on_off).to_owned()),
+        ("文字服務（64 位元）".to_owned(), facts.dll_64.clone().unwrap_or_else(|| "沒有登記".to_owned())),
+        ("文字服務（32 位元）".to_owned(), facts.dll_32.clone().unwrap_or_else(|| "沒有登記".to_owned())),
+        ("智慧型應用程式控制".to_owned(), smart_app_control_text(facts.smart_app_control).to_owned()),
+    ]
+}
+
+fn smart_app_control_text(state: SmartAppControl) -> &'static str {
+    match state {
+        SmartAppControl::Off => "關閉",
+        SmartAppControl::Evaluation => "評估中",
+        SmartAppControl::On => "開啟",
+    }
+}
+
+/// The report's 安裝 lines: the folder, who may read it, our files in it.
+#[must_use]
+pub fn install_lines(facts: &WindowsFacts) -> Vec<(String, String)> {
+    let mut lines = Vec::new();
+    if let Some(dir) = &facts.install_dir {
+        lines.push(("資料夾".to_owned(), dir.clone()));
+    }
+    lines.push(("由安裝程式安裝".to_owned(), super::yes_no(facts.installed).to_owned()));
+    if let Some(access) = facts.folder_access {
+        let who: Vec<&str> = [
+            (access.users, "使用者"),
+            (access.app_packages, "所有應用程式套件"),
+            (access.restricted_packages, "受限的應用程式套件"),
+        ]
+        .into_iter()
+        .filter_map(|(allowed, name)| allowed.then_some(name))
+        .collect();
+        lines.push((
+            "可讀取資料夾".to_owned(),
+            if who.is_empty() { "只有系統管理員".to_owned() } else { who.join("、") },
+        ));
+    }
+    for (name, size) in &facts.install_files {
+        let value = size.map_or_else(|| "缺少".to_owned(), super::details::size_text);
+        lines.push((name.clone(), value));
+    }
+    lines.push(("登入時啟動".to_owned(), super::yes_no(facts.autostart).to_owned()));
+    lines.push(("更新服務".to_owned(), super::yes_no(facts.update_service).to_owned()));
+    lines
 }
 
 /// The checks, in the order the page lists them.
 #[must_use]
 pub fn checks(facts: &WindowsFacts) -> Vec<Check> {
-    let mut checks = vec![registration(facts), user_list(facts)];
+    let shown = |dll: &Option<String>, registered| match (dll, registered) {
+        (Some(path), true) => path.clone(),
+        (Some(path), false) => format!("{path}（找不到檔案）"),
+        (None, _) => "沒有登記".to_owned(),
+    };
+    let registration = registration(facts)
+        .with_detail("64 位元", shown(&facts.dll_64, facts.registered_64))
+        .with_detail("32 位元", shown(&facts.dll_32, facts.registered_32));
+    let profiles: Vec<String> = facts.user_list.iter().map(|profile| profile_name(profile)).collect();
+    let user_list = user_list(facts)
+        .with_detail("在清單中", facts.in_user_list.map_or("不明", super::yes_no))
+        .with_detail("輸入法清單", if profiles.is_empty() { "不明".to_owned() } else { profiles.join("、") });
+    let mut checks = vec![registration, user_list];
     checks.extend(other_default(facts));
     checks.push(per_app(facts));
     if facts.installed {
@@ -110,6 +231,7 @@ fn other_default(facts: &WindowsFacts) -> Option<Check> {
         return None;
     }
     let name = if default.eq_ignore_ascii_case(MICROSOFT_BOPOMOFO) { "微軟注音" } else { "另一個輸入法" };
+    let from = if facts.default_override.is_some() { "進階鍵盤設定" } else { "清單中的第一個" };
     Some(
         Check::new(
             "default",
@@ -119,11 +241,18 @@ fn other_default(facts: &WindowsFacts) -> Option<Check> {
                 "登入後與新開的視窗先用{name}，需要時按 Windows 鍵＋空白鍵切換到 ZhuyinType。要一開始就用 ZhuyinType，在「進階鍵盤設定」把它設為預設的輸入法。"
             ),
         )
-        .with_fix(advanced_keyboard()),
+        .with_fix(advanced_keyboard())
+        .with_detail("預設的輸入法", profile_name(default))
+        .with_detail("來自", from),
     )
 }
 
 fn per_app(facts: &WindowsFacts) -> Check {
+    per_app_verdict(facts)
+        .with_detail("每個應用程式視窗使用不同的輸入法", facts.per_app_input.map_or("不明", super::on_off))
+}
+
+fn per_app_verdict(facts: &WindowsFacts) -> Check {
     match facts.per_app_input {
         Some(true) => Check::new(
             "per-app",
@@ -137,6 +266,10 @@ fn per_app(facts: &WindowsFacts) -> Check {
 }
 
 fn autostart(facts: &WindowsFacts) -> Check {
+    autostart_verdict(facts).with_detail("登入項目", super::yes_no(facts.autostart))
+}
+
+fn autostart_verdict(facts: &WindowsFacts) -> Check {
     if facts.autostart {
         Check::ok("autostart", "登入時啟動", "登入後輸入法服務會自動執行。")
     } else {
@@ -150,6 +283,10 @@ fn autostart(facts: &WindowsFacts) -> Check {
 }
 
 fn update_service(facts: &WindowsFacts) -> Check {
+    update_service_verdict(facts).with_detail("ZhuyinTypeUpdate 服務", super::yes_no(facts.update_service))
+}
+
+fn update_service_verdict(facts: &WindowsFacts) -> Check {
     if facts.update_service {
         Check::ok("update-service", "更新服務已安裝", "新版本可以在背景安裝，不需要系統管理員密碼。")
     } else {
@@ -163,6 +300,17 @@ fn update_service(facts: &WindowsFacts) -> Check {
 }
 
 fn smart_app_control(facts: &WindowsFacts) -> Option<Check> {
+    let blocked = match &facts.blocked_files {
+        None => "無法讀取記錄".to_owned(),
+        Some(files) if files.is_empty() => "沒有".to_owned(),
+        Some(files) => files.join("、"),
+    };
+    smart_app_control_verdict(facts).map(|check| {
+        check.with_detail("狀態", smart_app_control_text(facts.smart_app_control)).with_detail("被擋下的檔案", blocked)
+    })
+}
+
+fn smart_app_control_verdict(facts: &WindowsFacts) -> Option<Check> {
     if let Some(files) = facts.blocked_files.as_ref().filter(|files| !files.is_empty()) {
         return Some(
             Check::new(
@@ -237,6 +385,7 @@ mod tests {
             installed: true,
             smart_app_control: SmartAppControl::Off,
             blocked_files: Some(Vec::new()),
+            ..WindowsFacts::default()
         }
     }
 
@@ -308,6 +457,44 @@ mod tests {
         assert_eq!(blocked_files_in(log), ["zhuyintype-tsf-x64.dll", "zhuyintype.exe"]);
         assert!(blocked_files_in("Event[0]: other.dll blocked").is_empty());
         assert!(blocked_files_in("").is_empty());
+    }
+
+    #[test]
+    fn checks_and_lines_say_what_was_found() {
+        let facts = WindowsFacts {
+            dll_64: Some(r"C:\Program Files\ZhuyinType\zhuyintype-tsf-x64.dll".into()),
+            dll_32: None,
+            registered_32: false,
+            user_list: vec![MICROSOFT_BOPOMOFO.into(), ZHUYINTYPE.into(), "0409:00000409".into()],
+            languages: vec!["zh-Hant-TW".into(), "en-US".into()],
+            ..fine()
+        };
+        let checks = checks(&facts);
+        let registered = find(&checks, "registered").unwrap();
+        assert_eq!(registered.details[1], ("32 位元".to_owned(), "沒有登記".to_owned()));
+        let list = &find(&checks, "user-list").unwrap().details[1].1;
+        assert!(list.starts_with("微軟注音（0404:{B115") && list.ends_with("0409:00000409"), "{list}");
+        assert_eq!(find(&checks, "default").unwrap().details[1].1, "清單中的第一個");
+        let lines = input_lines(&facts);
+        assert_eq!(lines[0], ("語言".to_owned(), "zh-Hant-TW、en-US".to_owned()));
+        let install = install_lines(&WindowsFacts {
+            install_files: vec![("zhuyintype.exe".into(), Some(12_000_000)), ("onnxruntime.dll".into(), None)],
+            folder_access: Some(FolderAccess { app_packages: true, restricted_packages: false, users: true }),
+            ..fine()
+        });
+        assert!(install.contains(&("可讀取資料夾".to_owned(), "使用者、所有應用程式套件".to_owned())));
+        assert!(install.contains(&("onnxruntime.dll".to_owned(), "缺少".to_owned())));
+    }
+
+    #[test]
+    fn folder_access_from_the_installers_descriptor() {
+        // What installer.nsi's icacls leaves: SYSTEM and Administrators full, Users and both package groups read.
+        let sddl = "O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)(A;OICI;0x1200a9;;;AC)(A;OICI;0x1200a9;;;S-1-15-2-2)";
+        assert_eq!(
+            FolderAccess::from_sddl(sddl),
+            FolderAccess { app_packages: true, restricted_packages: true, users: true }
+        );
+        assert_eq!(FolderAccess::from_sddl("O:BAD:(A;OICI;FA;;;SY)(D;;FA;;;AC)"), FolderAccess::default());
     }
 
     #[test]
