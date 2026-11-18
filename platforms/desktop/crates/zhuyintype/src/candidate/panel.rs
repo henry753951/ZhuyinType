@@ -674,8 +674,7 @@ fn dotted(x: f32, width: f32, bottom: f32, color: gpui_kit::Hsla) -> impl IntoEl
 
 fn hint_element(hint: &HintLayout, radius: f32, c: &Colors, actions: Option<ActionHandler>) -> impl IntoElement {
     let actions = actions.filter(|_| hint.clickable);
-    let group_w = hint.keycap_w + 6. + hint.key_label_w;
-    let key_room = if hint.keycap_w > 0. { group_w + hint.keycap_right + 12. } else { 0. };
+    let group_w = hint.key_group_width();
     let hover_fill = c.hover;
     at(hint.frame)
         .id("zhuyin-hint")
@@ -686,7 +685,7 @@ fn hint_element(hint: &HintLayout, radius: f32, c: &Colors, actions: Option<Acti
                 .left(px(hint.text_x))
                 .top_0()
                 .bottom_0()
-                .w(px((hint.frame.w - hint.text_x - key_room).max(0.)))
+                .w(px(hint.reading_width()))
                 .flex()
                 .items_center()
                 .font(theme::zhuyin_font())

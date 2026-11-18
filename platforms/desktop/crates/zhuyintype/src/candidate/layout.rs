@@ -14,13 +14,11 @@ use crate::theme;
 /// Measures with the window's text system (shaped lines are cached per frame by GPUI).
 pub struct WindowMeasure<'a>(pub &'a Window);
 
-impl Measure for WindowMeasure<'_> {
-    fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+impl WindowMeasure<'_> {
+    fn measure(&self, text: &str, size: f32, run_font: gpui_kit::Font) -> f32 {
         if text.is_empty() {
             return 0.;
         }
-        let mut run_font = theme::font();
-        run_font.weight = if medium { FontWeight::MEDIUM } else { FontWeight::NORMAL };
         let run = TextRun {
             len: text.len(),
             font: run_font,
@@ -30,6 +28,19 @@ impl Measure for WindowMeasure<'_> {
             strikethrough: None,
         };
         f32::from(self.0.text_system().layout_line(text, px(size), &[run], None).width)
+    }
+}
+
+impl Measure for WindowMeasure<'_> {
+    fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+        let mut font = theme::font();
+        font.weight = if medium { FontWeight::MEDIUM } else { FontWeight::NORMAL };
+        self.measure(text, size, font)
+    }
+
+    /// The reading row, the typed reading and the annotations are drawn in `theme::zhuyin_font`.
+    fn zhuyin_width(&mut self, text: &str, size: f32) -> f32 {
+        self.measure(text, size, theme::zhuyin_font())
     }
 }
 
