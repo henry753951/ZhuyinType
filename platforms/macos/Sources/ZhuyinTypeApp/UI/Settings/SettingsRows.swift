@@ -70,10 +70,52 @@ extension EnvironmentValues {
     }
 }
 
-/// Which section each anchored row is in, filled in as rows are drawn.
+/// The page (and sub-page) a row is drawn on: `SettingsPane.rawValue`, then `/` and the sub-page's.
+private struct SettingsPageKey: EnvironmentKey { static let defaultValue = "" }
+extension EnvironmentValues {
+    var settingsPage: String {
+        get { self[SettingsPageKey.self] }
+        set { self[SettingsPageKey.self] = newValue }
+    }
+}
+
+/// Which section each anchored row is in, by page, filled in as rows are drawn; and every row and section a page
+/// drew, for the links self-test (SETTINGS_IA.md §4.3).
 enum RowSections {
-    static var map: [String: String] = [:]
+    private static var sections: [String: String] = [:]
+    /// The anchored rows of each section in the order they were drawn (top to bottom).
+    private static var order: [String: [String]] = [:]
+    /// The anchors and section headers (`headerID`) each page has drawn.
+    private(set) static var drawn: [String: Set<String>] = [:]
+
     static func headerID(_ section: String) -> String { "section-" + section }
+    static func pageKey(_ pane: SettingsPane, _ subpage: SettingsSubpage?) -> String {
+        pane.rawValue + "/" + (subpage?.rawValue ?? "")
+    }
+
+    static func record(anchor: String, section: String?, page: String) {
+        if let section {
+            sections[page + "#" + anchor] = section
+            let key = page + "#" + section
+            if order[key]?.contains(anchor) != true { order[key, default: []].append(anchor) }
+        }
+        if drawn[page]?.contains(anchor) != true { drawn[page, default: []].insert(anchor) }
+    }
+
+    static func recordHeader(_ title: String, page: String) {
+        let id = headerID(title)
+        if drawn[page]?.contains(id) != true { drawn[page, default: []].insert(id) }
+    }
+
+    /// How many anchored rows come before `anchor` in its section.
+    static func position(of anchor: String, in section: String, page: String) -> Int {
+        order[page + "#" + section]?.firstIndex(of: anchor) ?? 0
+    }
+
+    /// The section `anchor` was drawn in on `page`.
+    static func section(of anchor: String, page: String) -> String? { sections[page + "#" + anchor] }
+
+    static func forgetDrawn() { drawn = [:] }
 }
 
 /// A sub-page's bar: the page it belongs to, its title, and going back.
@@ -199,8 +241,12 @@ extension SettingsSection {
 struct SettingsSectionHeader: View {
     let title: String
     @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
+    @Environment(\.settingsPage) private var page
     var body: some View {
+        let _ = RowSections.recordHeader(title, page: page)
         Text(title)
+            .modifier(ArrivalFocus(anchor: RowSections.headerID(title)))
+            .background { ArrivalScroll(id: RowSections.headerID(title)) }
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(model.arrivedSection == title ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
             .id(RowSections.headerID(title))
@@ -275,11 +321,12 @@ struct SettingRow<Control: View>: View {
     var anchor: String?
     @ViewBuilder var control: () -> Control
     @Environment(\.settingsSection) private var section
+    @Environment(\.settingsPage) private var page
     /// This row's identity for the geometry check.
     @State private var probe = UUID()
 
     var body: some View {
-        if let anchor, let section { let _ = RowSections.map[anchor] = section }
+        if let anchor { let _ = RowSections.record(anchor: anchor, section: section, page: page) }
         HStack(alignment: .center, spacing: RowMetrics.gap) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -330,6 +377,7 @@ struct SettingRow<Control: View>: View {
         }
         .frame(minHeight: RowMetrics.minHeight)
         .background { ArrivalHighlight(id: anchor) }
+        .modifier(ArrivalFocus(anchor: anchor))
         .id(anchor ?? title)
     }
 
@@ -379,6 +427,91 @@ struct ArrivalHighlight: View {
             .padding(.horizontal, RowMetrics.tintInset - RowMetrics.cardInset)
             .padding(.vertical, RowMetrics.tintInset - RowMetrics.rowPadding)
             .allowsHitTesting(false)
+            .background { ArrivalScroll(id: id) }
+    }
+}
+
+/// Where an arrival scrolls: the row (or a section's header) with `id`, placed `fraction` of the visible height down.
+struct ScrollRequest: Equatable {
+    let id: String
+    let fraction: CGFloat
+    let animated: Bool
+    private let token = UUID()
+}
+
+/// The arrival's scroll: the view `model.scrollRequest` names scrolls its page's scroll view so it sits a set fraction
+/// down (AppKit, the enclosing `NSScrollView`; SwiftUI's `ScrollViewReader` does not find every row of a card).
+struct ArrivalScroll: NSViewRepresentable {
+    let id: String?
+    @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
+
+    func makeNSView(context: Context) -> ArrivalScrollView { ArrivalScrollView() }
+
+    func updateNSView(_ view: ArrivalScrollView, context: Context) {
+        guard let id, let request = model.scrollRequest, request.id == id else { return }
+        DispatchQueue.main.async {
+            guard model.scrollRequest == request else { return }
+            if view.scroll(fraction: request.fraction, animated: request.animated) { model.scrollRequest = nil }
+        }
+    }
+}
+
+final class ArrivalScrollView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// Scrolls the enclosing scroll view so this view's top is `fraction` of the visible height down; false when it is
+    /// not in a window's scroll view.
+    func scroll(fraction: CGFloat, animated: Bool) -> Bool {
+        // Pages not on screen keep their views (`SettingsDetailViewController`), out of the window: not those.
+        guard window != nil, let scrollView = enclosingScrollView, let document = scrollView.documentView else { return false }
+        let clip = scrollView.contentView
+        let frame = convert(bounds, to: document)
+        let visible = clip.bounds.height
+        let top = document.isFlipped ? frame.minY : document.bounds.height - frame.maxY
+        let insetTop = scrollView.contentInsets.top
+        let maxY = max(0, document.frame.height - visible + insetTop)
+        let wantedTop = min(max(top - fraction * visible, 0), maxY) - insetTop
+        let y = document.isFlipped ? wantedTop : document.bounds.height - visible - wantedTop
+        let origin = NSPoint(x: clip.bounds.minX, y: y)
+        if animated {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.35
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                clip.animator().setBoundsOrigin(origin)
+            } completionHandler: { scrollView.reflectScrolledClipView(clip) }
+        } else {
+            clip.scroll(to: origin)
+            scrollView.reflectScrolledClipView(clip)
+        }
+        return true
+    }
+}
+
+/// The arrival's keyboard focus (SETTINGS_IA.md §4.1): the row a link led to becomes focusable and takes the focus, so
+/// VoiceOver reads it and Tab goes on from there to its control.  Other rows are not focusable; the row stays
+/// focusable until the next link, so the focus can come back to it.
+struct ArrivalFocus: ViewModifier {
+    let anchor: String?
+    @ObservedObject var model: SettingsModel = SettingsWindowController.shared.model
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        let target = anchor != nil && model.focusTarget == anchor
+        content
+            .focusable(target)
+            .focused($focused)
+            .onAppear { if target { take() } }
+            .onChange(of: target) { _, now in if now { take() } }
+    }
+
+    /// After the scroll has started, so the focus does not scroll the page on its own.
+    private func take() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            guard anchor != nil, model.focusTarget == anchor else { return }
+            focused = true
+            // Recorded once the focus is really there (the self-tests read it).
+            DispatchQueue.main.async { if focused { model.focusedRow = anchor } }
+        }
     }
 }
 

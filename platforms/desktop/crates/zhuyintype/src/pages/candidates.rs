@@ -1,10 +1,6 @@
-//! 「視窗與提示」 page (macOS `CandidatesPane`): one preview at the top drawn with the real candidate window, then the
-//! list's settings, its content, 位置, 外觀 (主題 and 透明效果 for the whole app, then the candidate window's own), 動畫
-//! and 提示, with the keys of the commands they govern.  The page has no
-//! sub-pages.
-//!
-//! Keys rows show each command's keys as caps and lead to the command's row on the 快捷鍵 page, where they are
-//! changed (macOS edits them in place with its shortcut field).
+//! 「候選字視窗」 page (SETTINGS_IA.md §2; macOS `CandidatesPane`): one preview at the top drawn with the real candidate
+//! window, then the list's settings, 翻頁, the list's content and 位置與動畫, with the keys of the commands they govern
+//! edited in place.  The colours are on 色彩.  The page has no sub-pages.
 
 use gpui_kit::component::slider::{SliderEvent, SliderState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -13,13 +9,15 @@ use gpui_kit::{
     SharedString, Styled, Subscription, Window, div,
 };
 use serde_json::Value;
-use zt_core::settings::{self, Settings};
+use zt_core::settings;
 
 use super::Page;
-use crate::app::{self, Place};
+use crate::app;
 use crate::candidate::preview::UnifiedPreview;
 use crate::candidate::style::CurrentKeys;
 use crate::theme::{self, size};
+use crate::ui::current_keys::Command;
+use crate::ui::feature::{command_key_rows, feature_row, keys_overview_link};
 use crate::ui::{self, row, section, v};
 
 pub struct CandidatesPage {
@@ -46,101 +44,12 @@ impl CandidatesPage {
     }
 }
 
-/// The indented 「快捷鍵」 rows of a setting (macOS `CommandKeyRows`): one per command, named after the command when
-/// there are several; each shows the command's keys and leads to its row on the 快捷鍵 page.
-fn command_key_rows(commands: &[&'static str], keys: &CurrentKeys, settings: &Settings, cx: &App) -> Vec<AnyElement> {
-    commands
-        .iter()
-        .map(|&command| {
-            let title = if commands.len() > 1 { command_label(command) } else { "快捷鍵" };
-            let labels = keys.all(command);
-            let caps = ui::keycap::bindings(labels);
-            let customised = app::service(cx).is_some_and(|service| service.shortcuts().is_customised(command));
-            let _ = settings;
-            row(SharedString::from(format!("keysrow-{command}")), title)
-                .indent(true)
-                .anchor(format!("keysrow-{command}"))
-                .marked(customised)
-                .trailing(caps)
-                .on_click(move |_, _, cx| app::go(Place::row(Page::Keys, format!("keys-{command}")), cx))
-                .into_any_element()
-        })
-        .collect()
-}
-
-/// The command's short name (macOS `ShortcutCommand.label`).
-fn command_label(command: &str) -> &'static str {
-    match command {
-        "singleCharacterList" => "只列一個字",
-        "correctionsList" => "列出修正的字",
-        "typeZhuyin" => "打出注音本身",
-        "nextPage" => "下一頁",
-        "previousPage" => "上一頁",
-        "selectLeft" => "往左選取",
-        "selectRight" => "往右選取",
-        "previousCharacter" => "改前一個字",
-        "nextCharacter" => "改後一個字",
-        _ => "快捷鍵",
-    }
-}
-
-/// A switch row for a key feature (macOS `FeatureRow`), followed by its keys rows while it is on.
-struct Feature {
-    key: &'static str,
-    title: &'static str,
-    subtitle: String,
-    commands: &'static [&'static str],
-    anchor: &'static str,
-    /// Why the feature cannot be used now, and a link to where that is set.
-    unavailable: Option<(&'static str, &'static str, Place)>,
-}
-
-fn feature_rows(feature: Feature, keys: &CurrentKeys, settings: &Settings, cx: &App) -> Vec<AnyElement> {
-    let on = settings.bool(feature.key);
-    let line = match &feature.unavailable {
-        Some((note, _, _)) => (*note).to_owned(),
-        None if !on && feature.key == "feature.zhuyinRowClick" => "關閉時，點注音列不做事".to_owned(),
-        None if !on && !feature.commands.is_empty() => {
-            format!("關閉時，{} 交給 App", keys.assigned(feature.commands[0]).join("、"))
-        }
-        None => feature.subtitle.clone(),
-    };
-    let mut row = row(SharedString::from(format!("row-{}", feature.key)), feature.title)
-        .subtitle(line)
-        .anchor(feature.anchor)
-        .marked(settings.is_customised(feature.key))
-        .dimmed(feature.unavailable.is_some())
-        .trailing(ui::setting_switch(feature.key, cx));
-    if let Some((_, link_title, place)) = feature.unavailable {
-        row = row.link(ui::text_link(
-            SharedString::from(format!("link-{}", feature.key)),
-            format!("在「{link_title}」設定"),
-            move |_, _, cx| app::go(place.clone(), cx),
-            cx,
-        ));
-    }
-    let mut rows = vec![row.into_any_element()];
-    if on {
-        rows.extend(command_key_rows(feature.commands, keys, settings, cx));
-    }
-    rows
-}
-
 /// A registry row with the control macOS draws for it, the registry's subtitle and anchor.
 fn registry_row(key: &'static str, subtitle: Option<String>, cx: &App) -> ui::Row {
     let row = ui::setting_row(key, cx);
     match subtitle {
         Some(subtitle) => row.subtitle(subtitle),
         None => row,
-    }
-}
-
-/// 「透明效果」, or why this system has no backdrop (the row then stays off and cannot be changed).
-fn transparency_row(cx: &App) -> ui::Row {
-    let row = registry_row("transparency", None, cx);
-    match zt_core::appearance::backdrop_support() {
-        Ok(()) => row,
-        Err(reason) => row.subtitle(reason).dimmed(true).trailing(ui::value_text("關閉", cx)),
     }
 }
 
@@ -203,25 +112,17 @@ impl Render for CandidatesPage {
                 cx,
             ));
         let mut list_rows: Vec<AnyElement> = vec![layout_row.into_any_element()];
-        list_rows.extend(command_key_rows(&["previousCharacter", "nextCharacter"], &keys, &settings, cx));
+        list_rows.extend(
+            command_key_rows(&[Command::PreviousCharacter, Command::NextCharacter], false, cx)
+                .into_iter()
+                .map(IntoElement::into_any_element),
+        );
         list_rows.push(font_row.into_any_element());
         list_rows.push(density_row.into_any_element());
         list_rows.push(per_page_row.into_any_element());
         list_rows.push(registry_row("selectionKeys", None, cx).into_any_element());
-        list_rows.extend(feature_rows(
-            Feature {
-                key: "feature.pageKeys",
-                title: "翻頁",
-                subtitle: "空白也翻到下一頁".into(),
-                commands: &["nextPage", "previousPage"],
-                anchor: "pageKeys",
-                unavailable: None,
-            },
-            &keys,
-            &settings,
-            cx,
-        ));
-        list_rows.push(registry_row("pageAtListEdge", None, cx).into_any_element());
+        let mut paging_rows = feature_row("feature.pageKeys").rows(cx);
+        paging_rows.push(registry_row("pageAtListEdge", None, cx).into_any_element());
 
         // 清單的內容
         let zhuyin = keys.spoken("typeZhuyin");
@@ -233,48 +134,19 @@ impl Render for CandidatesPage {
             .map(|(key, name)| format!("{key} {name}"))
             .collect();
         let mut content_rows: Vec<AnyElement> = vec![registry_row("showsZhuyinHint", None, cx).into_any_element()];
-        content_rows.extend(feature_rows(
-            Feature {
-                key: "feature.zhuyinRowClick",
-                title: "點注音列打出注音",
-                subtitle: if zhuyin.is_empty() {
-                    "打出注音本身".into()
-                } else {
-                    format!("和按 {zhuyin} 相同；緊接著再按一次或按 Esc 恢復")
-                },
-                commands: &[],
-                anchor: "zhuyinRow",
-                unavailable: (!settings.bool("showsZhuyinHint")).then(|| {
-                    (
-                        "「顯示注音」已關閉，候選字視窗沒有注音列",
-                        "視窗與提示",
-                        Place::row(Page::Candidates, "showsZhuyin"),
-                    )
-                }),
-            },
-            &keys,
-            &settings,
-            cx,
-        ));
+        let zhuyin_subtitle = if zhuyin.is_empty() {
+            "打出注音本身".to_owned()
+        } else {
+            format!("和按 {zhuyin} 相同；緊接著再按一次或按 Esc 恢復")
+        };
+        content_rows.extend(feature_row("feature.zhuyinRowClick").subtitle(zhuyin_subtitle).rows(cx));
         let annotations = if corrections.is_empty() {
             "修正過的字旁邊以灰字標出注音".to_owned()
         } else {
             format!("修正過的字旁邊以灰字標出注音，例如 {corrections} 列出的字")
         };
         content_rows.push(registry_row("showsAnnotations", Some(annotations), cx).into_any_element());
-        content_rows.extend(feature_rows(
-            Feature {
-                key: "feature.singleCharacterList",
-                title: "只列一個字",
-                subtitle: "清單只列游標處的一個字；再按一次還原".into(),
-                commands: &["singleCharacterList"],
-                anchor: "single",
-                unavailable: None,
-            },
-            &keys,
-            &settings,
-            cx,
-        ));
+        content_rows.extend(feature_row("feature.singleCharacterList").rows(cx));
         let switches_row = row("row-showsListSwitches", "單字與修正按鈕")
             .subtitle(if switches.is_empty() {
                 "兩種清單都已關閉".to_owned()
@@ -292,12 +164,6 @@ impl Render for CandidatesPage {
                     .when(switches.is_empty(), |this| this.child(div().absolute().inset_0().occlude())),
             );
         content_rows.push(switches_row.into_any_element());
-
-        let mode = keys.mode_key();
-        let toast_subtitle = match &mode {
-            Some(key) => format!("按 {key} 切換時，在游標旁顯示「中」或「英」"),
-            None => "切換時在游標旁顯示「中」或「英」".to_owned(),
-        };
 
         // The shell's content column takes its children's unwrapped text width as its minimum (it is a flex item
         // without `min_w_0`), so long subtitles would widen it past a narrow window: cap the page at the room there is.
@@ -321,24 +187,13 @@ impl Render for CandidatesPage {
                     .child(self.preview.clone()),
             )
             .child(section("候選字清單").rows(list_rows))
+            .child(section("翻頁").rows(paging_rows))
             .child(section("清單的內容").rows(content_rows))
-            .child(section("位置").row(registry_row("candidatePlacement", None, cx)))
-            .child(section("外觀").row(registry_row("theme", None, cx)).row(transparency_row(cx)).row(registry_row(
-                "panelAppearance",
-                None,
-                cx,
-            )))
-            .child(section("動畫").row(registry_row("panelAnimation", None, cx)))
-            .child(section("提示").row(registry_row("showModeToast", Some(toast_subtitle), cx)).footer(ui::text_link(
-                "keys-overview",
-                "在快捷鍵總覽中查看全部按鍵",
-                |_, _, cx| app::go(Place::page(Page::Keys), cx),
-                cx,
-            )))
+            .child(
+                section("位置與動畫")
+                    .row(registry_row("candidatePlacement", None, cx))
+                    .row(registry_row("panelAnimation", None, cx))
+                    .footer(keys_overview_link(Page::Candidates, cx)),
+            )
     }
-}
-
-/// The title of sub-page `id` (shown in the bar above it), or None if this page has no such sub-page.
-pub fn subpage_title(_id: &str) -> Option<&'static str> {
-    None
 }

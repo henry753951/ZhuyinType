@@ -349,6 +349,7 @@ impl AnalyticsPage {
                 ui::section("效能").row(
                     ui::row("performance", "效能")
                         .subtitle("按鍵反應、CPU、記憶體與載入時間")
+                        .anchor("performance")
                         .value(p95)
                         .on_click(|_, _, cx| app::go(Place::subpage(Page::Analytics, "performance"), cx)),
                 ),

@@ -1,7 +1,9 @@
-//! 「快捷鍵」 (macOS `KeysPane`): every key grouped by feature, in the words of what it does.  Rebindable commands are
-//! edited right here with the shared key field (the same as on the feature pages); optional features that are off are
-//! dimmed with 「已關閉」 and lead to where they are turned on; fixed keys wait under a disclosure at the bottom.  A
-//! search field at the top (the title bar's on macOS) filters every row by title, subtitle and keys.
+//! 「快捷鍵」 (macOS `KeysPane`): every key in sections named like the pages where they are set (SETTINGS_IA.md §2), in
+//! the words of what it does.  Rebindable commands are edited right here with the shared key field (the same as on the
+//! feature pages), and › leads to the command's 「快捷鍵」 row there; optional features that are off are dimmed with
+//! 「已關閉」 and lead to their switch; fixed keys wait under a disclosure at the bottom, which opens by itself when a
+//! search or a link reaches one.  A search field at the top (the title bar's on macOS) filters every row by title,
+//! subtitle and keys.
 
 mod demo;
 mod items;
@@ -19,6 +21,7 @@ use serde_json::json;
 use zt_core::settings;
 
 use self::items::{KeyItem, KeySection, Keys};
+use super::links;
 use crate::app::{self, Navigation};
 use crate::theme::{self, size, space, text};
 use crate::ui::alert::{AlertButton, alert};
@@ -62,9 +65,9 @@ impl KeysPage {
         let on = item.is_on(settings);
         let availability = item.availability(settings);
         let subtitle = availability.as_ref().map(|a| a.note.to_owned()).or_else(|| item.subtitle.clone());
-        let anchor = format!("row-{}", item.id);
-        let home = item.home();
-        let row = ui::row(SharedString::from(anchor.clone()), item.title.clone())
+        let anchor = item.anchor();
+        let home = item.home(settings);
+        let row = ui::row(SharedString::from(format!("row-{}", item.id)), item.title.clone())
             .subtitle_opt(subtitle)
             .anchor(anchor.clone());
         if let (Keys::Command(command), true) = (&item.keys, on) {
@@ -176,7 +179,7 @@ impl Render for KeysPage {
         let settings = app::settings(cx).clone();
         let mut sections: Vec<(KeySection, Vec<KeyItem>)> = Vec::new();
         let mut fixed: Vec<KeyItem> = Vec::new();
-        for section in KeySection::ALL {
+        for section in KeySection::all() {
             let rows: Vec<KeyItem> = items::items(section, &settings)
                 .into_iter()
                 .filter(|item| item.matches(&query, &keys, &settings))
@@ -191,6 +194,12 @@ impl Render for KeysPage {
         let changed = keys.any_customised()
             || settings::descriptors().iter().any(|d| d.key.starts_with("feature.") && !settings.bool(&d.key))
             || settings.string("shiftToggle") != "both";
+        // A link to one of the fixed keys (or to the disclosure) opens it, and it stays open.
+        if let Some(target) = app::nav(cx).arriving()
+            && (target == links::FIXED_KEYS || fixed.iter().any(|item| item.anchor() == target))
+        {
+            self.shows_fixed = true;
+        }
         let open = self.shows_fixed || !query.is_empty();
         let entity = cx.entity();
 
@@ -208,20 +217,22 @@ impl Render for KeysPage {
                 )
             })
             .when(!conflicts.is_empty(), |this| {
-                this.child(ui::section("按鍵衝突").rows(conflicts.iter().enumerate().map(|(index, conflict)| {
-                    let place = store::command_place(conflict.command);
-                    ui::row(
-                        SharedString::from(format!("conflict-{index}")),
-                        format!(
-                            "「{}」與「{}」",
-                            store::command_label(conflict.command),
-                            store::command_label(conflict.other)
-                        ),
-                    )
-                    .subtitle("用同一個按鍵；同一個按鍵只會執行其中一個功能")
-                    .trailing(key_chip(conflict.label.clone()).tint(Some(p.danger)))
-                    .on_click(move |_, _, cx| app::go(place.clone(), cx))
-                })))
+                this.child(ui::section(links::KEY_CONFLICTS).rows(conflicts.iter().enumerate().map(
+                    |(index, conflict)| {
+                        let place = links::command_place(conflict.command);
+                        ui::row(
+                            SharedString::from(format!("conflict-{index}")),
+                            format!(
+                                "「{}」與「{}」",
+                                store::command_label(conflict.command),
+                                store::command_label(conflict.other)
+                            ),
+                        )
+                        .subtitle("用同一個按鍵；同一個按鍵只會執行其中一個功能")
+                        .trailing(key_chip(conflict.label.clone()).tint(Some(p.danger)))
+                        .on_click(move |_, _, cx| app::go(place.clone(), cx))
+                    },
+                )))
             })
             .when(sections.is_empty() && fixed.is_empty(), |this| {
                 // The lists' empty state: no box, centred where the rows would be.
@@ -247,6 +258,7 @@ impl Render for KeysPage {
                 // The whole row toggles; its chevron turns down while open.
                 let disclosure = ui::row("fixed-keys", "固定的按鍵")
                     .subtitle("打注音、聲調、送出與移動游標的按鍵，無法更改")
+                    .anchor(links::FIXED_KEYS)
                     .disclosure(open)
                     .on_click(move |_, _, cx| {
                         toggle.update(cx, |page, cx| {
@@ -263,7 +275,7 @@ impl Render for KeysPage {
                         h().w_full()
                             .justify_between()
                             .gap(space::S12)
-                            .child("點一下任何一列，到功能的頁面設定按鍵。")
+                            .child("按鍵可以直接在這裡改；按 › 到功能所在的頁面。")
                             .child(
                                 div()
                                     .id("reset-all-keys")
@@ -284,9 +296,4 @@ impl Render for KeysPage {
                 )
             })
     }
-}
-
-/// The title of sub-page `id` (shown in the bar above it), or None if this page has no such sub-page.
-pub fn subpage_title(_id: &str) -> Option<&'static str> {
-    None
 }

@@ -146,11 +146,39 @@ pub struct ShortcutField {
     disabled: bool,
     group: Option<SharedString>,
     off_link: Option<(SharedString, Place)>,
+    restores: bool,
 }
 
 /// The field of `command` (an id of [`store::commands`]).
 pub fn shortcut_field(command: &'static str) -> ShortcutField {
-    ShortcutField { command, max_visible: None, disabled: false, group: None, off_link: None }
+    ShortcutField { command, max_visible: None, disabled: false, group: None, off_link: None, restores: true }
+}
+
+/// 「還原預設」 as a small link of its own, shown while `command`'s keys differ from the defaults: the feature pages put
+/// it under the row's title (with [`ShortcutField::without_restore`]), where it is always visible.
+pub fn restore_link(command: &'static str, cx: &App) -> Option<AnyElement> {
+    let p = theme::palette(cx);
+    store::store(cx).is_customised(command).then(|| {
+        div()
+            .id(SharedString::from(format!("restore-link-{command}")))
+            .text_size(text::SUBTITLE)
+            .text_color(p.accent)
+            .cursor_pointer()
+            .rounded(size::R_XS)
+            .tab_index(0)
+            .focus_visible(|style| ring(style, cx))
+            .hover(|style| style.opacity(0.8))
+            .active(|style| style.opacity(0.6))
+            .tooltip(move |window, cx| {
+                Tooltip::new(format!("還原成 {}", store::defaults_spoken(command))).build(window, cx)
+            })
+            .on_click(move |_, window, cx| {
+                restore(command, cx);
+                focus_chip(command, 0, window, cx);
+            })
+            .child("還原預設")
+            .into_any_element()
+    })
 }
 
 impl ShortcutField {
@@ -169,6 +197,12 @@ impl ShortcutField {
     /// The hover group of the row the field is in: the ＋ and 還原預設 show while the pointer is anywhere on it.
     pub fn hover_group(mut self, group: impl Into<SharedString>) -> Self {
         self.group = Some(group.into());
+        self
+    }
+
+    /// Without its own 還原預設 beside the chips (the row shows [`restore_link`] instead).
+    pub fn without_restore(mut self) -> Self {
+        self.restores = false;
         self
     }
 
@@ -470,7 +504,7 @@ impl RenderOnce for ShortcutField {
             chips.push(recorder_chip(command, held, focus, started, window, cx));
         }
 
-        let restore_link = (customised && !self.disabled).then(|| {
+        let restore_link = (customised && !self.disabled && self.restores).then(|| {
             let link = div()
                 .id(SharedString::from(format!("restore-{command}")))
                 .absolute()
@@ -820,7 +854,7 @@ fn conflict_line(command: &'static str, index: usize, other: &'static str, cx: &
                     start(command, index, window, cx);
                 }))
                 .child(link(format!("goto-{command}-{index}"), "前往").on_click(move |_, _, cx| {
-                    app::go(store::command_place(other), cx);
+                    app::go(crate::pages::links::overview_place(other), cx);
                 })),
         )
 }

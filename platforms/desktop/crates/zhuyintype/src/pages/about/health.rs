@@ -5,35 +5,17 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::{Icon, WindowExt as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClipboardItem, Hsla, InteractiveElement as _, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, div, px,
+    AnyElement, App, ClipboardItem, Hsla, InteractiveElement as _, IntoElement, ParentElement, ScrollHandle,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, div, px,
 };
 use zt_core::health::{self, Check, Status};
 
-use super::super::Page;
-use crate::app::{self, Place};
 use crate::health::{self as state, Health};
+use crate::scroll::SmoothScroll;
 use crate::theme::{self, Palette, size, space, text};
 use crate::ui::actions::{ButtonKind, push_button};
 use crate::ui::alert::notice;
-use crate::ui::{self, Row, h, v};
-
-/// The sub-page's id under 關於.
-pub const ID: &str = "health";
-pub const TITLE: &str = "檢查輸入法";
-
-/// The row on 關於 that opens the sub-page, with the summary.
-pub fn about_row(cx: &App) -> Row {
-    let summary = match state::checks(cx) {
-        Some(checks) => health::summary(checks),
-        None => "檢查中…".to_owned(),
-    };
-    ui::row("drill-health", TITLE)
-        .subtitle("找出無法用 ZhuyinType 打字的常見原因")
-        .value(summary)
-        .anchor(ID)
-        .on_click(|_, _, cx| app::go(Place::subpage(Page::About, ID), cx))
-}
+use crate::ui::{self, h, v};
 
 fn status_icon(status: Status, p: &Palette) -> (IconName, Hsla) {
     match status {
@@ -123,6 +105,7 @@ pub fn page(cx: &App) -> AnyElement {
 /// 回報問題: the exact text, with 拷貝, 儲存為檔案… and 關閉.
 fn show_report(window: &mut Window, cx: &mut App) {
     let report: SharedString = state::report(cx).into();
+    let scroll = SmoothScroll::new(ScrollHandle::new());
     window.open_dialog(cx, move |dialog, _, cx| {
         let p = theme::palette(cx);
         let copy = report.clone();
@@ -139,6 +122,8 @@ fn show_report(window: &mut Window, cx: &mut App) {
                     .id("health-report-text")
                     .h(size::REPORT_TEXT_H)
                     .overflow_y_scroll()
+                    .track_scroll(scroll.handle())
+                    .child(scroll.wheel())
                     .p(space::S12)
                     .rounded(size::R_SM)
                     .border_1()

@@ -14,6 +14,7 @@ mod health;
 mod motion;
 mod pages;
 mod platform;
+mod scroll;
 mod shell;
 mod theme;
 mod ui;
@@ -25,7 +26,8 @@ use zt_core::service::{AlreadyRunning, Service, ServiceConfig};
 use zt_core::settings::Settings;
 
 struct Args {
-    page: Page,
+    /// `--page ID`: the page to open (old ids too: `pages::links::resolve`).
+    page: String,
     /// `--subpage ID`: open one of the page's sub-pages.
     subpage: Option<String>,
     /// `--row ANCHOR`: scroll to a row and show the arrival cue, as a link would.
@@ -59,7 +61,7 @@ struct Args {
 
 fn parse_args() -> Args {
     let mut args = Args {
-        page: Page::Intro,
+        page: Page::Intro.id().to_owned(),
         subpage: None,
         row: None,
         size: None,
@@ -79,7 +81,7 @@ fn parse_args() -> Args {
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             "--page" => {
-                if let Some(page) = iter.next().as_deref().and_then(Page::from_id) {
+                if let Some(page) = iter.next() {
                     args.page = page;
                 }
             }
@@ -216,8 +218,11 @@ fn main() {
         if args.background {
             return;
         }
+        // The place asked for, old ids read as their new places; an unknown page is 介紹.
+        let place = pages::links::resolve(&args.page, args.subpage.as_deref(), args.row.as_deref())
+            .unwrap_or(app::Place::page(Page::Intro));
         // A window that cannot open (no usable GPU, say) must not take the input method down with it.
-        if let Err(error) = shell::open(args.page, args.dark, args.size, cx) {
+        if let Err(error) = shell::open(place.page, args.dark, args.size, cx) {
             log::error!("opening the settings window: {error:#}");
             if serves {
                 return;
@@ -230,15 +235,8 @@ fn main() {
             #[cfg(target_os = "linux")]
             platform::linux::check(cx);
         }
-        if args.subpage.is_some() || args.row.is_some() {
-            app::go(
-                app::Place {
-                    page: args.page,
-                    subpage: args.subpage.clone().map(Into::into),
-                    row: args.row.clone().map(Into::into),
-                },
-                cx,
-            );
+        if place.subpage.is_some() || place.row.is_some() {
+            app::go(place, cx);
         }
         cx.activate(true);
     });

@@ -3,7 +3,7 @@
 //! app); 原始碼 (this version on GitHub); and the 授權與資料來源 sub-page.
 
 mod document;
-mod health;
+pub(crate) mod health;
 mod legal;
 
 use std::collections::BTreeSet;
@@ -64,7 +64,6 @@ impl AboutPage {
                         |_, _, cx| cx.open_url(&format!("{REPOSITORY}/tree/v{VERSION}")),
                         cx,
                     )))
-                    .row(health::about_row(cx))
                     .row(
                         ui::row("drill-sources", "授權與資料來源")
                             .subtitle("程式庫、詞庫、資料集與模型的授權與署名")
@@ -118,7 +117,6 @@ impl Render for AboutPage {
         self.open_demo_states(window, cx);
         match app::nav(cx).subpage.as_deref() {
             Some(SOURCES) => self.sources(cx),
-            Some(health::ID) => health::page(cx),
             _ => self.main(cx),
         }
     }
@@ -204,7 +202,6 @@ fn updates_section(cx: &mut Context<AboutPage>) -> impl IntoElement + use<> {
 pub fn subpage_title(id: &str) -> Option<&'static str> {
     match id {
         SOURCES => Some("授權與資料來源"),
-        health::ID => Some(health::TITLE),
         _ => None,
     }
 }

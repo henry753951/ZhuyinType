@@ -1380,7 +1380,7 @@ impl WizardWindow {
                         "在「快捷鍵」頁設定",
                         move |_, _, cx| {
                             crate::shell::show(cx);
-                            app::go(Place::row(Page::Keys, format!("keys-{command}")), cx);
+                            app::go(crate::pages::links::overview_place(command), cx);
                         },
                         cx,
                     ))

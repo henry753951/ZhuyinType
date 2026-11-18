@@ -21,7 +21,7 @@ use gpui_kit::{
 use zt_core::practice::{PracticeEvent, PracticeSession};
 
 use self::script::{RESTING_STEP, Script, Segment};
-use super::Page;
+use super::{Page, links};
 use crate::app::{self, Place};
 use crate::theme::{self, Palette, size, space, text, weight};
 use crate::ui::charts::fill_column;
@@ -318,6 +318,7 @@ struct Feature {
 fn features(cx: &App) -> Vec<Feature> {
     let settings = app::settings(cx);
     let keys = store::store(cx);
+    let key = |command: &str| Some(keys.active_label(command)).filter(|label| !label.is_empty());
     let punctuation = if settings.string("punctuationKeys") != "mac" {
         format!(
             "Shift 加符號鍵打出鍵上的符號{}。標點預設全形，可切換全半形。",
@@ -326,62 +327,77 @@ fn features(cx: &App) -> Vec<Feature> {
     } else {
         "Shift 加符號鍵打出中文標點。標點預設全形，可切換全半形。".to_owned()
     };
-    let width = keys.active_label("togglePunctuationWidth");
-    let width = if width.is_empty() {
-        "可在「打字」設定快捷鍵。".to_owned()
+    let width = key("togglePunctuationWidth")
+        .map_or_else(|| "可在「標點與符號」設定快捷鍵。".to_owned(), |width| format!("按 {width} 切換。"));
+    let corrections = match (settings.bool("showCorrections"), settings.bool("undoCorrectionWithBackspace")) {
+        (true, true) => "；修正過的字加上點線，按 ⌫ 還原",
+        (true, false) => "；修正過的字加上點線",
+        (false, true) => "；按 ⌫ 還原修正",
+        (false, false) => "",
+    };
+    let associated = if settings.bool("associatedPhrases") {
+        "送出後列出常接在後面的詞，接著選下一個詞。"
     } else {
-        format!("按 {width} 切換。")
+        "開啟後，送出時列出常接在後面的詞，接著選下一個詞。"
+    };
+    let word_actions = match (key("blockCandidate"), key("addCandidatePhrase")) {
+        (Some(block), Some(add)) => format!("在候選字上按右鍵，或按 {block} 不要再推薦、{add} 加入自訂詞。"),
+        _ => "在候選字上按右鍵，不要再推薦、忘記選字或加入自訂詞。".to_owned(),
+    };
+    let symbols = key("symbolPicker").map_or_else(
+        || "開啟符號與 Emoji 面板，打注音或英文搜尋。".to_owned(),
+        |symbols| format!("按 {symbols} 開啟符號與 Emoji 面板，打注音或英文搜尋。"),
+    );
+    let quick = key("quickSettings").map_or_else(
+        || "設定一個按鍵，在游標旁切換英文、半形標點、簡體與暫停學習。".to_owned(),
+        |quick| format!("按 {quick} 在游標旁切換英文、半形標點、簡體與暫停學習。"),
+    );
+    let card = |title: &'static str, text: String, icon: IconName, link: &'static str| {
+        let place = links::intro_cards()
+            .into_iter()
+            .find(|(card, _)| *card == title)
+            .map_or_else(|| Place::page(Page::Intro), |(_, place)| place);
+        Feature { title, text, icon, place, link }
     };
     vec![
-        Feature {
-            title: "整句輸入",
-            text: "一句話連續打完，依讀音與前後文選出最通順的寫法。".into(),
-            icon: IconName::WholeWord,
-            place: Place::page(Page::Candidates),
-            link: "視窗與提示",
-        },
-        Feature {
-            title: "按錯鍵也能打對",
-            text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先。".into(),
-            icon: IconName::WandSparkles,
-            place: Place::row(Page::Choosing, "typo"),
-            link: "選字",
-        },
-        Feature {
-            title: "依前文選字",
-            text: "參考游標前最多 128 個字，並接續同一個 App 最近 1 分鐘的前文。".into(),
-            icon: IconName::TextAlignStart,
-            place: Place::subpage(Page::Choosing, "context"),
-            link: "前文",
-        },
-        Feature {
-            title: "記住你的用法",
-            text: "選過的字詞下次直接採用；資料只存在這台電腦。".into(),
-            icon: IconName::ClockArrowUp,
-            place: Place::page(Page::Words),
-            link: "字詞",
-        },
-        Feature {
-            title: "標點與全半形",
-            text: format!("{punctuation}{width}"),
-            icon: IconName::Quote,
-            place: store::command_place("togglePunctuationWidth"),
-            link: "打字",
-        },
-        Feature {
-            title: "改字記錄",
-            text: "可以記錄改字的過程，用來改進選字；只存在這台電腦。".into(),
-            icon: IconName::ClipboardPen,
-            place: Place::page(Page::Advanced),
-            link: "進階",
-        },
-        Feature {
-            title: "使用分析",
-            text: "打了多少字、改了幾次、輸入法反應多快。".into(),
-            icon: IconName::ChartColumn,
-            place: Place::page(Page::Analytics),
-            link: "分析",
-        },
+        card("整句輸入", "一句話連續打完，依讀音與前後文選出最通順的寫法。".into(), IconName::WholeWord, "選字"),
+        card(
+            "按錯鍵也能打對",
+            format!("按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先{corrections}。"),
+            IconName::SpellCheck,
+            "修正",
+        ),
+        card(
+            "依前文選字",
+            "參考游標前最多 128 個字，並接續同一個 App 最近 1 分鐘的前文。".into(),
+            IconName::TextAlignStart,
+            "前文",
+        ),
+        card("聯想詞", associated.into(), IconName::MessageSquareText, "選字"),
+        card(
+            "記住你的用法",
+            "選過的字詞下次直接採用；資料只存在這台電腦，也可以暫停學習。".into(),
+            IconName::ClockArrowUp,
+            "字詞",
+        ),
+        card("在候選字視窗管理字詞", word_actions, IconName::ListChecks, "字詞"),
+        card("標點與全半形", format!("{punctuation}{width}"), IconName::Quote, "標點與符號"),
+        card("符號與 Emoji", symbols, IconName::Shapes, "標點與符號"),
+        card("快速設定", quick, IconName::Zap, "中英切換"),
+        card(
+            "色彩與無障礙",
+            "淺色或深色、透明效果與強調色；跟隨系統的高對比與減少動態效果。".into(),
+            IconName::Palette,
+            "色彩",
+        ),
+        card(
+            "檢查輸入法",
+            "無法用 ZhuyinType 打字時，找出常見的原因並修正。".into(),
+            IconName::Stethoscope,
+            "檢查輸入法",
+        ),
+        card("改字記錄", "可以記錄改字的過程，用來改進選字；只存在這台電腦。".into(), IconName::ClipboardPen, "進階"),
+        card("使用分析", "打了多少字、改了幾次、輸入法反應多快。".into(), IconName::ChartColumn, "分析"),
     ]
 }
 
@@ -422,15 +438,10 @@ impl Render for IntroPage {
             .gap(size::SECTION_GAP)
             .child(ui::section("").bare().first().row(header))
             .child(ui::section("目前的設定").rows([
-                summary_row("summary-space", "空白鍵", space.to_owned(), Place::row(Page::Typing, "space")),
-                summary_row(
-                    "summary-punctuation",
-                    "標點按法",
-                    punctuation.to_owned(),
-                    Place::row(Page::Typing, "punctuationKeys"),
-                ),
-                summary_row("summary-typo", "按錯鍵修正", typo.to_owned(), Place::row(Page::Choosing, "typo")),
-                summary_row("summary-mode", "中英切換", mode, Place::row(Page::Typing, "shiftTap")),
+                summary_row("summary-space", "空白鍵", space.to_owned(), links::space_place()),
+                summary_row("summary-punctuation", "標點按法", punctuation.to_owned(), links::punctuation_keys_place()),
+                summary_row("summary-typo", "按錯鍵修正", typo.to_owned(), links::typo_place()),
+                summary_row("summary-mode", "中英切換", mode, links::shift_tap_place()),
             ]))
             .child(
                 ui::section("設定嚮導")

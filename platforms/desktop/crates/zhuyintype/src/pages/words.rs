@@ -14,16 +14,18 @@ use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, IntoElement, ParentElement, PathPromptOptions,
-    Render, SharedString, Styled, Subscription, WeakEntity, Window,
+    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
+    ParentElement, PathPromptOptions, Render, SharedString, Styled, Subscription, WeakEntity, Window,
 };
 use zt_core::engine::Phrase;
 
-use super::Page;
+use super::{Page, links};
 use crate::app::{self, Place};
-use crate::theme::size;
+use crate::theme::{size, space};
 use crate::ui::alert::{AlertButton, alert, notice};
 use crate::ui::content::{FACT_GAP as FIELD_GAP, chip, chips, fact_row, facts, labelled, text_input, under_fields};
+use crate::ui::current_keys::Command;
+use crate::ui::feature::{command_row, feature_row, keys_overview_link};
 use crate::ui::list::{ListConfig, ListItem, ListSort, ListView, MenuEntry, grouped};
 use crate::ui::{self, v};
 
@@ -180,16 +182,11 @@ impl WordsPage {
     fn main(&self, cx: &mut Context<Self>) -> AnyElement {
         let counts = self.counts;
         let value = |count: usize| format!("{} 個", grouped(count));
-        let phrases_subtitle = if data::key_text("selectLeft", cx).is_some() {
-            "選字時優先列出；打字時也能選取後加入"
-        } else {
-            "選字時優先列出"
-        };
         v().gap(size::SECTION_GAP)
             .child(
-                ui::section("")
-                    .first()
+                ui::section("記住")
                     .row(ui::setting_row("learningEnabled", cx).info("記住的字詞", |_, cx| learned_info(cx)))
+                    .row(pause_learning_row(cx))
                     .row(
                         ui::row("drill-learned", "記住的字詞")
                             .subtitle("檢視、移除、匯出或匯入")
@@ -199,15 +196,32 @@ impl WordsPage {
                     ),
             )
             .child(
-                ui::section("")
+                ui::section("自訂詞")
                     .row(
                         ui::row("drill-phrases", "自訂詞")
-                            .subtitle(phrases_subtitle)
+                            .subtitle("選字時優先列出")
                             .anchor(PHRASES)
                             .when_some(counts, |row, (_, phrases)| row.value(value(phrases)))
                             .on_click(|_, _, cx| app::go(Place::subpage(Page::Words, PHRASES), cx)),
                     )
-                    .footer("在候選字上按右鍵可以不要再推薦、忘記這個選字或加入自訂詞。"),
+                    .rows(feature_row("feature.selectPhrase").rows(cx))
+                    .row(command_row(
+                        Command::AddSelectedText,
+                        "選取的字加入自訂詞",
+                        "在 App 裡選取 1 到 6 個字再按；預設沒有按鍵",
+                        cx,
+                    )),
+            )
+            .child(
+                ui::section(links::WORD_ACTIONS)
+                    .row(command_row(Command::BlockCandidate, "不要再推薦", "反白的字詞不再出現在清單", cx))
+                    .row(command_row(Command::ForgetCandidate, "忘記這個選字", "忘記選過反白的字詞", cx))
+                    .row(command_row(Command::AddCandidatePhrase, "加入自訂詞", "反白的字詞；沒開清單時是整段組字", cx))
+                    .footer(
+                        v().gap(space::S8)
+                            .child("也可以在候選字上按右鍵；5 秒內按 Ctrl+Z 復原。")
+                            .child(keys_overview_link(Page::Words, cx)),
+                    ),
             )
             .into_any_element()
     }
@@ -271,6 +285,35 @@ pub fn subpage_title(id: &str) -> Option<&'static str> {
         PHRASES => Some("自訂詞"),
         _ => None,
     }
+}
+
+/// 暫停學習: the running input method's switch (the same as the menu's and 快速設定's), kept only in memory until
+/// it is turned off, the session ends or the app is updated.  Without the service it cannot be changed.
+fn pause_learning_row(cx: &App) -> ui::Row {
+    let service = app::service(cx);
+    let paused = service.is_some_and(|service| service.quick_switches().learning_paused);
+    let subtitle = if service.is_none() {
+        "輸入法服務沒有啟動"
+    } else {
+        "照常打字，不學習也不讀取前文，直到關閉、重新登入或更新"
+    };
+    let switch = ui::switch("switch-pauseLearning", paused, |_, _, cx| {
+        if let Some(service) = app::service(cx) {
+            service.toggle_quick(zt_core::service::QuickSwitch::PauseLearning);
+        }
+        cx.refresh_windows();
+    });
+    ui::row("row-pauseLearning", "暫停學習")
+        .subtitle(subtitle)
+        .anchor(links::PAUSE_LEARNING)
+        .dimmed(service.is_none())
+        .trailing(
+            // Off without the service: a cover takes the clicks.
+            gpui_kit::div()
+                .relative()
+                .child(switch)
+                .when(service.is_none(), |this| this.child(gpui_kit::div().absolute().inset_0().occlude())),
+        )
 }
 
 // MARK: - Rows

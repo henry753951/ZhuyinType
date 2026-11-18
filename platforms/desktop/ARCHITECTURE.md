@@ -52,7 +52,7 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 - `Service::start` 回傳 `async_channel::Receiver<UiEvent>`，介面在 GPUI 的前景 executor 上讀取：
   - `UiEvent::Popup(Option<PopupState>)`：顯示、更新或隱藏候選字視窗（`PopupState` 是畫面資料、以螢幕邏輯像素表示的游標矩形，以及應用程式是否自己顯示組字）；
   - `UiEvent::ModeToast { english, anchor }`、`UiEvent::ShowSettings`、`UiEvent::Boundary(direction)`。
-- `zt_core::presentation::Presentation` 是所有畫面共用的一份資料：組字、注音、UTF-16 游標、分段、目前這一頁的候選字、選取、頁碼、單字與修正清單、提示。浮動的候選字視窗、「視窗與提示」的預覽、「介紹」的試打與嚮導都用同一個候選字元件畫它。
+- `zt_core::presentation::Presentation` 是所有畫面共用的一份資料：組字、注音、UTF-16 游標、分段、目前這一頁的候選字、選取、頁碼、單字與修正清單、提示。浮動的候選字視窗、「候選字視窗」與「色彩」的預覽、「介紹」的試打與嚮導都用同一個候選字元件畫它。
 - `PracticeSession` 是行程內的沙盒（自己的 `InputController`、只在記憶體中的個人資料、共用的唯讀引擎資料），用於「介紹」的試打欄與嚮導的練習，和 macOS 的 `PracticeField` 相同。
 - 按鍵以 `zt_core::keys::Key`（Qt 按鍵碼、Qt 修飾鍵旗標、文字、左右 Shift）跨過分界，和通訊協定使用的數值相同；介面把 GPUI 的按鍵轉成它。
 
@@ -70,13 +70,15 @@ Windows 執行檔在主機上以 `cargo xwin build --target x86_64-pc-windows-ms
 
 ## 檢查輸入法
 
-`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`）與 `probe_linux`（`fcitx5-setup status`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次，結果放在全域狀態供「關於 › 檢查輸入法」與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
+`zt_core::health` 分成讀取系統與判斷兩部分：`probe_windows`（登錄、服務管理員、`SystemParametersInfo`、`wevtutil`）與 `probe_linux`（`fcitx5-setup status`、環境變數、`gnome-extensions`）只讀取、回傳單純的資料結構；`windows::checks`、`linux::checks`、`common` 的函式把資料變成檢查結果，不碰系統，以假資料在任何平台上測試。App（`crates/zhuyintype/src/health.rs`）在背景執行緒執行一次，結果放在全域狀態供「檢查輸入法」頁與側欄使用；設定視窗打開與每次回到前景時重新檢查。服務是否有回應以一個它不支援的操作（`health`）試連線，任何回應都表示它在；這個操作不改變任何狀態。App 的記錄器把警告與錯誤另存一份在記憶體（`health::recent`，最多 40 行），供「回報問題」使用。
 
 ## 介面規則
 
 - 頁面只用 `ui/` 元件與 `theme` token 組成；`pages/` 裡不寫顏色、尺寸或時間的字面值。
 - 每一頁與子頁面的設定列、順序、文字與連結都和 macOS 版相同。參考資料：Swift 原始碼，以及 macOS App 產生的截圖（`ZhuyinType --render-ui DIR`，放在不進 git 的 `.reference/`）。
+- 連結（[SETTINGS_IA.md](../../docs/product/SETTINGS_IA.md) §4）：頁面不自己拼目標，用 `pages::links` 的函式（`command_place`、`overview_place`、`feature_place`、`keys_section_place`…）；舊的頁面、下一層與列的 id 由 `links::resolve` 換成新的位置（`--page`、`--subpage`、`--row` 與 `show-settings`）。`app::go` 是唯一的到達機制：切換頁面與下一層，目標列畫好後（`ui::row`、`ui::section` 的探針）捲到可見範圍的上方三分之一並讓段落標題留在畫面上，把鍵盤焦點放在那一列（不是 Tab 停留點，Tab 從那裡往下走），底色亮一次。`cargo test` 以 GPUI 的測試平台（`gpui-pre` 的 `test-support`，只在測試時）逐頁畫出設定視窗，確認 `links::targets` 的每個目標都畫得出來，每個可以自訂的動作在功能頁與「快捷鍵」各有一列。
 - 動畫使用 `theme::motion` 與 `motion.rs`（選取的淡入、展開箭頭、按下與鍵盤焦點框、浮動視窗的出現）。系統要求減少動態效果時（Windows 的「動畫效果」、桌面入口的 `reduced-motion`、GNOME 的 `enable-animations`；`ZT_REDUCE_MOTION=1` 可強制）略過位移，淡入淡出照常。候選字視窗與中英提示在每次更新時只讀一次這個設定，動畫不延後任何按鍵的結果。
+- 捲動區域用 `scroll::SmoothScroll`（`scroll/`）包住 GPUI 的捲動 handle：`.track_scroll(scroll.handle())`，再把 `scroll.wheel()` 放成捲動區域的第一個子元素（`uniform_list`、`list` 沒有子元素，放在它們之後的同層）。它先於 GPUI 自己的處理取得垂直的滾輪事件，以 Chromium 的曲線移動畫面；要捲到某個位置時呼叫 `scroll_to(top, window, cx)`（減少動態效果時直接到位）。行為與來源見 [DESKTOP.md](../../docs/product/DESKTOP.md)「捲動」。
 - 「主題」與「透明效果」（`zt_core::appearance`）：每個視窗在 `render` 開頭呼叫 `theme::sync`，依設定與系統換掉全域的 `Palette`；設定視窗與嚮導再呼叫 `platform::backdrop::apply`，向視窗系統要背景材質（Windows 的 Mica、KDE 的模糊）與深淺色的邊框。材質存在時，視窗的根不畫底色，框架與頁面畫 `Palette::frame`、`Palette::page` 兩層半透明的顏色；其他顏色不變。細節見 [DESKTOP.md](../../docs/product/DESKTOP.md)「主題與透明效果」。
 - 候選字視窗與中英提示從不取得鍵盤焦點（Windows：`WS_EX_NOACTIVATE`；X11：override-redirect、不接受輸入焦點）。
 - Windows 上的候選字視窗由 TSF DLL 在打字的應用程式行程內畫（IPC.md〈候選字視窗〉）：以該應用程式的視窗為擁有者、`CS_IME` 視窗類別，所以出現在開始功能表搜尋框與沉浸式 App 之上。系統會替視窗畫圓角時（Windows 11 且不是虛擬機的基本顯示卡），邊緣交給系統：圓角、細框、陰影與 Acrylic 背景（`DWMSBT_TRANSIENTWINDOW`，和系統選單相同；「透明效果」關閉時畫不透明的背景）；其他情況（Windows 10、虛擬機）改用分層視窗，自己畫圓角、細框與柔和陰影，所以任何環境都是圓角。繪圖優先用 GPU；某些沙箱 App（開始功能表的搜尋）不給建立 GPU 繪圖目標，改以 Direct2D 軟體繪圖畫到 GDI。字型是安裝目錄 `fonts\` 的 Inter，中文由 DirectWrite 退回微軟正黑體。欄位取得焦點、處理完焦點之後，文字服務先在背景建立中英提示的視窗與繪圖目標，並在畫面外畫一次「中」「英」（`PanelWindow::warm`）：硬體繪圖目標第一次在一個行程裡建立時要載入 Direct3D 與顯示卡驅動程式，這段時間不再落在使用者第一次切換中英的時候。Linux 仍由 App 畫浮動視窗。

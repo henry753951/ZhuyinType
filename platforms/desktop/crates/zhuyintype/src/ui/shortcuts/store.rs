@@ -16,8 +16,7 @@ use zt_core::keys::{code, modifier};
 use zt_core::settings::Settings;
 use zt_core::shortcuts::{Binding, BindingLabel, Conflict, MAX_BINDINGS, Shortcuts};
 
-use crate::app::{self, Place};
-use crate::pages::Page;
+use crate::app;
 
 /// The settings key the user's keys are stored under (shared with `zt_core::shortcuts`).
 const STORAGE_KEY: &str = "shortcuts";
@@ -87,21 +86,6 @@ pub fn commands() -> &'static [CommandInfo] {
 /// The command `id`.
 pub fn command(id: &str) -> Option<&'static CommandInfo> {
     commands().iter().find(|command| command.id == id)
-}
-
-/// Where the command's keys are set: its 「快捷鍵」 row (`keys-<id>`) on its feature's page (macOS
-/// `ShortcutCommand.place`).
-pub fn command_place(id: &str) -> Place {
-    let page = match id {
-        "typeZhuyin" | "correctionsList" | "selectLeft" | "selectRight" | "blockCandidate" | "forgetCandidate"
-        | "addCandidatePhrase" | "addSelectedText" => Page::Choosing,
-        "singleCharacterList" | "nextPage" | "previousPage" | "previousCharacter" | "nextCharacter" => Page::Candidates,
-        _ => Page::Typing,
-    };
-    if id == "symbolPicker" {
-        return Place::row(page, format!("keys-{id}")).in_subpage("punctuation");
-    }
-    Place::row(page, format!("keys-{id}"))
 }
 
 // MARK: - Labels (Linux and Windows words: Ctrl, Alt, ⇧, Win or Super)
