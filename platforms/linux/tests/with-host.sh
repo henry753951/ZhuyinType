@@ -34,12 +34,13 @@ cat > "$work/assets/lexicon.tsv" <<'LEXICON'
 ㄏㄠˇ	好	-3
 ㄋㄧˇ ㄏㄠˇ	你好	-2
 LEXICON
-# ZT_HOST_ASSOCIATED=1: 聯想詞 on, with a language model in which 你 and then 妳 follow 你好.
+# ZT_HOST_ASSOCIATED=1: 聯想詞 on, with a language model in which 你, 妳 and 你好 follow 你好.
 if [[ ${ZT_HOST_ASSOCIATED:-0} == 1 ]]; then
     mkdir -p "$XDG_CONFIG_HOME/zhuyintype" "$work/assets/lm"
     printf '{"associatedPhrases": true}\n' > "$XDG_CONFIG_HOME/zhuyintype/settings.json"
     printf '你好\t-3\n你\t-2\n妳\t-3\n好\t-2\n</s>\t-1\n' > "$work/assets/lm/unigram.tsv"
-    printf '<s>\t你好\t-1\n你好\t你\t-0.5\n你好\t妳\t-1\n' > "$work/assets/lm/bigram.tsv"
+    # 你好 after 你好 too, or typing it again after 你好 would convert to 你 + 好 (你 is likely after 你好).
+    printf '<s>\t你好\t-1\n你好\t你\t-0.5\n你好\t妳\t-1\n你好\t你好\t-1.5\n' > "$work/assets/lm/bigram.tsv"
     : > "$work/assets/lm/backoff.tsv"
 fi
 # The host reads the lexicon through the engine; the addon only sees the broker endpoint.  The host is a GPUI app

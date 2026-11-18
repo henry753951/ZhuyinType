@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
             const auto thanks = [&] {
                 type(c,"su3cl3"); CHECK(key(c,FcitxKey_Return)); CHECK(c.commits.back() == "你好");
                 const auto list = c.inputPanel().candidateList();
-                CHECK(list && list->size() == 2 && list->cursorIndex() < 0);
+                CHECK(list && list->size() == 3 && list->cursorIndex() < 0);
                 CHECK(list->candidate(0).text().toString() == "你" && list->label(0).toString().empty());
                 CHECK(c.inputPanel().auxUp().toString() == "聯想詞・按 ↓ 選擇");
             };

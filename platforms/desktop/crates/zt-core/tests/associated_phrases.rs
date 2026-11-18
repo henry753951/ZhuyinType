@@ -124,6 +124,11 @@ fn digit_on_a_passive_list_types_zhuyin() {
     assert!(commits(&mut input).is_empty());
     let p = input.presentation();
     assert!(!p.has_list() && p.composition == "ㄅ", "{p:?}");
+    // Esc drops it; the next commit lists again.
+    assert!(input.press(&Key::new(code::ESCAPE, 0)));
+    assert!(input.presentation().composition.is_empty());
+    thanks(&mut input);
+    assert!(input.presentation().passive_suggestions(), "{:?}", input.presentation());
 }
 
 /// What the broker tells a text service (TSF) that claims only the keys it knows the host takes: a passive list is not
