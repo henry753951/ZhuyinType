@@ -17,7 +17,6 @@ use crate::health::{self as state, Health};
 use crate::theme::{self, Palette, size, space, text, weight};
 use crate::ui::actions::{ButtonKind, push_button};
 use crate::ui::alert::{notice, surface};
-use crate::ui::controls::text_link;
 use crate::ui::{self, Row, h, v};
 
 /// The sub-page's id under 關於.
@@ -107,12 +106,7 @@ pub fn page(cx: &App) -> AnyElement {
             .anchor(id)
             .trailing(trailing);
         if !check.details.is_empty() {
-            row = row.link(text_link(
-                SharedString::from(format!("health-details-{id}")),
-                if shown { "隱藏詳細資料" } else { "詳細資料" },
-                move |_, _, cx| state::toggle(id, cx),
-                cx,
-            ));
+            row = row.link(details_link(id, shown, &p));
         }
         section = section.row(v().w_full().child(row).when(shown, |this| this.child(details(&check, &p))));
     }
@@ -130,6 +124,24 @@ pub fn page(cx: &App) -> AnyElement {
         })
         .child(section)
         .into_any_element()
+}
+
+/// 「詳細資料 ›」, turning down while they show.
+fn details_link(id: &'static str, shown: bool, p: &Palette) -> impl IntoElement {
+    let ring = *p;
+    h().id(SharedString::from(format!("health-details-{id}")))
+        .gap(space::S2)
+        .cursor_pointer()
+        .text_size(text::SUBTITLE)
+        .text_color(p.accent)
+        .rounded(size::R_XS)
+        .tab_index(0)
+        .focus_visible(move |style| crate::motion::focus_ring(style, &ring, ring.surface))
+        .hover(|style| style.opacity(0.8))
+        .active(|style| style.opacity(0.6))
+        .on_click(move |_, _, cx| state::toggle(id, cx))
+        .child("詳細資料")
+        .child(Icon::new(if shown { IconName::ChevronDown } else { IconName::ChevronRight }).size(size::ICON_XS))
 }
 
 /// A check's 詳細資料: what was checked and what was found, label and value, under the row's text.

@@ -24,6 +24,11 @@ pub fn material(settings: &Settings) -> Material {
     if !zt_core::appearance::transparency(settings) {
         return Material::Opaque;
     }
+    // Screenshots on a virtual display without a compositor: draw as over KDE's blur (what is behind shows black).
+    #[cfg(target_os = "linux")]
+    if std::env::var("ZT_SHOT_MATERIAL").as_deref() == Ok("blur") {
+        return Material::Blur;
+    }
     #[cfg(windows)]
     {
         Material::Mica
