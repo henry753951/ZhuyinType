@@ -8,10 +8,14 @@
 //! hairlines.
 
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{AnyElement, App, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div};
+use gpui_kit::{
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window,
+    canvas, div,
+};
 
 use super::row::{anchor_probe, arrival_tint, arrived};
 use super::v;
+use crate::app;
 use crate::theme::{self, size, text, weight};
 
 #[derive(IntoElement)]
@@ -66,10 +70,32 @@ impl RenderOnce for Section {
         let p = theme::palette(cx);
         let count = self.rows.len();
         let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
+        #[cfg(test)]
+        if let Some(title) = &self.title {
+            super::row::record_anchor(title, cx);
+        }
         let untitled = self.title.is_none();
         let continues = untitled && !self.first;
         let hairline = || div().w_full().h(size::HAIRLINE).bg(p.separator);
+        // A link to the whole section focuses it (not a Tab stop: Tab goes on to its first control); while a link
+        // waits, a titled section reports where it is, so the row's heading can stay in view.
+        let focus = self.title.as_ref().map(|title| {
+            let key = SharedString::from(format!("section-focus-{title}"));
+            window.use_keyed_state(key, cx, |_, cx| cx.focus_handle().tab_stop(false)).read(cx).clone()
+        });
+        if let (Some((title, _)), Some(focus)) = (&arrival, &focus) {
+            app::focus_on_arrival(title, focus, window, cx);
+        }
+        let reports = self.title.is_some() && app::nav(cx).arriving().is_some();
         v().w_full()
+            .relative()
+            .when_some(focus, |this, focus| this.track_focus(&focus))
+            .when(reports, |this| {
+                this.child(
+                    canvas(|bounds, _, cx| app::section_laid_out(bounds, cx), |_, _, _, _| {}).absolute().size_full(),
+                )
+            })
+            .when_some(arrival.clone(), |this, (title, _)| this.child(anchor_probe(title, app::Target::Section)))
             .when(continues, |this| this.mt(size::SECTION_GAP_UNTITLED - size::SECTION_GAP))
             .when_some(self.title, |this, title| {
                 this.child(
@@ -85,13 +111,11 @@ impl RenderOnce for Section {
                 )
             })
             .when(count > 0 && !self.card, |this| {
-                let probe = arrival.clone().map(|(title, _)| anchor_probe(title));
                 this.child(
                     v().relative()
                         .w_full()
                         .when(!untitled, |this| this.pt(size::SECTION_BARE_PT))
-                        .children(self.rows.drain(..))
-                        .children(probe),
+                        .children(self.rows.drain(..)),
                 )
             })
             .when(count > 0 && self.card, |this| {
@@ -99,9 +123,7 @@ impl RenderOnce for Section {
                     v().w_full()
                         .relative()
                         .when(untitled, |this| this.child(hairline()))
-                        .when_some(arrival.clone(), |this, (title, _)| {
-                            this.child(arrival_tint(window, cx)).child(anchor_probe(title))
-                        })
+                        .when(arrival.is_some(), |this| this.child(arrival_tint(window, cx)))
                         .children(self.rows.into_iter().enumerate().map(|(index, row)| {
                             div().w_full().when(index > 0, |this| this.child(hairline())).child(row)
                         })),

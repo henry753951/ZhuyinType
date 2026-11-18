@@ -2,13 +2,15 @@
 # Screenshots of the settings window on a virtual X display (Linux host, software Vulkan).
 #   scripts/screenshot.sh OUT_DIR [BINARY] [page ...]
 # Every page in light and dark at 860×600; the app runs with a temporary settings file.
-# A page may be written page/subpage (`typing/punctuation`) or page#row (`choosing#typo`).
+# A page may be written page/subpage (`corrections/fuzzy`) or page#row (`corrections#typo`).
 # `popover:ID` shows one ⓘ card on its own (`--popover ID`, 420×820 unless ZT_SHOT_SIZE is set).
 # ZT_SHOT_SIZE=640x600 takes the narrow layout (files get a -640x600 suffix).
+# ZT_ARRIVAL_AT=0.5 holds a page#row link's arrival cue at that moment (seconds after the link; 0.5 is its peak).
+# Pages come after BINARY: pass the binary too (${CARGO_TARGET_DIR}/debug/zhuyintype) when naming pages.
 set -euo pipefail
 out=${1:?output directory}; shift
 bin=${1:-${CARGO_TARGET_DIR:-target}/debug/zhuyintype}; shift || true
-pages=("$@"); [ ${#pages[@]} -eq 0 ] && pages=(intro analytics typing choosing words candidates keys advanced about)
+pages=("$@"); [ ${#pages[@]} -eq 0 ] && pages=(intro analytics typing punctuation mode choosing corrections words candidates colors keys health advanced about)
 mkdir -p "$out"
 display=:$((100 + RANDOM % 400))
 Xvfb "$display" -screen 0 1400x1600x24 -nolisten tcp >/dev/null 2>&1 &

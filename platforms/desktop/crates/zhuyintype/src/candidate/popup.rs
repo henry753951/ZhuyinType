@@ -167,7 +167,8 @@ fn show_settings(place: Option<&'static str>, cx: &mut App) {
         },
         Some(page) => {
             crate::shell::show(cx);
-            app::go(Place::page(if page == "words" { Page::Words } else { Page::About }), cx);
+            // `words`, `about`, any other page id (old ids too); an unknown one is 關於, as before.
+            app::go(crate::pages::links::resolve(page, None, None).unwrap_or(Place::page(Page::About)), cx);
         }
         None => crate::shell::show(cx),
     }

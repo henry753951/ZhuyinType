@@ -452,6 +452,13 @@ impl UnifiedPreview {
         self.frame_generation += 1;
     }
 
+    /// Holds the preview still on the moment that shows `state` (色彩's preview of the list's colours).
+    pub fn hold(&mut self, state: PreviewState) {
+        self.state = state;
+        self.frame = usize::MAX;
+        self.still = true;
+    }
+
     /// Keeps the preview on `state`, playing its flow over and over.
     pub fn pin(&mut self, state: PreviewState) {
         self.pinned = Some(state);

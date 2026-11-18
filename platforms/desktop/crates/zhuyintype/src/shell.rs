@@ -122,7 +122,7 @@ impl SettingsWindow {
                                     .child(page.title()),
                             )
                             // 檢查輸入法 found something that needs attention.
-                            .when(page == Page::About && crate::health::has_problems(cx), |this| {
+                            .when(page == Page::Health && crate::health::has_problems(cx), |this| {
                                 this.child(div().flex_1())
                                     .child(Icon::new(IconName::TriangleAlert).size(sz::ICON_SM).text_color(p.accent))
                             })

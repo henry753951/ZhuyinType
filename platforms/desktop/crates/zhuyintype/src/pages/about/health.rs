@@ -10,30 +10,11 @@ use gpui_kit::{
 };
 use zt_core::health::{self, Check, Status};
 
-use super::super::Page;
-use crate::app::{self, Place};
 use crate::health::{self as state, Health};
 use crate::theme::{self, Palette, size, space, text};
 use crate::ui::actions::{ButtonKind, push_button};
 use crate::ui::alert::notice;
-use crate::ui::{self, Row, h, v};
-
-/// The sub-page's id under 關於.
-pub const ID: &str = "health";
-pub const TITLE: &str = "檢查輸入法";
-
-/// The row on 關於 that opens the sub-page, with the summary.
-pub fn about_row(cx: &App) -> Row {
-    let summary = match state::checks(cx) {
-        Some(checks) => health::summary(checks),
-        None => "檢查中…".to_owned(),
-    };
-    ui::row("drill-health", TITLE)
-        .subtitle("找出無法用 ZhuyinType 打字的常見原因")
-        .value(summary)
-        .anchor(ID)
-        .on_click(|_, _, cx| app::go(Place::subpage(Page::About, ID), cx))
-}
+use crate::ui::{self, h, v};
 
 fn status_icon(status: Status, p: &Palette) -> (IconName, Hsla) {
     match status {
