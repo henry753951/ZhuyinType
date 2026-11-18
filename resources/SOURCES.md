@@ -23,17 +23,21 @@
 
 善解（shanjie）的詞表檔依各檔授權可以再利用（`names-stores.tsv`、`names-creators.tsv` 為 CC0，`slang-add.tsv`、`names-add.tsv`、`it-add.tsv`、`acg-add.tsv` 為 CC BY-SA 4.0），但它的店名、創作者、IT、網路用語評測集就是從這些詞表抽出來的，用了就無法量測，而且屬於人工整理的清單。詞庫涵蓋流程只取用善解版本庫中小麥注音的 `data.txt` 原檔（MIT，見上），不使用善解自己的資料或程式碼；靈犀注音（AGPL-3.0）也不使用。教育部的辭典（CC BY-ND 3.0 TW）、新酷音（LGPL）、RIME 地球拼音與八股文（LGPL）、雾凇拼音（GPL）、唯音的詞庫（上游含 ND 與非商業資料）都不使用。
 
-模型另外使用以下文字資料（只用文字，不含語音或錄音者資料）：
+模型另外使用以下文字資料（只用文字，不含語音或錄音者資料）。PTT、TOCP 與簡體語料的使用規則（原文不散布、評測隔離、不雅詞的檢查、語域）見 [corpus-sources.md](../docs/research/corpus-sources.md)；每份下載的網址、版本與 SHA-256 記在 `lm_chat/source-manifest.json`：
 
 | 資料 | 用途 | 授權 |
 |---|---|---|
 | 中文維基百科 | 百科語言模型（`lm/`）、重排模型、v3 字模型 | CC BY-SA 4.0 |
 | [Common Voice](https://commonvoice.mozilla.org) zh-TW 句子 | 口語語料 | CC0 1.0（句子收集器的投稿；固定的 commit 記在 `source-manifest.json`） |
 | [Taiwan Tongues ASR CE](https://huggingface.co/datasets/adi-gov-tw/Taiwan-Tongues-ASR-CE-dataset-zhtw) zh-TW 轉寫 | 只用於評測集（`dev_chat_tt`、`test_chat_tt`）；app 與 0.4.0 起的模型訓練都不含 | TRAIL（TWM Responsible AI License v0.1）的 TRAIL-D：允許再散布，衍生的資料集要附上條款與出處；條款與原 README 隨評測集打包 |
-| [立法院公報](https://data.gov.tw/license)（經 [LYAPI](https://v2.ly.govapi.tw/)） | 聊天語言模型（`lm_chat/`）、v3 的在／再微調（0.4.0 起） | 政府資料開放授權條款第 1 版；LYAPI CC BY 4.0；來源連結在 `lm_chat/attribution.jsonl`、`v3/attribution.jsonl` |
+| [立法院公報](https://data.gov.tw/license)（經 [LYAPI](https://v2.ly.govapi.tw/)） | 聊天語言模型（`lm_chat/`）、v3 的在／再微調（0.4.0 起）、0.7.2 起的整句重排模型 | 政府資料開放授權條款第 1 版；LYAPI CC BY 4.0；來源連結在 `lm_chat/attribution.jsonl`、`v3/attribution.jsonl` |
 | 中文維基百科討論頁 | 聊天語言模型、v3 的在／再微調 | CC BY-SA 4.0；頁面與版本在 `lm_chat/attribution.jsonl`、`v3/attribution.jsonl` |
 | [小麥注音](https://github.com/openvanilla/McBopomofo) `data.txt` | 詞庫涵蓋流程只取讀音（見上表），data-4 起在 app 的詞庫裡；`ml/src/zhuyintype_ml/training/base/` 的研究（0.4.0 未採用）不在 app 裡 | MIT（全文 `Licenses/McBopomofo-MIT.txt`）；片語源自 libtabe `tsi.src`（BSD） |
 | [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) 產生的台灣口語句子 | 口語語料（整句重排、v3 的訓練）；0.4.0 的聊天語言模型不含 | 模型權重 Apache-2.0，對產生的文字沒有額外限制；授權全文隨 v3 附上（`v3/Licenses/Qwen3-8B-LICENSE`） |
+| [PTT 八卦版問答集](https://github.com/zake7749/Gossiping-Chinese-Corpus) 2.0（`65b7e36`，zake7749 整理） | 0.7.2 起的聊天語言模型（`lm_chat/`）與整句重排模型；只取標題與推文的文字，不取帳號與推噓 | 整理者標示 Apache-2.0（全文 `Licenses/Apache-2.0.txt`）；文字的著作權屬各 PTT 作者 |
+| [海大 TOCP](https://nlp.cse.ntou.edu.tw/resources/TOCP/) v1.0（Hsu Yang、Chuan-Jie Lin，LREC 2020 TRAC-2） | 同上；也是不雅詞的檢查集 | CC BY-SA 4.0；句子屬 PTT 與 Twitch 的使用者 |
+| [zh-meme-sft-8k](https://huggingface.co/datasets/GaryYang123/zh-meme-sft-8k)（`84838bb5`）、[LCCC-base](https://huggingface.co/datasets/silver/lccc)（清華 CoAI，`5bd582fa`）、[MNBVC](https://huggingface.co/datasets/liwu/MNBVC) 知乎子集（`c153d877`） | 同上。以 OpenCC s2twp 轉成正體，依交叉熵差只留像台灣用法、且不含大陸特有詞的句子（約五分之一） | zh-meme：Hugging Face 標示 MIT、README 標示 Apache-2.0；LCCC：鏡像標示 MIT，原作者說明資料用於研究；MNBVC：MIT。原文屬各平臺的使用者 |
+| Claude Haiku 5.5 依主題產生的台灣口語句子（2026-11-17，5,504 句） | 同上。只給主題與類別，不給使用者的文字；以使用者改字為種子的句子不用於出貨的模型 | 依 Anthropic 的使用條款 |
 
 ## 和其他輸入法的比較
 

@@ -88,8 +88,10 @@ PROVENANCE = ["NOTICE.md", "attribution.jsonl", "source-manifest.json"]
 def ship(ctx: Context) -> None:
     """A variant and its provenance into lm_chat/: `--option variant=NAME` (0.7.2: ptt-cns-genpub; default real, as
     0.4.0 shipped it).  The 0.3.0 model goes to lm_chat_v1/.  source-manifest.json gains the variant's name and its
-    per-source counts (prepared.json without the character list)."""
-    from .prepare import variant_directory
+    per-source counts (prepared.json without the character list); a PTT variant also gets its added sources
+    (manifest.extend)."""
+    from .manifest import extend
+    from .prepare import generated_files, variant_directory
 
     name = str(ctx.options.get("variant", "real"))
     source = variant_directory(name)
@@ -103,13 +105,17 @@ def ship(ctx: Context) -> None:
     for file in SHIPPED:
         shutil.copy2(source / file, target / file)
     for file in PROVENANCE:
-        shutil.copy2(ctx.out / file, target / file)
+        # Where `manifest` has not run (a copy of the data directory), keep the shipped provenance in lm_chat/.
+        if (ctx.out / file).exists():
+            shutil.copy2(ctx.out / file, target / file)
     prepared = source / "work" / "prepared.json"
     if prepared.exists():
         manifest = json.loads((target / "source-manifest.json").read_text())
         counts = {k: v for k, v in json.loads(prepared.read_text()).items() if k != "training_characters"}
         manifest["shipped_variant"] = {"name": name, "counts": counts}
         (target / "source-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
+    if name.startswith("ptt"):
+        extend(target, name, generated_files(name))
     ctx.log(f"chat2 {name} ({source}) → {target}")
 
 

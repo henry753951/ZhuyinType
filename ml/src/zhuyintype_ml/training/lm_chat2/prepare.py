@@ -76,6 +76,19 @@ VARIANTS = {
 }
 
 
+def generated_files(variant: str) -> list[Path]:
+    """The Claude Haiku files a variant reads: -gen all of gen/, -genpub only its themed files (never the seed-*.txt
+    sentences seeded with the user's corrected phrases), -genpub2 those plus gen2/; none for other variants."""
+    if not variant.endswith(("-gen", "-genpub", "-genpub2")):
+        return []
+    files = sorted(GENERATED.glob("*.txt"))
+    if variant.endswith(("-genpub", "-genpub2")):
+        files = [p for p in files if not p.name.startswith("seed-")]
+    if variant.endswith("-genpub2"):
+        files += sorted(GENERATED2.glob("*.txt"))
+    return files
+
+
 def variant_directory(variant: str) -> Path:
     return OUT / VARIANTS[variant] if VARIANTS[variant] else OUT
 
@@ -638,13 +651,7 @@ def prepare(variant: str, workers: int) -> None:
                         elif sentence:
                             counts["replies_invalid"] += 1
         if variant.endswith(("-gen", "-genpub", "-genpub2")):
-            # genpub: only the themed files, not the ones seeded with the user's corrected phrases (seed-*.txt)
-            paths_ = sorted(GENERATED.glob("*.txt"))
-            if variant.endswith(("-genpub", "-genpub2")):
-                paths_ = [p for p in paths_ if not p.name.startswith("seed-")]
-            if variant.endswith("-genpub2"):
-                paths_ += sorted(GENERATED2.glob("*.txt"))
-            for path in paths_:
+            for path in generated_files(variant):
                 for line in path.open(encoding="utf-8"):
                     for sentence in mkn.SPLIT.split(line):
                         sentence = sentence.strip()
