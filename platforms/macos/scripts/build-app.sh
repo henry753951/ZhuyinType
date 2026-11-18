@@ -101,8 +101,14 @@ for name in sorted(os.listdir(resources)):
         for file in names:
             full = os.path.join(root, file)
             files[os.path.relpath(full, resources)] = hashlib.sha256(open(full, "rb").read()).hexdigest()
+# The pinned data versions (resources/assets.json) of what is bundled, for 回報問題's 隨附的資料版本.
+assets = json.load(open("resources/assets.json"))["components"]
+shipped = {name: {"release": assets[name]["release"], "sha256": assets[name]["sha256"]}
+           for name, paths in (("lexicon", ("lexicon.bin", "lexicon.tsv")), ("lm", ("lm",)), ("lm_chat", ("lm_chat",)),
+                               ("reranker", ("reranker",)), ("v3", ("v3",)))
+           if name in assets and any(os.path.exists(os.path.join(resources, path)) for path in paths)}
 manifest = {"version": info["CFBundleShortVersionString"], "build": info["CFBundleVersion"],
-            "files": dict(sorted(files.items()))}
+            "files": dict(sorted(files.items())), "assets": shipped}
 json.dump(manifest, open(os.path.join(resources, "manifest.json"), "w"), indent=1, ensure_ascii=False)
 PY
 plutil -lint "$contents/Info.plist"
