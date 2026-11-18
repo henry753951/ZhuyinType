@@ -365,6 +365,7 @@ class Colloquial(unittest.TestCase):
         self.assertEqual(summary["corpora"]["ptt"]["left_out_variant"], 1)
 
 
+@unittest.skipUnless(importlib.util.find_spec("numpy"), "numpy is in the train dependency group")
 class Variants(unittest.TestCase):
     def test_competitors_are_homophones_in_lexicon_or_corpus(self):
         from zhuyintype_ml.training.lexicon.variants import competitors
