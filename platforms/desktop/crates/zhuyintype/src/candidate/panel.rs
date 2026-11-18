@@ -22,7 +22,7 @@ use zt_core::service::PopupAction;
 
 use super::layout::{
     self, BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Extras, Frame, HintLayout, KEYCAP_HEIGHT, Measure, MenuLayout,
-    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, UNDO_LABEL,
+    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout,
 };
 use super::style::PanelStyle;
 use crate::theme::candidate::{self as tokens, Colors};
@@ -305,7 +305,7 @@ impl CandidatePanel {
         if let Some(notice) = &layout.notice {
             surface = surface.child(notice_element(notice, c));
             if let Some(frame) = notice.undo {
-                surface = surface.child(undo_link(frame, notice.font_size, c, actions.clone()));
+                surface = surface.child(undo_link(frame, &notice.undo_label, notice.font_size, c, actions.clone()));
             }
         }
         if let Some((frame, text, text_w)) = &layout.preview {
@@ -461,8 +461,8 @@ impl CandidatePanel {
     }
 }
 
-/// The notice's 「復原」 after a word action.
-fn undo_link(frame: Frame, size: f32, c: &Colors, actions: Option<ActionHandler>) -> impl IntoElement {
+/// The notice's 「Ctrl+Z 復原」 after a word action.
+fn undo_link(frame: Frame, label: &str, size: f32, c: &Colors, actions: Option<ActionHandler>) -> impl IntoElement {
     let accent = c.accent;
     at(frame)
         .id("word-undo")
@@ -474,7 +474,7 @@ fn undo_link(frame: Frame, size: f32, c: &Colors, actions: Option<ActionHandler>
         .font_weight(FontWeight::MEDIUM)
         .text_color(accent)
         .whitespace_nowrap()
-        .child(UNDO_LABEL)
+        .child(SharedString::from(label.to_owned()))
         .when_some(actions, |this, actions| {
             this.cursor_pointer()
                 .hover(|style| style.opacity(0.75))

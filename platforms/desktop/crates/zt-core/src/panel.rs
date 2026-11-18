@@ -20,6 +20,7 @@ pub fn style(settings: &Settings, key: impl Fn(&str) -> String) -> PanelStyle {
             single: key("singleCharacterList"),
             corrections: key("correctionsList"),
             zhuyin_clickable: settings.bool("feature.zhuyinRowClick"),
+            undo: crate::shortcuts::UNDO_WORD_ACTION.label(),
         },
     }
 }

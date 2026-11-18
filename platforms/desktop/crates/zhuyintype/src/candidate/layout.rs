@@ -5,7 +5,7 @@ use gpui_kit::{FontWeight, TextRun, Window, px};
 use zt_core::presentation::Presentation;
 pub use zt_panel::layout::{
     BADGE_FONT, BADGE_H, BADGE_W, CONTROL_H, Estimate, Frame, HintLayout, KEYCAP_HEIGHT, Measure, MenuLayout,
-    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, UNDO_LABEL, annotation_font,
+    NoticeLayout, PanelLayout, RowLayout, SMALL_FONT, ToggleLayout, annotation_font,
 };
 
 use super::style::PanelStyle;

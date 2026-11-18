@@ -33,6 +33,7 @@ fn style(keys: &PanelKeys) -> PanelStyle {
             single: keys.single.clone().unwrap_or_default(),
             corrections: keys.corrections.clone().unwrap_or_default(),
             zhuyin_clickable: false,
+            ..KeyLabels::default()
         },
     }
 }

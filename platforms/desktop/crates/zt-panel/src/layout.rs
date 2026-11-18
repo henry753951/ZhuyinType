@@ -164,8 +164,9 @@ pub struct NoticeLayout {
     pub keycap_h: f32,
     pub lead: f32,
     pub label_w: f32,
-    /// The 「復原」 link at the row's end (window coordinates), after a word action.
+    /// The 「Ctrl+Z 復原」 link at the row's end (window coordinates), after a word action, and its text.
     pub undo: Option<Frame>,
+    pub undo_label: String,
 }
 
 impl NoticeLayout {
@@ -184,8 +185,14 @@ impl NoticeLayout {
     }
 }
 
-/// The link that undoes a word action.
+/// The link that undoes a word action, after its key (`undo_label`).
 pub const UNDO_LABEL: &str = "復原";
+
+/// 「Ctrl+Z 復原」: the link with the key that does the same (`keys::prose`), or 「復原」 without one.
+#[must_use]
+pub fn undo_label(key: &str) -> String {
+    if key.is_empty() { UNDO_LABEL.to_owned() } else { format!("{} {UNDO_LABEL}", keys::prose(key)) }
+}
 
 /// The right-click menu of a candidate, drawn inside the window under the list.
 #[derive(Clone, Debug, PartialEq)]
@@ -424,7 +431,8 @@ fn compute_fitted(
         let widest = WORD_ACTIONS.iter().map(|(_, title)| measure.width(title, menu_font, false)).fold(0., f32::max);
         width = width.max(ceil(widest) + padding * 2. + key_inset * 2.);
     }
-    let undo_w = if p.undo { ceil(measure.width(UNDO_LABEL, (fs * 0.72).round(), true)) } else { 0. };
+    let undo_text = undo_label(&keys.undo);
+    let undo_w = if p.undo { ceil(measure.width(&undo_text, (fs * 0.72).round(), true)) } else { 0. };
     if let Some(notice) = &notice
         && p.undo
     {
@@ -537,6 +545,7 @@ fn compute_fitted(
             notice.layout.frame.w = (notice_frame.w - undo_w - 12.).max(0.);
             notice.layout.undo =
                 Some(Frame::new(notice_frame.x + notice_frame.w - undo_w, notice_frame.y, undo_w, notice_frame.h));
+            notice.layout.undo_label = undo_text;
         }
     }
     // A horizontal list too wide for its room gives up the gaps between candidates before it narrows them.
@@ -788,6 +797,7 @@ fn parse_notice(message: &str, font_size: f32, measure: &mut dyn Measure) -> Par
             lead,
             label_w,
             undo: None,
+            undo_label: String::new(),
         },
         preferred,
     }
@@ -1254,6 +1264,12 @@ mod tests {
             let room = notice.value_frame().w;
             assert!(notice.value_frame().x >= label.x + label.w - 0.01, "{case}: the phrase overlaps the action");
             assert!(value <= room + 0.01, "{case}: 「{}」 ({value}) has {room}", notice.value);
+            if let Some(undo) = notice.undo {
+                check(undo, "the undo link");
+                assert!(undo.x >= notice.frame.x + notice.frame.w, "{case}: the undo link overlaps the notice");
+                let text = m.width(&notice.undo_label, notice.font_size, true);
+                assert!(text <= undo.w + 0.01, "{case}: 「{}」 ({text}) has {}", notice.undo_label, undo.w);
+            }
         }
         if let Some((frame, text)) = &layout.typed {
             check(*frame, "the typed reading");
@@ -1314,6 +1330,23 @@ mod tests {
                 assert_fits(&layout, &mut Fonts::at(1.5), &case);
             }
         }
+    }
+
+    #[test]
+    fn the_undo_link_names_its_key_and_fits() {
+        for font_size in [13., 18., 36.] {
+            for scale in [1., 1.5, 2.] {
+                let style = PanelStyle { font_size, ..PanelStyle::default() };
+                let mut p = candidates(3, 1, "ㄒㄧㄠˇ ㄇㄧㄥˊ", false);
+                p.notice = Some("不再推薦「小明」".into());
+                p.undo = true;
+                let layout = compute(&p, &style, 4000., (0., 0.), &mut Fonts::at(scale));
+                assert_eq!(layout.notice.as_ref().map(|notice| notice.undo_label.as_str()), Some("Ctrl+Z 復原"));
+                assert_fits(&layout, &mut Fonts::at(scale), &format!("undo {font_size}px ×{scale}"));
+            }
+        }
+        // Without a key: the link alone.
+        assert_eq!(undo_label(""), UNDO_LABEL);
     }
 
     #[test]

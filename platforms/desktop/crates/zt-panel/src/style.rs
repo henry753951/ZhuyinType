@@ -22,11 +22,24 @@ pub struct KeyLabels {
     pub corrections: String,
     /// Clicking the reading row types the Zhuyin itself.
     pub zhuyin_clickable: bool,
+    /// Undoes a word action (「Ctrl+Z 復原」 after the notice).  Left out by an older app: Ctrl+Z.
+    #[serde(default = "undo_key")]
+    pub undo: String,
+}
+
+fn undo_key() -> String {
+    "Ctrl+Z".into()
 }
 
 impl Default for KeyLabels {
     fn default() -> Self {
-        Self { zhuyin: "`".into(), single: "⇧↓".into(), corrections: "⇧↑".into(), zhuyin_clickable: true }
+        Self {
+            zhuyin: "`".into(),
+            single: "⇧↓".into(),
+            corrections: "⇧↑".into(),
+            zhuyin_clickable: true,
+            undo: undo_key(),
+        }
     }
 }
 

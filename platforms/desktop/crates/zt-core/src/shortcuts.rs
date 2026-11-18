@@ -26,6 +26,10 @@ pub struct Binding {
     pub modifiers: u32,
 }
 
+/// Undoes a word action for a few seconds while still composing: a fixed key, not a command (macOS ⌃Z).  The
+/// candidate window's 「Ctrl+Z 復原」 shows it.
+pub const UNDO_WORD_ACTION: Binding = Binding { key: b'Z' as i32, modifiers: modifier::CONTROL };
+
 /// A binding with the text the page shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BindingLabel {

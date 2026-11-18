@@ -490,7 +490,7 @@ pub(crate) fn content(p: &Painter<'_>, layout: &PanelLayout, motion: &Motion<'_>
         notice_element(p, notice);
         if let Some(frame) = notice.undo {
             let ink = if motion.hover_control == Some(Control::Undo) { c.text } else { c.text_secondary };
-            p.text(layout::UNDO_LABEL, notice.font_size, true, Family::Ui, frame, 1., ink);
+            p.text(&notice.undo_label, notice.font_size, true, Family::Ui, Frame { w: frame.w + 1., ..frame }, 1., ink);
         }
     }
     if let Some((frame, text, size)) = &layout.tip {
