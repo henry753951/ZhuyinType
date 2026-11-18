@@ -419,7 +419,10 @@ impl Service {
         let op = request.get("op").and_then(Value::as_str).unwrap_or_default();
         let press = op == "key" && request.get("release") == Some(&Value::Bool(false));
         if op == "diagnostics" {
-            return self.diagnostics().reply();
+            // Not counting the connection that asks.
+            let mut diagnostics = self.diagnostics();
+            diagnostics.connections = diagnostics.connections.saturating_sub(1);
+            return diagnostics.reply();
         }
         if press {
             self.inner.activity.key();
