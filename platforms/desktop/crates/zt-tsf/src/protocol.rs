@@ -388,6 +388,8 @@ mod tests {
             row_count: 1,
             items: vec![zt_panel::picker::Item { text: "😀".into(), name: "笑臉".into() }],
             highlight: Some(0),
+            numbered: false,
+            hint: "↓ 選取・Esc 關閉".into(),
         });
         let mut grid = good();
         grid["panel"] = serde_json::to_value(&with_grid).unwrap();

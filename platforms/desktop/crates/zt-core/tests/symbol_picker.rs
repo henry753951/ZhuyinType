@@ -69,10 +69,15 @@ fn shortcut_opens_keys_route_and_digits_insert() {
     // Zhuyin keys go to the search, not the composer.
     assert!(f.press('V' as i32, 0));
     assert!(!f.input.session().composing());
-    assert!(f.press(code::ESCAPE, 0), "Esc clears the search");
+    assert!(f.press(code::BACKSPACE, 0), "⌫ edits the search");
     assert!(f.input.picker_open());
     assert!(f.press(code::TAB, 0));
-    assert!(f.press('2' as i32, 0));
+    assert!(f.press('2' as i32, 0), "while the search has the keys a digit types there (ㄉ)");
+    assert!(f.input.picker_open());
+    assert!(f.commits().is_empty());
+    assert!(f.press(code::BACKSPACE, 0));
+    assert!(f.press(code::DOWN, 0), "↓ moves into the grid");
+    assert!(f.press('2' as i32, 0), "now 2 picks");
     assert!(!f.input.picker_open());
     assert_eq!(f.commits(), ["→"]);
     assert_eq!(f.input.recent_symbols(), ["→"]);
@@ -153,6 +158,10 @@ fn the_broker_keeps_keys_while_open() {
     assert_eq!(reply["composing"], json!(true), "the adapter sends every key while the picker is open");
     assert_eq!(reply["candidates"], json!(true));
     assert_eq!(reply["preedit"], json!(""));
+    let reply = request(&mut host, &mut f, key('1' as i32, 0));
+    assert_eq!((&reply["commit"], &reply["composing"]), (&json!(""), &json!(true)), "1 types ㄅ in the search");
+    request(&mut host, &mut f, key(code::BACKSPACE, 0));
+    request(&mut host, &mut f, key(code::DOWN, 0));
     let reply = request(&mut host, &mut f, key('1' as i32, 0));
     assert_eq!(reply["commit"], json!("，"));
     assert_eq!(reply["composing"], json!(false));
@@ -241,15 +250,21 @@ fn every_reply_while_open_keeps_the_keys_with_the_picker() {
     use serde_json::json;
     use zt_core::broker::host::Host;
     let keys = [
+        // Zhuyin on digit keys (ㄞˋ) types in the search.
+        ('9' as i32, 0),
+        ('4' as i32, 0),
+        (code::BACKSPACE, 0),
+        (code::BACKSPACE, 0),
         ('V' as i32, 0),
         ('U' as i32, 0),
         ('L' as i32, 0),
         (code::SPACE, 0),
         (code::BACKSPACE, 0),
-        // Esc with a search clears it (with none it would close the picker).
-        (code::ESCAPE, 0),
         (code::LEFT, 0),
         (code::DOWN, 0),
+        // In the grid: a digit with no item does nothing, ↑ on the first row goes back to the search.
+        ('9' as i32, 0),
+        (code::UP, 0),
         (code::TAB, 0),
         (code::TAB, modifier::SHIFT),
         ('H' as i32, 0),
@@ -334,4 +349,58 @@ fn a_reset_closes_the_picker_and_its_window() {
     let after = request(key_fields('V' as i32, 0, false));
     assert_ne!(after["preedit"], json!(""), "the next key types again");
     assert!(after.get("panel").is_none_or(|panel| panel.get("picker").is_none_or(Value::is_null)));
+}
+
+/// The 0.7.1 failure: in Chinese mode with a short 最近使用, ㄞˋ (9 4) and ㄅ (1) did nothing or picked a symbol.
+/// Now they type into the search, and ↓ 2 inserts the second match.
+#[test]
+fn zhuyin_on_digit_keys_types_into_the_search() {
+    struct Hearts;
+    impl Source for Hearts {
+        fn categories(&self) -> Arc<Vec<Category>> {
+            Catalog.categories()
+        }
+        fn search(&self, query: &str, _limit: usize) -> Vec<Item> {
+            let item = |text: &str| Item { text: text.into(), name: String::new() };
+            match query {
+                "94" | "9" => vec![item("❤️"), item("🩶")],
+                "1" => vec![item("👍")],
+                _ => Vec::new(),
+            }
+        }
+        fn display_query(&self, query: &str) -> String {
+            Catalog.display_query(query)
+        }
+        fn name_of(&self, text: &str) -> Option<String> {
+            Catalog.name_of(text)
+        }
+        fn recent_from_text(&self, text: &str) -> Vec<String> {
+            Catalog.recent_from_text(text)
+        }
+        fn recent_pushed(&self, recent: &[String], symbol: &str) -> (Vec<String>, String) {
+            Catalog.recent_pushed(recent, symbol)
+        }
+    }
+    let mut f = fixture();
+    f.input.set_symbol_source(Arc::new(Hearts));
+    // Two recent symbols, as in the report's screenshot.
+    for _ in 0..2 {
+        f.press(PICKER.0, PICKER.1);
+        f.press(code::DOWN, 0);
+        f.press('1' as i32, 0);
+    }
+    f.commits();
+    assert!(f.press(PICKER.0, PICKER.1));
+    assert!(f.press('9' as i32, 0) && f.press('4' as i32, 0));
+    assert!(f.input.picker_open() && f.commits().is_empty(), "the digits typed, nothing was picked");
+    let view = f.input.picker_view().unwrap();
+    assert_eq!(view.query, "94");
+    assert_eq!(view.items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(), ["❤️", "🩶"]);
+    assert!(!view.numbered);
+    assert!(f.press(code::DOWN, 0) && f.press('2' as i32, 0));
+    assert_eq!(f.commits(), ["🩶"]);
+    assert!(f.press(PICKER.0, PICKER.1) && f.press('1' as i32, 0), "ㄅ");
+    assert_eq!(f.input.picker_view().unwrap().items[0].text, "👍");
+    assert!(f.press(code::RETURN, 0), "Return inserts the first match from the search");
+    assert_eq!(f.commits(), ["👍"]);
 }

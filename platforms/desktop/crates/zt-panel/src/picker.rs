@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::layout::Frame;
 
-/// Items in one row of the grid (digits 1–9 pick from the highlighted row).
+/// Items in one row of the grid (in the grid, digits 1–9 pick from the highlighted row).
 pub const COLUMNS: usize = 9;
 /// Rows the grid shows at once (PageUp / PageDown move this many).
 pub const VISIBLE_ROWS: usize = 6;
@@ -44,6 +44,13 @@ pub struct PickerView {
     pub items: Vec<Item>,
     /// The highlighted index in the whole list.
     pub highlight: Option<usize>,
+    /// The keys are in the grid: the highlighted row shows 1–9, which pick from it.  False while the search has the
+    /// keys (digits type there), and from hosts before 0.7.2.
+    #[serde(default)]
+    pub numbered: bool,
+    /// The keys for the current state, at the footer's right (「↓ 選取・Esc 關閉」).
+    #[serde(default)]
+    pub hint: String,
 }
 
 impl PickerView {
@@ -76,8 +83,6 @@ pub const TAB_FONT: f32 = 12.;
 pub const TEXT_INSET: f32 = PAD + 10.;
 /// The search line's text when nothing is searched.
 pub const SEARCH_PLACEHOLDER: &str = "打注音或英文搜尋";
-/// The search line's hint while searching.
-pub const SEARCH_HINT: &str = "Esc 清除・Tab 回類別";
 /// The grid when nothing matches.
 pub const NO_MATCH: &str = "找不到符合的符號";
 
@@ -164,7 +169,7 @@ impl PickerLayout {
             .collect();
         let rule_y = tabs_top + TABS_H + 1.;
         let grid = Frame::new(PAD, rule_y + 2., inner, CELL * VISIBLE_ROWS as f32);
-        let highlighted_row = view.highlight.map(|index| index / COLUMNS);
+        let highlighted_row = view.highlight.filter(|_| view.numbered).map(|index| index / COLUMNS);
         let cells = (0..view.items.len().min(COLUMNS * VISIBLE_ROWS))
             .map(|offset| {
                 let index = view.first_row * COLUMNS + offset;
@@ -218,6 +223,8 @@ mod tests {
             row_count: items.div_ceil(COLUMNS) + first_row,
             items: (0..items).map(|n| Item { text: n.to_string(), name: format!("第{n}個") }).collect(),
             highlight: Some(highlight),
+            numbered: true,
+            hint: "1–9 選取・Esc 關閉".to_owned(),
         }
     }
 
@@ -252,9 +259,23 @@ mod tests {
     }
 
     #[test]
+    fn while_the_search_has_the_keys_no_row_is_numbered() {
+        let v = PickerView { numbered: false, ..view(20, 12, 1) };
+        let layout = PickerLayout::compute(&v);
+        assert!(layout.cells[3].selected, "the highlight still shows (Return inserts it)");
+        assert!(layout.cells.iter().all(|c| !c.numbered));
+    }
+
+    #[test]
     fn the_view_round_trips_through_json() {
         let v = view(3, 0, 0);
         let json = serde_json::to_value(&v).unwrap();
         assert_eq!(serde_json::from_value::<PickerView>(json).unwrap(), v);
+        // A host before 0.7.2 sends neither field: no row is numbered, no hint.
+        let mut old = serde_json::to_value(&v).unwrap();
+        old.as_object_mut().unwrap().remove("numbered");
+        old.as_object_mut().unwrap().remove("hint");
+        let old = serde_json::from_value::<PickerView>(old).unwrap();
+        assert!(!old.numbered && old.hint.is_empty());
     }
 }

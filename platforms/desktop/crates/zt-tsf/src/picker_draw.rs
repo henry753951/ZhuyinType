@@ -5,9 +5,7 @@
 //! 「動畫效果」 has nothing to turn off here.
 
 use zt_panel::layout::{Frame, SMALL_FONT};
-use zt_panel::picker::{
-    NO_MATCH, PickerHit, PickerLayout, PickerView, SEARCH_HINT, SEARCH_PLACEHOLDER, SYMBOL_FONT, TAB_FONT,
-};
+use zt_panel::picker::{NO_MATCH, PickerHit, PickerLayout, PickerView, SEARCH_PLACEHOLDER, SYMBOL_FONT, TAB_FONT};
 
 use crate::panel_draw::{Family, Painter};
 
@@ -15,20 +13,15 @@ use crate::panel_draw::{Family, Painter};
 pub(crate) fn content(p: &Painter<'_>, view: &PickerView, layout: &PickerLayout, hover: Option<PickerHit>) {
     let c = p.c;
 
-    // The search line: a magnifier, then the query or what it takes; while searching, how to leave it.
+    // The search line: a magnifier, then the query or what it takes.
     let search = layout.search;
     let cy = search.y + search.h / 2.;
     p.outline(Frame::new(search.x + 1., cy - 6., 10., 10.), 5., c.text_tertiary, 1.4);
     p.line(&[(search.x + 9.5, cy + 2.5), (search.x + 13., cy + 6.)], 1.4, c.text_tertiary);
     let searching = !view.query.is_empty();
     let text_x = search.x + 20.;
-    let hint_w = if searching { 150. } else { 0. };
     let (query, ink) = if searching { (view.query.as_str(), c.text) } else { (SEARCH_PLACEHOLDER, c.text_tertiary) };
-    p.text(query, 13., false, Family::Ui, Frame::new(text_x, search.y, search.w - 20. - hint_w, search.h), 0., ink);
-    if searching {
-        let hint = Frame::new(search.x + search.w - hint_w, search.y, hint_w, search.h);
-        p.text(SEARCH_HINT, SMALL_FONT, false, Family::Ui, hint, 1., c.text_tertiary);
-    }
+    p.text(query, 13., false, Family::Ui, Frame::new(text_x, search.y, search.w - 20., search.h), 0., ink);
 
     // The tabs: the active one on the selection colour.
     for &(index, frame) in &layout.tabs {
@@ -72,15 +65,16 @@ pub(crate) fn content(p: &Painter<'_>, view: &PickerView, layout: &PickerLayout,
         p.text(&item.text, SYMBOL_FONT, false, Family::Ui, f, 0.5, ink);
     }
 
-    // The footer: the highlighted symbol's name, and which row of how many.
+    // The footer: the highlighted symbol's name; the keys for where the keys are now, and which row of how many.
     rule(layout.rules[1]);
     let footer = layout.footer;
     let position = view.position();
-    let position_w = if position.is_empty() { 0. } else { 56. };
-    let name = Frame::new(footer.x, footer.y, footer.w - position_w, footer.h);
+    let right = if position.is_empty() { view.hint.clone() } else { format!("{}　{position}", view.hint) };
+    let right_w = if right.trim().is_empty() { 0. } else { 170. };
+    let name = Frame::new(footer.x, footer.y, footer.w - right_w, footer.h);
     p.text(view.highlighted_name(), SMALL_FONT, false, Family::Ui, name, 0., c.text_secondary);
-    if !position.is_empty() {
-        let at = Frame::new(footer.x + footer.w - position_w, footer.y, position_w, footer.h);
-        p.text(&position, SMALL_FONT, false, Family::Ui, at, 1., c.text_tertiary);
+    if right_w > 0. {
+        let at = Frame::new(footer.x + footer.w - right_w, footer.y, right_w, footer.h);
+        p.text(right.trim(), SMALL_FONT, false, Family::Ui, at, 1., c.text_tertiary);
     }
 }

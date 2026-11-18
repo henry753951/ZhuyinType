@@ -2,7 +2,8 @@ import AppKit
 
 // The 符號與 Emoji picker's window: a floating input panel like the candidate window (never key or main, never
 // activating ZhuyinType), by the caret.  From the top: the search line, the category tabs, a grid of rows of nine with
-// the highlighted row numbered 1–9, and a footer with the highlighted symbol's name and the keys.
+// the highlighted row numbered 1–9 once ↓ moved the keys into the grid, and a footer with the highlighted symbol's
+// name and the keys for the current state.
 
 /// The picker as drawn; `SymbolPicker` holds the state, the controller routes keys to it.
 final class SymbolPickerView: InputMaterialView {
@@ -27,6 +28,9 @@ final class SymbolPickerView: InputMaterialView {
     private var query = ""
     private var searching = false
     private var prefilled = false
+    /// The keys are in the grid: the highlighted row shows 1–9.
+    private var numbered = false
+    private var keysHint = ""
     private var hovered: Int?
     private var hoveredTab: Int?
     private var scrollRemainder: CGFloat = 0
@@ -58,6 +62,8 @@ final class SymbolPickerView: InputMaterialView {
         query = picker.shownQuery
         searching = picker.isSearching
         prefilled = picker.prefilled
+        numbered = picker.isNumbered
+        keysHint = picker.keysHint
         if frame.size != Self.size { setFrameSize(Self.size) }
         rebuildAccessibility()
         needsDisplay = true
@@ -193,7 +199,7 @@ final class SymbolPickerView: InputMaterialView {
             (text as NSString).draw(at: NSPoint(x: gridRect.midX - size.width / 2, y: gridRect.midY - size.height / 2), withAttributes: attributes)
             return
         }
-        let highlightedRow = highlight / SymbolPicker.columns
+        let highlightedRow = numbered ? highlight / SymbolPicker.columns : -1
         let symbolFont = NSFont.systemFont(ofSize: 21)
         let numberFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium)
         for index in visibleIndices {
@@ -230,7 +236,7 @@ final class SymbolPickerView: InputMaterialView {
     private func drawFooter() {
         let rect = footerRect
         let shown = hovered.flatMap { items.indices.contains($0) ? items[$0] : nil } ?? (items.indices.contains(highlight) ? items[highlight] : nil)
-        let hint = "1–9 選取　Tab 類別　Esc 關閉"
+        let hint = keysHint
         let hintAttributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor]
         let hintSize = (hint as NSString).size(withAttributes: hintAttributes)
         (hint as NSString).draw(at: NSPoint(x: rect.maxX - hintSize.width - 2, y: rect.midY - hintSize.height / 2), withAttributes: hintAttributes)
@@ -310,7 +316,7 @@ final class SymbolPickerView: InputMaterialView {
             addToolTip(tabRect(index), owner: tabs[index].title as NSString, userData: nil)
             list.append(element)
         }
-        let highlightedRow = highlight / SymbolPicker.columns
+        let highlightedRow = numbered ? highlight / SymbolPicker.columns : -1
         for index in visibleIndices {
             guard let rect = cellRect(index) else { continue }
             let symbol = items[index]

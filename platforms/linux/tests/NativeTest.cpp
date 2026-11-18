@@ -36,6 +36,8 @@ private:
 int main(int argc, char **argv) {
     // `associated`: only the 聯想詞 checks, against a host with them on (with-host.sh, ZT_HOST_ASSOCIATED=1).
     const bool associatedOnly = argc > 1 && std::string_view(argv[1]) == "associated";
+    // `picker`: only the 符號與 Emoji checks, in Fcitx's own list (a Wayland session).
+    const bool pickerOnly = argc > 1 && std::string_view(argv[1]) == "picker";
     try {
         {
             zhuyintype::Broker broker;
@@ -92,6 +94,30 @@ int main(int argc, char **argv) {
             CHECK(key(c,FcitxKey_2)); CHECK(c.commits.back() == "妳");
             unsetenv("ZT_FCITX_PANEL");
             std::cout << "PASS real host broker: 聯想詞 in Fcitx's list (passive, no key labels, ↓ then a key)\n";
+            return 0;
+        }
+        if (pickerOnly) {
+            // 符號與 Emoji in Fcitx's list: it opens on the search, which takes every typing key, digits included
+            // (ㄞˋ is 9 4): no key labels until ↓ moves into the grid, where 2 sends the second symbol.
+            setenv("ZT_FCITX_PANEL", "1", 1);
+            Client c(instance.inputContextManager());
+            activate(c);
+            CHECK(key(c,FcitxKey_slash,false,fcitx::KeyStates{fcitx::KeyState::Ctrl,fcitx::KeyState::Shift}));
+            CHECK(c.inputPanel().candidateList());
+            CHECK(key(c,FcitxKey_9)); CHECK(key(c,FcitxKey_4));
+            CHECK(c.commits.empty() && c.preedit().empty());
+            const auto searched = c.inputPanel().candidateList();
+            CHECK(searched && searched->size() >= 2);
+            for (int i = 0; i < searched->size(); ++i) CHECK(searched->label(i).toString().empty());
+            const auto second = searched->candidate(1).text().toString();
+            CHECK(c.inputPanel().auxDown().toString().find("ㄞˋ") != std::string::npos);
+            CHECK(key(c,FcitxKey_Down));
+            const auto grid = c.inputPanel().candidateList();
+            CHECK(grid && grid->label(1).toString() == "2. ");
+            CHECK(key(c,FcitxKey_2)); CHECK(!c.commits.empty() && c.commits.back() == second);
+            CHECK(!c.inputPanel().candidateList());
+            unsetenv("ZT_FCITX_PANEL");
+            std::cout << "PASS real host broker: 符號與 Emoji in Fcitx's list (digits search, ↓ then 2 inserts)\n";
             return 0;
         }
         const std::string endpoint = std::getenv("ZT_IME_SOCKET");
