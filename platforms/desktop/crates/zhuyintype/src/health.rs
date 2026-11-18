@@ -319,6 +319,7 @@ pub fn command_line(fix: Option<&str>) -> i32 {
         let reply = client.request("diagnostics", serde_json::json!({ "context": "health" })).ok()?;
         zt_core::health::activity::Diagnostics::from_reply(&reply)
     });
+    let last_check = crate::updates::load_last_check().as_ref().map(minute);
     let about = AppFacts {
         diagnostics: diagnostics.clone(),
         stored_settings: settings.stored(),
@@ -327,7 +328,7 @@ pub fn command_line(fix: Option<&str>) -> i32 {
         onnx_runtime: zt_core::models::runtime_path(),
         display: DisplayFacts::default(),
         automatic_updates: settings.bool(CHECKS_KEY),
-        last_update_check: crate::updates::load_last_check().as_ref().map(minute),
+        last_update_check: last_check.clone(),
         now: now_unix(),
         ..AppFacts::default()
     };
@@ -341,7 +342,11 @@ pub fn command_line(fix: Option<&str>) -> i32 {
             reachable: None,
         },
         endpoint,
-        updates: if settings.bool(CHECKS_KEY) { UpdateFacts::Unknown } else { UpdateFacts::ChecksOff },
+        updates: match (&last_check, settings.bool(CHECKS_KEY)) {
+            (_, false) => UpdateFacts::ChecksOff,
+            (Some(time), true) => UpdateFacts::Earlier(time.clone()),
+            (None, true) => UpdateFacts::Unknown,
+        },
         fcitx_helper: fcitx_helper(),
         about,
     };

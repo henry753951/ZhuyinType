@@ -282,7 +282,7 @@ fn local_time(unix: u64) -> String {
 #[must_use]
 pub fn update_section(updates: &UpdateFacts, about: &AppFacts) -> Section {
     let result = match updates {
-        UpdateFacts::Unknown => "不明".to_owned(),
+        UpdateFacts::Unknown | UpdateFacts::Earlier(_) => "不明".to_owned(),
         UpdateFacts::ChecksOff => "自動檢查已關閉".to_owned(),
         UpdateFacts::Current => "已是最新版本".to_owned(),
         UpdateFacts::Newer(version) => format!("有新版本 {version}"),

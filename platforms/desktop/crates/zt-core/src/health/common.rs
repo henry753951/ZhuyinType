@@ -84,6 +84,9 @@ pub enum UpdateFacts {
     Unsupported,
     /// The last check failed.
     Failed(String),
+    /// Checked at this time (「2026-11-18 13:00」), by the copy that serves; its result is not known here
+    /// (`zhuyintype --health`).
+    Earlier(String),
 }
 
 /// The data files, with what was looked at.
@@ -235,6 +238,7 @@ fn service_verdict(facts: &ServiceFacts) -> Check {
 pub fn update_check(version: &str, facts: &UpdateFacts) -> Check {
     let found = match facts {
         UpdateFacts::Unknown => "還沒有檢查".to_owned(),
+        UpdateFacts::Earlier(_) => "不明（由執行中的 ZhuyinType 檢查）".to_owned(),
         UpdateFacts::ChecksOff => "自動檢查已關閉".to_owned(),
         UpdateFacts::Current => "已是最新版本".to_owned(),
         UpdateFacts::Newer(next) => format!("有新版本 {next}"),
@@ -260,6 +264,7 @@ fn update_verdict(version: &str, facts: &UpdateFacts) -> Check {
         }
         UpdateFacts::Current => Check::ok("update", title, "已是最新版本。"),
         UpdateFacts::Unknown => Check::ok("update", title, "還沒有檢查過更新。"),
+        UpdateFacts::Earlier(time) => Check::ok("update", title, format!("上次檢查更新：{time}。")),
     }
 }
 
@@ -382,5 +387,7 @@ mod tests {
         assert_eq!(update_check("0.6.1", &UpdateFacts::Current).title, "版本 0.6.1");
         assert_eq!(update_check("0.6.1", &UpdateFacts::Failed("逾時".into())).status, Status::Info);
         assert_eq!(update_check("0.6.1", &UpdateFacts::Unknown).status, Status::Ok);
+        let earlier = update_check("0.6.1", &UpdateFacts::Earlier("2026-11-18 13:00".into()));
+        assert_eq!((earlier.status, earlier.detail.as_str()), (Status::Ok, "上次檢查更新：2026-11-18 13:00。"));
     }
 }
