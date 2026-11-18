@@ -63,8 +63,12 @@ final class RecentSymbols {
 }
 
 /// The open picker: its tabs, the search query, the highlight and the rows in view.
+///
+/// It opens on the search, and no key that types is taken from it: every letter, digit and symbol key types there
+/// (Zhuyin in Chinese mode, ㄅㄉˇˋㄓˊ˙ㄚㄞㄢ included; as is in English mode).  ↓ moves into the grid, whose highlighted
+/// row then shows 1–9, and only then do the digits pick (the 聯想詞 list's rule: a key shown before an item picks it).
 final class SymbolPicker {
-    /// Items per row; digits 1–9 pick from the highlighted row.
+    /// Items per row; in the grid, digits 1–9 pick from the highlighted row.
     static let columns = 9
     /// Rows in view; Page Up and Page Down move this many.
     static let visibleRows = 6
@@ -93,8 +97,20 @@ final class SymbolPicker {
     /// The first row in view.
     private(set) var topRow = 0
 
-    init(source: SymbolSource, recent: [String], prefill: String = "") {
+    enum Focus: Equatable {
+        /// Typing keys go to the search; the grid shows no keys.
+        case search
+        /// The arrows move the highlight and 1–9 pick from its row; a typing key goes back to the search.
+        case grid
+    }
+
+    private(set) var focus = Focus.search
+    /// Opened in English mode: the search shows the keys as typed (digits are digits), not as Zhuyin.
+    let english: Bool
+
+    init(source: SymbolSource, recent: [String], prefill: String = "", english: Bool = false) {
         self.source = source
+        self.english = english
         let recentItems = recent.map { SymbolItem(text: $0, name: source.name(of: $0) ?? "") }
         tabs = (recentItems.isEmpty ? [] : [SymbolCategory(id: "recent", title: "最近使用", symbols: recentItems)])
             + source.categories.filter { !$0.symbols.isEmpty }
@@ -107,7 +123,16 @@ final class SymbolPicker {
 
     var isSearching: Bool { !query.isEmpty }
     var items: [SymbolItem] { isSearching ? results : tabs.indices.contains(tab) ? tabs[tab].symbols : [] }
-    var shownQuery: String { prefilled ? query : source.displayQuery(query) }
+    var shownQuery: String { prefilled || english ? query : source.displayQuery(query) }
+    /// The highlighted row shows 1–9 (they pick from it): only in the grid.
+    var isNumbered: Bool { focus == .grid }
+    /// The footer's keys for where the keys are now.
+    var keysHint: String {
+        switch focus {
+        case .grid: return "1–9 選取　Tab 類別　Esc 關閉"
+        case .search: return items.isEmpty ? "Tab 類別　Esc 關閉" : "↓ 選取　Tab 類別　Esc 關閉"
+        }
+    }
     var rowCount: Int { (items.count + Self.columns - 1) / Self.columns }
     var highlightedRow: Int { highlight / Self.columns }
     var highlighted: SymbolItem? { items.indices.contains(highlight) ? items[highlight] : nil }
@@ -116,36 +141,54 @@ final class SymbolPicker {
         let modifiers = modifiers.intersection([.command, .control, .option, .shift])
         if !modifiers.isDisjoint(with: [.command, .control, .option]) { return .passThrough }
         let shift = modifiers.contains(.shift)
-        switch keyCode {
-        case 123: move(by: -1)
-        case 124: move(by: 1)
-        case 126: move(by: -Self.columns)
-        case 125: move(by: Self.columns)
-        case 116: move(by: -Self.columns * Self.visibleRows)
-        case 121: move(by: Self.columns * Self.visibleRows)
-        case 48:
-            if isSearching { clearQuery() } else { selectTab(tab + (shift ? -1 : 1)) }
-        case 36, 76:
-            return highlighted.map { .insert($0.text) } ?? .handled
-        case 53:
-            if isSearching { clearQuery(); return .handled }
+        switch (keyCode, focus) {
+        case (53, _):
             return .close
-        case 51:
+        case (36, _), (76, _):
+            return highlighted.map { .insert($0.text) } ?? .handled
+        case (48, _):
+            if isSearching { clearQuery() } else { selectTab(tab + (shift ? -1 : 1)) }
+        case (51, _):
+            focus = .search
             if prefilled { clearQuery() } else if isSearching { query.removeLast(); search() }
-        case 49:
-            if !isSearching || prefilled { return highlighted.map { .insert($0.text) } ?? .handled }
-            append(" ")
+        // The search: every typing key types; ↓ and Page Down move into the grid.
+        case (125, .search):
+            enterGrid(by: 0)
+        case (121, .search):
+            enterGrid(by: Self.columns * Self.visibleRows)
+        case (49, .search):
+            // A tone key in the search (the first tone, or the end of a syllable); nothing to end yet.
+            if isSearching && !prefilled { append(" ") }
+        case (123, .search), (124, .search), (126, .search), (116, .search), (115, .search), (119, .search):
+            break
+        // The grid: the arrows move, ↑ on the first row goes back to the search, 1–9 pick from the highlighted row.
+        case (123, .grid): move(by: -1)
+        case (124, .grid): move(by: 1)
+        case (126, .grid):
+            if highlightedRow == 0 { focus = .search } else { move(by: -Self.columns) }
+        case (125, .grid): move(by: Self.columns)
+        case (116, .grid): move(by: -Self.columns * Self.visibleRows)
+        case (121, .grid): move(by: Self.columns * Self.visibleRows)
+        case (115, .grid): move(by: -items.count)
+        case (119, .grid): move(by: items.count)
+        case (49, .grid):
+            return highlighted.map { .insert($0.text) } ?? .handled
         default:
             guard let character = KeyMapping.printable[keyCode] else { return .handled }
-            if let digit = character.wholeNumberValue {
-                // Digits always pick, from the highlighted row; 0 does nothing.
-                guard digit > 0 else { return .handled }
+            if focus == .grid, !shift, let digit = character.wholeNumberValue, digit > 0 {
                 let index = highlightedRow * Self.columns + digit - 1
                 return items.indices.contains(index) ? .insert(items[index].text) : .handled
             }
+            // In the search, and any other typing key in the grid (0, a Zhuyin or letter key): it types in the search.
             append(shift ? String(KeyMapping.shifted[character] ?? Character(character.uppercased())) : String(character))
         }
         return .handled
+    }
+
+    private func enterGrid(by delta: Int) {
+        guard !items.isEmpty else { return }
+        focus = .grid
+        if delta != 0 { move(by: delta) }
     }
 
     /// A click on an item in view.
@@ -184,6 +227,7 @@ final class SymbolPicker {
     }
 
     private func append(_ key: String) {
+        focus = .search
         if prefilled { query = ""; prefilled = false }
         query += key
         search()

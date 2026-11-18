@@ -164,6 +164,24 @@ pub enum Outcome {
     Close,
 }
 
+/// Where the picker's keys go.  It opens on the search, so no key that types is taken from it: every letter, digit
+/// and symbol key types there (Zhuyin in Chinese mode, as is in English).  ↓ moves into the grid, whose highlighted
+/// row then shows 1–9, and only then do those digits pick (the rule of the 聯想詞 list: a key shown before an item
+/// picks it, and no other key is taken from typing).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Focus {
+    /// Typing keys go to the search; the grid shows no keys.
+    #[default]
+    Search,
+    /// The arrows move the highlight and 1–9 pick from its row; a typing key goes back to the search.
+    Grid,
+}
+
+/// The footer's keys while the search has them.
+pub const SEARCH_KEYS_HINT: &str = "↓ 選取・Esc 關閉";
+/// The footer's keys in the grid.
+pub const GRID_KEYS_HINT: &str = "1–9 選取・Esc 關閉";
+
 /// The picker's state.
 pub struct Picker {
     source: Arc<dyn Source>,
@@ -175,6 +193,9 @@ pub struct Picker {
     results: Vec<Item>,
     highlight: usize,
     first_row: usize,
+    focus: Focus,
+    /// Opened in English mode: the search shows the keys as typed, not as Zhuyin.
+    english: bool,
 }
 
 impl Picker {
@@ -197,6 +218,8 @@ impl Picker {
             results: Vec::new(),
             highlight: 0,
             first_row: 0,
+            focus: Focus::Search,
+            english: false,
         };
         if !prefill.is_empty() {
             prefill.clone_into(&mut picker.query);
@@ -267,6 +290,7 @@ impl Picker {
     fn set_query(&mut self, query: String) {
         self.query = query;
         self.prefilled = false;
+        self.focus = Focus::Search;
         self.search();
     }
 
@@ -318,21 +342,39 @@ impl Picker {
         self.items().get(index)
     }
 
-    /// One key (contract: arrows, PageUp/PageDown, Tab, digits, Return/Space, Esc, ⌫, query keys).
+    /// Where the keys go now.
+    #[must_use]
+    pub fn focus(&self) -> Focus {
+        self.focus
+    }
+
+    /// English mode: the search shows the keys as typed (digits are digits), not read as Zhuyin.
+    pub fn set_english(&mut self, english: bool) {
+        self.english = english;
+    }
+
+    /// The footer's keys for where the keys go now (none to move to when nothing is listed).
+    #[must_use]
+    pub fn keys_hint(&self) -> &'static str {
+        match self.focus {
+            Focus::Grid => GRID_KEYS_HINT,
+            Focus::Search if self.items().is_empty() => "Esc 關閉",
+            Focus::Search => SEARCH_KEYS_HINT,
+        }
+    }
+
+    /// One key.  Esc closes in either state; the rest depends on [`Focus`] (docs/product/DESIGN.md 符號與 Emoji).
     pub fn key(&mut self, key: &Key) -> Outcome {
         let (code, modifiers) = crate::keys::canonical(key.code, key.modifiers);
         let chord = modifiers & (modifier::CONTROL | modifier::ALT | modifier::META);
         let shift = modifiers & modifier::SHIFT != 0;
-        match code {
-            code::LEFT => self.move_by(-1),
-            code::RIGHT => self.move_by(1),
-            code::UP => self.move_by(-(COLUMNS as isize)),
-            code::DOWN => self.move_by(COLUMNS as isize),
-            code::PAGE_UP => self.move_by(-((COLUMNS * VISIBLE_ROWS) as isize)),
-            code::PAGE_DOWN => self.move_by((COLUMNS * VISIBLE_ROWS) as isize),
-            code::HOME => self.move_to(0),
-            code::END => self.move_to(usize::MAX),
-            code::TAB => {
+        if chord != 0 {
+            return Outcome::Handled;
+        }
+        match (code, self.focus) {
+            (code::ESCAPE, _) => return Outcome::Close,
+            (code::RETURN, _) => return self.insert_highlighted(),
+            (code::TAB, _) => {
                 if self.query.is_empty() {
                     self.step_tab(if shift { -1 } else { 1 });
                 } else {
@@ -340,14 +382,11 @@ impl Picker {
                     self.select_tab(tab);
                 }
             }
-            code::RETURN => return self.insert_highlighted(),
-            code::ESCAPE => {
-                if self.query.is_empty() {
-                    return Outcome::Close;
-                }
-                self.set_query(String::new());
-            }
-            code::BACKSPACE => {
+            // The search: every typing key types; ↓ and Page Down move into the grid.
+            (code::DOWN, Focus::Search) => self.enter_grid(0),
+            (code::PAGE_DOWN, Focus::Search) => self.enter_grid((COLUMNS * VISIBLE_ROWS) as isize),
+            (code::BACKSPACE, _) => {
+                self.focus = Focus::Search;
                 if self.prefilled {
                     self.set_query(String::new());
                 } else if !self.query.is_empty() {
@@ -356,8 +395,32 @@ impl Picker {
                     self.set_query(query);
                 }
             }
-            code::SPACE if chord == 0 && self.query.is_empty() => return self.insert_highlighted(),
-            _ if chord == 0 && (i32::from(b'1')..=i32::from(b'9')).contains(&code) && !shift => {
+            (code::SPACE, Focus::Search) => {
+                // A tone key in the search (the first tone, or the end of a syllable); nothing to end yet.
+                if !self.query.is_empty() && !self.prefilled {
+                    let mut query = self.query.clone();
+                    query.push(' ');
+                    self.set_query(query);
+                }
+            }
+            (_, Focus::Search) => self.type_key(key, code, shift),
+            // The grid: the arrows move, 1–9 pick from the highlighted row, ↑ on the first row goes back up.
+            (code::LEFT, Focus::Grid) => self.move_by(-1),
+            (code::RIGHT, Focus::Grid) => self.move_by(1),
+            (code::UP, Focus::Grid) => {
+                if self.highlight < COLUMNS {
+                    self.focus = Focus::Search;
+                } else {
+                    self.move_by(-(COLUMNS as isize));
+                }
+            }
+            (code::DOWN, Focus::Grid) => self.move_by(COLUMNS as isize),
+            (code::PAGE_UP, Focus::Grid) => self.move_by(-((COLUMNS * VISIBLE_ROWS) as isize)),
+            (code::PAGE_DOWN, Focus::Grid) => self.move_by((COLUMNS * VISIBLE_ROWS) as isize),
+            (code::HOME, Focus::Grid) => self.move_to(0),
+            (code::END, Focus::Grid) => self.move_to(usize::MAX),
+            (code::SPACE, Focus::Grid) => return self.insert_highlighted(),
+            (_, Focus::Grid) if !shift && (i32::from(b'1')..=i32::from(b'9')).contains(&code) => {
                 let column = (code - i32::from(b'1')) as usize;
                 let start = self.highlight / COLUMNS * COLUMNS;
                 return match self.item(start + column) {
@@ -365,16 +428,36 @@ impl Picker {
                     None => Outcome::Handled,
                 };
             }
-            _ if chord == 0 => {
-                if let Some(character) = query_character(key, code, shift) {
-                    let mut query = if self.prefilled { String::new() } else { self.query.clone() };
-                    query.push(character);
-                    self.set_query(query);
+            // Any other typing key (0, a Zhuyin or letter key, a symbol) goes back to the search and types there.
+            (_, Focus::Grid) => {
+                if query_character(key, code, shift).is_some() {
+                    self.focus = Focus::Search;
+                    self.type_key(key, code, shift);
                 }
             }
-            _ => {}
         }
         Outcome::Handled
+    }
+
+    /// The highlight moves into the grid (by `delta`), when it lists anything.
+    fn enter_grid(&mut self, delta: isize) {
+        if self.items().is_empty() {
+            return;
+        }
+        self.focus = Focus::Grid;
+        self.move_by(delta);
+    }
+
+    /// A typing key into the search (the prefilled composition is replaced by it).
+    fn type_key(&mut self, key: &Key, code: i32, shift: bool) {
+        if code == code::SPACE {
+            return;
+        }
+        if let Some(character) = query_character(key, code, shift) {
+            let mut query = if self.prefilled { String::new() } else { self.query.clone() };
+            query.push(character);
+            self.set_query(query);
+        }
     }
 
     fn insert_highlighted(&self) -> Outcome {
@@ -387,7 +470,7 @@ impl Picker {
     /// The search field's text: the prefilled text as is, typed keys as `display_query` reads them.
     #[must_use]
     pub fn display_query(&self) -> String {
-        if self.prefilled || self.query.is_empty() {
+        if self.prefilled || self.query.is_empty() || self.english {
             return self.query.clone();
         }
         self.source.display_query(&self.query)
@@ -408,6 +491,8 @@ impl Picker {
             row_count: self.row_count(),
             items: items[start..end].to_vec(),
             highlight: self.highlight(),
+            numbered: self.focus == Focus::Grid,
+            hint: self.keys_hint().to_owned(),
         }
     }
 
@@ -427,7 +512,7 @@ impl Picker {
         let notice = if items.is_empty() {
             "找不到符合的符號".to_owned()
         } else {
-            format!("{header}　{}/{}　↑↓ 換列　Tab 換類別", row + 1, self.row_count())
+            format!("{header}　{}/{}　{}", row + 1, self.row_count(), self.keys_hint())
         };
         Presentation {
             rows: items[start..end]
@@ -437,7 +522,8 @@ impl Picker {
                     index: start + column,
                     text: item.text.clone(),
                     annotation: None,
-                    key: char::from_digit(column as u32 + 1, 10),
+                    // Only in the grid: while the search has the keys, the digits type there.
+                    key: (self.focus == Focus::Grid).then(|| char::from_digit(column as u32 + 1, 10)).flatten(),
                 })
                 .collect(),
             count: items.len(),
@@ -540,6 +626,10 @@ mod tests {
     #[test]
     fn arrows_wrap_rows_and_clamp_at_the_ends() {
         let mut p = picker(&[], "");
+        press(&mut p, code::RIGHT, 0);
+        assert_eq!((p.highlight(), p.focus()), (Some(0), Focus::Search), "→ in the search moves nothing");
+        press(&mut p, code::DOWN, 0);
+        assert_eq!((p.highlight(), p.focus()), (Some(0), Focus::Grid), "↓ moves into the grid, on the first item");
         press(&mut p, code::LEFT, 0);
         assert_eq!(p.highlight(), Some(0));
         for _ in 0..9 {
@@ -555,11 +645,15 @@ mod tests {
         assert_eq!(p.highlight(), Some(0));
         press(&mut p, code::PAGE_DOWN, 0);
         assert_eq!(p.highlight(), Some(29));
+        press(&mut p, code::HOME, 0);
+        press(&mut p, code::UP, 0);
+        assert_eq!((p.highlight(), p.focus()), (Some(0), Focus::Search), "↑ on the first row goes back to the search");
     }
 
     #[test]
     fn digits_insert_from_the_highlighted_row() {
         let mut p = picker(&[], "");
+        press(&mut p, code::DOWN, 0);
         press(&mut p, code::DOWN, 0);
         assert_eq!(press(&mut p, i32::from(b'2'), 0), Outcome::Insert("s10".into()));
         press(&mut p, code::DOWN, 0);
@@ -581,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn letters_search_and_tab_or_esc_leave_it() {
+    fn letters_search_tab_leaves_it_and_esc_closes() {
         let mut p = picker(&[], "");
         for c in "vul".chars() {
             typed(&mut p, c);
@@ -593,19 +687,22 @@ mod tests {
         press(&mut p, code::BACKSPACE, 0);
         assert_eq!(p.query(), "vu");
         assert!(p.items().is_empty());
-        assert_eq!(press(&mut p, code::ESCAPE, 0), Outcome::Handled);
-        assert_eq!(p.query(), "");
-        assert_eq!(p.tab(), Some(0));
-        typed(&mut p, 'v');
+        typed(&mut p, 'l');
         press(&mut p, code::TAB, 0);
         assert_eq!(p.query(), "", "Tab leaves the search");
-        assert_eq!(press(&mut p, code::ESCAPE, 0), Outcome::Close);
+        assert_eq!(p.tab(), Some(0));
+        typed(&mut p, 'v');
+        assert_eq!(press(&mut p, code::ESCAPE, 0), Outcome::Close, "Esc closes, searching or not");
     }
 
     #[test]
-    fn space_inserts_only_without_a_query() {
+    fn space_types_in_the_search_and_inserts_in_the_grid() {
         let mut p = picker(&[], "");
+        assert_eq!(press(&mut p, code::SPACE, 0), Outcome::Handled, "nothing to end in an empty search");
+        assert_eq!(p.query(), "");
+        press(&mut p, code::DOWN, 0);
         assert_eq!(press(&mut p, code::SPACE, 0), Outcome::Insert("s0".into()));
+        let mut p = picker(&[], "");
         typed(&mut p, 'v');
         assert_eq!(press(&mut p, code::SPACE, 0), Outcome::Handled);
         assert_eq!(p.query(), "v ", "space is a tone key in the search");
@@ -613,11 +710,52 @@ mod tests {
     }
 
     #[test]
-    fn digits_are_never_query_keys() {
-        let mut p = picker(&[], "");
+    fn digits_type_in_the_search_and_pick_in_the_grid() {
+        // ㄅㄉˇˋㄓˊ˙ㄚㄞㄢ are on digit keys: in the search they type, as every other key.
+        let mut p = picker(&["★", "→"], "");
+        for c in "94".chars() {
+            assert_eq!(typed(&mut p, c), Outcome::Handled);
+        }
+        assert_eq!(p.query(), "94");
+        assert!(p.presentation().rows.iter().all(|row| row.key.is_none()), "no keys shown in the search");
+        assert!(!p.view().numbered);
+        assert_eq!(p.keys_hint(), "Esc 關閉", "nothing found: nowhere to move to");
+        press(&mut p, code::BACKSPACE, 0);
+        press(&mut p, code::BACKSPACE, 0);
         typed(&mut p, 'v');
+        assert_eq!(p.keys_hint(), SEARCH_KEYS_HINT);
+        press(&mut p, code::DOWN, 0);
+        assert_eq!(p.focus(), Focus::Grid);
+        assert!(p.view().numbered);
+        assert_eq!(p.presentation().rows[0].key, Some('1'), "the keys appear once ↓ moved into the grid");
+        assert_eq!(p.keys_hint(), GRID_KEYS_HINT);
+        // A typing key that is no label goes back to the search and types there: 0 (ㄢ), letters.
+        assert_eq!(typed(&mut p, '0'), Outcome::Handled);
+        assert_eq!((p.query(), p.focus()), ("v0", Focus::Search));
+        press(&mut p, code::BACKSPACE, 0);
+        press(&mut p, code::DOWN, 0);
+        typed(&mut p, 'u');
+        assert_eq!((p.query(), p.focus()), ("vu", Focus::Search));
+        press(&mut p, code::BACKSPACE, 0);
+        press(&mut p, code::DOWN, 0);
+        press(&mut p, code::BACKSPACE, 0);
+        assert_eq!((p.query(), p.focus()), ("", Focus::Search), "⌫ in the grid edits the search");
+        typed(&mut p, 'v');
+        press(&mut p, code::DOWN, 0);
         assert_eq!(press(&mut p, i32::from(b'1'), 0), Outcome::Insert("ㄒ".into()));
-        assert_eq!(p.query(), "v");
+    }
+
+    #[test]
+    fn english_mode_shows_the_keys_as_typed() {
+        let mut p = picker(&[], "");
+        p.set_english(true);
+        for c in "vul".chars() {
+            typed(&mut p, c);
+        }
+        assert_eq!(p.display_query(), "vul");
+        assert_eq!(p.items().len(), 2, "the same search");
+        typed(&mut p, '1');
+        assert_eq!(p.display_query(), "vul1", "a digit is a digit");
     }
 
     #[test]
@@ -643,6 +781,8 @@ mod tests {
     #[test]
     fn the_native_list_is_the_highlighted_row() {
         let mut p = picker(&[], "");
+        assert_eq!(p.presentation().rows[0].key, None, "the search has the keys: no labels");
+        press(&mut p, code::DOWN, 0);
         press(&mut p, code::DOWN, 0);
         press(&mut p, code::RIGHT, 0);
         let list = p.presentation();
@@ -662,6 +802,7 @@ mod tests {
         let view = p.view();
         assert_eq!(view.row_count, 4);
         assert_eq!(view.items.len(), 30);
+        press(&mut p, code::DOWN, 0);
         press(&mut p, code::END, 0);
         assert_eq!(p.view().highlight, Some(29));
     }

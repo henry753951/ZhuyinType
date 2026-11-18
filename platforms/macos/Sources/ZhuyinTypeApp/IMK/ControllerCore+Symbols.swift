@@ -46,7 +46,7 @@ extension ControllerCore {
             render()
         }
         hidePanel?()
-        let picker = SymbolPicker(source: symbolSource, recent: recentSymbols?.items ?? [], prefill: prefill)
+        let picker = SymbolPicker(source: symbolSource, recent: recentSymbols?.items ?? [], prefill: prefill, english: isEnglish)
         symbolPicker = picker
         showSymbolPicker?(picker, symbolCaret)
     }

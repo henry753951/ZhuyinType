@@ -19,6 +19,18 @@ pub(crate) enum PanelUpdate {
     Show(Box<zt_panel::style::Panel>),
 }
 
+impl PanelUpdate {
+    /// Whether 符號與 Emoji's grid is on screen once this update is applied over a window that showed it or not
+    /// (`before`).
+    pub(crate) fn shows_picker(&self, before: bool) -> bool {
+        match self {
+            Self::Unchanged => before,
+            Self::Hidden => false,
+            Self::Show(panel) => panel.picker.is_some(),
+        }
+    }
+}
+
 /// What the text service needs from a reply.  Text is UTF-16, the unit TSF ranges count in.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Reply {
@@ -376,10 +388,20 @@ mod tests {
             row_count: 1,
             items: vec![zt_panel::picker::Item { text: "😀".into(), name: "笑臉".into() }],
             highlight: Some(0),
+            numbered: false,
+            hint: "↓ 選取・Esc 關閉".into(),
         });
         let mut grid = good();
         grid["panel"] = serde_json::to_value(&with_grid).unwrap();
-        assert_eq!(parse_reply(&line(grid), 7, "{A}").unwrap().panel, PanelUpdate::Show(Box::new(with_grid)));
+        let grid = parse_reply(&line(grid), 7, "{A}").unwrap().panel;
+        assert_eq!(grid, PanelUpdate::Show(Box::new(with_grid)));
+        // Whether the grid is on screen after each kind of update (the text service then takes every key).
+        for before in [false, true] {
+            assert!(grid.shows_picker(before));
+            assert!(!PanelUpdate::Show(Box::new(panel.clone())).shows_picker(before), "a candidate list");
+            assert!(!PanelUpdate::Hidden.shows_picker(before));
+            assert_eq!(PanelUpdate::Unchanged.shows_picker(before), before, "left out: as it was");
+        }
         for (key, value) in [("panel", json!(3)), ("toast", json!(1)), ("boundary", json!(2))] {
             let mut bad = good();
             bad[key] = value;

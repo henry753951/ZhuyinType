@@ -245,15 +245,20 @@ enum UIPreviewRenderer {
         let source = EngineSymbolSource()
         let browsing = SymbolPicker(source: source, recent: ["😂", "，", "→", "❤️"])
         browsing.selectTab(browsing.tabs.firstIndex { $0.id == "smileys" } ?? 0)
-        for key: UInt16 in [125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
+        // Into the grid, then the second row's third item.
+        for key: UInt16 in [125, 125, 124, 124] { _ = browsing.handle(keyCode: key, modifiers: []) }
         let searching = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [9, 32, 37] { _ = searching.handle(keyCode: key, modifiers: []) }
         let prefilled = SymbolPicker(source: source, recent: [], prefill: "笑")
-        let english = SymbolPicker(source: source, recent: [])
+        let digits = SymbolPicker(source: source, recent: ["😂", "，"])
+        for key: UInt16 in [25, 21] { _ = digits.handle(keyCode: key, modifiers: []) } // 9 4: ㄞˋ
+        let english = SymbolPicker(source: source, recent: [], english: true)
         for key: UInt16 in [4, 14, 0, 15, 17] { _ = english.handle(keyCode: key, modifiers: []) } // heart
         let empty = SymbolPicker(source: source, recent: [])
         for key: UInt16 in [6, 6, 6, 7, 7] { _ = empty.handle(keyCode: key, modifiers: []) } // zzzxx
-        for (name, picker) in [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("english", english), ("no-results", empty)] {
+        let pickers = [("browse", browsing), ("search", searching), ("prefilled", prefilled), ("zhuyin-digits", digits),
+                       ("english", english), ("no-results", empty)]
+        for (name, picker) in pickers {
             let view = SymbolPickerView(frame: .zero)
             view.hoverEnabled = false
             view.update(picker)

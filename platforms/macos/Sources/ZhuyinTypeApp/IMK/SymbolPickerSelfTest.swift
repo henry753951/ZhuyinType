@@ -84,11 +84,15 @@ enum SymbolPickerSelfTest {
             try expect(press(english, comma, shortcut) && english.isSymbolPickerOpen, "English mode: the picker did not open")
         }
 
-        test("symbols: arrows move round the rows, Tab changes the category, digits pick from the highlighted row") {
+        test("symbols: ↓ moves into the grid, arrows move round the rows, Tab changes the category, digits pick there") {
             let (core, client, recent) = session()
             _ = press(core, comma, shortcut)
             guard let picker = core.symbolPicker else { throw Failure(description: "not open") }
             try expect(picker.tabs.first?.id == "punctuation", "with no recent symbols the first tab is \(picker.tabs.first?.id ?? "")")
+            _ = press(core, 124)
+            try expect(picker.highlight == 0 && picker.focus == .search, "→ moved the highlight while the search has the keys")
+            _ = press(core, 125)
+            try expect(picker.highlight == 0 && picker.focus == .grid && picker.isNumbered, "↓ did not move into the grid")
             _ = press(core, 124)
             try expect(picker.highlight == 1, "→ did not move the highlight")
             _ = press(core, 123); _ = press(core, 123)
@@ -113,7 +117,7 @@ enum SymbolPickerSelfTest {
             try expect(core.symbolPicker?.items.first?.name.isEmpty == false, "a recent symbol has no name")
         }
 
-        test("symbols: typed keys search; Space and Return insert; Esc clears the search first; ⌘ keys go to the app") {
+        test("symbols: typed keys search; Space in the grid and Return insert; Esc closes; ⌘ keys go to the app") {
             let (core, client, _) = session()
             _ = press(core, comma, shortcut)
             guard let picker = core.symbolPicker else { throw Failure(description: "not open") }
@@ -122,17 +126,52 @@ enum SymbolPickerSelfTest {
             try expect(!picker.items.isEmpty && picker.items.allSatisfy { $0.name.contains("笑") }, "ㄒㄧㄠ found \(picker.items.map(\.text))")
             _ = press(core, 51)
             try expect(picker.query == "vu", "⌫ did not delete the last key")
-            _ = press(core, 53)
-            try expect(core.isSymbolPickerOpen && picker.query.isEmpty, "Esc did not clear the search first")
+            _ = press(core, 51); _ = press(core, 51)
+            try expect(core.isSymbolPickerOpen && picker.query.isEmpty, "⌫ did not clear the search")
+            try expect(press(core, 49) && client.inserts.isEmpty && core.isSymbolPickerOpen, "Space in an empty search inserted")
+            _ = press(core, 125)
             try expect(press(core, 49) && client.inserts == [picker.tabs[0].symbols[0].text], "Space did not insert the highlighted item")
             _ = press(core, comma, shortcut)
             _ = press(core, 48)
+            _ = press(core, 125)
             _ = press(core, 124)
             let second = core.symbolPicker?.highlighted?.text
             try expect(second == source.categories[0].symbols[1].text, "→ after Tab did not highlight the second item")
             try expect(press(core, 36) && client.inserts.last == second, "Return did not insert the highlighted item")
             _ = press(core, comma, shortcut)
+            for key: UInt16 in [9, 32] { _ = press(core, key) }
+            try expect(press(core, 53) && !core.isSymbolPickerOpen, "Esc with a search did not close the picker")
+            _ = press(core, comma, shortcut)
             try expect(!press(core, 9, .command) && !core.isSymbolPickerOpen, "⌘V did not close the picker and go to the app")
+        }
+
+        test("symbols: Zhuyin on digit keys types into the search; 1–9 pick only once ↓ moved into the grid") {
+            let (core, client, _) = session()
+            _ = press(core, comma, shortcut)
+            guard let picker = core.symbolPicker else { throw Failure(description: "not open") }
+            _ = press(core, 25); _ = press(core, 21) // 9 4: ㄞˋ
+            try expect(picker.query == "94" && core.isSymbolPickerOpen && client.inserts.isEmpty,
+                       "ㄞˋ did not type into the search: \(picker.query), inserted \(client.inserts)")
+            try expect(!picker.isNumbered && picker.focus == .search, "the grid shows keys while the search has them")
+            _ = press(core, 51); _ = press(core, 51)
+            _ = press(core, 18) // 1: ㄅ
+            try expect(picker.query == "1" && client.inserts.isEmpty, "ㄅ did not type into the search")
+            _ = press(core, 51)
+            _ = press(core, 125)
+            try expect(picker.isNumbered && picker.keysHint.hasPrefix("1–9"), "↓ did not number the row: \(picker.keysHint)")
+            _ = press(core, 29) // 0: ㄢ, no label
+            try expect(picker.focus == .search && picker.query == "0", "0 in the grid did not go back to the search and type")
+            _ = press(core, 51)
+            _ = press(core, 125)
+            _ = press(core, 126)
+            try expect(picker.focus == .search, "↑ on the first row did not go back to the search")
+            _ = press(core, 125)
+            let second = picker.items[1].text
+            try expect(press(core, 19) && client.inserts == [second], "2 in the grid did not insert the second item")
+            let (english, _, _) = session(english: true)
+            _ = press(english, comma, shortcut)
+            for key: UInt16 in [9, 25] { _ = press(english, key) }
+            try expect(english.symbolPicker?.shownQuery == "v9", "English mode does not show the keys as typed")
         }
 
         test("symbols: the composition becomes the search, is cancelled, and the first key replaces it") {

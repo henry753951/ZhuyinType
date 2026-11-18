@@ -1,6 +1,7 @@
 //! 符號與 Emoji: the picker's grid in the candidate window (`zt_core::symbols::PickerView`).  The window is the
 //! candidate window's (same surface, edge, placement and appearance motion; never focused): a search line, the
-//! category tabs, a grid of rows with the highlighted row's 1–9, and the highlighted symbol's name.  Clicks insert
+//! category tabs, a grid of rows (the highlighted row shows 1–9 once ↓ moved the keys into the grid), and the
+//! highlighted symbol's name with the keys for the current state.  Clicks insert
 //! a symbol or switch the tab (`PopupAction::PickSymbol`, `PopupAction::SymbolTab`).
 
 use gpui_kit::assets::IconName;
@@ -81,11 +82,7 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
                         "打注音或英文搜尋".to_owned()
                     }),
                 ),
-            )
-            .when(searching, |this| {
-                this.child(div().flex_1())
-                    .child(div().text_size(px(SMALL_FONT)).text_color(p.text_tertiary).child("Esc 清除・Tab 回類別"))
-            }),
+            ),
     );
 
     // The tabs.
@@ -132,6 +129,8 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
     // The grid.
     let grid_top = rule_y + 2.;
     let highlighted_row = view.highlight.map(|index| index / COLUMNS);
+    // 1–9 only while the keys are in the grid: in the search the digits type.
+    let numbered_row = highlighted_row.filter(|_| view.numbered);
     let mut grid = div().absolute().left(px(PAD)).top(px(grid_top)).w(px(inner)).h(px(CELL * VISIBLE_ROWS as f32));
     if view.items.is_empty() {
         grid = grid
@@ -144,7 +143,7 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
         let index = view.first_row * COLUMNS + offset;
         let (row, column) = (offset / COLUMNS, offset % COLUMNS);
         let selected = view.highlight == Some(index);
-        let numbered = highlighted_row == Some(index / COLUMNS);
+        let numbered = numbered_row == Some(index / COLUMNS);
         let actions = actions.clone();
         grid = grid.child(
             div()
@@ -188,7 +187,7 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
     }
     surface = surface.child(grid);
 
-    // The footer: the highlighted symbol's name, and where the row is.
+    // The footer: the highlighted symbol's name; the keys for the current state, and where the row is.
     let footer_top = height - PAD - FOOTER_H;
     let name = view
         .highlight
@@ -197,6 +196,7 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
         .map(|item| item.name.clone())
         .unwrap_or_default();
     let position = highlighted_row.map(|row| format!("{}/{}", row + 1, view.row_count.max(1))).unwrap_or_default();
+    let right = format!("{}　{position}", view.hint).trim().to_owned();
     surface = surface.child(div().absolute().left_0().top(px(footer_top)).w(px(width)).h(px(1.)).bg(c.hairline)).child(
         div()
             .absolute()
@@ -210,7 +210,11 @@ pub fn render(view: &PickerView, p: &Palette, chrome: Chrome, actions: Option<Ac
             .text_color(p.text_secondary)
             .child(div().flex_1().truncate().child(SharedString::from(name)))
             .child(
-                div().font_features(tokens::tabular()).text_color(p.text_tertiary).child(SharedString::from(position)),
+                div()
+                    .flex_none()
+                    .font_features(tokens::tabular())
+                    .text_color(p.text_tertiary)
+                    .child(SharedString::from(right)),
             ),
     );
     surface.children(edge(chrome, &c, RADIUS)).into_any_element()

@@ -277,7 +277,9 @@ impl InputController {
         if self.session.composing() {
             let _ = self.session.reset();
         }
-        self.picker = Some(Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill));
+        let mut picker = Picker::open(self.symbols.clone(), self.recent_symbols.items(), &prefill);
+        picker.set_english(self.english());
+        self.picker = Some(picker);
         self.sync_picker();
         true
     }
