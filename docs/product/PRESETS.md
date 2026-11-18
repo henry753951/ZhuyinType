@@ -99,8 +99,8 @@
 |---|---|---|
 | 單按 Shift 切換中英（打字）（`shiftToggle`） | 開，左右 Shift（`both`） | 單按 Shift 切換中英：M1、M2，廠商。左右兩邊都切換是舊版的預設（M4）；現行文件沒有分左右 |
 | 開始輸入時使用英文（打字）（`startInEnglish`） | 關 | 預設輸入模式是中文：S3，第二手；M4 第 9 頁，舊版 |
-| ⌃ 加符號鍵打中文標點（打字 › 標點與符號）（`KeyFeature.controlPunctuation`） | 開 | Ctrl 加符號鍵打全形符號：M1，廠商 |
-| 選字鍵（視窗與提示）（`selectionKeys`） | 1 2 3 4 5 6 7 8 9（`digits`） | 數字鍵選字：M1、M2，廠商 |
+| ⌃ 加符號鍵打中文標點（標點與符號）（`KeyFeature.controlPunctuation`） | 開 | Ctrl 加符號鍵打全形符號：M1，廠商 |
+| 選字鍵（候選字視窗）（`selectionKeys`） | 1 2 3 4 5 6 7 8 9（`digits`） | 數字鍵選字：M1、M2，廠商 |
 
 這四項都和 ZhuyinType 的預設值相同，所以從預設設定套用這個組合時不會改變任何設定。
 
@@ -118,8 +118,8 @@
 | 單按 Shift 切換中英（打字）（`shiftToggle`） | 關（`none`） | 注音的設定與切換方式的說明都沒有 Shift：A4、A5，廠商 |
 | Caps Lock 打英文（打字）（`KeyFeature.capsLockEnglish`） | 開 | 以 Caps Lock 切換中文與拉丁輸入方式：A5、A9，廠商。系統的這個選項開著時，Caps Lock 由系統處理（DESIGN.md §2.1） |
 | 標點按法（打字）（`punctuationKeys`） | macOS（`mac`） | Shift 加符號鍵打全形中文標點：S2，第二手（2017） |
-| ⌥ 加數字或符號鍵打鍵上的符號（打字 › 標點與符號）（`KeyFeature.optionSymbols`） | 開 | 按住 Option 打數字：A2，廠商。文件只寫數字，沒有寫符號鍵 |
-| 選字鍵（視窗與提示）（`selectionKeys`） | 1 2 3 4 5 6 7 8 9（`digits`） | 數字鍵選字：A2，廠商 |
+| ⌥ 加數字或符號鍵打鍵上的符號（標點與符號）（`KeyFeature.optionSymbols`） | 開 | 按住 Option 打數字：A2，廠商。文件只寫數字，沒有寫符號鍵 |
+| 選字鍵（候選字視窗）（`selectionKeys`） | 1 2 3 4 5 6 7 8 9（`digits`） | 數字鍵選字：A2，廠商 |
 
 以下和 Apple 注音相同，而且是 ZhuyinType 固定的行為，不需要設定：
 
@@ -134,7 +134,7 @@
 
 - 微軟注音的 ↑ 直接換候選字、Tab 與 → 展開表格、關聯字視窗、以 Unicode 或 Big5 碼輸入。
 - ZhuyinType 的 Shift＋空白只切換中文標點全半形，英數與空白維持半形。
-- 微軟注音以反引號 ` 加符號鍵打全形符號。ZhuyinType 的 `` ` `` 預設是「打出注音本身」。這個按鍵可以在「選字 › 改字」更改。
+- 微軟注音以反引號 ` 加符號鍵打全形符號。ZhuyinType 的 `` ` `` 預設是「打出注音本身」。這個按鍵可以在「修正 › 改字」更改。
 - Apple 注音以 = 與 -、[ 與 ] 移到上一列或下一列。ZhuyinType 不能把沒有修飾鍵的符號鍵指定為按鍵，因為這些鍵用來打注音與標點。
 - Apple 注音的 Shift + 空白（結構候選字）、Tab（排序方式）、標點視窗。ZhuyinType 的 ⇧空白 切換標點全半形，⌥空白 在組字中放一個半形空白；兩者可自訂。
 - 兩邊的 Control + 空白都是系統切換輸入方式或開關輸入法的快速鍵，不是輸入法的設定。
