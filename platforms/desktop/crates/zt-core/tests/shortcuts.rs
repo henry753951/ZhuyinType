@@ -55,14 +55,54 @@ fn labels() {
     assert_eq!(shortcuts.active_label("typeZhuyin"), "`");
     let next = shortcuts.bindings("nextPage");
     assert_eq!(next[1].label, "PgDn");
-    assert_eq!(next[2].label, "Alt+↓");
-    assert_eq!(next[2].spoken, "Alt+↓");
+    assert_eq!(next[2].label, "Ctrl+↓");
+    assert_eq!(next[2].spoken, "Ctrl+↓");
+    assert_eq!(shortcuts.active_label("addCandidatePhrase"), "Ctrl+Enter", "the key is Enter on these keyboards");
+    assert_eq!(shortcuts.active_label("blockCandidate"), "Ctrl+Del");
+    assert_eq!(shortcuts.bindings("blockCandidate")[0].spoken, "Ctrl+Delete");
     assert_eq!(shortcuts.bindings("previousPage")[0].spoken, "Shift+Tab");
     shortcuts.record("typeZhuyin", 'U' as i32, FREE | modifier::SHIFT, Some(0)).unwrap();
     assert_eq!(shortcuts.active_label("typeZhuyin"), "Alt+⇧U");
     settings.set("feature.typeZhuyin", Value::Bool(false)).unwrap();
     assert_eq!(shortcuts.active_label("typeZhuyin"), "");
     assert_eq!(Shortcuts::modifier_label(modifier::CONTROL | modifier::ALT), "Ctrl+Alt+");
+}
+
+/// The defaults follow the system's text editing (Ctrl moves and deletes by a word where macOS uses ⌥) and never use
+/// Alt: a Windows app that sees Alt released shows its menu's key tips and takes the focus, and Alt+Space is the window
+/// menu on Windows, GNOME and KDE (DESIGN.md §2.1).
+#[test]
+fn defaults_use_ctrl_where_macos_uses_option() {
+    let (_, shortcuts) = fresh();
+    for command in Shortcuts::commands() {
+        for binding in &command.defaults {
+            assert_eq!(binding.modifiers & modifier::ALT, 0, "{} has an Alt default", command.id);
+        }
+    }
+    let first = |id: &str| shortcuts.bindings(id)[0].binding;
+    let control = |key| zt_core::shortcuts::Binding { key, modifiers: modifier::CONTROL };
+    assert_eq!(first("previousCharacter"), control(code::LEFT), "⌥← on macOS");
+    assert_eq!(first("nextCharacter"), control(code::RIGHT), "⌥→ on macOS");
+    assert_eq!(first("deleteWord"), control(code::BACKSPACE), "⌥⌫ on macOS");
+    assert_eq!(shortcuts.bindings("nextPage")[2].binding, control(code::DOWN), "⌥↓ on macOS");
+    assert_eq!(shortcuts.bindings("previousPage")[2].binding, control(code::UP), "⌥↑ on macOS");
+    // ⌥空白 on macOS; Ctrl+空白 is the system's input method switch, so with ⇧ (Office's non-breaking space).
+    assert_eq!(shortcuts.active_label("insertSpace"), "Ctrl+⇧空白");
+}
+
+#[test]
+fn a_command_the_version_does_not_have_is_ignored() {
+    let dir = TempDir::new();
+    let path = dir.path().join("settings.json");
+    let stored = json!({STORAGE_KEY: {
+        "renamedCommand": [{"key": code::LEFT, "modifiers": modifier::ALT}],
+        "typeZhuyin": [{"key": 'U' as i32, "modifiers": FREE}],
+    }});
+    std::fs::write(&path, stored.to_string()).unwrap();
+    let shortcuts = Shortcuts::new(Settings::open(Some(path)));
+    assert!(shortcuts.error().is_none(), "{:?}", shortcuts.error());
+    assert_eq!(shortcuts.active_label("typeZhuyin"), "Alt+U", "the rest of the file still counts");
+    assert_eq!(resolve(&shortcuts, code::LEFT, modifier::ALT), None);
 }
 
 #[test]
@@ -204,7 +244,9 @@ fn limits_and_required_commands() {
 #[test]
 fn corrupt_storage_is_preserved() {
     let (settings, shortcuts) = fresh();
-    for stored in [json!("not-json"), json!({"unknown": []}), json!({"typeZhuyin": [{"key": 65.5, "modifiers": 0}]})] {
+    for stored in
+        [json!("not-json"), json!({"typeZhuyin": "not-a-list"}), json!({"typeZhuyin": [{"key": 65.5, "modifiers": 0}]})]
+    {
         settings.set(STORAGE_KEY, stored.clone()).unwrap();
         assert!(shortcuts.error().is_some(), "{stored}");
         assert_eq!(resolve(&shortcuts, code::TAB, 0), Some("nextPage"));

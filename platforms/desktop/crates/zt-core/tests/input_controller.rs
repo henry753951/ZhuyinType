@@ -39,7 +39,7 @@ fn mode_changes(events: &[ControllerEvent]) -> usize {
 fn pass_through_commits() {
     // (command to change, feature to turn off, key, modifiers)
     let cases: &[(&str, &str, i32, u32)] = &[
-        ("", "feature.deleteWord", code::BACKSPACE, modifier::ALT),
+        ("", "feature.deleteWord", code::BACKSPACE, modifier::CONTROL),
         ("", "feature.controlPunctuation", ',' as i32, modifier::CONTROL),
         ("nextPage", "", code::TAB, 0),
         ("previousPage", "", code::BACKTAB, 0),
@@ -419,7 +419,10 @@ fn punctuation_width_and_insert_space_commands() {
     assert!(f.press(code::SPACE, modifier::SHIFT), "Shift+Space switches the punctuation width");
     assert_eq!(f.composition(), before);
     assert_ne!(f.input.session().punctuation_width(), zhuyin_core::api::PunctuationWidth::Full);
-    assert!(f.press(code::SPACE, modifier::ALT), "Alt+Space puts a space into the composition");
+    assert!(
+        f.press(code::SPACE, modifier::CONTROL | modifier::SHIFT),
+        "Ctrl+Shift+Space puts a space into the composition"
+    );
     assert!(f.composition().contains(' '), "{}", f.composition());
 }
 
@@ -446,4 +449,58 @@ fn dispatch_latency() {
         .collect();
     samples.sort_unstable();
     println!("Idle host-key dispatch ns p50={} p95={} p99={}", samples[150], samples[285], samples[297]);
+}
+
+#[test]
+fn page_up_and_page_down_page_with_the_paging_keys_off() {
+    // 翻頁 off hands Tab, ⇧Tab and Ctrl+↓ ↑ to the app; Page Up and Page Down still page (macOS does the same).  The
+    // test list has one page: the engine paging shows as the list's edge.
+    let mut f = Fixture::new();
+    f.settings.set("feature.pageKeys", Value::Bool(false)).unwrap();
+    f.type_keys("su3");
+    f.press(code::DOWN, 0);
+    f.input.take_events();
+    assert!(f.press(code::PAGE_DOWN, 0), "Page Down pages");
+    assert!(f.input.take_events().contains(&ControllerEvent::Boundary(1)));
+    assert!(f.press(code::PAGE_UP, 0));
+    assert!(f.input.take_events().contains(&ControllerEvent::Boundary(-1)));
+    assert!(f.commits().is_empty());
+    assert!(!f.press(code::DOWN, modifier::CONTROL), "Ctrl+↓ goes to the app");
+    assert!(!f.commits().is_empty(), "after the composition is sent");
+}
+
+#[test]
+fn ctrl_arrows_list_the_neighbouring_character() {
+    // A vertical list does it with ← → too: Ctrl+← is the same key there.
+    let mut a = Fixture::new();
+    let mut b = Fixture::new();
+    for f in [&mut a, &mut b] {
+        f.type_keys("su3cl3");
+        f.press(code::DOWN, 0);
+    }
+    assert!(a.press(code::LEFT, modifier::CONTROL));
+    assert!(b.press(code::LEFT, 0));
+    assert_eq!(a.input.presentation(), b.input.presentation());
+    // A horizontal list moves its highlight with ← →: Ctrl+← lists the previous character, in the same kind of list.
+    let mut f = Fixture::new();
+    f.settings.set("candidateLayout", Value::from("horizontal")).unwrap();
+    f.type_keys("su3cl3");
+    f.press(code::DOWN, modifier::SHIFT);
+    let before = f.input.presentation().clone();
+    assert!(before.single && before.count > 0);
+    assert!(f.press(code::LEFT, modifier::CONTROL));
+    let after = f.input.presentation().clone();
+    assert!(after.single, "still 只列一個字");
+    assert_ne!(after.focused_clause.or(after.target_clause), None);
+    assert_ne!((after.cursor, &after.rows), (before.cursor, &before.rows), "moved to the previous character");
+    assert!(f.press(code::RIGHT, modifier::CONTROL));
+    assert_eq!(f.input.presentation().rows, before.rows, "and back");
+    // With no list it is ← →: the cursor moves; with nothing composed the app gets it.
+    f.press(code::ESCAPE, 0);
+    let cursor = f.input.presentation().cursor;
+    assert!(f.press(code::LEFT, modifier::CONTROL));
+    assert!(f.input.presentation().cursor < cursor);
+    let mut idle = Fixture::new();
+    assert!(!idle.press(code::LEFT, modifier::CONTROL));
+    assert!(!idle.press(code::BACKSPACE, modifier::CONTROL), "Ctrl+⌫ deletes the app's word");
 }

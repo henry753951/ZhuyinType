@@ -595,10 +595,14 @@ impl InputController {
             return self.undo_word_action();
         }
         if let Some(command) = command {
-            if !self.shortcuts.is_enabled(command.id) {
+            if self.shortcuts.is_enabled(command.id) {
+                return self.dispatch(command.id, command.action, key, time);
+            }
+            // Page Up and Page Down page the list anyway, as they do on macOS (DESIGN.md「可以關閉的功能」): with 翻頁 off
+            // only the other keys of 上一頁／下一頁 go to the app.
+            if !matches!(key.canonical(), (code::PAGE_UP | code::PAGE_DOWN, 0)) {
                 return self.pass_through();
             }
-            return self.dispatch(command.id, command.action, key, time);
         }
         // A command's input comes only through its key; its old default key, now unbound, is the app's.
         let Some(input) = key.input().filter(|input| !is_command_input(*input) && !self.turned_off(*input)) else {
@@ -805,8 +809,8 @@ impl InputController {
 
     // MARK: Word actions
 
-    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one; adding with no list open
-    /// takes the whole composition).  False when it does not apply.
+    /// Does `action` on candidate `index` of the whole list (`None`: the highlighted one).  False when it does not
+    /// apply (also with no list open).
     pub fn word_action(&mut self, action: CandidateAction, index: Option<usize>) -> bool {
         self.sync_settings();
         if self.secure || self.english() || !self.session.ready() || !self.session.composing() {

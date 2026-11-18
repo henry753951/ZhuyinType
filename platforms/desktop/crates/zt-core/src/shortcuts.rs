@@ -3,8 +3,13 @@
 //! `shortcuts` key of the settings file), the others follow their defaults minus any default the user gave to another
 //! command.  The feature switches (`feature.*`) come from the same settings.
 //!
-//! Platform words: ⌃ is Ctrl, ⌥ is Alt, ⌘ is Win (Windows) or Super (Linux) and stays reserved; fn ↑ ↓ ← → ⌫ are PgUp,
-//! PgDn, Home, End and Delete.  Ctrl with a letter is the apps' (Ctrl+C, Ctrl+V …).
+//! Platform words: ⌃ is Ctrl, ⌥ is Alt, ⌘ is Win (Windows) or Super (Linux) and stays reserved, ↩ is Enter; fn ↑ ↓ ← →
+//! ⌫ are PgUp, PgDn, Home, End and Delete.  Ctrl with a letter is the apps' (Ctrl+C, Ctrl+V …).
+//!
+//! The defaults follow each system's text editing (DESIGN.md §2.1「按鍵的原則」): where macOS moves or deletes by a
+//! word with ⌥ (⌥← ⌥→ ⌥↓ ⌥↑ ⌥⌫), Linux and Windows do it with Ctrl, so 改前一個字／改後一個字, the third paging key
+//! and 刪掉一個詞 are Ctrl chords here.  No default uses Alt: a Windows app that sees Alt released shows its menu's key
+//! tips and takes the focus (WinUI Notepad), and Alt+Space opens the window menu on Windows, GNOME and KDE.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, LazyLock};
@@ -45,8 +50,7 @@ pub enum Action {
     Neighbour(i32),
     /// 標點全半形.
     TogglePunctuationWidth,
-    /// 不要再推薦, 忘記這個選字, 加入自訂詞: a word action on the highlighted candidate (or, adding, the whole
-    /// composition).
+    /// 不要再推薦, 忘記這個選字, 加入自訂詞: a word action on the highlighted candidate of the open list.
     Word(CandidateAction),
     /// 快速設定: the host shows the quick settings panel at the caret.
     QuickSettings,
@@ -106,7 +110,7 @@ const fn b(key: i32, modifiers: u32) -> Binding {
 }
 
 static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
-    use modifier::{ALT, CONTROL, SHIFT};
+    use modifier::{CONTROL, SHIFT};
     let command = |id, label, title, page, feature, required, defaults: &[Binding], action| Command {
         id,
         label,
@@ -155,7 +159,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "appearance",
             Some("feature.pageKeys"),
             false,
-            &[b(code::TAB, 0), b(code::PAGE_DOWN, 0), b(code::DOWN, ALT)],
+            &[b(code::TAB, 0), b(code::PAGE_DOWN, 0), b(code::DOWN, CONTROL)],
             Action::Input(KeyInput::Tab),
         ),
         command(
@@ -165,13 +169,13 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "appearance",
             Some("feature.pageKeys"),
             false,
-            &[b(code::TAB, SHIFT), b(code::PAGE_UP, 0), b(code::UP, ALT)],
+            &[b(code::TAB, SHIFT), b(code::PAGE_UP, 0), b(code::UP, CONTROL)],
             Action::Input(KeyInput::ShiftTab),
         ),
         command(
             "selectLeft",
             "往左選取",
-            "往左選取，再按 Return 加入自訂詞",
+            "往左選取，再按 Enter 加入自訂詞",
             "choosing",
             Some("feature.selectPhrase"),
             false,
@@ -181,7 +185,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
         command(
             "selectRight",
             "往右選取",
-            "往右選取，再按 Return 加入自訂詞",
+            "往右選取，再按 Enter 加入自訂詞",
             "choosing",
             Some("feature.selectPhrase"),
             false,
@@ -195,7 +199,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "typing",
             Some("feature.deleteWord"),
             false,
-            &[b(code::BACKSPACE, ALT)],
+            &[b(code::BACKSPACE, CONTROL)],
             Action::Input(KeyInput::OptionBackspace),
         ),
         command(
@@ -215,7 +219,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "appearance",
             None,
             true,
-            &[b(code::LEFT, ALT)],
+            &[b(code::LEFT, CONTROL)],
             Action::Neighbour(-1),
         ),
         command(
@@ -225,7 +229,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "appearance",
             None,
             true,
-            &[b(code::RIGHT, ALT)],
+            &[b(code::RIGHT, CONTROL)],
             Action::Neighbour(1),
         ),
         command(
@@ -245,14 +249,14 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             "typing",
             None,
             false,
-            &[b(code::SPACE, ALT)],
+            &[b(code::SPACE, CONTROL | SHIFT)],
             Action::Input(KeyInput::ShiftSpace),
         ),
         // The word actions (macOS `ShortcutCommand` with the same ids); Ctrl+Z undoes them for 5 s.
         command(
             "blockCandidate",
             "不要再推薦",
-            "不要再推薦選取的字詞",
+            "不要再推薦反白的字詞",
             "choosing",
             None,
             false,
@@ -262,7 +266,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
         command(
             "forgetCandidate",
             "忘記這個選字",
-            "忘記選過這個字詞",
+            "忘記選過反白的字詞",
             "choosing",
             None,
             false,
@@ -272,7 +276,7 @@ static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
         command(
             "addCandidatePhrase",
             "加入自訂詞",
-            "把選取的字詞或整段組字加入自訂詞",
+            "把反白的字詞加入自訂詞",
             "choosing",
             None,
             false,
@@ -366,7 +370,8 @@ impl Binding {
     }
 
     /// The keycaps: modifiers in the macOS order (Ctrl Alt ⇧ Win/Super), then the key.
-    fn keycaps(self) -> Vec<String> {
+    #[must_use]
+    pub fn keycaps(self) -> Vec<String> {
         let mut caps = Vec::new();
         if self.modifiers & modifier::CONTROL != 0 {
             caps.push("Ctrl".to_owned());
@@ -383,7 +388,7 @@ impl Binding {
         let name = match self.key {
             code::SPACE => "空白".to_owned(),
             code::TAB => "Tab".to_owned(),
-            code::RETURN => "Return".to_owned(),
+            code::RETURN => "Enter".to_owned(),
             code::ESCAPE => "Esc".to_owned(),
             code::BACKSPACE => "⌫".to_owned(),
             code::DELETE => "Del".to_owned(),
@@ -480,7 +485,9 @@ fn parse(value: &Value) -> Result<State, String> {
     let mut state = State::new();
     let mut seen = BTreeSet::new();
     for (id, list) in object {
-        let command = Shortcuts::command(id).ok_or(UNREADABLE)?;
+        // A command this version does not have (removed, or from a newer version): its keys are left out, and the
+        // rest of the file still counts.
+        let Some(command) = Shortcuts::command(id) else { continue };
         let list = list.as_array().filter(|list| list.len() <= MAX_BINDINGS).ok_or(UNREADABLE)?;
         let mut bindings = Vec::new();
         for item in list {

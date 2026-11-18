@@ -400,7 +400,7 @@
     "group": "改字",
     "kind": "toggle",
     "default": true,
-    "detail": "選取 1 到 6 個字，再按 Return",
+    "detail": "選取 1 到 6 個字，再按 Enter",
     "anchor": "selectPhrase",
     "commands": [
       "selectLeft",
@@ -483,7 +483,7 @@
     "min": 3,
     "max": 9,
     "unit": " 個",
-    "detail": "用 1–9 選字；Return 選取反白的字",
+    "detail": "用 1–9 選字；Enter 選取反白的字",
     "anchor": "selection"
   },
   {
