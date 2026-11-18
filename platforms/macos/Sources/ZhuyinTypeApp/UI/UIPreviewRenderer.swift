@@ -658,22 +658,44 @@ enum UIPreviewRenderer {
         settings.model.subpage = nil
     }
 
-    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet: everything in place, then problems
-    /// (secure input on, the input source not added, a model missing, per-document input sources).
+    /// 關於 and 檢查輸入法 in the window, the page drawn whole, and the report sheet and its text: everything in place,
+    /// then problems (secure input on, the input source not added, a model missing, per-document input sources,
+    /// another copy, a quarantined bundle), with every row's 詳細資料 open.
     private static func renderHealth(_ settings: SettingsWindowController, to directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let monitor = HealthMonitor.shared
         let saved = monitor.pinned
-        defer { monitor.pinned = saved }
+        defer {
+            monitor.pinned = saved
+            HealthRow.showsDetailsInitially = false
+        }
         var problems = HealthFacts.sample()
         problems.secureInput = .on(owner: "鑰匙圈存取")
         problems.inputSource = .registered(enabled: false, selectable: false)
+        problems.currentInputSource = "com.apple.keylayout.ABC"
+        problems.enabledInputSources = ["com.apple.keylayout.ABC", "com.apple.inputmethod.TCIM.Zhuyin"]
         problems.perDocumentInputSource = true
         problems.missingModels = [.reranker]
+        if let index = problems.dataItems.firstIndex(where: { $0.name == HealthFacts.Model.reranker.name }) {
+            problems.dataItems[index].url = nil
+            problems.dataItems[index].bytes = nil
+        }
+        problems.loadTimes?.reranker = nil
+        problems.copies.append(URL(fileURLWithPath: "/Users/sample/Downloads/ZhuyinType.app"))
+        problems.app.quarantined = true
+        problems.changedSettings += [HealthSettings.Change(key: "popupCompositionApps", value: nil),
+                                     HealthSettings.Change(key: "typoTolerance", value: "aggressive")]
+        problems.display = HealthFacts.Display(scale: 2, dark: true, panelAppearance: .system, voiceOver: true,
+                                               reduceMotion: true, increaseContrast: false, reduceTransparency: true)
         let errors = [HealthReport.LogLine(date: problems.now.addingTimeInterval(-600),
-                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened.")]
+                                           message: "Reranker load failed: The file “vocab.json” couldn’t be opened."),
+                      HealthReport.LogLine(date: problems.now.addingTimeInterval(-540),
+                                           message: "Engine reload: /Users/sample/Library/Application Support/ZhuyinType/Models is empty")]
         for (state, facts) in [("ok", HealthFacts.sample()), ("problems", problems)] {
             monitor.pinned = facts
+            HealthRow.showsDetailsInitially = state == "problems"
+            try HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts), errors: state == "ok" ? [] : errors)
+                .write(to: directory.appendingPathComponent("report-\(state).txt"), atomically: true, encoding: .utf8)
             for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 NSApp.appearance = NSAppearance(named: appearanceName)
                 for subpage in [nil, SettingsSubpage.health] {
@@ -689,7 +711,8 @@ enum UIPreviewRenderer {
                         "\(subpage == nil ? "about" : "health")-\(state)-\(name).png"))
                     retire(window)
                 }
-                try renderPages(settings, [(.about, .health, 900)], to: directory, label: "-\(state)", suffix: name)
+                try renderPages(settings, [(.about, .health, state == "ok" ? 900 : 1500)], to: directory, label: "-\(state)",
+                                suffix: name)
                 let text = HealthReport.text(facts: facts, checks: HealthChecks.evaluate(facts),
                                              errors: state == "ok" ? [] : errors)
                 try capture(swiftUI: HealthReportSheet(text: text).frame(width: 620, height: 520)
