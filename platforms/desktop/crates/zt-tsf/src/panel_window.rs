@@ -372,8 +372,10 @@ impl Surface {
             base.EndDraw(None, None)
         };
         if result.is_err() {
-            // The device went away (D2DERR_RECREATE_TARGET): a new target next time.
+            // The device went away (D2DERR_RECREATE_TARGET), or something drawn could not be (a font): a new target
+            // and new graphics next time.
             self.target.borrow_mut().take();
+            panel_draw::reset_graphics();
             // SAFETY: our own window.
             let _ = unsafe { InvalidateRect(Some(window), None, false) };
         }
@@ -588,6 +590,7 @@ impl Surface {
                 });
             } else {
                 self.target.borrow_mut().take();
+                panel_draw::reset_graphics();
             }
             SelectObject(memory, previous);
             let _ = DeleteObject(bitmap.into());

@@ -3,6 +3,7 @@
 //!
 //! Text is Inter (shipped beside the DLL, `fonts\`) for Latin and digits over the system's CJK font, as in the app;
 //! without the font files it is Segoe UI.  Zhuyin readings use the CJK font first, so the tone marks match the letters.
+//! The font files are read into memory once (`Graphics::bundled_fonts`), so nothing here depends on them afterwards.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,10 +21,10 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT,
     DWRITE_FONT_WEIGHT_MEDIUM, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_METRICS, DWRITE_TRIMMING,
     DWRITE_TRIMMING_GRANULARITY_CHARACTER, DWRITE_WORD_WRAPPING_NO_WRAP, DWriteCreateFactory, IDWriteFactory5,
-    IDWriteFontCollection1, IDWriteTextFormat, IDWriteTextLayout,
+    IDWriteFontCollection1, IDWriteInMemoryFontFileLoader, IDWriteTextFormat, IDWriteTextLayout,
 };
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
-use windows::core::{HSTRING, w};
+use windows::core::{IUnknown, w};
 use windows_numerics::Vector2;
 use zt_panel::keys::{self, Glyph, Piece};
 use zt_panel::layout::{
@@ -48,6 +49,8 @@ pub(crate) struct Graphics {
     pub(crate) d2d: ID2D1Factory,
     dwrite: IDWriteFactory5,
     fonts: Option<IDWriteFontCollection1>,
+    /// Holds the bundled fonts' bytes; registered with `dwrite` while this lives.
+    loader: Option<IDWriteInMemoryFontFileLoader>,
     round: ID2D1StrokeStyle,
     formats: RefCell<HashMap<(u32, i32, Family), IDWriteTextFormat>>,
 }
@@ -64,6 +67,12 @@ pub(crate) fn graphics() -> Option<Rc<Graphics>> {
         }
         cell.borrow().clone()
     })
+}
+
+/// Drops this thread's graphics, so the next frame makes them (and reads the fonts) again: after a frame Direct2D
+/// could not draw.
+pub(crate) fn reset_graphics() {
+    GRAPHICS.with(|cell| cell.borrow_mut().take());
 }
 
 /// The directory this DLL was loaded from.
@@ -93,32 +102,62 @@ impl Graphics {
                     None,
                 )
                 .ok()?;
-            let fonts = Self::bundled_fonts(&dwrite);
-            Some(Self { d2d, dwrite, fonts, round, formats: RefCell::new(HashMap::new()) })
+            let (fonts, loader) = Self::bundled_fonts(&dwrite).unzip();
+            let mut graphics = Self { d2d, dwrite, fonts, loader, round, formats: RefCell::new(HashMap::new()) };
+            // Fonts that measure Latin text as nothing are no use: Segoe UI instead.
+            if graphics.fonts.is_some() && !graphics.reads_latin() {
+                graphics.fonts = None;
+                graphics.formats.borrow_mut().clear();
+            }
+            Some(graphics)
         }
     }
 
-    /// Inter from `fonts\` beside the DLL.
-    fn bundled_fonts(dwrite: &IDWriteFactory5) -> Option<IDWriteFontCollection1> {
+    /// Inter from `fonts\` beside the DLL, read into memory.  DirectWrite never goes back to the files, so an update
+    /// replaces them freely while applications keep running: with references to the files, a running application
+    /// (the Start menu's search runs for days) kept the files it had opened from being replaced, and could no longer
+    /// read one the update had replaced, which left its Latin text unmeasured and undrawn.
+    fn bundled_fonts(dwrite: &IDWriteFactory5) -> Option<(IDWriteFontCollection1, IDWriteInMemoryFontFileLoader)> {
         let directory = module_directory()?.join("fonts");
-        // SAFETY: DirectWrite calls with valid arguments.
+        // SAFETY: DirectWrite calls with valid arguments; without an owner object the loader keeps its own copy of
+        // the bytes, which only need to outlive the call.
         unsafe {
-            let builder = dwrite.CreateFontSetBuilder().ok()?;
-            let mut added = 0;
-            for name in ["Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf"] {
-                let path = HSTRING::from(directory.join(name).as_os_str());
-                if let Ok(file) = dwrite.CreateFontFileReference(&path, None)
-                    && builder.AddFontFile(&file).is_ok()
-                {
-                    added += 1;
+            let loader = dwrite.CreateInMemoryFontFileLoader().ok()?;
+            dwrite.RegisterFontFileLoader(&loader).ok()?;
+            let collection = (|| {
+                let builder = dwrite.CreateFontSetBuilder().ok()?;
+                let mut added = 0;
+                for name in ["Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf"] {
+                    let Ok(bytes) = std::fs::read(directory.join(name)) else { continue };
+                    let Ok(size) = u32::try_from(bytes.len()) else { continue };
+                    if let Ok(file) =
+                        loader.CreateInMemoryFontFileReference(dwrite, bytes.as_ptr().cast(), size, None::<&IUnknown>)
+                        && builder.AddFontFile(&file).is_ok()
+                    {
+                        added += 1;
+                    }
+                }
+                if added == 0 {
+                    return None;
+                }
+                let set = builder.CreateFontSet().ok()?;
+                dwrite.CreateFontCollectionFromFontSet(&set).ok()
+            })();
+            match collection {
+                Some(collection) => Some((collection, loader)),
+                None => {
+                    let _ = dwrite.UnregisterFontFileLoader(&loader);
+                    None
                 }
             }
-            if added == 0 {
-                return None;
-            }
-            let set = builder.CreateFontSet().ok()?;
-            dwrite.CreateFontCollectionFromFontSet(&set).ok()
         }
+    }
+
+    /// Whether the UI family measures Latin text in both weights the window uses.
+    fn reads_latin(&self) -> bool {
+        [false, true].into_iter().all(|medium| {
+            self.layout("Shift 1/2", 12., medium, Family::Ui, 1000.).is_some_and(|layout| Self::extent(&layout).0 > 1.)
+        })
     }
 
     fn format(&self, size: f32, weight: DWRITE_FONT_WEIGHT, family: Family) -> Option<IDWriteTextFormat> {
@@ -183,15 +222,36 @@ impl Graphics {
     }
 }
 
+impl Drop for Graphics {
+    fn drop(&mut self) {
+        self.formats.borrow_mut().clear();
+        self.fonts = None;
+        if let Some(loader) = self.loader.take() {
+            // SAFETY: the loader registered in `bundled_fonts`.
+            let _ = unsafe { self.dwrite.UnregisterFontFileLoader(&loader) };
+        }
+    }
+}
+
 /// Text widths for the shared layout, measured with DirectWrite in the UI family.
 pub(crate) struct DirectWriteMeasure<'a>(pub(crate) &'a Graphics);
 
-impl Measure for DirectWriteMeasure<'_> {
-    fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+impl DirectWriteMeasure<'_> {
+    fn measure(&self, text: &str, size: f32, medium: bool, family: Family) -> f32 {
         if text.is_empty() {
             return 0.;
         }
-        self.0.layout(text, size, medium, Family::Ui, 100_000.).map_or(0., |layout| Graphics::extent(&layout).0)
+        self.0.layout(text, size, medium, family, 100_000.).map_or(0., |layout| Graphics::extent(&layout).0)
+    }
+}
+
+impl Measure for DirectWriteMeasure<'_> {
+    fn width(&mut self, text: &str, size: f32, medium: bool) -> f32 {
+        self.measure(text, size, medium, Family::Ui)
+    }
+
+    fn zhuyin_width(&mut self, text: &str, size: f32) -> f32 {
+        self.measure(text, size, false, Family::Zhuyin)
     }
 }
 
@@ -444,6 +504,12 @@ pub(crate) fn content(p: &Painter<'_>, layout: &PanelLayout, motion: &Motion<'_>
     if let Some(hint) = &layout.hint {
         hint_element(p, hint, layout.row_radius, motion.hover_control == Some(Control::Zhuyin));
     }
+    // 「你打的是 ㄊㄜˇ · ⌫ 還原」 under the list, from the rows' key inset.
+    if let Some((frame, text)) = &layout.typed {
+        let inset = layout.rows.first().map_or(8., |row| row.key_inset);
+        let box_ = Frame::new(frame.x + inset, frame.y, (frame.w - inset * 2.).max(0.), frame.h);
+        p.text(text, SMALL_FONT, false, Family::Zhuyin, box_, 0., c.text_secondary);
+    }
     if layout.list_open {
         let area = layout.rows_area;
         // SAFETY: a valid target; popped below.
@@ -565,14 +631,13 @@ fn hint_element(p: &Painter<'_>, hint: &HintLayout, radius: f32, hovered: bool) 
     if hovered && hint.clickable {
         p.fill(f, radius, c.hover);
     }
-    let group_w = hint.keycap_w + 6. + hint.key_label_w;
-    let key_room = if hint.keycap_w > 0. { group_w + hint.keycap_right + 12. } else { 0. };
+    let group_w = hint.key_group_width();
     p.text(
         &hint.hint,
         SMALL_FONT,
         false,
         Family::Zhuyin,
-        Frame::new(f.x + hint.text_x, f.y, (f.w - hint.text_x - key_room).max(0.), f.h),
+        Frame::new(f.x + hint.text_x, f.y, hint.reading_width(), f.h),
         0.,
         c.text_secondary,
     );
@@ -627,18 +692,11 @@ fn notice_element(p: &Painter<'_>, notice: &NoticeLayout) {
             c.success,
         );
     }
-    let label_w = notice.label_w.ceil() + 1.;
-    let x = f.x + notice.lead;
-    p.text(&notice.label, notice.font_size, false, Family::Ui, Frame::new(x, f.y, label_w, f.h), 0., c.text_secondary);
-    p.text(
-        &notice.value,
-        notice.font_size,
-        false,
-        Family::Ui,
-        Frame::new(x + label_w, f.y, (f.w - notice.lead - label_w).max(0.), f.h),
-        0.,
-        c.text,
-    );
+    // The phrase starts where the action ends and has the rest of the row, which the layout made wide enough for
+    // it (a box narrower than its text ends the text in an ellipsis).  Each box gets a pixel more for rounding.
+    let grow = |frame: Frame| Frame { w: frame.w + 1., ..frame };
+    p.text(&notice.label, notice.font_size, false, Family::Ui, grow(notice.label_frame()), 0., c.text_secondary);
+    p.text(&notice.value, notice.font_size, false, Family::Ui, grow(notice.value_frame()), 0., c.text);
 }
 
 /// The 中/英 badge's content in a window `side` square.
