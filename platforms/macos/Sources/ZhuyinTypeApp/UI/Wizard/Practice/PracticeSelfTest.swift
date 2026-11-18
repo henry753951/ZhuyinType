@@ -481,15 +481,15 @@ enum PracticeSelfTest {
 
     private struct FileState: Equatable { var size: Int; var modified: Date }
 
-    /// Every file in the user's ZhuyinType folder (not the models) and the app's settings file, with size and time.
+    /// Every file in the user's ZhuyinType folder (not the models), with size and time.  The settings file is not one
+    /// of them: cfprefsd writes it to disk whenever it likes, so an earlier test's change can land on disk during this
+    /// one (0.7.2's first release run failed so, in the app bundle on a fresh runner).  `realSettings` compares what
+    /// is stored instead.
     private static func realFiles() -> [String: FileState] {
         var files: [String: FileState] = [:]
         let manager = FileManager.default
         var paths = ((try? manager.contentsOfDirectory(atPath: EngineHost.userDirectory.path)) ?? [])
             .map { EngineHost.userDirectory.appendingPathComponent($0) }
-        if let bundle = Bundle.main.bundleIdentifier {
-            paths.append(manager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences/\(bundle).plist"))
-        }
         paths.append(CorrectionLog.shared.url)
         if let stats = UsageStatsStore.shared.url { paths.append(stats) }
         for url in paths {
@@ -505,9 +505,14 @@ enum PracticeSelfTest {
         Set(a.keys).union(b.keys).filter { a[$0] != b[$0] }.sorted().joined(separator: ", ")
     }
 
-    /// The app's own settings as stored now.
+    /// Everything the app stores in its settings domain now: the settings, and the counts and state other parts keep
+    /// there (such as how often the word-action hint showed).  Without a bundle (a bare `swift build` binary) the
+    /// domain has no name, so the app's own keys are read instead.
     private static func realSettings() -> NSDictionary {
-        NSDictionary(dictionary: Dictionary(uniqueKeysWithValues: Preferences.Key.all.compactMap { key in
+        if let bundle = Bundle.main.bundleIdentifier, let domain = UserDefaults.standard.persistentDomain(forName: bundle) {
+            return NSDictionary(dictionary: domain)
+        }
+        return NSDictionary(dictionary: Dictionary(uniqueKeysWithValues: Preferences.Key.all.compactMap { key in
             UserDefaults.standard.object(forKey: key).map { (key, $0) }
         }))
     }
