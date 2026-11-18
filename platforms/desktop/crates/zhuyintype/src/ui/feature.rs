@@ -90,14 +90,23 @@ impl FeatureRow {
         let subtitle: SharedString = match (&available, on) {
             (Some(availability), _) => availability.note.into(),
             (None, false) if self.feature == Some("feature.zhuyinRowClick") => "關閉時，點注音列不做事".into(),
-            (None, false) => match self.commands.first() {
-                Some(&command) => format!(
-                    "關閉時，{} 交給 App",
-                    super::keycap::prose(&compact(&CurrentKeys::new(cx).assigned(command)))
-                )
-                .into(),
-                None => self.subtitle.clone(),
-            },
+            (None, false) => {
+                // Every key of the feature's commands; Page Up and Page Down page the list anyway.
+                let keys = CurrentKeys::new(cx);
+                let handed: Vec<String> = self
+                    .commands
+                    .iter()
+                    .flat_map(|&command| keys.all(command))
+                    .map(|caps| compact(&caps))
+                    .filter(|key| key != "PgUp" && key != "PgDn")
+                    .map(|key| super::keycap::prose(&key))
+                    .collect();
+                if handed.is_empty() {
+                    self.subtitle.clone()
+                } else {
+                    format!("關閉時，{} 交給 App", handed.join("、")).into()
+                }
+            }
             (None, true) => self.subtitle.clone(),
         };
         let id = self.feature.map(str::to_owned).unwrap_or_else(|| self.title.to_string());

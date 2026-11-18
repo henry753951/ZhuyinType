@@ -336,9 +336,9 @@ fn features(cx: &App) -> Vec<Feature> {
         (false, false) => "",
     };
     let associated = if settings.bool("associatedPhrases") {
-        "送出後列出常接在後面的詞，接著選下一個詞。"
+        "送出後列出常接在後面的詞，按 ↓ 進入清單再選。"
     } else {
-        "開啟後，送出時列出常接在後面的詞，接著選下一個詞。"
+        "開啟後，送出時列出常接在後面的詞，按 ↓ 進入清單再選。"
     };
     let word_actions = match (key("blockCandidate"), key("addCandidatePhrase")) {
         (Some(block), Some(add)) => format!("在候選字上按右鍵，或按 {block} 不要再推薦、{add} 加入自訂詞。"),

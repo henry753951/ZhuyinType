@@ -214,9 +214,19 @@ impl WordsPage {
             )
             .child(
                 ui::section(links::WORD_ACTIONS)
-                    .row(command_row(Command::BlockCandidate, "不要再推薦", "反白的字詞不再出現在清單", cx))
+                    .row(command_row(
+                        Command::BlockCandidate,
+                        "不要再推薦",
+                        "反白的字詞之後不再自動選用，列在清單最後",
+                        cx,
+                    ))
                     .row(command_row(Command::ForgetCandidate, "忘記這個選字", "忘記選過反白的字詞", cx))
-                    .row(command_row(Command::AddCandidatePhrase, "加入自訂詞", "反白的字詞；沒開清單時是整段組字", cx))
+                    .row(command_row(
+                        Command::AddCandidatePhrase,
+                        "加入自訂詞",
+                        "清單開著時，反白的字詞；要加入打的字，用選取",
+                        cx,
+                    ))
                     .footer(
                         v().gap(space::S8)
                             .child("也可以在候選字上按右鍵；5 秒內按 Ctrl+Z 復原。")

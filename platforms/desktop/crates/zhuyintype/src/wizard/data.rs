@@ -158,7 +158,7 @@ pub fn group(id: &str) -> Option<Group> {
             vec![
                 Style::key("nextPage", code::TAB, 0, "Tab"),
                 Style::key("nextPage", code::PAGE_DOWN, 0, "Page Down"),
-                Style::key("nextPage", code::DOWN, modifier::ALT, "Alt+↓"),
+                Style::key("nextPage", code::DOWN, modifier::CONTROL, "Ctrl+↓"),
                 Style::switch("pageAtListEdge", "在頁底按 ↓ 翻到下一頁", None),
             ],
         ),
@@ -562,11 +562,11 @@ pub const LESSONS: [Lesson; 13] = [
     Lesson {
         id: "phrase",
         title: "加入自訂詞",
-        detail: "選取 1 到 6 個字，按 Return 加入。",
+        detail: "選取 1 到 6 個字，按 Enter 加入。",
         level: Level::Full,
         groups: &[],
         task: Some(Task {
-            prompt: "選取「王小明」，按 Return 加入",
+            prompt: "選取「王小明」，按 Enter 加入",
             hint: None,
             initial: "",
             goals: &[Goal::AnyPhrase],
@@ -786,8 +786,11 @@ pub fn key_groups(settings: &Settings) -> Vec<KeyGroup> {
         "correctionsList",
         "previousCharacter",
         "nextCharacter",
+        "blockCandidate",
+        "forgetCandidate",
+        "addCandidatePhrase",
     ]));
-    let editing = commands(&["typeZhuyin", "selectLeft", "selectRight"]);
+    let editing = commands(&["typeZhuyin", "selectLeft", "selectRight", "addSelectedText"]);
     [
         KeyGroup { title: "打字", icon: IconName::Keyboard, items: typing },
         KeyGroup { title: "候選字清單", icon: IconName::List, items: list },
@@ -839,17 +842,24 @@ mod tests {
         let original = Settings::open(None);
         let draft = original.sandbox();
         let paging = group("paging").unwrap();
-        let alt_down = &paging.styles[2];
-        assert!(alt_down.is_active(&draft));
-        alt_down.set(&draft, false);
-        assert!(!alt_down.is_active(&draft));
+        let control_down = &paging.styles[2];
+        assert!(control_down.is_active(&draft));
+        control_down.set(&draft, false);
+        assert!(!control_down.is_active(&draft));
         let list = changes(&original, &draft);
         let change = list.iter().find(|c| c.id == "keys.nextPage").unwrap();
-        assert_eq!(change.old, "Tab、PgDn、Alt+↓");
+        assert_eq!(change.old, "Tab、PgDn、Ctrl+↓");
         assert_eq!(change.new, "Tab、PgDn");
         revert(change, &original, &draft);
-        assert!(alt_down.is_active(&draft));
+        assert!(control_down.is_active(&draft));
         assert!(changes(&original, &draft).is_empty());
-        assert!(!original.bool("feature.pageKeys") || alt_down.is_active(&original));
+        assert!(!original.bool("feature.pageKeys") || control_down.is_active(&original));
+        // Every key style is a default key of 下一頁, the way the 翻頁 lesson presents them.
+        let defaults = &Shortcuts::command("nextPage").unwrap().defaults;
+        for style in &paging.styles {
+            if let StyleKind::Key(_, binding) = &style.kind {
+                assert!(defaults.contains(binding), "{}", style.title);
+            }
+        }
     }
 }
