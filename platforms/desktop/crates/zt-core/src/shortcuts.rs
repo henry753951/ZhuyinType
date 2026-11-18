@@ -442,6 +442,13 @@ impl Binding {
 
 const META_NAME: &str = if cfg!(windows) { "Win" } else { "Super" };
 
+/// On Windows an Alt chord without Ctrl is a system key (`WM_SYSKEYDOWN`): TSF never gives it to the text service, so
+/// the app gets it (Alt+← does nothing in Notepad, Alt+空白 opens the window menu).  Ctrl+Alt chords do arrive.
+fn alt_unreachable(binding: Binding, windows: bool) -> Option<&'static str> {
+    let alt_only = binding.modifiers & modifier::ALT != 0 && binding.modifiers & modifier::CONTROL == 0;
+    (windows && alt_only).then_some("Windows 的 Alt 組合鍵交給 App，輸入法收不到")
+}
+
 /// The user's keys, and the default keys for every other command, leaving out a default the user gave to another
 /// command (a command keeps all its defaults when every one is taken, and shows the conflict; the punctuation-width
 /// and space commands yield instead).
@@ -634,6 +641,9 @@ impl Shortcuts {
         }
         if binding.modifiers & modifier::META != 0 {
             return Some(format!("{META_NAME} 組合鍵留給系統"));
+        }
+        if let Some(reason) = alt_unreachable(binding, cfg!(windows)) {
+            return Some(reason.to_owned());
         }
         let printable = is_printable(binding.key);
         let control = binding.modifiers & modifier::CONTROL != 0;
@@ -911,5 +921,22 @@ pub fn require_command(id: &str) -> Result<&'static Command> {
     match Shortcuts::command(id) {
         Some(command) => Ok(command),
         None => bail!("找不到這個按鍵功能。"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alt_chords_are_refused_on_windows_only() {
+        let alt_q = Binding { key: i32::from(b'Q'), modifiers: modifier::ALT };
+        let ctrl_alt_q = Binding { key: i32::from(b'Q'), modifiers: modifier::ALT | modifier::CONTROL };
+        assert!(alt_unreachable(alt_q, true).is_some());
+        assert!(
+            alt_unreachable(Binding { key: code::LEFT, modifiers: modifier::ALT | modifier::SHIFT }, true).is_some()
+        );
+        assert_eq!(alt_unreachable(ctrl_alt_q, true), None, "Ctrl+Alt arrives as an ordinary key");
+        assert_eq!(alt_unreachable(alt_q, false), None, "Fcitx gets every key");
     }
 }

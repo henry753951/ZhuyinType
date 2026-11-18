@@ -45,6 +45,13 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
                 link_title: "修正",
             })
         }
+        // An Alt chord without Ctrl never reaches a Windows text service (it is a system key): the switch would promise
+        // keys that go to the app.  Ctrl with a symbol key types the Chinese punctuation instead.
+        "feature.optionSymbols" if cfg!(windows) => Some(Availability {
+            note: "Windows 的 Alt 組合鍵交給 App，輸入法收不到；中文標點可以用 Ctrl 加符號鍵",
+            place: links::feature_place("feature.controlPunctuation"),
+            link_title: "Ctrl 加符號鍵",
+        }),
         _ => None,
     }
 }
