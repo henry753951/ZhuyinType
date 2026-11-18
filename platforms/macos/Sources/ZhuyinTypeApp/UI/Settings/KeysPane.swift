@@ -177,7 +177,7 @@ struct KeysPane: View {
                     }
                 } footer: {
                     HStack {
-                        FooterText("按鍵可以在這裡或功能的頁面修改；› 到功能的頁面。")
+                        FooterText("按鍵可以直接在這裡改；按 › 到功能所在的頁面。")
                         Button("全部還原…") { confirmingReset = true }
                             .buttonStyle(.link)
                             .disabled(!changed)

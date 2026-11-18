@@ -18,7 +18,7 @@
 | 透明效果（`transparency`） | 跟隨系統、開啟、關閉 | 跟隨系統 | 視窗背景透出桌面的顏色。「跟隨系統」在 Windows 依照「設定 › 個人化 › 色彩 › 透明效果」（`EnableTransparency`），在 KDE Plasma 為開啟 |
 | 候選字視窗（`panelAppearance`） | 跟隨主題、淺色、深色 | 跟隨主題 | 只改候選字視窗與中英提示（Wayland 工作階段中由 Fcitx 5 顯示，不受這個設定影響），和 macOS 的「外觀」是同一個設定與值（`system` 在這裡表示跟隨主題） |
 
-改設定立即套用，不需要重新開啟。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
+改設定立即套用，不需要重新開啟。「色彩」頁上方是候選字清單與中英提示的預覽；下面的「無障礙」唯讀列出高對比與減少動態效果目前是否開啟，Windows 另有「打開系統的輔助使用設定」（`ms-settings:easeofaccess`），Linux 沒有這個按鈕。「跟隨系統」時也即時跟著系統改變：淺色或深色由 GPUI 跟著 Windows（`AppsUseLightTheme`，`WM_SETTINGCHANGE` 的 `ImmersiveColorSet`）與 XDG desktop portal 的 `org.freedesktop.appearance` `color-scheme`；沒有 portal 的 Linux 桌面改讀 GNOME 的 `color-scheme`（或 GTK 主題名稱）與 KDE 的 `kdeglobals`，每 3 秒讀一次。Windows 的透明效果開關由 `RegNotifyChangeKeyValue` 監看（`zt_core::appearance`）。
 
 透明效果的材質：
 
@@ -135,7 +135,7 @@ Linux（X11 的虛擬顯示器，xdotool 送出滾輪的 4／5 鍵）：一格 1
 
 - Linux（X11）：快捷鍵在游標旁開一個小視窗，標題「快速設定」，四個勾選項目之後是「設定…」與「自訂詞與學到的詞…」。視窗不取得焦點，按鍵仍交給原本的程式；點一個項目、按下一個鍵或換欄位就關閉。Fcitx 5 的輸入法選單（系統匣與狀態列）在原有的項目之前列出同樣四個勾選項目；簡體輸出時狀態標示是「简」，暫停學習時狀態說明加上「（暫停學習）」。
 - Windows：見 [ARCHITECTURE.md](../../platforms/desktop/ARCHITECTURE.md) 的 TSF 說明（中／英按鈕的選單與游標旁的選單）。
-- 暫停學習期間每個欄位都當成私人欄位（照常打字，不學習、不讀取前文、不記錄改字），服務重新啟動後恢復學習。
+- 暫停學習期間每個欄位都當成私人欄位（照常打字，不學習、不讀取前文、不記錄改字），服務重新啟動後恢復學習。設定「字詞 › 暫停學習」是同一個開關（讀寫執行中的服務），服務沒有執行時變暗。
 
 ## 符號與 Emoji
 
