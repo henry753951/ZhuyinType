@@ -89,6 +89,38 @@
 
 Linux（X11）的選單畫在候選字視窗裡，視窗不取得焦點；Windows 的 TSF DLL 用系統選單，同樣不讓應用程式失去焦點。Wayland 工作階段的清單由 Fcitx 5 顯示，沒有右鍵選單與「復原」，但按鍵照常可用。
 
+## 捲動
+
+設定視窗的捲動區域（頁面、側邊欄、清單、文件檢視、回報問題的文字）和同一台電腦上的 Chrome、Edge 一樣捲動（`platforms/desktop/crates/zhuyintype/src/scroll/`）。曲線、時間與距離都取自 Chromium 的原始碼，不是自訂的效果：
+
+| 輸入 | 距離 | 時間與曲線 |
+|---|---|---|
+| 滑鼠滾輪轉一格 | Windows：每行 100/3 px，乘上系統的「一次捲動的行數」（預設 3 行，即 100 px；設成一次一個畫面時捲 7/8 個畫面）。Linux：120 px | 120 px 以內 0.2 秒，480 px 以上 0.1 秒，之間依距離縮短；`cubic-bezier(0.42, 0, 0.58, 1)` |
+| 前一格還在動時再轉一格 | 目標往後加一格 | 從目前的位置與速度接下去，不停頓也不重新起步 |
+| 觸控板、高解析度滾輪 | 照送來的量 | 直接跟著手指，不加動畫 |
+| Page Up／Page Down、Home／End | 7/8 個畫面；頭尾 | 0.15 秒，`cubic-bezier(0.42, 0, 0.58, 1)` |
+| 連結到某一列、鍵盤焦點移到畫面外 | 到目標 | 距離（px）的平方根 ÷ 60 秒，最長 1.5 秒；`cubic-bezier(0.4, 0, 0, 1)` |
+
+- **觸控板**：Windows 的精確式觸控板（GPUI 經由 DirectManipulation）與 Wayland 的觸控板送來像素；X11 的觸控板與高解析度滾輪送來不到一格的量。兩種都直接套用。Chromium 在 Windows 也替不到一格的滾輪事件加動畫（它分不出來源），這裡不加，觸控板才不會慢半拍。
+- **文字欄位**：Home、End 照常移動游標；Page Up／Page Down 和 Home／End 只在焦點所在的元件沒有用到時才捲動頁面。
+- **巢狀區域**（頁面裡的清單）：同一串滾動（間隔不到 0.5 秒、指標移動不超過 10 px）留在開始時能往那個方向捲的最內層區域，捲到底也不帶動頁面，滾輪停下後再轉才捲頁面；頁面開始捲動後，清單移到指標下也不會接手（Chromium 的 wheel latching）。
+- **減少動態效果**：Windows 的「動畫效果」關閉、桌面入口的 `reduced-motion`、GNOME 的「動畫」關閉（`ZT_REDUCE_MOTION=1` 可強制）時，一律直接到位，距離不變，和 Chromium 相同。
+- **來源**：`cc/animation/scroll_offset_animation_curve.cc` 與 `scroll_offset_animation_curve_factory.cc`（曲線、時間、接續）、`cc/base/features.cc`（捲到目標的曲線）、`ui/events/blink/web_input_event_builders_win.cc`（Windows 每行 100/3 px）、`ui/events/event.cc`（Linux 每格 120）、`cc/input/scroll_utils.h`（7/8 個畫面）、`components/input/mouse_wheel_phase_handler.h`（0.5 秒、10 px）、`ui/gfx/animation/animation_win.cc`（`SPI_GETCLIENTAREAANIMATION`）。唯一省略的是輸入事件到動畫開始那一格之間的延遲（GPUI 不提供）。
+- **為什麼不用現成的**：GPUI（gpui-pre 0.3.12 與 0.3.13）、gpui-component 與 gpui-base（0.9.1 與 0.10.0）都沒有滾輪動畫，GPUI 把一格當成 3 行文字（設定視窗是 63 px）一次跳到位；Zed 的平滑捲動 PR 只針對編輯器，沒有合併。WinUI 的 ScrollViewer 把滾輪交給系統的 InteractionTracker，曲線沒有公開，也要把畫面接到 Windows.UI.Composition，所以不採用。
+
+2026-11-18 在 Windows 11 虛擬機以 SendInput 送出同樣的輸入量測（每格畫面的位置）：
+
+| | ZhuyinType 0.7.0（GPUI） | 現在 | Edge 157 |
+|---|---|---|---|
+| 一格 | 63 px，一次到位 | 100 px，約 0.2 秒 | 100 px，約 0.19 秒，曲線相同 |
+| 連轉三格（間隔 0.05 秒） | 189 px，三次跳動 | 300 px，約 0.34 秒連續移動 | 300 px，約 0.31 秒 |
+| 24 個 1/12 格（觸控板式） | 126 px | 200 px，跟著事件 | 200 px，最後一個事件後再動 0.15 秒 |
+| End／Home | 不捲動 | 0.15 秒 | 0.16 秒 |
+
+Linux（X11 的虛擬顯示器，xdotool 送出滾輪的 4／5 鍵）：一格 120 px，約 0.2 秒；0.7.0 是 63 px 一次到位。
+
+測試用的環境變數：`ZT_SCROLL_LOG=檔案` 記錄每個事件與每次寫入的位置；`ZT_SMOOTH_SCROLL=0` 交回 GPUI 自己處理（0.7.0 的行為），只記錄。
+
 ## 和 macOS 版不同的地方
 
 - 私密視窗（`IS_PRIVATE`、Fcitx 的 `Sensitive`）照常打中文、不學習；密碼與 PIN 欄位不經過輸入法（macOS 的安全輸入仍可打中文）。
@@ -122,4 +154,5 @@ Linux（X11）在候選字視窗畫完整的格子：搜尋列、類別、每列
 - 程式碼簽章。
 - 引擎載入期間（登入後的頭一兩秒）打的鍵直接交給程式；macOS 會先保留最多 64 個鍵。
 - 替換用的資料夾（macOS 的 `Models/`）與資料更新時自動重新載入。
+- 捲動只用模擬的事件驗證過（SendInput 的滾輪、XTEST 的 4／5 鍵、小於一格的 WHEEL_DELTA）：真正的精確式觸控板（DirectManipulation）、Wayland 的觸控板與高解析度滾輪還要在實機上確認。
 - 透明效果只在虛擬機（基本顯示卡，DWM 畫材質的不透明底色）與沒有合成器的 Linux 上驗證過：真正的 Mica、候選字視窗的 Acrylic 與 KDE Plasma 的模糊還要在有 GPU 的 Windows 11 與 KDE 上確認文字對比。
