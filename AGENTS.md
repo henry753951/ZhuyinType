@@ -76,9 +76,10 @@ platforms/macos/scripts/release.sh            # 發布流程執行的內容（pk
   - DESIGN 寫使用者看到的部分；
   - ROADMAP 寫進度。
 - **發布**：
-  1. 更新 `platforms/macos/Resources/Info.plist` 的 `CFBundleShortVersionString` 與 `CFBundleVersion`。
-  2. 撰寫 `docs/releases/vX.Y.Z.md`，依 `docs/product/WRITING.md` 的「發布說明與對外文字」撰寫。
-  3. 提交後推送標籤 `vX.Y.Z`。CI 會建置、簽章、發布、更新 `appcast.xml`，並啟動 ZhuyinBench。
+  1. 撰寫 `docs/releases/vX.Y.Z.md`，依 `docs/product/WRITING.md` 的「發布說明與對外文字」撰寫，並提交。
+  2. 在要發布的分支上執行 `tools/release.sh X.Y.Z`：更新版本號（`Info.plist`、desktop workspace 與 `Cargo.lock`）、跑 Release 的檢查、開 PR、等 PR 的 CI 跑完。發布前要先給使用者確認時，就停在這裡。
+  3. `tools/release.sh X.Y.Z --publish`：merge、等 main 的 CI、打標籤 `vX.Y.Z`。Release 使用 main 的 CI 建好的檔案簽章、發布、更新 `appcast.xml` 與 `desktop-update.json`、驗證發布的檔案，並啟動 ZhuyinBench。
+  4. 不要手動打標籤或另外重建；任何一步失敗，修正或重跑失敗的 job 後，再執行同一個指令（`tools/README.md`「發布」）。
 - **資料與模型不放進 git**。新版本用 `tools/zt data pack data-N` 與 `tools/zt data publish data-N` 打包、發布，再提交 `resources/assets.json`。
 - **隱私**：
   - 追蹤的檔案中不放私人主機或金鑰（`.remote.env` 只在本機）；
