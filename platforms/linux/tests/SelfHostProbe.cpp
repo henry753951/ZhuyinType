@@ -61,7 +61,9 @@ int main(int argc, char **argv) {
     capture("self-host-start");
     if (!run("xdotool",{"windowfocus","--sync",window})) return 2;
     int navigationY=qEnvironmentVariableIntValue("ZT_SELFHOST_NAV_Y");
-    if (!navigationY) navigationY=402; // the middle of 快捷鍵 in the sidebar of the 900×640 settings window
+    // The middle of 快捷鍵 in the sidebar of the 900×640 settings window: the 11th of 14 rows in five groups since
+    // 0.7.1 (at 402 is now 字詞, whose page has no search field at 132).
+    if (!navigationY) navigationY=577;
     if (!run("xdotool",{"mousemove",QString::number(x+80),QString::number(y+navigationY),"click","1","sleep","0.5"})) return 2;
     capture("self-host-search");
     int searchY=qEnvironmentVariableIntValue("ZT_SELFHOST_SEARCH_Y");
