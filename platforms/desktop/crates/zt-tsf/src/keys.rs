@@ -106,10 +106,21 @@ fn unshifted(code: i32, modifiers: i32) -> i32 {
     code
 }
 
+/// While a passive 聯想詞 list shows (the reply's `associated`): ↓ with no modifier enters it, so the text service
+/// claims it although nothing is composed.  Every other key the list leaves to the application.
+pub(crate) fn enters_suggestions(key: &Key) -> bool {
+    !key.release && key.key == KEY_DOWN && key.modifiers & (SHIFT | CONTROL | ALT | META) == 0
+}
+
 /// Keys the host does not take when idle but should see, the way macOS sends it every key: ⌫ after a commit
 /// (送出後刪掉重打), Space and Return (they extend 前文).  The application still gets them; the text service only tells
-/// the host.
-pub(crate) fn host_observes_key(key: &Key, composing: bool, english: bool) -> bool {
+/// the host.  While a passive 聯想詞 list shows (`suggesting`), every key pressed but a lone modifier: the host closes
+/// the list, as it does when it gets the key itself.
+pub(crate) fn host_observes_key(key: &Key, composing: bool, english: bool, suggesting: bool) -> bool {
+    const MODIFIERS: [i32; 6] = [KEY_SHIFT, KEY_CONTROL, KEY_ALT, KEY_CAPS_LOCK, KEY_NUM_LOCK, KEY_SCROLL_LOCK];
+    if suggesting && !composing && !key.release && key.key != 0 && !MODIFIERS.contains(&key.key) {
+        return true;
+    }
     !composing
         && !english
         && !key.release
@@ -181,12 +192,35 @@ mod tests {
     fn idle_editing_keys_are_observed_not_claimed() {
         for code in [KEY_BACKSPACE, KEY_RETURN, 0x20] {
             assert!(!host_wants_key(&key(code, 0), false, false));
-            assert!(host_observes_key(&key(code, 0), false, false));
+            assert!(host_observes_key(&key(code, 0), false, false, false));
         }
-        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), true, false));
-        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), false, true));
-        assert!(!host_observes_key(&key(KEY_BACKSPACE, CONTROL), false, false));
-        assert!(!host_observes_key(&key(KEY_LEFT, 0), false, false));
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), true, false, false));
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, 0), false, true, false));
+        assert!(!host_observes_key(&key(KEY_BACKSPACE, CONTROL), false, false, false));
+        assert!(!host_observes_key(&key(KEY_LEFT, 0), false, false, false));
+    }
+
+    #[test]
+    fn a_passive_suggestion_list_takes_only_down() {
+        // ↓ enters the list; the keys the application keeps (Return, ←, Ctrl+A, Esc, Tab) are not claimed, so a Win32
+        // field does not lose them, but the host hears of them and closes the list.
+        assert!(enters_suggestions(&key(KEY_DOWN, 0)));
+        assert!(enters_suggestions(&key(KEY_DOWN, KEYPAD)));
+        assert!(!enters_suggestions(&key(KEY_DOWN, SHIFT)));
+        assert!(!enters_suggestions(&Key { release: true, ..key(KEY_DOWN, 0) }));
+        for (code, modifiers) in
+            [(KEY_RETURN, 0), (KEY_LEFT, 0), ('A' as i32, CONTROL), (KEY_ESCAPE, 0), (KEY_TAB, 0), (KEY_DELETE, 0)]
+        {
+            let pressed = key(code, modifiers);
+            assert!(!enters_suggestions(&pressed) && !host_wants_key(&pressed, false, false));
+            assert!(host_observes_key(&pressed, false, false, true));
+            assert!(!host_observes_key(&pressed, false, false, false) || code == KEY_RETURN);
+        }
+        // A lone modifier (the start of ⇧1 or Ctrl+C) and a release leave the list alone.
+        assert!(!host_observes_key(&key(KEY_CONTROL, CONTROL), false, false, true));
+        assert!(!host_observes_key(&Key { release: true, ..key(KEY_LEFT, 0) }, false, false, true));
+        // Once entered the list is a composition again: every key is claimed, none observed.
+        assert!(!host_observes_key(&key(KEY_LEFT, 0), true, false, true));
     }
 
     #[test]

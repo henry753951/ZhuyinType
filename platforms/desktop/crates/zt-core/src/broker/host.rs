@@ -315,8 +315,14 @@ impl Host {
         object.insert("simplified".into(), controller.simplified().into());
         object.insert("learningPaused".into(), controller.learning_paused().into());
         object.insert("fullWidth".into(), controller.full_width().into());
-        // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.
-        object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible)).into());
+        // The composition, even when a listed app shows it only in the window: TSF claims keys while it lasts.  A
+        // passive 聯想詞 list is not: it takes only ↓ (`associated`), and TSF must not take the other keys from the
+        // application (a Win32 field loses a key the test claimed, even when the host then declines it).
+        let passive = visible && !controller.picker_open() && p.passive_suggestions();
+        object.insert("composing".into(), (!self.secure && (!p.is_empty() || visible) && !passive).into());
+        if passive && !self.secure {
+            object.insert("associated".into(), true.into());
+        }
         object
     }
 

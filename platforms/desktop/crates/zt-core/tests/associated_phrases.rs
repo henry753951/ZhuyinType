@@ -72,10 +72,14 @@ fn passive_list_down_enters_and_keys_pick() {
     assert!(p.associated && p.composition.is_empty());
     assert_eq!((p.selection, p.selected), (None, None), "passive: nothing highlighted");
     assert_eq!(rows(&input), ["你", "大家"]);
-    assert!(p.panel_model(None).associated);
-    // ↓ enters the list; 2 sends 大家 and lists, passively, what follows it.
+    assert!(p.panel_model(None).associated && p.passive_suggestions());
+    // No key labels while passive: 1 and 2 type ㄅ and ㄉ, so a label would name a key that does not pick the row.
+    assert!(p.rows.iter().all(|row| row.key.is_none()), "{:?}", p.rows);
+    // ↓ enters the list: the keys that now pick label the rows; 2 sends 大家 and lists, passively, what follows it.
     assert!(input.press(&Key::new(code::DOWN, 0)));
     assert_eq!(input.presentation().selected, Some(0));
+    assert!(!input.presentation().passive_suggestions());
+    assert_eq!(input.presentation().rows.iter().map(|row| row.key).collect::<Vec<_>>(), [Some('1'), Some('2')]);
     assert!(input.press(&key_for('2')));
     assert_eq!(commits(&mut input), ["大家"]);
     assert_eq!(rows(&input), ["好"]);
@@ -109,4 +113,53 @@ fn not_in_private_fields() {
     input.set_private(true);
     thanks(&mut input);
     assert!(!input.presentation().has_list());
+}
+
+#[test]
+fn digit_on_a_passive_list_types_zhuyin() {
+    let dir = TempDir::new();
+    let mut input = controller(&dir, true);
+    thanks(&mut input);
+    assert!(input.press(&key_for('1')));
+    assert!(commits(&mut input).is_empty());
+    let p = input.presentation();
+    assert!(!p.has_list() && p.composition == "ㄅ", "{p:?}");
+}
+
+/// What the broker tells a text service (TSF) that claims only the keys it knows the host takes: a passive list is not
+/// a composition (so Return, arrows and shortcuts stay the application's) but says `associated`, so ↓ is claimed;
+/// once entered, the list takes every key.
+#[test]
+fn the_broker_claims_only_down_for_a_passive_list() {
+    use serde_json::json;
+    use zt_core::broker::host::Host;
+    let dir = TempDir::new();
+    let mut input = controller(&dir, true);
+    let mut host = Host::default();
+    let mut request = |input: &mut InputController, fields: Value| {
+        let mut object = json!({"v": 1, "context": "{A}", "secure": false});
+        for (key, value) in fields.as_object().unwrap() {
+            object[key] = value.clone();
+        }
+        host.dispatch(input, 1, object.as_object().unwrap()).0
+    };
+    request(&mut input, json!({"op": "focus", "panel": true}));
+    let key = |code: i32| json!({"op": "key", "key": code, "modifiers": 0, "release": false});
+    for c in "vu,4vu,4".chars() {
+        request(&mut input, key(key_for(c).code));
+    }
+    let reply = request(&mut input, key(code::RETURN));
+    assert_eq!(reply["commit"], json!("謝謝"));
+    assert_eq!((reply["candidates"].clone(), reply["composing"].clone()), (json!(true), json!(false)));
+    assert_eq!(reply["associated"], json!(true));
+    // ↓ enters: a list like any other, every key the service's.
+    let reply = request(&mut input, key(code::DOWN));
+    assert_eq!((reply["handled"].clone(), reply["composing"].clone()), (json!(true), json!(true)));
+    assert!(reply.get("associated").is_none());
+    // ↑ on the first word goes back to passive; ← then closes the list and is the application's.
+    let reply = request(&mut input, key(code::UP));
+    assert_eq!(reply["associated"], json!(true));
+    let reply = request(&mut input, key(code::LEFT));
+    assert_eq!((reply["handled"].clone(), reply["candidates"].clone()), (json!(false), json!(false)));
+    assert!(reply.get("associated").is_none() && reply["composing"] == json!(false));
 }
