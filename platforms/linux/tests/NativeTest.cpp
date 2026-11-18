@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <stdexcept>
+#include <string_view>
 
 #define CHECK(x) do { if (!(x)) throw std::runtime_error("check failed at line " + std::to_string(__LINE__)); } while (false)
 namespace {
@@ -32,7 +33,9 @@ private:
     void updatePreeditImpl() override {}
 };
 }
-int main() {
+int main(int argc, char **argv) {
+    // `associated`: only the 聯想詞 checks, against a host with them on (with-host.sh, ZT_HOST_ASSOCIATED=1).
+    const bool associatedOnly = argc > 1 && std::string_view(argv[1]) == "associated";
     try {
         {
             zhuyintype::Broker broker;
@@ -60,6 +63,37 @@ int main() {
             for(char c:s) if (!key(ic,static_cast<fcitx::KeySym>(c)))
                 throw std::runtime_error("key '" + std::string(1,c) + "' of \"" + std::string(s) + "\" was not accepted");
         };
+        if (associatedOnly) {
+            // 聯想詞 after a commit, in Fcitx's own list (a Wayland session): passive, with no key labels since the
+            // selection keys still type Zhuyin, and a label that says ↓ selects; ↓ enters and the labels appear.
+            setenv("ZT_FCITX_PANEL", "1", 1);
+            Client c(instance.inputContextManager());
+            activate(c);
+            const auto thanks = [&] {
+                type(c,"su3cl3"); CHECK(key(c,FcitxKey_Return)); CHECK(c.commits.back() == "你好");
+                const auto list = c.inputPanel().candidateList();
+                CHECK(list && list->size() == 2 && list->cursorIndex() < 0);
+                CHECK(list->candidate(0).text().toString() == "你" && list->label(0).toString().empty());
+                CHECK(c.inputPanel().auxUp().toString() == "聯想詞・按 ↓ 選擇");
+            };
+            thanks();
+            // 1 is ㄅ: it closes the list and starts a composition, as with no list.
+            CHECK(key(c,FcitxKey_1)); CHECK(c.preedit() == "ㄅ"); CHECK(!c.inputPanel().candidateList());
+            CHECK(key(c,FcitxKey_Escape)); CHECK(c.preedit().empty());
+            // A key the list leaves to the application closes it and reaches the application.
+            thanks();
+            CHECK(!key(c,FcitxKey_Left)); CHECK(!c.inputPanel().candidateList());
+            // ↓ enters: the first word highlighted, the keys labelled; 2 sends the second word.
+            thanks();
+            CHECK(key(c,FcitxKey_Down));
+            const auto list = c.inputPanel().candidateList();
+            CHECK(list && list->cursorIndex() == 0 && list->label(1).toString() == "2. ");
+            CHECK(c.inputPanel().auxUp().toString() == "聯想詞");
+            CHECK(key(c,FcitxKey_2)); CHECK(c.commits.back() == "妳");
+            unsetenv("ZT_FCITX_PANEL");
+            std::cout << "PASS real host broker: 聯想詞 in Fcitx's list (passive, no key labels, ↓ then a key)\n";
+            return 0;
+        }
         const std::string endpoint = std::getenv("ZT_IME_SOCKET");
         setenv("ZT_IME_SOCKET", "/tmp/zhuyintype-missing-test-endpoint", 1);
         const auto before = std::chrono::steady_clock::now();

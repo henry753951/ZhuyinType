@@ -59,6 +59,10 @@ if(BUILD_TESTING)
     add_test(NAME fcitx-native COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/with-host.sh"
         "${ZT_IME_HOST}" "$<TARGET_FILE:fcitx-native-tests>")
     set_tests_properties(fcitx-native PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
+    # 聯想詞 on: a host of its own, since the list after every commit would change the checks above.
+    add_test(NAME fcitx-associated COMMAND env ZT_HOST_ASSOCIATED=1 bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/with-host.sh"
+        "${ZT_IME_HOST}" "$<TARGET_FILE:fcitx-native-tests>" associated)
+    set_tests_properties(fcitx-associated PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
 
     # Optional real application probe (a Qt Widgets window); the addon itself has no Qt dependency.
     find_package(Qt6 6.8 QUIET COMPONENTS Widgets)
