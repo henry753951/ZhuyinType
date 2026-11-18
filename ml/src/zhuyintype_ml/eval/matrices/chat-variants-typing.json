@@ -1,0 +1,25 @@
+{
+ "evaluator": "typing-errors",
+ "configurations": [
+  {
+   "name": "words-variants",
+   "config": "app",
+   "cli_args": [
+    "--lexicon",
+    "{data}/lexicon_coverage/words-variants/lexicon.tsv",
+    "--chat-lm",
+    "{data}/lexicon_coverage/words-variants/lm_chat-ptt-cns-genpub"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "colloquial",
+   "set": "colloquial-dev"
+  },
+  {
+   "name": "wikipedia",
+   "set": "wiki-dev"
+  }
+ ]
+}

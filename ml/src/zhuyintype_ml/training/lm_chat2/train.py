@@ -29,13 +29,27 @@ from zhuyintype_ml.training.lm import mkn
 from zhuyintype_ml.training.lm.files import digest, save_json
 from zhuyintype_ml.training.lm_chat import train as chat
 
-from .prepare import OUT, blocked_text, evaluation_files, excluded, normalize
+from .prepare import (
+    OUT,
+    VARIANTS,
+    blocked_rows,
+    blocked_text,
+    evaluation_files,
+    excluded,
+    normalize,
+    row_files,
+    variant_directory,
+)
 
 
-def audit(work: Path) -> dict[str, Any]:
+def audit(work: Path, variant: str) -> dict[str, Any]:
     """Rescans every training sentence and turn pair against all holdouts."""
     files = evaluation_files() + [OUT / "dev_dialogue.txt", OUT / "test_dialogue.txt"]
     held = blocked_text(files)
+    if variant.startswith(("web", "ptt", "cn")):
+        rows = row_files()
+        held.update(blocked_rows(rows))
+        files += rows
     held.update(normalize(s).replace("臺", "台") for s in list(held))
     machine = mkn.automaton(held)
     counts: Counter[str] = Counter()
@@ -81,12 +95,14 @@ def boundary_counts(
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--variant", choices=["mixed", "real"], default="mixed")
+    p.add_argument("--variant", choices=list(VARIANTS), default="mixed")
     p.add_argument("--workers", type=int, default=24)
-    p.add_argument("--max-bytes", type=int, default=60_000_000)
+    p.add_argument("--max-bytes", type=int, default=None, help="default: 14,000,000 for ptt14, else 60,000,000")
     a = p.parse_args(argv)
+    if a.max_bytes is None:
+        a.max_bytes = 14_000_000 if a.variant == "ptt14" else 60_000_000
     started = time.monotonic()
-    a.output = OUT if a.variant == "mixed" else OUT / "no_generated"
+    a.output = variant_directory(a.variant)
     a.work = a.output / "work"
     prepared = json.loads((a.work / "prepared.json").read_text())
     files = sorted((a.work / "sentences").glob("*.txt")) + [a.work / "context_pairs.tsv", OUT / "inputs/lexicon.tsv"]
@@ -119,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         if cap < 1:
             raise ValueError("vocabulary exceeds budget")
     validation = mkn.TsvModel(a.output).verify()
-    validation["leakage"] = audit(a.work)
+    validation["leakage"] = audit(a.work, a.variant)
     save_json(a.output / "validation.json", validation)
     save_json(
         a.output / "stats.json",

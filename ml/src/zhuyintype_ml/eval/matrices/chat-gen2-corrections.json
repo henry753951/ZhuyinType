@@ -1,0 +1,27 @@
+{
+ "evaluator": "corrections",
+ "configurations": [
+  {
+   "name": "ptt-cns-genpub2",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/ptt-cns-genpub2"
+   ]
+  },
+  {
+   "name": "pttr-cns-genpub2",
+   "config": "app",
+   "cli_args": [
+    "--chat-lm",
+    "{data}/lm_chat2/pttr-cns-genpub2"
+   ]
+  }
+ ],
+ "sets": [
+  {
+   "name": "private-log",
+   "set": "data/build/private/corrections.jsonl"
+  }
+ ]
+}

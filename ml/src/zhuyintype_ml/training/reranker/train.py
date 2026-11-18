@@ -134,7 +134,7 @@ def evaluate(model: nn.Module, path: str, context: int, device: str, limit: int 
             reduction="sum",
         )
         total += loss.item()
-        count += (targets[i : i + 256] != 0).sum().item()
+        count += int((targets[i : i + 256] != 0).sum().item())
     return total / count
 
 
@@ -190,7 +190,9 @@ def main(argv: list[str] | None = None) -> int:
             row = {"step": step, "loss": loss.item(), "lr": lr, "minutes": (time.time() - start) / 60}
             if step % 5000 == 0 or step == args.steps:
                 model.eval()
-                for name in ["wiki", "colloquial"]:
+                for name in ["wiki", "colloquial", "chat"]:
+                    if not os.path.exists(os.path.join(args.data, f"val_{name}.bin")):
+                        continue
                     nll = evaluate(model, os.path.join(args.data, f"val_{name}.bin"), config.context, device)
                     row[f"val_{name}_ppl"] = math.exp(nll)
                 model.train()

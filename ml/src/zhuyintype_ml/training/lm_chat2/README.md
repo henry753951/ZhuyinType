@@ -32,7 +32,24 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 | `mixed` | 再加上 0.3.0 的口語語料（`lm_chat2/`） | GPU 主機 |
 | `perplexity` | 四個模型在同一份斷詞上的開發集困惑度 | GPU 主機 |
 | `conversion` | 0.3.0 聊天模型與 chat2 在聊天比例 0.3／0.5／0.7 下的開發集轉換；完成 24 列中的 7 列 | GPU 主機 |
+| `web-sources` | 公共政策網路參與平臺「提點子」2015–2026 年的提議（data.gov.tw/58036，每年一個 JSON）與 vTaiwan 的 uberx 留言（compdemocracy/openData `3be5785`），寫收據 | 任一 |
+| `control` | 出貨的 `real` 變體在新的工作目錄重訓一次（`control/`），當作對照組 | GPU 主機 |
+| `web` | `real` 再加上提議的標題、內容與利益影響（不讀提議者欄位）與 vTaiwan 留言（`web/`）；追蹤的列檔與 `data/build/loss-analysis/rows/` 的前文與答案也一併排除 | GPU 主機 |
+| `web3` | 同 `web`，提議的句子依雜湊固定只留三分之一（`web3/`） | GPU 主機 |
+| `ptt-sources` | PTT 八卦版問答（zake7749/Gossiping-Chinese-Corpus `65b7e36` 的 2.0 版 CSV）與海大 TOCP v1.0，寫收據 | 任一 |
+| `ptt` | `real` 再加上八卦版的標題與推文（也當成前後句對）與 TOCP 的句子（`ptt/`） | GPU 主機 |
+| `others-sources` | zh-meme-sft-8k、LCCC-base（`silver/lccc` 鏡像）與 MNBVC 知乎問答第一個分片，固定 Hugging Face 的版本，寫收據 | 任一 |
+| `ptt-meme`、`ptt-lccc`、`ptt-zhihu`、`ptt-others` | `ptt` 再加上各一份（LCCC 與知乎依雜湊取八分之一，s2twp 轉成正體）或全部 | GPU 主機 |
+| `cn`、`cn-select` | 只有三份大陸語料的模型，以及依交叉熵差（`select.py`）挑出像台灣用法的大陸句子：`kept-0.txt`、`kept-q20.txt`、`kept-strict.txt`（另去掉含大陸特有詞的句子） | GPU 主機 |
+| `ptt-cn0`、`ptt-cn20`、`ptt-cns` | `ptt` 再加上上面三種挑選結果 | GPU 主機 |
+| `ptt-gen`、`ptt-genpub`、`ptt-cn20-gen`、`ptt-cns-gen`、`ptt-cns-genpub` | 再加上 `data/build/private/gen/` 的 Haiku 產生句；`-genpub` 只用主題句，不用以使用者改字為種子的句子 | GPU 主機 |
+| `ptt-cns-genpub2` | `ptt-cns-genpub` 再加上 `data/build/private/gen2/` 的第二批 Haiku 主題句（遊戲、語音與實況、社群、IT 工作、都市生活、同音字） | GPU 主機 |
+| `ptt-replies-sources` | 同一份 Gossiping 語料的全部推文（`data/source_replies/reply.7z`，Kaggle 版 `reply/` 的同一份檔案），寫收據；用 py7zr 解開 | 任一 |
+| `pttr-cns-genpub2` | `ptt-cns-genpub2` 再加上全部推文（只讀內容，不讀帳號與推噓；同一人連續的推文接回一則） | GPU 主機 |
+| `ptt14` | 同 `ptt` 的語料，剪到出貨模型的 14 MB（`ptt14/`） | GPU 主機 |
 | `ship` | 把 `no_generated/` 的三個 TSV 與出處檔案複製到 `lm_chat/`，0.3.0 的模型先保存到 `lm_chat_v1/` | 任一 |
+
+`control`、`web`、`web3`、`ptt` 是 2026-11-17 的網路語域實驗（[slang-inventory.md](../../../../../docs/research/slang-inventory.md) 提案 2），都不會取代 `lm_chat/`；評測矩陣是 `ml/src/zhuyintype_ml/eval/matrices/chat-web-{dev,rows}.json`，結果見研究紀錄。
 
 `extract` 之後、`split` 之前，先審查 `source_samples.json`。`split` 不會重新抽樣，`real`、`mixed` 不會重新準備語料；要改資料請另開一個實驗目錄。訓練時工作目錄中的輸入、程式碼或設定改變會拒絕繼續。
 
@@ -54,7 +71,7 @@ python -m unittest discover -s ml/src/zhuyintype_ml/training/lm_chat2 -t .
 - 出處：`source-manifest.json`、`attribution.jsonl`（每份來源文件的連結、日期、版本）、`NOTICE.md`、`inputs/Qwen3-8B-LICENSE`；
 - 評估：`perplexity.json`、`perplexity-lines.tsv`、`conversion/`、`conversion-summary.json`。
 
-授權：模型與合併後的語料為 CC BY-SA 4.0；公報經 OpenFun LYAPI 為 CC BY 4.0（原始資料為政府資料開放授權第 1 版），討論頁為 CC BY-SA 4.0，Common Voice 為 CC0。兩個版本都不含 Taiwan Tongues。再散布時保留 `NOTICE.md`、`source-manifest.json` 與 `attribution.jsonl`。
+授權：模型與合併後的語料為 CC BY-SA 4.0；`web` 實驗另含提點子的提議（政府資料開放授權條款第 1 版，國家發展委員會）與 vTaiwan 留言（CC BY 4.0，The Computational Democracy Project）；`ptt` 實驗另含 PTT 八卦版的貼文（著作權屬各作者，整理者 zake7749 以 Apache-2.0 釋出）與 TOCP（CC BY-SA 4.0，海大 NLP 實驗室），依 2026-11-17 的使用決定只出貨統計模型、不散布原文（[corpus-sources.md](../../../../../docs/research/corpus-sources.md)）；公報經 OpenFun LYAPI 為 CC BY 4.0（原始資料為政府資料開放授權第 1 版），討論頁為 CC BY-SA 4.0，Common Voice 為 CC0。兩個版本都不含 Taiwan Tongues。再散布時保留 `NOTICE.md`、`source-manifest.json` 與 `attribution.jsonl`。
 
 ## 檔案
 
