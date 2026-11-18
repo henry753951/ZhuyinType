@@ -9,6 +9,7 @@ use zt_core::service::Service;
 use zt_core::settings::Settings;
 
 use crate::pages::Page;
+use crate::scroll::SmoothScroll;
 
 /// Shared state, installed once at start-up.
 pub struct AppState {
@@ -94,6 +95,8 @@ pub struct Navigation {
     pub query: SharedString,
     /// The page's scroll position; links scroll the arrival row into view.
     pub scroll: ScrollHandle,
+    /// The page's wheel, keys and animated scroll-to (the same handle as `scroll`).
+    pub scroller: SmoothScroll<ScrollHandle>,
     /// The arrival still to scroll to and to give the keyboard focus, after the next layout.
     arrive: Option<Arrive>,
     /// The title of the section the arrival row is in: its heading turns accent with the row's tint.
@@ -116,6 +119,7 @@ const ARRIVE_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
 
 impl Navigation {
     pub fn new(page: Page) -> Self {
+        let scroll = ScrollHandle::new();
         Self {
             page,
             subpage: None,
@@ -123,7 +127,8 @@ impl Navigation {
             direction: Direction::Switch,
             arrival: None,
             query: SharedString::default(),
-            scroll: ScrollHandle::new(),
+            scroll: scroll.clone(),
+            scroller: SmoothScroll::new(scroll),
             arrive: None,
             heading: None,
         }
@@ -150,6 +155,7 @@ impl Navigation {
         if moved {
             self.direction = direction;
             self.generation += 1;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
         self.arrive =
@@ -167,6 +173,7 @@ impl Navigation {
             self.arrival = None;
             self.arrive = None;
             self.heading = None;
+            self.scroller.stop();
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
     }
@@ -216,6 +223,7 @@ pub fn section_laid_out(title: SharedString, bounds: Bounds<Pixels>, cx: &mut Ap
 /// it is the same under reduced motion.
 pub fn scroll_into_view(anchor: &str, target: Target, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
     let nav = cx.global_mut::<Navigation>();
+    let scroller = nav.scroller.clone();
     let viewport = nav.scroll.bounds();
     let offset = nav.scroll.offset();
     let max = nav.scroll.max_offset().y;
@@ -230,8 +238,8 @@ pub fn scroll_into_view(anchor: &str, target: Target, bounds: Bounds<Pixels>, wi
         .flatten();
     let y = arrival_offset(target, bounds, section.as_ref().map(|(_, s)| *s), viewport, offset.y, max);
     nav.heading = section.map(|(title, _)| title);
-    nav.scroll.set_offset(point(offset.x, y));
-    window.refresh();
+    // Glides (DESIGN.md 到達提示); at once under reduced motion.
+    scroller.scroll_to(-y, window, cx);
 }
 
 /// The scroll offset that shows `bounds` as an arrival (see [`scroll_into_view`]), within `[-max, 0]`.
@@ -285,8 +293,7 @@ pub fn reveal(bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
     }
     let y = y.min(px(0.)).max(-nav.scroll.max_offset().y);
     if y != offset.y {
-        nav.scroll.set_offset(point(offset.x, y));
-        window.refresh();
+        nav.scroller.clone().scroll_to(-y, window, cx);
     }
 }
 

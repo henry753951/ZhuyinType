@@ -24,6 +24,7 @@ use gpui_kit::{
 use super::controls::{IconButtonKind, icon_button, popup_button};
 use super::search::search_field;
 use super::{h, v};
+use crate::scroll::SmoothScroll;
 use crate::theme::{self, motion, size, space, text, weight};
 
 const TOOLBAR_H: Pixels = size::H_MD;
@@ -184,6 +185,8 @@ pub struct ListView {
     /// Rows fading out before they are removed.
     removing: Option<(BTreeSet<SharedString>, Instant)>,
     scroll: UniformListScrollHandle,
+    /// The rows' wheel (the same handle as `scroll`).
+    smooth: SmoothScroll<UniformListScrollHandle>,
     focus: FocusHandle,
     footer: Option<SharedString>,
     on_add: Option<Action>,
@@ -209,6 +212,7 @@ impl ListView {
             }
         });
         let sort = config.sorts.first().copied().unwrap_or(ListSort::Name);
+        let scroll = UniformListScrollHandle::new();
         Self {
             config,
             items: Vec::new(),
@@ -220,7 +224,8 @@ impl ListView {
             anchor: None,
             hovered: None,
             removing: None,
-            scroll: UniformListScrollHandle::new(),
+            smooth: SmoothScroll::new(scroll.clone()),
+            scroll,
             focus: cx.focus_handle(),
             footer: None,
             on_add: None,
@@ -760,6 +765,8 @@ impl Render for ListView {
                     .max_h(card_max)
                     .w_full(),
                 )
+                // After the rows: sees their wheel events before the list does.
+                .child(self.smooth.wheel())
                 .into_any_element()
         };
         let scrollbar = (!self.visible.is_empty())

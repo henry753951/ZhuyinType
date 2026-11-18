@@ -12,12 +12,13 @@ use crate::ui::title_bar::title_bar;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyView, App, AppContext as _, Bounds, Context, Entity, InteractiveElement, IntoElement, ParentElement, Pixels,
-    Render, SharedString, StatefulInteractiveElement, Styled, Window, WindowBounds, WindowDecorations, WindowOptions,
-    div, ease_out_quint, img, px, relative, size,
+    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, WindowBounds, WindowDecorations,
+    WindowOptions, div, ease_out_quint, img, px, relative, size,
 };
 
 use crate::app::{self, Direction, Navigation, Place};
 use crate::pages::{self, Page};
+use crate::scroll::SmoothScroll;
 use crate::theme::{self, motion, size as sz, space, text, weight};
 use crate::ui::{h, v};
 
@@ -37,6 +38,8 @@ pub struct SettingsWindow {
     focus: gpui_kit::FocusHandle,
     /// The navigation shown and when it arrived, for the page transition.
     shown: Option<(usize, Instant)>,
+    /// The sidebar's scroll position, when the window is too short for it.
+    sidebar_scroll: SmoothScroll<ScrollHandle>,
 }
 
 impl SettingsWindow {
@@ -52,7 +55,14 @@ impl SettingsWindow {
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         crate::health::refresh(cx);
-        Self { views: HashMap::new(), pending_appearance: dark.map(Some), _activation: activation, focus, shown: None }
+        Self {
+            views: HashMap::new(),
+            pending_appearance: dark.map(Some),
+            _activation: activation,
+            focus,
+            shown: None,
+            sidebar_scroll: SmoothScroll::new(ScrollHandle::new()),
+        }
     }
 
     fn view(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) -> AnyView {
@@ -80,6 +90,8 @@ impl SettingsWindow {
             .pt(space::S4)
             .pb(space::S12)
             .overflow_y_scroll()
+            .track_scroll(self.sidebar_scroll.handle())
+            .child(self.sidebar_scroll.wheel())
             .children(Page::GROUPS.iter().enumerate().map(|(index, (title, pages))| {
                 v().when(index > 0, |this| this.pt(space::S16))
                     .gap(space::S2)
@@ -199,7 +211,7 @@ impl Render for SettingsWindow {
         crate::platform::backdrop::apply(window, cx);
         let p = theme::palette(cx);
         let nav = app::nav(cx);
-        let (page, generation, direction, scroll) = (nav.page, nav.generation, nav.direction, nav.scroll.clone());
+        let (page, generation, direction, scroll) = (nav.page, nav.generation, nav.direction, nav.scroller.clone());
         let view = self.view(page, window, cx);
         let content = div()
             .relative()
@@ -254,6 +266,12 @@ impl Render for SettingsWindow {
                 .font(theme::font())
                 // CJK text needs room between lines.
                 .line_height(relative(1.5))
+                // Page Up/Down, Home/End scroll the page when nothing focused uses them (a text field's Home/End).
+                .on_key_down(|event, window, cx| {
+                    if app::nav(cx).scroller.clone().key_down(event, window, cx) {
+                        cx.stop_propagation();
+                    }
+                })
                 .child(self.title_bar(cx))
                 .child(
                     h().flex_1().min_h(px(0.)).items_start().child(self.sidebar(window, cx)).child(
@@ -270,7 +288,8 @@ impl Render for SettingsWindow {
                                 // A shadow would show through a page tinted over a backdrop.
                                 .when(p.material == theme::Material::Opaque, |this| this.shadow_xs())
                                 .overflow_y_scroll()
-                                .track_scroll(&scroll)
+                                .track_scroll(scroll.handle())
+                                .child(scroll.wheel())
                                 .child(content),
                         ),
                     ),
