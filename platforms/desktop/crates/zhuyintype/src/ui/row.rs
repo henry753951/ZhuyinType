@@ -181,19 +181,20 @@ pub(crate) fn arrived(anchor: &str, cx: &App) -> Option<usize> {
         .map(|_| nav.generation)
 }
 
-/// The anchors drawn while the link test records them (`pages::links`); no recorder outside tests.
+/// The anchors drawn while the link test records them (`pages::links`), with the focus a link gives them; no
+/// recorder outside tests.
 #[cfg(test)]
 #[derive(Default)]
-pub(crate) struct DrawnAnchors(pub std::collections::BTreeSet<String>);
+pub(crate) struct DrawnAnchors(pub std::collections::BTreeMap<String, gpui_kit::FocusHandle>);
 
 #[cfg(test)]
 impl gpui_kit::Global for DrawnAnchors {}
 
-/// Notes that `anchor` was drawn (tests only).
+/// Notes that `anchor` was drawn, with its focus (tests only).
 #[cfg(test)]
-pub(crate) fn record_anchor(anchor: &str, cx: &mut App) {
+pub(crate) fn record_anchor(anchor: &str, focus: &gpui_kit::FocusHandle, cx: &mut App) {
     if cx.has_global::<DrawnAnchors>() {
-        cx.global_mut::<DrawnAnchors>().0.insert(anchor.to_owned());
+        cx.global_mut::<DrawnAnchors>().0.insert(anchor.to_owned(), focus.clone());
     }
 }
 
@@ -259,7 +260,7 @@ impl RenderOnce for Row {
         let arrival = self.anchor.as_ref().and_then(|anchor| arrived(anchor, cx).map(|g| (anchor.clone(), g)));
         #[cfg(test)]
         if let Some(anchor) = &self.anchor {
-            record_anchor(anchor, cx);
+            record_anchor(anchor, &focus_handle, cx);
         }
         // A link led here: the keyboard focus comes to the row (Tab goes on to its control).
         if let Some((anchor, _)) = &arrival {

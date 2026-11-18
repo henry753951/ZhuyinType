@@ -320,6 +320,8 @@ pub fn targets() -> Vec<(String, Place)> {
     add("快捷鍵 › 單按 Shift", shift_tap_place());
     add("快捷鍵 › 鍵上的符號", punctuation_keys_place());
     add("設定嚮導 › 自行設定…", Place::page(Page::Keys));
+    // A row under 快捷鍵's 固定的按鍵 (`--row`): the disclosure opens by itself.
+    add("快捷鍵 › 固定的按鍵 › 拼注音", Place::row(Page::Keys, "row-zhuyin"));
     for (page, subpage, row) in LEGACY {
         if let Some(place) = resolve(page, subpage, row) {
             add(&format!("舊的 id {page} {subpage:?} {row:?}"), place);
@@ -376,9 +378,11 @@ pub const LEGACY: [(&str, Option<&str>, Option<&str>); 22] = [
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::{BTreeMap, HashMap};
 
-    use gpui_kit::{AnyView, Bounds, IntoElement as _, VisualTestContext, WindowAppearance, point, px, size};
+    use gpui_kit::{
+        AnyView, Bounds, FocusHandle, IntoElement as _, VisualTestContext, WindowAppearance, point, px, size,
+    };
     use zt_core::settings::Settings;
 
     use super::*;
@@ -406,8 +410,12 @@ mod tests {
         cx
     }
 
-    /// Follows a link to `place` and draws its page: the anchors of the rows and sections drawn.
-    fn follow(place: &Place, views: &mut HashMap<Page, AnyView>, vcx: &mut VisualTestContext) -> BTreeSet<String> {
+    /// Follows a link to `place` and draws its page: the anchors of the rows and sections drawn, with their focus.
+    fn follow(
+        place: &Place,
+        views: &mut HashMap<Page, AnyView>,
+        vcx: &mut VisualTestContext,
+    ) -> BTreeMap<String, FocusHandle> {
         vcx.update(|_, cx| {
             cx.global_mut::<Navigation>().go(place.clone());
             cx.global_mut::<DrawnAnchors>().0.clear();
@@ -437,11 +445,15 @@ mod tests {
             {
                 missing.push(format!("{from}: {} has no sub-page {subpage}", place.page.title()));
             }
-            if let Some(row) = &place.row
-                && !drawn.contains(row.as_ref())
-            {
-                let at = place.subpage.as_deref().map_or_else(String::new, |subpage| format!(" › {subpage}"));
-                missing.push(format!("{from}: no 「{row}」 on {}{at}", place.page.title()));
+            let Some(row) = &place.row else { continue };
+            let at = place.subpage.as_deref().map_or_else(String::new, |subpage| format!(" › {subpage}"));
+            match drawn.get(row.as_ref()) {
+                None => missing.push(format!("{from}: no 「{row}」 on {}{at}", place.page.title())),
+                // The arrival gives the row (or section) the keyboard focus.
+                Some(focus) if !vcx.update(|window, _| focus.is_focused(window)) => {
+                    missing.push(format!("{from}: 「{row}」 on {}{at} is drawn but not focused", place.page.title()));
+                }
+                Some(_) => {}
             }
         }
         assert!(missing.is_empty(), "links without their row:\n{}", missing.join("\n"));
@@ -456,7 +468,7 @@ mod tests {
             for place in [command_place(command.id), overview_place(command.id)] {
                 let drawn = follow(&place, &mut views, vcx);
                 let row = place.row.clone().unwrap_or_default();
-                assert!(drawn.contains(row.as_ref()), "{}: no 「{row}」 on {}", command.label, place.page.title());
+                assert!(drawn.contains_key(row.as_ref()), "{}: no 「{row}」 on {}", command.label, place.page.title());
             }
         }
     }
@@ -520,16 +532,16 @@ mod tests {
         let row = |top: f32| Bounds::new(point(px(0.), px(top)), size(px(600.), px(44.)));
         // A row near its heading: about a third down the page.
         let section = Bounds::new(point(px(0.), px(1000.)), size(px(600.), px(300.)));
-        let y = app::arrival_offset(Target::Row, row(1050.), &[section], viewport, px(0.), px(5000.));
+        let y = app::arrival_offset(Target::Row, row(1050.), Some(section), viewport, px(0.), px(5000.));
         assert_eq!(y, -(px(1050.) - px(300.)));
         // Far below its heading: lower, so the heading stays in view.
         let tall = Bounds::new(point(px(0.), px(1000.)), size(px(600.), px(900.)));
-        let y = app::arrival_offset(Target::Row, row(1400.), &[tall], viewport, px(0.), px(5000.));
+        let y = app::arrival_offset(Target::Row, row(1400.), Some(tall), viewport, px(0.), px(5000.));
         assert_eq!(px(1000.) + y, viewport.top() + px(24.));
         // A section: its heading near the top; never past either end.
-        let y = app::arrival_offset(Target::Section, section, &[], viewport, px(0.), px(5000.));
+        let y = app::arrival_offset(Target::Section, section, None, viewport, px(0.), px(5000.));
         assert_eq!(px(1000.) + y, viewport.top() + px(24.));
-        assert_eq!(app::arrival_offset(Target::Row, row(150.), &[], viewport, px(0.), px(5000.)), px(0.));
-        assert_eq!(app::arrival_offset(Target::Row, row(9000.), &[], viewport, px(0.), px(500.)), px(-500.));
+        assert_eq!(app::arrival_offset(Target::Row, row(150.), None, viewport, px(0.), px(5000.)), px(0.));
+        assert_eq!(app::arrival_offset(Target::Row, row(9000.), None, viewport, px(0.), px(500.)), px(-500.));
     }
 }

@@ -96,6 +96,8 @@ pub struct Navigation {
     pub scroll: ScrollHandle,
     /// The arrival still to scroll to and to give the keyboard focus, after the next layout.
     arrive: Option<Arrive>,
+    /// The title of the section the arrival row is in: its heading turns accent with the row's tint.
+    heading: Option<SharedString>,
 }
 
 /// What an arrival still has to do once its row is laid out (SETTINGS_IA.md §4.1).
@@ -103,8 +105,8 @@ struct Arrive {
     anchor: SharedString,
     scrolled: bool,
     focused: bool,
-    /// Where each titled section of the page was laid out this frame, so a row's section heading stays in view.
-    sections: Vec<Bounds<Pixels>>,
+    /// Where each titled section of the page was laid out, so a row's section heading stays in view.
+    sections: Vec<(SharedString, Bounds<Pixels>)>,
 }
 
 impl Global for Navigation {}
@@ -123,6 +125,7 @@ impl Navigation {
             query: SharedString::default(),
             scroll: ScrollHandle::new(),
             arrive: None,
+            heading: None,
         }
     }
 
@@ -151,6 +154,7 @@ impl Navigation {
         }
         self.arrive =
             place.row.clone().map(|anchor| Arrive { anchor, scrolled: false, focused: false, sections: Vec::new() });
+        self.heading = None;
         self.arrival = place.row.map(|row| (row, Instant::now()));
     }
 
@@ -162,6 +166,7 @@ impl Navigation {
             self.generation += 1;
             self.arrival = None;
             self.arrive = None;
+            self.heading = None;
             self.scroll.set_offset(point(px(0.), px(0.)));
         }
     }
@@ -173,6 +178,11 @@ impl Navigation {
             self.arrive = None;
         }
         self.arrive.as_mut()
+    }
+
+    /// Whether `title` is the heading of the section a link's row is in (it turns accent while the row tints).
+    pub fn is_arrival_heading(&self, title: &str) -> bool {
+        self.heading.as_deref() == Some(title)
     }
 
     /// The anchor a link just led to, while it is still to be scrolled to or focused.
@@ -189,7 +199,7 @@ pub enum Target {
 }
 
 /// Called by every titled section once laid out while a link waits: where it is, so the row's heading stays in view.
-pub fn section_laid_out(bounds: Bounds<Pixels>, cx: &mut App) {
+pub fn section_laid_out(title: SharedString, bounds: Bounds<Pixels>, cx: &mut App) {
     if let Some(arrive) = cx.global_mut::<Navigation>().waiting()
         && !arrive.scrolled
     {
@@ -197,7 +207,7 @@ pub fn section_laid_out(bounds: Bounds<Pixels>, cx: &mut App) {
         if arrive.sections.len() > 512 {
             arrive.sections.clear();
         }
-        arrive.sections.push(bounds);
+        arrive.sections.push((title, bounds));
     }
 }
 
@@ -214,16 +224,22 @@ pub fn scroll_into_view(anchor: &str, target: Target, bounds: Bounds<Pixels>, wi
     };
     arrive.scrolled = true;
     let sections = std::mem::take(&mut arrive.sections);
-    let y = arrival_offset(target, bounds, &sections, viewport, offset.y, max);
+    // The section the row is in: the last one laid out around it.
+    let section = (target == Target::Row)
+        .then(|| sections.into_iter().rev().find(|(_, s)| s.top() <= bounds.top() && s.bottom() >= bounds.bottom()))
+        .flatten();
+    let y = arrival_offset(target, bounds, section.as_ref().map(|(_, s)| *s), viewport, offset.y, max);
+    nav.heading = section.map(|(title, _)| title);
     nav.scroll.set_offset(point(offset.x, y));
     window.refresh();
 }
 
 /// The scroll offset that shows `bounds` as an arrival (see [`scroll_into_view`]), within `[-max, 0]`.
+/// `section`: where the row's section is, heading included.
 pub fn arrival_offset(
     target: Target,
     bounds: Bounds<Pixels>,
-    sections: &[Bounds<Pixels>],
+    section: Option<Bounds<Pixels>>,
     viewport: Bounds<Pixels>,
     offset: Pixels,
     max: Pixels,
@@ -233,12 +249,7 @@ pub fn arrival_offset(
     let top = match target {
         Target::Section => margin,
         Target::Row => {
-            // The section the row is in: the last one laid out around it.
-            let heading = sections
-                .iter()
-                .rev()
-                .find(|section| section.top() <= bounds.top() && section.bottom() >= bounds.bottom())
-                .map_or(bounds.top(), |section| section.top());
+            let heading = section.map_or(bounds.top(), |section| section.top());
             let below_heading = bounds.top() - heading + margin;
             (height / 3.).max(below_heading).min(height - bounds.size.height - margin).max(margin)
         }

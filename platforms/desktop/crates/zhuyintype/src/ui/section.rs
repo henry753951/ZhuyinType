@@ -70,10 +70,11 @@ impl RenderOnce for Section {
         let p = theme::palette(cx);
         let count = self.rows.len();
         let arrival = self.title.as_ref().and_then(|title| arrived(title, cx).map(|g| (title.clone(), g)));
-        #[cfg(test)]
-        if let Some(title) = &self.title {
-            super::row::record_anchor(title, cx);
-        }
+        // A link to one of its rows: the heading turns accent with the row's tint.
+        let row_arrived = self.title.as_ref().is_some_and(|title| {
+            app::nav(cx).is_arrival_heading(title)
+                && app::nav(cx).arrival.as_ref().is_some_and(|(row, _)| arrived(row, cx).is_some())
+        });
         let untitled = self.title.is_none();
         let continues = untitled && !self.first;
         let hairline = || div().w_full().h(size::HAIRLINE).bg(p.separator);
@@ -83,6 +84,10 @@ impl RenderOnce for Section {
             let key = SharedString::from(format!("section-focus-{title}"));
             window.use_keyed_state(key, cx, |_, cx| cx.focus_handle().tab_stop(false)).read(cx).clone()
         });
+        #[cfg(test)]
+        if let (Some(title), Some(focus)) = (&self.title, &focus) {
+            super::row::record_anchor(title, focus, cx);
+        }
         if let (Some((title, _)), Some(focus)) = (&arrival, &focus) {
             app::focus_on_arrival(title, focus, window, cx);
         }
@@ -90,9 +95,11 @@ impl RenderOnce for Section {
         v().w_full()
             .relative()
             .when_some(focus, |this, focus| this.track_focus(&focus))
-            .when(reports, |this| {
+            .when_some(self.title.clone().filter(|_| reports), |this, title| {
                 this.child(
-                    canvas(|bounds, _, cx| app::section_laid_out(bounds, cx), |_, _, _, _| {}).absolute().size_full(),
+                    canvas(move |bounds, _, cx| app::section_laid_out(title, bounds, cx), |_, _, _, _| {})
+                        .absolute()
+                        .size_full(),
                 )
             })
             .when_some(arrival.clone(), |this, (title, _)| this.child(anchor_probe(title, app::Target::Section)))
@@ -106,7 +113,7 @@ impl RenderOnce for Section {
                         .border_color(p.separator)
                         .text_size(text::HEADLINE)
                         .font_weight(weight::SEMIBOLD)
-                        .text_color(if arrival.is_some() { p.accent } else { p.text })
+                        .text_color(if arrival.is_some() || row_arrived { p.accent } else { p.text })
                         .child(title),
                 )
             })
