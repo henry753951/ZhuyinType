@@ -1692,14 +1692,23 @@ enum ControllerCoreSelfTest {
                 let style = preferences.candidateStyle
                 content.reset()
                 let start = DispatchTime.now().uptimeNanoseconds
-                for index in 0..<200 {
+                for index in 0..<100 {
                     let list = CandidateList(items: items, selection: (index % 2) * 9, pageSize: 9, tolerant: false)
                     content.update(list: list, preview: nil, keys: Array("123456789"), style: style)
                 }
-                return Double(DispatchTime.now().uptimeNanoseconds - start) / 200 / 1000
+                return Double(DispatchTime.now().uptimeNanoseconds - start) / 100 / 1000
             }
+            // One timed run of each was at the mercy of whatever else the machine did: on a busy CI runner the
+            // animated run once took 771 µs against 273 µs plain, while the same build passed minutes earlier.  So
+            // both are warmed up, then measured in alternating rounds, and each keeps its fastest round: the cost
+            // of the code itself, with other processes' interruptions dropped.
             _ = flips(animated: false)
-            let plain = flips(animated: false), animated = flips(animated: true)
+            _ = flips(animated: true)
+            var plain = Double.infinity, animated = Double.infinity
+            for _ in 0..<5 {
+                plain = min(plain, flips(animated: false))
+                animated = min(animated, flips(animated: true))
+            }
             print("     page change: \(String(format: "%.0f", plain)) µs plain, \(String(format: "%.0f", animated)) µs animated")
             try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
         }
