@@ -79,6 +79,7 @@ enum ControllerCoreSelfTest {
         }
 
         SymbolPickerSelfTest.run(engine: engine, test: test)
+        ShortcutSelfTest.run(engine: engine, test: test)
 
         test("secure input: nothing is read, remembered or learned") {
             let (core, _) = session()

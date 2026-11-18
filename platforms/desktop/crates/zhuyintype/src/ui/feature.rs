@@ -45,6 +45,13 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
                 link_title: "修正",
             })
         }
+        // An Alt chord without Ctrl never reaches a Windows text service (it is a system key): the switch would promise
+        // keys that go to the app.  Ctrl with a symbol key types the Chinese punctuation instead.
+        "feature.optionSymbols" if cfg!(windows) => Some(Availability {
+            note: "Windows 的 Alt 組合鍵交給 App，輸入法收不到；中文標點可以用 Ctrl 加符號鍵",
+            place: links::feature_place("feature.controlPunctuation"),
+            link_title: "Ctrl 加符號鍵",
+        }),
         _ => None,
     }
 }
@@ -90,14 +97,23 @@ impl FeatureRow {
         let subtitle: SharedString = match (&available, on) {
             (Some(availability), _) => availability.note.into(),
             (None, false) if self.feature == Some("feature.zhuyinRowClick") => "關閉時，點注音列不做事".into(),
-            (None, false) => match self.commands.first() {
-                Some(&command) => format!(
-                    "關閉時，{} 交給 App",
-                    super::keycap::prose(&compact(&CurrentKeys::new(cx).assigned(command)))
-                )
-                .into(),
-                None => self.subtitle.clone(),
-            },
+            (None, false) => {
+                // Every key of the feature's commands; Page Up and Page Down page the list anyway.
+                let keys = CurrentKeys::new(cx);
+                let handed: Vec<String> = self
+                    .commands
+                    .iter()
+                    .flat_map(|&command| keys.all(command))
+                    .map(|caps| compact(&caps))
+                    .filter(|key| key != "PgUp" && key != "PgDn")
+                    .map(|key| super::keycap::prose(&key))
+                    .collect();
+                if handed.is_empty() {
+                    self.subtitle.clone()
+                } else {
+                    format!("關閉時，{} 交給 App", handed.join("、")).into()
+                }
+            }
             (None, true) => self.subtitle.clone(),
         };
         let id = self.feature.map(str::to_owned).unwrap_or_else(|| self.title.to_string());

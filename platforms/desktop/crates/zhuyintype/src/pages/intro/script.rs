@@ -158,11 +158,11 @@ impl Script {
             });
             steps.push(Step {
                 panel: notice("已加入自訂詞：王小明"),
-                ..step(vec![seg("王小明")], "Return", "加入自訂詞，下次直接打得出", 1.6)
+                ..step(vec![seg("王小明")], "Enter", "加入自訂詞，下次直接打得出", 1.6)
             });
         }
         let sent = format!("{s}王小明");
-        steps.push(Step { committed: sent.clone(), ..step(Vec::new(), "Return", "送出", 1.0) });
+        steps.push(Step { committed: sent.clone(), ..step(Vec::new(), "Enter", "送出", 1.0) });
         if shows_toast && let Some(mode_key) = &mode_key {
             steps.push(Step {
                 committed: sent.clone(),

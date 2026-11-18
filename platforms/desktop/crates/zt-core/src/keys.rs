@@ -228,7 +228,6 @@ pub fn input(code: i32, modifiers: u32) -> Option<KeyInput> {
                 KeyInput::Right
             }
         }
-        code::UP if alt => KeyInput::PageUp,
         code::UP if plain || shift => {
             if shift {
                 KeyInput::ShiftUp
@@ -236,7 +235,6 @@ pub fn input(code: i32, modifiers: u32) -> Option<KeyInput> {
                 KeyInput::Up
             }
         }
-        code::DOWN if alt => KeyInput::PageDown,
         code::DOWN if plain || shift => {
             if shift {
                 KeyInput::ShiftDown
@@ -323,7 +321,9 @@ mod tests {
         assert_eq!(input('A' as i32, modifier::META), None);
         assert_eq!(input('A' as i32, modifier::CONTROL | modifier::ALT), None);
         assert_eq!(input(code::BACKTAB, 0), Some(KeyInput::ShiftTab));
-        assert_eq!(input(code::DOWN, modifier::ALT), Some(KeyInput::PageDown));
+        // A modified arrow is a command's key or the app's (macOS `KeyMapping`): Alt+↓ is not Page Down by itself.
+        assert_eq!(input(code::DOWN, modifier::ALT), None);
+        assert_eq!(input(code::LEFT, modifier::CONTROL), None);
         assert_eq!(input(code::ENTER, modifier::KEYPAD), Some(KeyInput::Enter));
         assert_eq!(input(code::F1, 0), None);
         assert_eq!(canonical(code::ENTER, modifier::SHIFT | modifier::KEYPAD), (code::RETURN, modifier::SHIFT));

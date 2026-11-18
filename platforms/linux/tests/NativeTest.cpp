@@ -212,6 +212,19 @@ int main(int argc, char **argv) {
         std::sort(timings.begin(),timings.end());
         std::cout << "Broker Fcitx key roundtrip ms (200 modifier presses): p50=" << timings[99]
             << " p95=" << timings[189] << " p99=" << timings[197] << '\n';
+        {
+            // The Linux/Windows keys (DESIGN.md §2.1): Ctrl+← moves in the composition and Ctrl+⌫ deletes a word; the
+            // Alt keys of 0.7.1 are no command's now, so Alt+← sends the composition and goes to the application.
+            type(a,"su3cl3");
+            const auto typed=a.preedit();
+            CHECK(key(a,FcitxKey_Left,false,fcitx::KeyState::Ctrl)); CHECK(a.preedit()==typed);
+            CHECK(key(a,FcitxKey_Right,false,fcitx::KeyState::Ctrl));
+            CHECK(key(a,FcitxKey_BackSpace,false,fcitx::KeyState::Ctrl)); CHECK(a.preedit().size()<typed.size());
+            const auto sent=a.commits.size();
+            type(a,"su3");
+            CHECK(!key(a,FcitxKey_Left,false,fcitx::KeyState::Alt));
+            CHECK(a.commits.size()==sent+1); CHECK(a.preedit().empty());
+        }
         const auto deliveredBeforeDestroy = a.commits.size();
         {
             Client destroyed(instance.inputContextManager());

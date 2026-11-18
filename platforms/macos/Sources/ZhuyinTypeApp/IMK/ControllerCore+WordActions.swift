@@ -11,7 +11,7 @@ extension ControllerCore {
     static let wordActionHintLimit = 5
     static let wordActionHintKey = "wordActionHintCount"
 
-    /// Does `action` on candidate `index` (nil: the highlighted one, or the whole composition for adding).  Claims
+    /// Does `action` on candidate `index` of the open list (nil: the highlighted one; nothing with no list).  Claims
     /// the key only while composing; with nothing to compose it goes to the app.
     @discardableResult
     func wordAction(_ action: CandidateAction, at index: Int? = nil) -> Bool {

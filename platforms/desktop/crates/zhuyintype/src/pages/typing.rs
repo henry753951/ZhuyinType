@@ -67,7 +67,7 @@ fn typing_keys_page(_cx: &App) -> AnyElement {
         ("拼注音", &["注音鍵"], "注音鍵的位置依標準注音鍵盤"),
         ("聲調：二聲、三聲、四聲、輕聲", &["ˊ 6", "ˇ 3", "ˋ 4", "˙ 7"], "標準注音鍵盤的聲調鍵"),
         ("一聲", &["空白"], "打注音時，空白完成這個音"),
-        ("送出", &["Return"], "送出整段組字"),
+        ("送出", &["Enter"], "送出整段組字"),
         ("刪掉注音符號，或游標前的字", &["⌫"], "和一般的刪除鍵相同"),
         ("刪掉游標後的字", &["Del"], "和一般的刪除鍵相同"),
         ("在組字中移動游標", &["←", "→"], "Home、End 移到開頭或結尾"),
@@ -123,7 +123,7 @@ fn space_frames(action: &str) -> Vec<DemoFrame> {
             DemoFrame::new([start(), Segment::marked("今天 ")], "再按一次：空白加進組字，還不送出", 1.5).keys(["空白"]),
             DemoFrame::new([start(), Segment::marked("今天 "), Segment::marked("ㄏ")], "繼續打字", 0.5).keys(["ㄏ"]),
             DemoFrame::new([start(), Segment::marked("今天 好")], "繼續打字", 1.0).keys(["ˇ"]),
-            DemoFrame::new([Segment::document("早安，今天 好")], "按 Return：連同空白一起送出", 2.0).keys(["Return"]),
+            DemoFrame::new([Segment::document("早安，今天 好")], "按 Enter：連同空白一起送出", 2.0).keys(["Enter"]),
         ]),
         _ => frames
             .push(DemoFrame::new([Segment::document("早安，今天 ")], "再按一次：送出並輸入空白", 2.0).keys(["空白"])),
@@ -136,7 +136,7 @@ fn space_info(cx: &App) -> AnyElement {
     let options = zt_core::settings::descriptor("spaceAction").map(|d| d.options.clone()).unwrap_or_default();
     v().gap(space::S16)
         .child(note(
-            "打注音時，空白是一聲；打完以後，空白依這個設定。清單開著時，空白翻到下一頁；選字用選字鍵或 Return。",
+            "打注音時，空白是一聲；打完以後，空白依這個設定。清單開著時，空白翻到下一頁；選字用選字鍵或 Enter。",
             cx,
         ))
         .children(options.into_iter().map(|choice| {

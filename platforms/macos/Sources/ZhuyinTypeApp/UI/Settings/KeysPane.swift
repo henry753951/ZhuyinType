@@ -287,7 +287,7 @@ struct KeysPane: View {
                         keys: .command(.blockCandidate)),
                 KeyItem(id: "forgetCandidate", title: "忘記這個選字", subtitle: "忘記選過反白的字詞",
                         keys: .command(.forgetCandidate)),
-                KeyItem(id: "addCandidatePhrase", title: "加入自訂詞", subtitle: "反白的字詞；沒有開清單時是整段組字",
+                KeyItem(id: "addCandidatePhrase", title: "加入自訂詞", subtitle: "清單開著時，反白的字詞；要加入打的字，用選取",
                         keys: .command(.addCandidatePhrase)),
                 KeyItem(id: "undoWordAction", title: "復原上一個動作", subtitle: "動作後 5 秒內，組字還在時",
                         keys: .fixed(["⌃", "Z"])),

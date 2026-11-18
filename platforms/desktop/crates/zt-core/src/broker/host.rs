@@ -714,3 +714,22 @@ impl Host {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::IDLE_COMMANDS;
+    use crate::shortcuts::{Action, Shortcuts};
+
+    /// TSF passes on, with nothing composed, only the keys it knows the service wants: a command that runs then must be
+    /// in `claims` (`IDLE_COMMANDS`), or its key never arrives.  The others run only in a composition or an open list,
+    /// where the text service claims every key.  標點全半形's ⇧空白 is claimed by the text service itself
+    /// (`zt_tsf::keys::host_wants_key`).
+    #[test]
+    fn every_command_that_runs_idle_is_claimed() {
+        for command in Shortcuts::commands() {
+            let idle = matches!(command.action, Action::QuickSettings | Action::SymbolPicker | Action::AddSelectedText);
+            let claimed = IDLE_COMMANDS.iter().any(|idle| idle.id == command.id);
+            assert_eq!(idle, claimed, "{}", command.id);
+        }
+    }
+}

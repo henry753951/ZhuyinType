@@ -80,14 +80,17 @@ impl Render for CandidatesPage {
         }
 
         // 候選字清單
-        let layout_subtitle = if vertical {
-            "↑ ↓ 移動反白，← → 改前一個或後一個字".to_owned()
-        } else {
-            let previous = keys.spoken("previousCharacter");
-            format!(
-                "← → 移動反白，↑ ↓ 翻頁{}",
-                if previous.is_empty() { String::new() } else { format!("，{previous} 改前一個字") }
-            )
+        // 改前一個字／改後一個字: ← → in a vertical list, their own keys in either (macOS `SettingsRegistry` 排列).
+        let neighbour_keys = [keys.spoken("previousCharacter"), keys.spoken("nextCharacter")]
+            .into_iter()
+            .filter(|key| !key.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let layout_subtitle = match (vertical, neighbour_keys.is_empty()) {
+            (true, true) => "↑ ↓ 移動反白，← → 改前一個或後一個字".to_owned(),
+            (true, false) => format!("↑ ↓ 移動反白，← → 或 {neighbour_keys} 改前一個或後一個字"),
+            (false, true) => "← → 移動反白，↑ ↓ 翻頁".to_owned(),
+            (false, false) => format!("← → 移動反白，↑ ↓ 翻頁，{neighbour_keys} 改前一個或後一個字"),
         };
         let layout_row =
             registry_row("candidateLayout", Some(layout_subtitle), cx).trailing(segments("candidateLayout", cx));
@@ -99,7 +102,7 @@ impl Render for CandidatesPage {
         let density_row = registry_row("candidateDensity", None, cx).trailing(segments("candidateDensity", cx));
         let per_page = settings.number("candidatesPerPage") as i64;
         let per_page_row = row("row-candidatesPerPage", "每頁的候選字")
-            .subtitle(format!("用 {} 選字；Return 選取反白的字", keys.selection()))
+            .subtitle(format!("用 {} 選字；Enter 選取反白的字", keys.selection()))
             .anchor("selection")
             .marked(settings.is_customised("candidatesPerPage"))
             .value(format!("{per_page} 個"))

@@ -189,7 +189,7 @@ mod tests {
         release.release = true;
         assert!(!claimed_key(&release, &claims));
         assert!(!claimed_key(&key('Q' as i32, CONTROL | ALT), &[]));
-        // Ctrl+Delete is no command's: with nothing composed it reaches the application.
+        // Ctrl+Delete (不要再推薦) acts only on an open list: with nothing composed it reaches the application.
         assert!(!claimed_key(&key(KEY_DELETE, CONTROL), &claims));
         assert!(!host_wants_key(&key(KEY_DELETE, CONTROL), false, false));
     }

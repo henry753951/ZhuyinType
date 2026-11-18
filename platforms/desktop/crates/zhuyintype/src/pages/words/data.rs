@@ -339,18 +339,6 @@ pub fn key_text(command: &str, cx: &App) -> Option<String> {
 
 /// The key that runs shortcut `command` as the shortcuts store it (「⇧←」).
 fn key_label(command: &str, cx: &App) -> Option<String> {
-    if let Some(service) = app::service(cx) {
-        let label = service.shortcuts().active_label(command);
-        return (!label.is_empty()).then_some(label);
-    }
-    // No service: the default keys (`Shortcuts::commands`), every feature on by default.
-    let label = match command {
-        "selectLeft" => "⇧←",
-        "selectRight" => "⇧→",
-        "correctionsList" => "⇧↑",
-        "singleCharacterList" => "⇧↓",
-        "typeZhuyin" => "`",
-        _ => return None,
-    };
-    Some(label.to_owned())
+    let label = crate::ui::shortcuts::store::store(cx).active_label(command);
+    (!label.is_empty()).then_some(label)
 }

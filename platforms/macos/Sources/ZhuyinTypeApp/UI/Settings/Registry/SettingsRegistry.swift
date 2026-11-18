@@ -187,8 +187,15 @@ enum SettingsRegistry {
     static let candidates: [SettingDescriptor] = [
         choice("candidateLayout", "排列", place(.candidates, SettingsRow.layout), \.candidateLayout,
                [(CandidateLayout.vertical, "直式"), (.horizontal, "橫式")], preview: .list,
-               detail: { p in p.candidateLayout == .vertical ? "↑ ↓ 移動反白，← → 改前一個或後一個字"
-                   : "← → 移動反白，↑ ↓ 翻頁" + (CurrentKeys(p).text(.previousCharacter).map { "，\($0) 改前一個字" } ?? "") }),
+               detail: { p in
+                   // 改前一個字／改後一個字: ← → in a vertical list, their own keys in either.
+                   let keys = CurrentKeys(p)
+                   let neighbour = [keys.text(.previousCharacter), keys.text(.nextCharacter)].compactMap { $0 }.joined(separator: " ")
+                   if p.candidateLayout == .vertical {
+                       return "↑ ↓ 移動反白，← →" + (neighbour.isEmpty ? "" : " 或 \(neighbour)") + " 改前一個或後一個字"
+                   }
+                   return "← → 移動反白，↑ ↓ 翻頁" + (neighbour.isEmpty ? "" : "，\(neighbour) 改前一個或後一個字")
+               }),
         SettingDescriptor(id: "candidateFontSize", title: "字級", kind: .number(Preferences.candidateFontSizes, step: 1, unit: " pt"), place: place(.candidates),
                           preview: .list, read: { .number($0.candidateFontSize) },
                           write: { p, v in if case .number(let n) = v { p.candidateFontSize = n } }),

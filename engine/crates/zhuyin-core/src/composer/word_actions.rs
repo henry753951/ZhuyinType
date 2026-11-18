@@ -1,4 +1,5 @@
-//! Word actions on a candidate (or, for adding a custom word, the whole composition), with one level of undo.
+//! Word actions on a candidate of the open list, with one level of undo.  Adding characters of the composition itself
+//! is the selection's (⇧← ⇧→, then Return), not an action here.
 //! The engine changes the personal data ([`crate::engine::WordUndo`]); this part picks the word, refreshes the
 //! conversion and the open list, and sets the notice the candidate window shows.
 
@@ -52,40 +53,29 @@ impl CandidateAction {
 struct Target {
     text: String,
     reading: String,
-    /// From the candidate list (true) or the whole composition (false).
-    listed: bool,
 }
 
 impl Composer {
-    /// Candidate `index` of the open list, else the highlighted one; with no list open, the whole composition (for
-    /// [`CandidateAction::AddPhrase`] only).
-    fn action_target(&self, action: CandidateAction, index: Option<usize>) -> Option<Target> {
-        if self.candidate_window.is_open() {
-            let choice: &FixedWord = match index {
-                Some(index) => self.candidate_window.get(index)?,
-                None => self.candidate_window.selected()?,
-            };
-            if choice.reading.is_empty() || choice.annotation.is_some() {
-                return None;
-            }
-            return Some(Target { text: choice.text.to_string(), reading: choice.reading.to_string(), listed: true });
-        }
-        if action != CandidateAction::AddPhrase || index.is_some() || self.has_buffer() || self.tokens.is_empty() {
+    /// Candidate `index` of the open list, else the highlighted one; `None` with no list open.
+    fn action_target(&self, index: Option<usize>) -> Option<Target> {
+        if !self.candidate_window.is_open() {
             return None;
         }
-        let range = 0..self.tokens.len();
-        let readings: Vec<String> = self.tokens.iter().filter_map(|t| t.reading().map(str::to_owned)).collect();
-        if readings.len() != range.len() {
+        let choice: &FixedWord = match index {
+            Some(index) => self.candidate_window.get(index)?,
+            None => self.candidate_window.selected()?,
+        };
+        if choice.reading.is_empty() || choice.annotation.is_some() {
             return None;
         }
-        Some(Target { text: self.shown(&range), reading: readings.join(" "), listed: false })
+        Some(Target { text: choice.text.to_string(), reading: choice.reading.to_string() })
     }
 
     /// Whether `action` can be done on candidate `index` (or the highlighted one; see
     /// [`perform_candidate_action`](Self::perform_candidate_action)).
     #[must_use]
     pub fn candidate_action_available(&self, action: CandidateAction, index: Option<usize>) -> bool {
-        let Some(target) = self.action_target(action, index) else { return false };
+        let Some(target) = self.action_target(index) else { return false };
         let engine = &self.engine;
         match action {
             CandidateAction::Block => !engine.is_blocked(&target.text, &target.reading),
@@ -96,14 +86,14 @@ impl Composer {
         }
     }
 
-    /// Does `action` on candidate `index` of the open list (`None`: the highlighted one; with no list open, adding
-    /// takes the whole composition).  Returns the notice shown, or `None` when the action does not apply.  The open
-    /// list is rebuilt at the same place; [`undo_candidate_action`](Self::undo_candidate_action) reverses it.
+    /// Does `action` on candidate `index` of the open list (`None`: the highlighted one).  Returns the notice shown, or
+    /// `None` when the action does not apply (also with no list open).  The open list is rebuilt at the same place;
+    /// [`undo_candidate_action`](Self::undo_candidate_action) reverses it.
     pub fn perform_candidate_action(&mut self, action: CandidateAction, index: Option<usize>) -> Option<String> {
         if !self.candidate_action_available(action, index) {
             return None;
         }
-        let target = self.action_target(action, index)?;
+        let target = self.action_target(index)?;
         let (text, reading) = (target.text.as_str(), target.reading.as_str());
         let undo = match action {
             CandidateAction::Block => {
@@ -120,7 +110,7 @@ impl Composer {
             CandidateAction::AddPhrase => format!("已加入自訂詞：{text}"),
         };
         self.word_undo = Some(undo);
-        self.after_word_action(target.listed, notice.clone());
+        self.after_word_action(true, notice.clone());
         Some(notice)
     }
 

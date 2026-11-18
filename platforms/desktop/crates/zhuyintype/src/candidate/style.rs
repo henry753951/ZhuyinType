@@ -50,71 +50,44 @@ pub fn selection_keys(settings: &Settings) -> Vec<char> {
 
 /// The keys of the commands the window and the preview name (macOS `CurrentKeys`).
 ///
-/// With the service running they come from its shortcuts; until zt-core's shortcuts are ported (and in screenshots,
-/// where there is no service) they are the defaults of Linux and Windows, minus the commands whose feature is off.
+/// They come from the service's shortcuts; without a service (screenshots, before the engine loads) from the same
+/// rules on the settings file (`zt_core::shortcuts`), minus the commands whose feature is off.
 pub struct CurrentKeys {
-    service: Option<zt_core::shortcuts::Shortcuts>,
+    shortcuts: zt_core::shortcuts::Shortcuts,
     settings: Settings,
 }
 
-/// The default keys (the first one shown first), as `Shortcuts::bindings` labels them on Linux and Windows.
-const DEFAULTS: &[(&str, Option<&str>, &[&str])] = &[
-    ("singleCharacterList", Some("feature.singleCharacterList"), &["⇧↓"]),
-    ("correctionsList", Some("feature.correctionsList"), &["⇧↑"]),
-    ("typeZhuyin", Some("feature.typeZhuyin"), &["`"]),
-    ("nextPage", Some("feature.pageKeys"), &["Tab", "PgDn", "Alt+↓"]),
-    ("previousPage", Some("feature.pageKeys"), &["⇧Tab", "PgUp", "Alt+↑"]),
-    ("selectLeft", Some("feature.selectPhrase"), &["⇧←"]),
-    ("selectRight", Some("feature.selectPhrase"), &["⇧→"]),
-    ("previousCharacter", None, &["Alt+←"]),
-    ("nextCharacter", None, &["Alt+→"]),
-];
-
 impl CurrentKeys {
     pub fn new(settings: &Settings, service: Option<&zt_core::service::Service>) -> Self {
-        Self { service: service.map(|service| service.shortcuts().clone()), settings: settings.clone() }
+        let shortcuts = match service {
+            Some(service) => service.shortcuts().clone(),
+            None => zt_core::shortcuts::Shortcuts::new(settings.clone()),
+        };
+        Self { shortcuts, settings: settings.clone() }
     }
 
     /// The keys stored in `settings` itself (the setup wizard's draft, which has its own copy of the keys).
     pub fn sandboxed(settings: &Settings) -> Self {
-        Self { service: Some(zt_core::shortcuts::Shortcuts::new(settings.clone())), settings: settings.clone() }
+        Self::new(settings, None)
     }
 
     /// All keys of `command` now (empty when its feature is off).
     pub fn all(&self, command: &str) -> Vec<String> {
-        if let Some(shortcuts) = &self.service {
-            if !shortcuts.is_enabled(command) {
-                return Vec::new();
-            }
-            return shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect();
+        if !self.shortcuts.is_enabled(command) {
+            return Vec::new();
         }
-        match DEFAULTS.iter().find(|(id, _, _)| *id == command) {
-            Some((_, feature, keys)) if feature.is_none_or(|feature| self.settings.bool(feature)) => {
-                keys.iter().map(|key| (*key).to_owned()).collect()
-            }
-            _ => Vec::new(),
-        }
+        self.shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect()
     }
 
     /// The keys `command` has whether or not its feature is on (what 「關閉時，… 交給 App」 hands over).
     #[cfg(test)]
     pub fn assigned(&self, command: &str) -> Vec<String> {
-        match &self.service {
-            Some(shortcuts) => shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect(),
-            None => DEFAULTS
-                .iter()
-                .find(|(id, _, _)| *id == command)
-                .map(|(_, _, keys)| keys.iter().map(|key| (*key).to_owned()).collect())
-                .unwrap_or_default(),
-        }
+        self.shortcuts.bindings(command).into_iter().map(|binding| binding.label).collect()
     }
 
     /// The command's first key, or "" when it has none or its feature is off.
     pub fn text(&self, command: &str) -> String {
-        match &self.service {
-            Some(shortcuts) => shortcuts.active_label(command),
-            None => self.all(command).into_iter().next().unwrap_or_default(),
-        }
+        self.shortcuts.active_label(command)
     }
 
     /// The command's first key for running text (「Shift+↑」), or "".
@@ -122,7 +95,7 @@ impl CurrentKeys {
         crate::ui::keycap::prose(&self.text(command))
     }
 
-    /// The command's first key as key caps (「⇧↑」 → 「⇧」「↑」, 「Alt+↓」 → 「Alt」「↓」), or None.
+    /// The command's first key as key caps (「⇧↑」 → 「⇧」「↑」, 「Ctrl+↓」 → 「Ctrl」「↓」), or None.
     pub fn caps(&self, command: &str) -> Option<Vec<String>> {
         let text = self.text(command);
         (!text.is_empty()).then(|| split_caps(&text))

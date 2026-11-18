@@ -234,7 +234,7 @@ impl Snapshot {
 fn note_text(state: PreviewState, settings: &Settings, keys: &CurrentKeys) -> String {
     match state {
         PreviewState::List => format!(
-            "按 ↓{} 開啟；{} 選字，Return 選取反白的字。",
+            "按 ↓{} 開啟；{} 選字，Enter 選取反白的字。",
             if settings.string("spaceAction") == "candidates" { "或空白" } else { "" },
             keys.selection()
         ),
@@ -260,7 +260,7 @@ fn note_text(state: PreviewState, settings: &Settings, keys: &CurrentKeys) -> St
                 if settings.bool("panelAnimation") { "，舊的一頁移出、新的一頁移入。" } else { "。" }
             )
         }
-        PreviewState::Phrase => "選取 1 到 6 個字，再按 Return 加入自訂詞。".into(),
+        PreviewState::Phrase => "選取 1 到 6 個字，再按 Enter 加入自訂詞。".into(),
         PreviewState::Mode => match keys.mode_key() {
             Some(key) => format!(
                 "按 {key} 切換中英{}",
