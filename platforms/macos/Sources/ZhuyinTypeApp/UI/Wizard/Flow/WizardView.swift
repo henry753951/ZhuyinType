@@ -869,8 +869,8 @@ struct KeySummary: View {
 
     static func groups(_ p: Preferences) -> [(title: String, symbol: String, items: [(keys: [String], action: String)])] {
         let keys = CurrentKeys(p)
-        func commands(_ section: KeySection) -> [(keys: [String], action: String)] {
-            ShortcutCommand.allCases.filter { $0.section == section && p.isEnabled($0) }.compactMap { command in
+        func commands(_ chosen: Set<ShortcutCommand>) -> [(keys: [String], action: String)] {
+            ShortcutCommand.allCases.filter { chosen.contains($0) && p.isEnabled($0) }.compactMap { command in
                 let list = (p.bindings[command] ?? []).prefix(2).map(\.compact)
                 return list.isEmpty ? nil : (Array(list), command.label)
             }
@@ -881,9 +881,10 @@ struct KeySummary: View {
         ]
         if let mode = keys.modeKey { typing.append(([mode], "切換中英")) }
         return [
-            ("打字", "keyboard", typing + commands(.composing)),
-            ("候選字清單", "list.bullet.rectangle", [(["↓"], "開啟候選字清單"), ([keys.selection], "選字")] + commands(.list)),
-            ("改字與選取", "character.cursor.ibeam", commands(.editing)),
+            ("打字", "keyboard", typing + commands([.commitWithNewline, .deleteWord])),
+            ("候選字清單", "list.bullet.rectangle", [(["↓"], "開啟候選字清單"), ([keys.selection], "選字")]
+                + commands(Set(ShortcutCommand.allCases.filter(\.showsInListPreview)))),
+            ("改字與選取", "character.cursor.ibeam", commands([.typeZhuyin, .selectLeft, .selectRight, .addSelectedText])),
         ].filter { !$0.2.isEmpty }
     }
 }

@@ -60,6 +60,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
         split.onSelect = { [weak self, weak window] pane in
             window?.title = pane.title
             self?.model.subpage = nil
+            // A page from the sidebar has no arrival; `open` sets the next one after this.
+            self?.model.focusTarget = nil
             self?.paneChanged(pane)
         }
         // A sub-page with a list (自訂詞, 記住的字詞) gets the toolbar search.
@@ -91,17 +93,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate, NSToolbarDeleg
     /// Whether `pane` is the page on screen.
     func isShowing(_ pane: SettingsPane) -> Bool { self.pane == pane }
 
-    /// Shows a place: a page, a sub-page of it, scrolled to a row.
+    /// Every link in the window goes through here (docs/product/SETTINGS_IA.md §4.1): the page, its sub-page when the
+    /// place has one, then the arrival — `SettingsPaneView.reveal` scrolls to the row, gives it the keyboard focus and
+    /// lights it once.  The sidebar and ‹ do not come here: they show a page without an arrival.
     func open(_ place: SettingsPlace) {
         if split == nil { _ = makeWindow() }
+        let place = place.resolved
         select(place.pane)
         model.subpage = place.subpage
+        model.focusTarget = place.row
         model.scrollTarget = place.row
     }
 
     /// Shows the 快捷鍵 page scrolled to `section`.
     func showKeys(_ section: KeySection, command: ShortcutCommand? = nil) {
-        open(SettingsPlace(.keys, row: RowSections.headerID((command?.section ?? section).title)))
+        open(SettingsPlace.keysSection(command?.section ?? section))
     }
 
     /// The settings window, when it is on screen.
@@ -180,6 +186,13 @@ final class SettingsModel: ObservableObject {
     @Published var subpage: SettingsSubpage? { didSet { HoverState.shared.clear() } }
     /// A row to scroll to, set by the links between pages; cleared once shown.
     @Published var scrollTarget: String?
+    /// The row the last link led to: it takes the keyboard focus on arrival (`ArrivalFocus`), and a folded part of the
+    /// page holding it unfolds.  Kept until the next link, so the focus can come back to it.
+    @Published var focusTarget: String?
+    /// The arrival's scroll, carried out by the row it names (`ArrivalScroll`).
+    @Published var scrollRequest: ScrollRequest?
+    /// The row that last took the focus on arrival (the self-tests read it).
+    var focusedRow: String?
     /// The row a link just led to, and its section, highlighted for a moment.  A section alone: all its rows.
     @Published var arrivedRow: String?
     @Published var arrivedSection: String?
@@ -206,25 +219,32 @@ final class SettingsModel: ObservableObject {
     }
 }
 
-/// The sidebar's pages (docs/product/SETTINGS_IA.md).
+/// The sidebar's pages (docs/product/SETTINGS_IA.md §2).
 enum SettingsPane: String, CaseIterable {
-    case intro, typing, choosing, candidates, words, analytics, keys, advanced, about
+    case intro, analytics, typing, punctuation, mode, choosing, corrections, words, candidates, colors, keys, health,
+         advanced, about
 
     /// The sidebar's sections, each under a small grey header.
     static let groups: [(title: String, panes: [SettingsPane])] = [
-        ("概覽", [.intro, .analytics]), ("輸入", [.typing, .choosing, .words]), ("外觀", [.candidates]),
-        ("一般", [.keys, .advanced, .about]),
+        ("概覽", [.intro, .analytics]), ("輸入", [.typing, .punctuation, .mode]),
+        ("選字與字詞", [.choosing, .corrections, .words]), ("外觀", [.candidates, .colors]),
+        ("一般", [.keys, .health, .advanced, .about]),
     ]
 
     var title: String {
         switch self {
         case .intro: return "介紹"
-        case .typing: return "打字"
-        case .choosing: return "選字"
-        case .candidates: return "視窗與提示"
-        case .words: return "字詞"
         case .analytics: return "分析"
+        case .typing: return "打字"
+        case .punctuation: return "標點與符號"
+        case .mode: return "中英切換"
+        case .choosing: return "選字"
+        case .corrections: return "修正"
+        case .words: return "字詞"
+        case .candidates: return "候選字視窗"
+        case .colors: return "色彩"
         case .keys: return "快捷鍵"
+        case .health: return "檢查輸入法"
         case .advanced: return "進階"
         case .about: return "關於"
         }
@@ -233,12 +253,17 @@ enum SettingsPane: String, CaseIterable {
     var symbol: String {
         switch self {
         case .intro: return "sparkles"
-        case .typing: return "keyboard.fill"
-        case .choosing: return "wand.and.stars"
-        case .candidates: return "list.bullet.rectangle"
-        case .words: return "character.book.closed.fill"
         case .analytics: return "chart.bar.fill"
+        case .typing: return "keyboard.fill"
+        case .punctuation: return "quote.opening"
+        case .mode: return "globe"
+        case .choosing: return "character.cursor.ibeam"
+        case .corrections: return "wand.and.stars"
+        case .words: return "character.book.closed.fill"
+        case .candidates: return "list.bullet.rectangle"
+        case .colors: return "paintpalette.fill"
         case .keys: return "command"
+        case .health: return "stethoscope"
         case .advanced: return "slider.horizontal.3"
         case .about: return "info"
         }
@@ -247,18 +272,20 @@ enum SettingsPane: String, CaseIterable {
     var tint: NSColor {
         switch self {
         case .intro: return .systemPink
-        case .typing: return .systemIndigo
-        case .choosing: return .systemTeal
-        case .candidates: return .systemBlue
-        case .words: return .systemOrange
         case .analytics: return .systemGreen
-        case .keys, .advanced, .about: return .systemGray
+        case .typing, .punctuation: return .systemIndigo
+        case .mode: return .systemBlue
+        case .choosing, .corrections: return .systemTeal
+        case .words: return .systemOrange
+        case .candidates: return .systemBlue
+        case .colors: return .systemPurple
+        case .keys, .health, .advanced, .about: return .systemGray
         }
     }
 
-    /// Pages of earlier versions, for the remembered last page.
-    private static let earlier: [String: SettingsPane] = ["general": .typing, "context": .choosing, "phrases": .words,
-                                                           "learned": .words]
+    /// Pages of earlier versions, for the remembered last page (SETTINGS_IA.md §4.4; the rest kept their ids).
+    static let earlier: [String: SettingsPane] = ["general": .typing, "context": .choosing, "phrases": .words,
+                                                  "learned": .words]
 
     private static let defaultsKey = "settingsLastPane"
     static var lastSelected: SettingsPane {
@@ -345,7 +372,7 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
     /// Section headers and panes.
     private let rows: [Row] = SettingsPane.groups.flatMap { [Row.header($0.title)] + $0.panes.map(Row.pane) }
     private var icons: [SettingsPane: NSImage] = [:]
-    /// 檢查輸入法's badge on 關於, redrawn when the checks change.
+    /// 檢查輸入法's badge, redrawn when the checks change.
     private var healthObserver: AnyCancellable?
     private static let badgeID = NSUserInterfaceItemIdentifier("HealthBadge")
 
@@ -367,9 +394,9 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         scroll.documentView = table
         view = scroll
         SettingsPane.allCases.forEach { icons[$0] = $0.icon }
-        // After the change is published (`$checks` sends before it), redraw 關於's row.
+        // After the change is published (`$checks` sends before it), redraw 檢查輸入法's row.
         healthObserver = HealthMonitor.shared.$checks.receive(on: DispatchQueue.main).sink { [weak self] _ in
-            guard let self, let row = self.rows.firstIndex(of: .pane(.about)) else { return }
+            guard let self, let row = self.rows.firstIndex(of: .pane(.health)) else { return }
             self.table.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: 0))
         }
         HealthMonitor.shared.refreshIfNeeded()
@@ -443,7 +470,7 @@ final class SettingsSidebarViewController: NSViewController, NSTableViewDataSour
         }()
         cell.imageView?.image = icons[pane]
         cell.textField?.stringValue = pane.title
-        cell.subviews.first { $0.identifier == Self.badgeID }?.isHidden = !(pane == .about && HealthMonitor.shared.needsAttention)
+        cell.subviews.first { $0.identifier == Self.badgeID }?.isHidden = !(pane == .health && HealthMonitor.shared.needsAttention)
         return cell
     }
 

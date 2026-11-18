@@ -1801,8 +1801,8 @@ enum ControllerCoreSelfTest {
             for query in ["半型", "全型", "全形", "全型半型", "Shift 空白", "Shift＋空白", "shift+space"] {
                 try expect(item.matches(query, CurrentKeys(p)), "width missing for query \(query)")
             }
-            for command in [ShortcutCommand.togglePunctuationWidth, .insertSpace] {
-                try expect(command.place.pane == .typing && command.place.subpage == nil,
+            for (command, pane) in [(ShortcutCommand.togglePunctuationWidth, SettingsPane.punctuation), (.insertSpace, .typing)] {
+                try expect(command.place.pane == pane && command.place.subpage == nil,
                            "command still hidden one level down")
                 try expect(SettingsRegistry.setting("keys." + command.rawValue)?.detail?(p) != nil,
                            "command has no explanation")
@@ -1902,8 +1902,10 @@ enum ControllerCoreSelfTest {
         // Contrast, accent colours, VoiceOver and the solid panel (UI/Accessibility).
         AccessibilitySelfTest.run(test: test)
 
-        // 關於 › 檢查輸入法 (Health).
+        // 檢查輸入法 (Health).
         HealthSelfTest.run(test: test)
+        // Every link of the settings window leads to a drawn row, which takes the focus (UI/Settings/SettingsLinks.swift).
+        SettingsLinksSelfTest.run(test: test)
 
         test("wizard: a choice reaches the practice field on its page at once — the same field, its composition kept") {
             _ = NSApplication.shared

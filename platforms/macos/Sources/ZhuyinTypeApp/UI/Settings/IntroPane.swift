@@ -26,13 +26,13 @@ struct IntroPane: View {
             }
             SettingsSection("目前的設定") {
                 SummaryRow(title: "空白鍵", value: OptionDemos.spaceLabel(preferences.spaceAction),
-                           place: SettingsPlace(.typing, row: SettingsRow.space))
+                           place: SettingsLinks.Summary.space)
                 SummaryRow(title: "標點按法", value: preferences.punctuationKeys == .windows ? "Windows" : "macOS",
-                           place: SettingsPlace(.typing, row: SettingsRow.punctuationKeys))
+                           place: SettingsLinks.Summary.punctuation)
                 SummaryRow(title: "按錯鍵修正", value: ["關閉", "標準", "積極"][[TypoSetting.off, .standard, .aggressive]
-                    .firstIndex(of: preferences.typoTolerance) ?? 1], place: SettingsPlace(.choosing, row: SettingsRow.typo))
+                    .firstIndex(of: preferences.typoTolerance) ?? 1], place: SettingsLinks.Summary.typo)
                 SummaryRow(title: "中英切換", value: CurrentKeys(preferences).modeKey.map { "按 \($0)" } ?? "不使用",
-                           place: SettingsPlace(.typing, row: SettingsRow.shiftTap))
+                           place: SettingsLinks.Summary.mode)
             }
             SettingsSection("設定嚮導") {
                 SettingLinkRow(title: "開始設定嚮導", subtitle: "選擇習慣的打法，並在嚮導中試打") {
@@ -66,24 +66,44 @@ struct IntroFeature: Identifiable {
         let punctuation = preferences.punctuationKeys == .windows
             ? "⇧ 加符號鍵打出鍵上的符號" + (keys.isOn(.controlPunctuation) ? "，⌃ 加符號鍵打中文標點" : "") + "。標點預設全形，可切換全半形。"
             : "⇧ 加符號鍵打出中文標點。標點預設全形，可切換全半形。"
-        return [
+        let wordKeys = [keys.text(.blockCandidate), keys.text(.addCandidatePhrase)].compactMap { $0 }
+        let quick = keys.text(.quickSettings).map { "按 \($0) " } ?? "從輸入法選單"
+        var features = [
             IntroFeature(title: "整句輸入", text: "一句話連續打完，依讀音與前後文選出最通順的寫法。", symbol: "text.word.spacing",
-                         tint: .blue, place: SettingsPlace(.candidates)),
-            IntroFeature(title: "按錯鍵也能打對", text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先。",
-                         symbol: "wand.and.stars", tint: .indigo,
-                         place: SettingsPlace(.choosing, row: SettingsRow.typo)),
+                         tint: .blue, place: .section(.choosing, "轉換")),
+            IntroFeature(title: "按錯鍵也能打對", text: "按到相鄰的鍵、多按、漏按或順序打反時試著修正，照打的字優先；修正過的字加點線，按 ⌫ 改回。",
+                         symbol: "wand.and.stars", tint: .indigo, place: SettingsPlace(.corrections, row: SettingsRow.typo)),
             IntroFeature(title: "依前文選字", text: "參考游標前最多 \(ContextPane.readLimit) 個字，並接續同一個 App 最近 \(ContextPane.minutes) 分鐘的前文。",
-                         symbol: "text.alignleft", tint: .teal,
-                         place: SettingsPlace(.choosing, subpage: .context)),
-            IntroFeature(title: "記住你的用法", text: "選過的字詞下次直接採用；資料只存在這台 Mac。", symbol: "clock.arrow.circlepath",
-                         tint: .purple, place: SettingsPlace(.words)),
-            IntroFeature(title: "標點與全半形", text: punctuation + (keys.text(.togglePunctuationWidth).map { "按 \($0) 切換。" } ?? "可在「打字」設定快捷鍵。"), symbol: "quote.opening", tint: .orange,
+                         symbol: "text.alignleft", tint: .teal, place: SettingsPlace(.choosing, row: SettingsRow.context)),
+            IntroFeature(title: "聯想詞", text: "送出後列出常接在後面的詞，按 ↓ 進入清單再選；預設關閉。", symbol: "text.append",
+                         tint: .cyan, place: SettingsPlace(.choosing, row: SettingsRow.associatedPhrases)),
+            IntroFeature(title: "記住你的用法", text: "選過的字詞下次直接採用；資料只存在這台 Mac，也可以暫停學習。", symbol: "clock.arrow.circlepath",
+                         tint: .purple, place: SettingsPlace(.words, row: SettingsRow.learning)),
+            IntroFeature(title: "在候選字視窗管理字詞",
+                         text: "在候選字上按右鍵" + (wordKeys.isEmpty ? "" : "或按 " + wordKeys.joined(separator: "、"))
+                             + "，不再推薦某個字詞或加入自訂詞；App 裡選取的字也能加入。",
+                         symbol: "character.book.closed", tint: .orange, place: .section(.words, "在候選字視窗中")),
+            IntroFeature(title: "標點與全半形", text: punctuation + (keys.text(.togglePunctuationWidth).map { "按 \($0) 切換。" } ?? "可在「標點與符號」設定快捷鍵。"), symbol: "quote.opening", tint: .orange,
                          place: ShortcutCommand.togglePunctuationWidth.place),
+        ]
+        if SymbolSources.isAvailable {
+            features.append(IntroFeature(title: "符號與 Emoji",
+                                         text: (keys.text(.symbolPicker).map { "按 \($0) " } ?? "") + "開啟面板，用注音或英文搜尋符號與 Emoji。",
+                                         symbol: "face.smiling", tint: .yellow, place: SettingsPlace(.punctuation, row: SettingsRow.symbolPicker)))
+        }
+        features += [
+            IntroFeature(title: "快速設定", text: quick + "在游標旁切換英文、半形標點、簡體與暫停學習。", symbol: "switch.2",
+                         tint: .blue, place: ShortcutCommand.quickSettings.place),
+            IntroFeature(title: "色彩與無障礙", text: "候選字視窗的淺色、深色與強調色；跟著系統的增加對比與減少動態效果。",
+                         symbol: "paintpalette", tint: .pink, place: SettingsPlace(.colors)),
+            IntroFeature(title: "檢查輸入法", text: "找出無法打字的常見原因並修正；回報問題時整理成一段可以拷貝的文字。",
+                         symbol: "stethoscope", tint: .green, place: SettingsPlace(.health)),
             IntroFeature(title: "改字記錄", text: "可以記錄改字的過程，用來改進選字；只存在這台 Mac。", symbol: "pencil.and.list.clipboard",
-                         tint: .gray, place: SettingsPlace(.advanced)),
+                         tint: .gray, place: .section(.advanced, "改字記錄")),
             IntroFeature(title: "使用分析", text: "打了多少字、改了幾次、輸入法反應多快。", symbol: "chart.bar.fill", tint: .green,
                          place: SettingsPlace(.analytics)),
         ]
+        return features
     }
 }
 

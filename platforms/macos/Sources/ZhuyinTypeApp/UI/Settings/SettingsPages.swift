@@ -8,23 +8,23 @@ import ZhuyinEngine
 
 /// Pages one level down from a sidebar page.
 enum SettingsSubpage: String, CaseIterable, Identifiable {
-    case punctuation, typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources, health
+    case typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources
     var id: String { rawValue }
 
     var pane: SettingsPane {
         switch self {
-        case .punctuation, .typingKeys: return .typing
-        case .fuzzy, .context: return .choosing
+        case .typingKeys: return .typing
+        case .context: return .choosing
+        case .fuzzy: return .corrections
         case .learnedWords, .phrases: return .words
         case .performance: return .analytics
         case .apps: return .advanced
-        case .sources, .health: return .about
+        case .sources: return .about
         }
     }
 
     var title: String {
         switch self {
-        case .punctuation: return "標點與符號"
         case .typingKeys: return "所有打字的按鍵"
         case .fuzzy: return "模糊音"
         case .context: return "前文"
@@ -33,12 +33,12 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .performance: return "效能"
         case .apps: return "在候選字視窗顯示組字的 App"
         case .sources: return "授權與資料來源"
-        case .health: return "檢查輸入法"
         }
     }
 }
 
-/// Somewhere in the settings window: a page, maybe one of its sub-pages, maybe a row to scroll to.
+/// Somewhere in the settings window: a page, maybe one of its sub-pages, maybe a row (or a section,
+/// `RowSections.headerID`) to arrive at.
 struct SettingsPlace: Equatable {
     var pane: SettingsPane
     var subpage: SettingsSubpage?
@@ -48,58 +48,85 @@ struct SettingsPlace: Equatable {
         self.subpage = subpage
         self.row = row
     }
+
+    /// A whole section of a page: its header near the top, its card lit.
+    static func section(_ pane: SettingsPane, _ title: String, subpage: SettingsSubpage? = nil) -> SettingsPlace {
+        SettingsPlace(pane, subpage: subpage, row: RowSections.headerID(title))
+    }
+
+    /// The section of the 快捷鍵 page with the keys of `section` (named as its page).
+    static func keysSection(_ section: KeySection) -> SettingsPlace { .section(.keys, section.title) }
+
+    /// The same place in this version's layout (SETTINGS_IA.md §4.4): a sub-page under the page it now belongs to, and
+    /// a row of 0.7.0's 打字, 選字 or 視窗與提示 on the page it moved to.
+    var resolved: SettingsPlace {
+        var place = self
+        if let subpage, subpage.pane != pane { place.pane = subpage.pane }
+        if place.subpage == nil, let row, let home = SettingsLinks.movedRows[row], home != place.pane,
+           SettingsLinks.formerPanes.contains(place.pane) {
+            place.pane = home
+        }
+        return place
+    }
 }
 
 /// Rows other pages link to, by id.
 enum SettingsRow {
     static let space = "space", escape = "escape", punctuationKeys = "punctuationKeys", shiftTap = "shiftTap"
+    static let shiftSide = "shiftSide", startInEnglish = "startInEnglish"
     static let capsLock = "capsLock", newline = "newline", deleteWord = "deleteWord", corrections = "corrections"
     static let typeZhuyin = "typeZhuyin", selectPhrase = "selectPhrase", deleteAfterCommit = "deleteAfterCommit"
     static let pageKeys = "pageKeys", single = "single", zhuyinRow = "zhuyinRow", selection = "selection"
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"
     static let optionSymbols = "optionSymbols", showsZhuyin = "showsZhuyin", otherReadings = "otherReadings"
-    static let placement = "placement", appearance = "appearance", motion = "motion", modeToast = "modeToast"
+    static let placement = "placement", appearance = "appearance", accentColor = "accentColor", motion = "motion"
+    static let modeToast = "modeToast"
     static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
-    static let associatedPhrases = "associatedPhrases"
-    static let symbolPicker = "symbolPicker"
+    static let associatedPhrases = "associatedPhrases", outputScript = "outputScript", candidateAnchor = "candidateAnchor"
+    static let symbolPicker = "symbolPicker", context = "context", learning = "learning", pauseLearning = "pauseLearning"
 }
 
 /// Where each feature with keys is set.
 extension KeyFeature {
     var place: SettingsPlace {
         switch self {
-        case .typeZhuyin: return SettingsPlace(.choosing, row: SettingsRow.typeZhuyin)
+        case .typeZhuyin: return SettingsPlace(.corrections, row: SettingsRow.typeZhuyin)
         case .zhuyinRowClick: return SettingsPlace(.candidates, row: SettingsRow.zhuyinRow)
         case .singleCharacterList: return SettingsPlace(.candidates, row: SettingsRow.single)
-        case .correctionsList: return SettingsPlace(.choosing, row: SettingsRow.corrections)
-        case .selectPhrase: return SettingsPlace(.choosing, row: SettingsRow.selectPhrase)
+        case .correctionsList: return SettingsPlace(.corrections, row: SettingsRow.corrections)
+        case .selectPhrase: return SettingsPlace(.words, row: SettingsRow.selectPhrase)
         case .pageKeys: return SettingsPlace(.candidates, row: SettingsRow.pageKeys)
         case .deleteWord: return SettingsPlace(.typing, row: SettingsRow.deleteWord)
-        case .controlPunctuation: return SettingsPlace(.typing, subpage: .punctuation, row: SettingsRow.controlPunctuation)
-        case .optionSymbols: return SettingsPlace(.typing, subpage: .punctuation, row: SettingsRow.optionSymbols)
-        case .capsLockEnglish: return SettingsPlace(.typing, row: SettingsRow.capsLock)
-        case .deleteAfterCommit: return SettingsPlace(.choosing, row: SettingsRow.deleteAfterCommit)
-        case .symbolPicker: return SettingsPlace(.typing, row: SettingsRow.symbolPicker)
+        case .controlPunctuation: return SettingsPlace(.punctuation, row: SettingsRow.controlPunctuation)
+        case .optionSymbols: return SettingsPlace(.punctuation, row: SettingsRow.optionSymbols)
+        case .capsLockEnglish: return SettingsPlace(.mode, row: SettingsRow.capsLock)
+        case .deleteAfterCommit: return SettingsPlace(.corrections, row: SettingsRow.deleteAfterCommit)
+        case .symbolPicker: return SettingsPlace(.punctuation, row: SettingsRow.symbolPicker)
         }
     }
 }
 
 extension ShortcutCommand {
-    /// The id of the command's 「快捷鍵」 row on its feature's page.
+    /// The id of the command's 「快捷鍵」 row, on its feature's page and on the 快捷鍵 page alike.
     var keysRow: String { "keys-" + rawValue }
 
-    /// Where the command's keys are set: its 「快捷鍵」 row.
+    /// Where the command's keys are set: its 「快捷鍵」 row on the page of its feature.
     var place: SettingsPlace {
-        var place: SettingsPlace = {
+        let pane: SettingsPane = {
             switch self {
-            case .previousCharacter, .nextCharacter: return SettingsPlace(.candidates, row: SettingsRow.layout)
-            case .togglePunctuationWidth, .insertSpace, .quickSettings: return SettingsPlace(.typing)
-            default: return feature?.place ?? SettingsPlace(.typing, row: SettingsRow.newline)
+            case .previousCharacter, .nextCharacter, .nextPage, .previousPage, .singleCharacterList: return .candidates
+            case .commitWithNewline, .deleteWord, .insertSpace: return .typing
+            case .togglePunctuationWidth, .symbolPicker: return .punctuation
+            case .quickSettings: return .mode
+            case .correctionsList, .typeZhuyin: return .corrections
+            case .selectLeft, .selectRight, .addSelectedText, .blockCandidate, .forgetCandidate, .addCandidatePhrase: return .words
             }
         }()
-        place.row = keysRow
-        return place
+        return SettingsPlace(pane, row: keysRow)
     }
+
+    /// The command's row on the 快捷鍵 page.
+    var overviewPlace: SettingsPlace { SettingsPlace(.keys, row: keysRow) }
 }
 
 // MARK: - The page host
@@ -112,12 +139,13 @@ struct SettingsPaneView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollViewReader { proxy in
+        Group {
             ZStack(alignment: .top) {
                 if let pinned = DemoPinning.navigation, let subpage = model.subpage, subpage.pane == pane {
                     // The UI previews: a push (or pop) drawn still at `progress`.
                     let shown = pinned.push ? pinned.progress : 1 - pinned.progress
                     page().modifier(NavigationMotion(offset: -12, visible: 1 - shown))
+                        .environment(\.settingsPage, RowSections.pageKey(pane, nil))
                     subpageView(subpage).modifier(NavigationMotion(offset: 24, visible: shown))
                 } else if let subpage = model.subpage, subpage.pane == pane {
                     subpageView(subpage)
@@ -126,6 +154,7 @@ struct SettingsPaneView: View {
                                                                          identity: NavigationMotion(offset: 24, visible: 1)))
                 } else {
                     page()
+                        .environment(\.settingsPage, RowSections.pageKey(pane, nil))
                         .transition(reduceMotion ? .opacity : .modifier(active: NavigationMotion(offset: -12, visible: 0),
                                                                          identity: NavigationMotion(offset: -12, visible: 1)))
                 }
@@ -134,25 +163,35 @@ struct SettingsPaneView: View {
             .animation(SettingsWindowController.isPreview ? nil
                        : reduceMotion ? .easeInOut(duration: 0.18) : .easeOut(duration: 0.22), value: model.subpage)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .onChange(of: model.scrollTarget) { _, target in reveal(target, proxy) }
-            .onAppear { reveal(model.scrollTarget, proxy) }
+            .onChange(of: model.scrollTarget) { _, target in reveal(target) }
+            .onAppear { reveal(model.scrollTarget) }
         }
     }
 
-    /// The arrival cue: scroll so the target's section header and the row are both in view (the row about a third
-    /// down), then tint the row (or every row of a section that is the target) and light the section header, once:
-    /// in 0.2 s, held 0.8 s, out 0.8 s.  Under Reduce Motion the scroll jumps and the tint only fades.
-    private func reveal(_ target: String?, _ proxy: ScrollViewProxy) {
+    /// The arrival cue (SETTINGS_IA.md §4.1): scroll so the target's section header and the row are both in view (a row
+    /// deep in a long section: the row about a third down), then tint the row (or every row of a section that is the
+    /// target) and light the section header, once: in 0.2 s, held 0.8 s, out 0.8 s.  The row takes the keyboard focus
+    /// (`ArrivalFocus`).  Under Reduce Motion the scroll jumps and the tint only fades.  A row that is not drawn yet (a
+    /// sub-page sliding in, a folded part unfolding) is waited for, briefly.
+    private func reveal(_ target: String?, attempt: Int = 0) {
         guard let target, SettingsWindowController.shared.isShowing(pane) else { return }
+        let page = RowSections.pageKey(pane, model.subpage)
+        // A sub-page that was just pushed, or rows that just unfolded, are drawn a moment later.
+        guard RowSections.drawn[page]?.contains(target) == true || attempt >= 12 else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { reveal(target, attempt: attempt + 1) }
+            return
+        }
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let isSection = target.hasPrefix("section-")
-        let section = isSection ? String(target.dropFirst("section-".count)) : RowSections.map[target]
-        DispatchQueue.main.async {
-            let scroll = {
-                if let section { proxy.scrollTo(RowSections.headerID(section), anchor: UnitPoint(x: 0.5, y: 0.08)) }
-                else { proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: 0.33)) }
+        let section = isSection ? String(target.dropFirst("section-".count)) : RowSections.section(of: target, page: page)
+        let nearHeader = isSection || section.map { RowSections.position(of: target, in: $0, page: page) < 3 } ?? false
+        // A moment after the page settled: rows inserted with the page (a folded part opening) are laid out by then.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            if let section, nearHeader {
+                model.scrollRequest = ScrollRequest(id: RowSections.headerID(section), fraction: 0.08, animated: !reduceMotion)
+            } else {
+                model.scrollRequest = ScrollRequest(id: target, fraction: 0.33, animated: !reduceMotion)
             }
-            if reduceMotion { scroll() } else { withAnimation(.easeInOut(duration: 0.35)) { scroll() } }
             model.scrollTarget = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.05 : 0.4)) {
                 withAnimation(.easeOut(duration: 0.2)) {
@@ -173,12 +212,17 @@ struct SettingsPaneView: View {
     @ViewBuilder private func page() -> some View {
         switch pane {
         case .intro: IntroPane(preferences: preferences, model: model)
-        case .typing: TypingPane(preferences: preferences, model: model)
-        case .choosing: ChoosingPane(preferences: preferences, model: model)
-        case .candidates: CandidatesPane(preferences: preferences, model: model)
-        case .words: WordsPane(preferences: preferences, model: model)
         case .analytics: AnalyticsPane(preferences: preferences, model: model)
+        case .typing: TypingPane(preferences: preferences, model: model)
+        case .punctuation: PunctuationPane(preferences: preferences)
+        case .mode: ModePane(preferences: preferences)
+        case .choosing: ChoosingPane(preferences: preferences, model: model)
+        case .corrections: CorrectionsPane(preferences: preferences, model: model)
+        case .words: WordsPane(preferences: preferences, model: model)
+        case .candidates: CandidatesPane(preferences: preferences, model: model)
+        case .colors: ColorsPane(preferences: preferences)
         case .keys: KeysPane(preferences: preferences, model: model)
+        case .health: HealthPage()
         case .advanced: AdvancedPane(model: model, preferences: preferences)
         case .about: AboutPane(model: model)
         }
@@ -187,11 +231,11 @@ struct SettingsPaneView: View {
     /// A sub-page, with its pinned bar (drawn by its `SettingsForm`).
     private func subpageView(_ subpage: SettingsSubpage) -> some View {
         page(subpage).environment(\.subpageHeader, SubpageHeaderInfo(parent: pane.title, title: subpage.title) { model.subpage = nil })
+            .environment(\.settingsPage, RowSections.pageKey(pane, subpage))
     }
 
     @ViewBuilder private func page(_ subpage: SettingsSubpage) -> some View {
         switch subpage {
-        case .punctuation: PunctuationPage(preferences: preferences)
         case .typingKeys: TypingKeysPage(preferences: preferences)
         case .fuzzy: FuzzyPage(preferences: preferences)
         case .context: ContextPane(preferences: preferences, pinnedScene: DemoPinning.context)
@@ -200,7 +244,6 @@ struct SettingsPaneView: View {
         case .performance: PerformancePage()
         case .apps: AppsPage(model: model)
         case .sources: SourcesPane()
-        case .health: HealthPage()
         }
     }
 }
@@ -324,10 +367,11 @@ struct CommandKeyRows: View {
     }
 }
 
-/// The page's one link to the overview of all keys, at its foot.
+/// The page's one link to the overview of all keys, at its foot: to the overview's section named as the page.
 struct KeysOverviewLink: View {
+    let section: KeySection
     var body: some View {
-        PlaceLink(title: "在快捷鍵總覽中查看全部按鍵", place: SettingsPlace(.keys))
+        PlaceLink(title: "在快捷鍵總覽中查看全部按鍵", place: .keysSection(section))
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -352,63 +396,7 @@ struct PlaceLink: View {
 
 // MARK: - 打字
 
-private struct TypingPane: View {
-    @ObservedObject var preferences: Preferences
-    @ObservedObject var model: SettingsModel
-
-    var body: some View {
-        let punctuationOff = [KeyFeature.controlPunctuation, .optionSymbols].filter { !preferences.isEnabled($0) }.count
-        SettingsForm {
-            SettingsSection("空白與 Esc") {
-                RegistryRow("spaceAction", preferences, accessory: .info(title: "空白鍵", content: AnyView(SpaceInfo(current: preferences.spaceAction))))
-                RegistryRow("escape", preferences, accessory: .info(title: "Esc", content: AnyView(EscapeInfo(clears: preferences.escapeClearsComposition))))
-            }
-            SettingsSection("標點") {
-                RegistryRow("punctuationKeys", preferences, accessory: .info(title: "標點按法", content: AnyView(PunctuationTable(current: preferences.punctuationKeys))))
-                RegistryRow("keys.togglePunctuationWidth", preferences,
-                            accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
-                RegistryRow("keys.insertSpace", preferences)
-                if SymbolSources.isAvailable {
-                    FeatureRow(preferences: preferences, title: "符號與 Emoji", subtitle: "開啟面板，用注音或英文搜尋符號與 Emoji",
-                               feature: .symbolPicker, commands: [.symbolPicker], anchor: SettingsRow.symbolPicker)
-                }
-                DrillRow(model: model, title: "標點與符號的按鍵與說明", subtitle: "中文預設全形；英數與空白維持半形",
-                         value: punctuationOff == 0 ? "全部開啟" : "已關閉 \(punctuationOff) 項", subpage: .punctuation)
-            }
-            SettingsSection("中英切換") {
-                RegistryRow("shiftSwitch", preferences)
-                if preferences.shiftSwitchEnabled {
-                    SettingRow(title: "使用的 Shift", indent: true) {
-                        RowPicker(title: "使用的 Shift", selection: Binding(
-                            get: { preferences.shiftToggle == .none ? .both : preferences.shiftToggle },
-                            set: { preferences.shiftToggle = $0 }),
-                                  options: [("左右 Shift", ShiftToggle.both), ("左 Shift", .left), ("右 Shift", .right)])
-                    }
-                }
-                FeatureRow(preferences: preferences, title: "Caps Lock 打英文", subtitle: "開著時打英文，正在組的字先送出",
-                           feature: .capsLockEnglish, anchor: SettingsRow.capsLock)
-                SettingLinkRow(title: "中英提示", subtitle: "切換時在游標旁顯示「中」或「英」",
-                               value: preferences.showModeToast ? "顯示" : "不顯示") {
-                    SettingsWindowController.shared.open(SettingsPlace(.candidates, row: SettingsRow.modeToast))
-                }
-                RegistryRow("startInEnglish", preferences)
-                RegistryRow("keys.quickSettings", preferences)
-            }
-            SettingsSection("編輯組字") {
-                FeatureRow(preferences: preferences, title: "送出並換行", subtitle: "送出組字，App 再換行",
-                           commands: [.commitWithNewline], anchor: SettingsRow.newline)
-                FeatureRow(preferences: preferences, title: "刪掉一個詞", subtitle: "有未完成的注音時清除注音",
-                           feature: .deleteWord, commands: [.deleteWord], anchor: SettingsRow.deleteWord)
-                DrillRow(model: model, title: "所有打字的按鍵", subtitle: "注音鍵、聲調、⌫、方向鍵等固定的按鍵",
-                         value: "", subpage: .typingKeys)
-            } footer: {
-                KeysOverviewLink()
-            }
-        }
-    }
-}
-
-private struct EscapeInfo: View {
+struct EscapeInfo: View {
     let clears: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -420,42 +408,12 @@ private struct EscapeInfo: View {
     }
 }
 
-private struct AnchorInfo: View {
+struct AnchorInfo: View {
     let current: AnchorSetting
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ChoiceDemo(title: "游標右邊的字", selected: current == .after, frames: OptionDemos.anchor(.after), pinned: DemoPinning.mini)
             ChoiceDemo(title: "游標左邊的字", selected: current == .before, frames: OptionDemos.anchor(.before), pinned: DemoPinning.mini)
-        }
-    }
-}
-
-private struct PunctuationPage: View {
-    @ObservedObject var preferences: Preferences
-    var body: some View {
-        SettingsForm {
-            SettingsSection("標點全半形") {
-                RegistryRow("keys.togglePunctuationWidth", preferences,
-                            accessory: .info(title: "標點全半形", content: AnyView(PunctuationWidthInfo(preferences: preferences))))
-                RegistryRow("keys.insertSpace", preferences)
-            } footer: {
-                Text("中文預設全形，英數與空白維持半形。英文模式使用半形。")
-            }
-            SettingsSection("標點按法：\(preferences.punctuationKeys == .windows ? "Windows" : "macOS")") {
-                PunctuationTable(current: preferences.punctuationKeys)
-            } footer: {
-                PlaceLink(title: "標點按法在「打字」設定", place: SettingsPlace(.typing, row: SettingsRow.punctuationKeys))
-            }
-            SettingsSection("可以關閉的按鍵") {
-                FeatureRow(preferences: preferences, title: "⌃ 加符號鍵打中文標點", subtitle: "，。、？！：；『』，兩種標點按法都能用",
-                           feature: .controlPunctuation, anchor: SettingsRow.controlPunctuation)
-                FeatureRow(preferences: preferences, title: "⌥ 加數字或符號鍵打鍵上的符號", subtitle: ". / ; < >，兩種標點按法都能用",
-                           feature: .optionSymbols, anchor: SettingsRow.optionSymbols)
-            }
-            SettingsSection("固定的按鍵") {
-                SettingRow(title: "「 」 、", subtitle: "固定") { KeyCombo(keys: ["[", "]", "'"]) }
-                SettingRow(title: "列出同類的標點", subtitle: "在標點上按") { KeyCombo(keys: ["↓"]) }
-            }
         }
     }
 }
@@ -483,51 +441,6 @@ private struct TypingKeysPage: View {
 }
 
 // MARK: - 選字
-
-private struct ChoosingPane: View {
-    @ObservedObject var preferences: Preferences
-    @ObservedObject var model: SettingsModel
-
-    var body: some View {
-        let fuzzy = [FuzzySounds.zZh, .cCh, .sSh, .enEng, .anAng].filter { preferences.fuzzySounds.contains($0) }.count
-        SettingsForm {
-            SettingsSection("轉換") {
-                RegistryRow("candidateAnchor", preferences, accessory: .info(title: "游標在句中時改", content: AnyView(AnchorInfo(current: preferences.candidateAnchor))))
-                RegistryRow("characterForms", preferences, segmented: true)
-                RegistryRow("outputScript", preferences, segmented: true)
-            }
-            SettingsSection("按錯鍵") {
-                RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
-                    current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList)))))
-                RegistryRow("readingChannel", preferences)
-                FeatureRow(preferences: preferences, title: "列出修正的字", subtitle: "按錯修正與模糊音的字排在前面；再按一次還原",
-                           feature: .correctionsList, commands: [.correctionsList], anchor: SettingsRow.corrections)
-                RegistryRow("showCorrections", preferences)
-                RegistryRow("undoCorrectionWithBackspace", preferences)
-                DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
-                         value: fuzzy == 0 ? "關閉" : "已開啟 \(fuzzy) 項", subpage: .fuzzy, anchor: SettingsRow.fuzzy)
-            }
-            SettingsSection("前文") {
-                DrillRow(model: model, title: "參考游標前的文字", subtitle: "依前文選字；只在記憶體中",
-                         value: preferences.usesPrecedingText ? "開啟" : "關閉", subpage: .context)
-            }
-            SettingsSection("聯想詞") {
-                RegistryRow("associatedPhrases", preferences)
-            }
-            SettingsSection("改字") {
-                FeatureRow(preferences: preferences, title: "打出注音本身", subtitle: "緊接著再按一次或按 Esc 恢復",
-                           feature: .typeZhuyin, commands: [.typeZhuyin], anchor: SettingsRow.typeZhuyin)
-                FeatureRow(preferences: preferences, title: "選取加入自訂詞", subtitle: "選取 1 到 6 個字，再按 Return",
-                           feature: .selectPhrase, commands: [.selectLeft, .selectRight], anchor: SettingsRow.selectPhrase)
-                FeatureRow(preferences: preferences, title: "送出後刪掉重打",
-                           subtitle: "送出後 30 秒內用 ⌫ 刪掉再打，算作改字並接著前文選字",
-                           feature: .deleteAfterCommit, anchor: SettingsRow.deleteAfterCommit)
-            } footer: {
-                KeysOverviewLink()
-            }
-        }
-    }
-}
 
 private struct FuzzyPage: View {
     @ObservedObject var preferences: Preferences
@@ -558,7 +471,7 @@ private struct FuzzyPage: View {
     }
 }
 
-// MARK: - 視窗與提示
+// MARK: - 候選字視窗
 
 struct CandidatesPane: View {
     @ObservedObject var preferences: Preferences
@@ -605,6 +518,8 @@ struct CandidatesPane: View {
                 RegistryRow("candidateDensity", preferences, segmented: true)
                 RegistryRow("candidatesPerPage", preferences)
                 RegistryRow("selectionKeys", preferences)
+            }
+            SettingsSection("翻頁") {
                 FeatureRow(preferences: preferences, title: "翻頁", subtitle: "空白也翻到下一頁",
                            feature: .pageKeys, commands: [.nextPage, .previousPage], anchor: SettingsRow.pageKeys)
                 RegistryRow("pageAtListEdge", preferences)
@@ -622,20 +537,11 @@ struct CandidatesPane: View {
                     RowSwitch(title: "單字與修正按鈕", isOn: binding(preferences, \.showsListSwitches)).disabled(switches.isEmpty)
                 }
             }
-            SettingsSection("位置") {
+            SettingsSection("位置與動畫") {
                 RegistryRow("candidatePlacement", preferences)
-            }
-            SettingsSection("外觀") {
-                RegistryRow("panelAppearance", preferences)
-                RegistryRow("accentColor", preferences)
-            }
-            SettingsSection("動畫") {
                 RegistryRow("panelAnimation", preferences)
-            }
-            SettingsSection("提示") {
-                RegistryRow("showModeToast", preferences)
             } footer: {
-                KeysOverviewLink()
+                KeysOverviewLink(section: .candidates)
             }
         }
         .onPreferenceChange(PreviewInView.self) { previewInView = $0 }
@@ -710,35 +616,6 @@ private struct PreviewInView: PreferenceKey {
 
 
 // MARK: - 字詞
-
-private struct WordsPane: View {
-    @ObservedObject var preferences: Preferences
-    @ObservedObject var model: SettingsModel
-    @State private var counts: (learned: Int, phrases: Int)?
-
-    var body: some View {
-        let keys = CurrentKeys(preferences)
-        SettingsForm {
-            SettingsSection {
-                RegistryRow("learningEnabled", preferences, accessory: .info(title: "記住的字詞", content: AnyView(LearnedInfo())))
-                DrillRow(model: model, title: "記住的字詞", subtitle: "檢視、移除、匯出或匯入",
-                         value: counts.map { "\($0.learned.formatted()) 個" } ?? "", subpage: .learnedWords)
-            }
-            SettingsSection {
-                DrillRow(model: model, title: "自訂詞", subtitle: keys.text(.selectLeft).map { _ in
-                    "選字時優先列出；打字時也能選取後加入" } ?? "選字時優先列出",
-                         value: counts.map { "\($0.phrases.formatted()) 個" } ?? "", subpage: .phrases)
-            }
-        }
-        .onAppear(perform: count)
-        .onChange(of: model.engine != nil) { _, _ in count() }
-    }
-
-    private func count() {
-        guard let engine = model.engine else { return }
-        counts = (engine.learnedEntries().count, engine.userPhrases().count)
-    }
-}
 
 private struct WordListPage: View {
     enum List { case learned, phrases }
