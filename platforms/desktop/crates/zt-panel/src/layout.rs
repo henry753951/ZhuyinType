@@ -73,8 +73,11 @@ const ANNOTATION_GAP: f32 = 8.;
 const NOTICE_X: f32 = 12.;
 /// A notice row above candidates.
 const NOTICE_ROW: f32 = 24.;
-/// The reading row's text above 聯想詞 (next-word suggestions), which have no reading.
-pub const ASSOCIATION_LABEL: &str = "聯想詞・↓ 選擇";
+/// The reading row's text above 聯想詞 (next-word suggestions), which have no reading, while the list is passive:
+/// its rows have no key labels (their selection keys type Zhuyin), and ↓ is the one key that enters it.
+pub const ASSOCIATION_HINT: &str = "聯想詞・按 ↓ 選擇";
+/// The same row once ↓ entered the list: the rows' key labels now pick them.
+pub const ASSOCIATION_LABEL: &str = "聯想詞";
 
 /// A key cap's width for `key` at the key caps' font: the label and 5 on each side, never narrower than tall.
 pub fn keycap_width(measure: &mut dyn Measure, key: &str) -> f32 {
@@ -378,7 +381,8 @@ fn compute_fitted(
         width = width.max(ceil(padding * 2. + key_inset + reading_w + key_room.max(key_inset)));
         y += hint_height;
     } else if association {
-        let label_w = measure.width(ASSOCIATION_LABEL, SMALL_FONT, false) + 4.;
+        // The passive text's width either way, so the window keeps its width when ↓ enters the list.
+        let label_w = measure.width(ASSOCIATION_HINT, SMALL_FONT, false) + 4.;
         width = width.max(ceil(padding * 2. + key_inset * 2. + label_w));
         y += hint_height;
     }
@@ -561,7 +565,7 @@ fn compute_fitted(
             frame: Frame::new(padding, hint_y, width - padding * 2., hint_height - 2.),
             text_x: key_inset,
             key: String::new(),
-            hint: ASSOCIATION_LABEL.to_owned(),
+            hint: if p.selected.is_none() { ASSOCIATION_HINT } else { ASSOCIATION_LABEL }.to_owned(),
             keycap_w: 0.,
             key_label: "",
             key_label_w: 0.,
@@ -920,6 +924,14 @@ mod tests {
         let hint = layout.hint.expect("the 聯想詞 label");
         assert_eq!((hint.hint.as_str(), hint.keycap_w, hint.clickable), (ASSOCIATION_LABEL, 0., false));
         assert_eq!(layout.rows_area.y, hint.frame.y + hint.frame.h + 2.);
+        // Passive (not entered with ↓): nothing highlighted, the row says how to select, and the window keeps its
+        // width when ↓ enters the list.
+        let entered_width = layout.width;
+        p.selected = None;
+        let passive = compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed);
+        assert_eq!(passive.hint.expect("the 聯想詞 hint").hint, ASSOCIATION_HINT);
+        assert_eq!(passive.width, entered_width);
+        p.selected = Some(0);
         p.associated = false;
         assert!(compute(&p, &PanelStyle::default(), 4000., (0., 0.), &mut Fixed).hint.is_none());
     }

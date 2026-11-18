@@ -342,9 +342,14 @@ void ZhuyinType::showPanel(fcitx::InputContext &ic, const State &state) {
     // The composition, for a field that cannot show it (IPC `preview`).
     if (const auto preview = text(model, "preview"); !preview.empty()) panel.setPreedit(fcitx::Text(preview));
     if (const auto reading = text(model, "reading"); !reading.empty()) panel.setAuxUp(fcitx::Text(reading));
-    // 聯想詞 (next-word suggestions after a commit) have no reading: the label says what the list is.
+    // 聯想詞 (next-word suggestions after a commit) have no reading: the label says what the list is and, until ↓
+    // enters it (nothing selected, no key labels: the selection keys still type Zhuyin), how to select from it.
     if (const auto associated = model.find("associated"); associated != model.end() && associated->is_boolean() &&
-        associated->get<bool>()) panel.setAuxUp(fcitx::Text("聯想詞・↓ 選擇"));
+        associated->get<bool>()) {
+        const auto selected = model.find("selected");
+        const bool entered = selected != model.end() && selected->is_number_unsigned();
+        panel.setAuxUp(fcitx::Text(entered ? "聯想詞" : "聯想詞・按 ↓ 選擇"));
+    }
     if (const auto notice = text(model, "notice"); !notice.empty()) panel.setAuxDown(fcitx::Text(notice));
     // 「你打的是 ㄊㄜˇ · ⌫ 還原」 for a span shown through an automatic correction (a notice comes first).
     else if (const auto typed = text(model, "typed"); !typed.empty()) panel.setAuxDown(fcitx::Text(typed));

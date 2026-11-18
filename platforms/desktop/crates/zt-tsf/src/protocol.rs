@@ -27,6 +27,9 @@ pub(crate) struct Reply {
     pub(crate) english: bool,
     /// A composition or a candidate list is open; the text service then claims every key.
     pub(crate) composing: bool,
+    /// A 聯想詞 list is shown but not entered (`composing` is false): the text service claims ↓ too, and tells the
+    /// host about every other key it leaves to the application, which closes the list.  Older hosts leave it out.
+    pub(crate) associated: bool,
     pub(crate) commit: Vec<u16>,
     pub(crate) preedit: Vec<u16>,
     /// The caret inside `preedit`, in UTF-16 units, never inside a surrogate pair.
@@ -210,6 +213,7 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         candidates,
         english: boolean("english")?,
         composing,
+        associated: optional("associated")?,
         commit: text("commit")?.encode_utf16().collect(),
         preedit,
         cursor,
@@ -290,6 +294,16 @@ mod tests {
         value["claims"] = json!([[44]]);
         assert!(parse_reply(&line(value.clone()), 7, "{A}").is_none());
         value["claims"] = json!([["Q", 0]]);
+        assert!(parse_reply(&line(value), 7, "{A}").is_none());
+    }
+
+    #[test]
+    fn passive_suggestions_are_parsed() {
+        let mut value = good();
+        assert!(!parse_reply(&line(value.clone()), 7, "{A}").unwrap().associated);
+        value["associated"] = json!(true);
+        assert!(parse_reply(&line(value.clone()), 7, "{A}").unwrap().associated);
+        value["associated"] = json!(1);
         assert!(parse_reply(&line(value), 7, "{A}").is_none());
     }
 

@@ -54,7 +54,7 @@ use crate::broker::BrokerClient;
 use crate::composition::{self, Slot, load, store};
 use crate::display_attributes;
 use crate::keyboard::{caps_lock_on, potential_key, translate_key, typed_character};
-use crate::keys::{claimed_key, host_observes_key, host_wants_key};
+use crate::keys::{claimed_key, enters_suggestions, host_observes_key, host_wants_key};
 use crate::mode_button::{self, ModeButton};
 use crate::module::{ObjectCount, SERVICE_ID, guard, instance};
 use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
@@ -155,6 +155,8 @@ pub(crate) struct TextService {
     reset_deferred: Cell<bool>,
     english: Cell<bool>,
     composing: Cell<bool>,
+    /// A 聯想詞 list is shown but not entered (the reply's `associated`): ↓ is claimed, other keys observed.
+    suggesting: Cell<bool>,
     /// The keys claimed even when nothing is composed (IPC `claims`, already filtered by the host for this field and
     /// mode).
     claimed: RefCell<Vec<(i32, i32)>>,
@@ -212,6 +214,7 @@ impl TextService {
             reset_deferred: Cell::new(false),
             english: Cell::new(false),
             composing: Cell::new(false),
+            suggesting: Cell::new(false),
             claimed: RefCell::new(Vec::new()),
             caps_at_reply: Cell::new(false),
             lang_bar: RefCell::new(None),
@@ -272,6 +275,7 @@ impl TextService {
         let composing = self.composing.get() || load(&self.composition).is_some();
         let key = translate_key(vk, flags, release);
         self.claimed.try_borrow().is_ok_and(|claimed| claimed_key(&key, &claimed))
+            || (self.suggesting.get() && !composing && enters_suggestions(&key))
             || host_wants_key(&key, composing, self.english.get() && !caps_changed)
     }
 
@@ -640,6 +644,7 @@ impl TextService_Impl {
         }
         let switched = self.english.replace(reply.english) != reply.english;
         self.composing.set(reply.composing);
+        self.suggesting.set(reply.associated && !self.secure.get());
         let mut quick = reply.quick.unwrap_or(self.quick.get());
         quick.english = reply.english;
         quick.simplified = reply.simplified;
@@ -1118,11 +1123,13 @@ impl TextService_Impl {
     }
 
     /// Tells the host about a key the application gets (`host_observes_key`): ⌫, Space and Return when nothing is
-    /// composed.  Once per key, though TSF may test a key more than once.
+    /// composed, and every key while a passive 聯想詞 list shows (the host closes it; the window goes with the reply).
+    /// Once per key, though TSF may test a key more than once.
     fn observe(&self, vk: WPARAM, flags: LPARAM, release: bool) {
         let composing = self.composing.get() || load(&self.composition).is_some();
         let key = translate_key(vk, flags, release);
-        if !host_observes_key(&key, composing, self.english.get())
+        let suggesting = self.suggesting.get();
+        if !host_observes_key(&key, composing, self.english.get(), suggesting)
             || !self.host_focused.get()
             || self.secure.get()
             || !self.broker.connected()
@@ -1142,6 +1149,13 @@ impl TextService_Impl {
         fields.insert("secure".into(), Value::from(false));
         if let Some(reply) = self.broker.request(&self.name(), "key", fields) {
             self.english.set(reply.english);
+            if suggesting {
+                // No edit session here, and none is needed: nothing is composed, so the reply only closes the list.
+                self.composing.set(reply.composing);
+                self.suggesting.set(reply.associated);
+                self.panel.apply(&reply.panel, None, None, self.rect.get(), self.scale.get());
+                self.follow_list();
+            }
         }
     }
 }

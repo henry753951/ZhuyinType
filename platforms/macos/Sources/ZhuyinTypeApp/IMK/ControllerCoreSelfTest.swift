@@ -1704,6 +1704,35 @@ enum ControllerCoreSelfTest {
             try expect(animated < plain * 1.5 + 150, "animated paging costs \(animated) µs, plain \(plain) µs")
         }
 
+        test("聯想詞 window: no key labels until ↓ enters the list, the label says how, and the size stays") {
+            _ = NSApplication.shared
+            let content = CandidateContentView(frame: .zero)
+            let window = HeadlessWindow(size: NSSize(width: 300, height: 400))
+            window.isReleasedWhenClosed = false
+            window.contentView = content
+            defer { window.contentView = nil; window.close() }
+            func texts(_ view: NSView) -> [String] {
+                view.subviews.flatMap { sub -> [String] in
+                    if sub.isHidden { return [] }
+                    if let field = sub as? NSTextField { return [field.stringValue] }
+                    if sub.accessibilityRole() == .button, let label = sub.accessibilityLabel() { return [label] }
+                    return texts(sub)
+                }
+            }
+            let items = ["你", "大家"].map { Candidate(text: $0) }
+            let style = CandidateStyle(layout: .vertical)
+            let passive = CandidateList(items: items, pageSize: 9, associated: true, passive: true)
+            let passiveSize = content.update(list: passive, preview: nil, keys: Array("123456789"), style: style)
+            let shown = texts(content)
+            try expect(shown.contains("聯想詞・按 ↓ 選擇") && shown.contains("你") && shown.contains("大家")
+                       && !shown.contains("1，你"), "passive list: \(shown)")
+            let entered = CandidateList(items: items, pageSize: 9, associated: true, passive: false)
+            let enteredSize = content.update(list: entered, preview: nil, keys: Array("123456789"), style: style)
+            let after = texts(content)
+            try expect(after.contains("聯想詞") && after.contains("1，你") && after.contains("2，大家"), "entered list: \(after)")
+            try expect(passiveSize == enteredSize, "↓ resized the window: \(passiveSize) → \(enteredSize)")
+        }
+
         test("hover: one row at most; scrolling, paging and leaving clear it") {
             _ = NSApplication.shared
             let state = HoverState()

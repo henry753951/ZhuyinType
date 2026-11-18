@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// One candidate of the current page.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Row {
-    /// The selection key that picks it.
+    /// The selection key that picks it; none while no key picks it (a passive 聯想詞 list, before ↓ enters it).
     pub key: Option<char>,
     pub text: String,
     /// Small grey text after it (a correction's reading).

@@ -173,7 +173,9 @@ enum SettingsRegistry {
                           write: { p, v in if case .number(let raw) = v { p.fuzzySounds = FuzzySounds(rawValue: Int(raw)) } }),
         toggle("usesPrecedingText", "參考游標前的文字", place(.choosing, nil, .context), \.usesPrecedingText, keywords: ["前文"]),
         toggle("associatedPhrases", "送出後列出聯想詞", place(.choosing, SettingsRow.associatedPhrases), \.associatedPhrases,
-               detail: { _ in "送出後列出常接在後面的詞，按 ↓ 進入清單再選；其他鍵照常輸入" },
+               detail: { _ in
+                   "送出後列出常接在後面的詞。先按 ↓ 進入清單，再按詞前面標出的鍵送出；沒按 ↓ 時每個鍵照常輸入（1 仍是 ㄅ）"
+               },
                keywords: ["聯想", "聯想詞", "下一個詞"]),
         feature(.typeZhuyin, "打出注音本身"),
         feature(.selectPhrase, "選取加入自訂詞"),
