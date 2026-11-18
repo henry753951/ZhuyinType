@@ -180,6 +180,9 @@ final class PracticeSession {
         // The field is not the system's text input: another window's password field must not pause it, and it never
         // reads the system's secure input state (as in the self-tests).
         core.secureInput = { false }
+        // The word-action hint's count of list openings stays with the field, not in the user's settings, and starts
+        // used up: the field looks the same whatever the user's count is.
+        core.hintStorage = MemorySettingsStorage(copying: [ControllerCore.wordActionHintKey: ControllerCore.wordActionHintLimit])
         core.showPanel = { [weak self] list, preview, _, notice, zhuyinHint in
             guard let self else { return }
             self.setPanel(PracticePanel(list: list, preview: preview, notice: notice, zhuyinHint: zhuyinHint,

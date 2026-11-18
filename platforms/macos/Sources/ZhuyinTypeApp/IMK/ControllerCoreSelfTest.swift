@@ -1203,9 +1203,13 @@ enum ControllerCoreSelfTest {
             }
             let old = ListItem(id: "old", title: "王小明", detail: "ㄨㄤˊ ㄒㄧㄠˇ ㄇㄧㄥˊ")
             controller.model.phrases.list.onEdit?(old)
-            func waitForSheet() throws -> NSWindow {
-                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
-                guard let sheet = window.attachedSheet else { throw Failure(description: "missing edit sheet") }
+            // The next sheet, other than `previous`: a slow machine (CI) can take longer than 0.1 s to attach it.
+            func waitForSheet(after previous: NSWindow? = nil) throws -> NSWindow {
+                let deadline = Date(timeIntervalSinceNow: 3)
+                repeat {
+                    RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+                } while (window.attachedSheet == nil || window.attachedSheet === previous) && Date() < deadline
+                guard let sheet = window.attachedSheet, sheet !== previous else { throw Failure(description: "missing edit sheet") }
                 return sheet
             }
             func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
@@ -1216,9 +1220,9 @@ enum ControllerCoreSelfTest {
             }
             word.stringValue = ""
             window.endSheet(first, returnCode: .alertFirstButtonReturn)
-            let error = try waitForSheet()
+            let error = try waitForSheet(after: first)
             window.endSheet(error, returnCode: .alertFirstButtonReturn)
-            let retry = try waitForSheet()
+            let retry = try waitForSheet(after: error)
             guard let retryRoot = retry.contentView,
                   let retryWord = descendants(retryRoot).compactMap({ $0 as? NSTextField }).first(where: { $0.placeholderString == "例如：王小明" }),
                   let retryReading = descendants(retryRoot).compactMap({ $0 as? NSComboBox }).first else {

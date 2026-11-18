@@ -53,7 +53,7 @@ extension ControllerCore {
             return wordUndoOffered && notice != "已復原" ? notice + "　⌃Z 復原" : notice
         }
         guard listOpen else { return nil }
-        let defaults = UserDefaults.standard
+        let defaults = hintStorage
         let count = defaults.integer(forKey: Self.wordActionHintKey)
         guard count < Self.wordActionHintLimit else { return nil }
         if !listWasOpen { defaults.set(count + 1, forKey: Self.wordActionHintKey) }

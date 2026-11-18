@@ -235,8 +235,12 @@ enum PracticeSelfTest {
                     $0.recordsCorrectionContext = true
                     $0.recordsUsageStats = true
                 }, data: data)
+                try expect(!(model.session.core?.hintStorage is UserDefaults),
+                           "the word-action hint counts list openings in the user's settings")
                 type("su3cl3", model)
                 press("down", model)
+                try expect(model.session.panel?.notice?.contains("右鍵看更多") != true,
+                           "the word-action hint in the field: \(model.session.panel?.notice ?? "none")")
                 type("3", model)
                 press("return", model)
                 type("su3cl3", model)
