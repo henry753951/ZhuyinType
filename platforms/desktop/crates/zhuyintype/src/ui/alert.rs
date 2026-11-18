@@ -5,11 +5,20 @@
 use std::rc::Rc;
 
 use gpui_kit::component::WindowExt as _;
+use gpui_kit::component::dialog::Dialog;
 use gpui_kit::{AnyElement, App, ParentElement, SharedString, Styled, Window, div, px};
 
 use super::actions::{ButtonKind, push_button};
 use super::{h, v};
 use crate::theme::{self, size, space, text, weight};
+
+/// Gives a dialog the page's opaque surface.  The component library fills a dialog with the theme's background, and
+/// over a backdrop (Mica, KDE's blur) that is transparent, since the window's root must paint nothing there
+/// (`theme::apply_component_theme`): without this every alert and sheet shows the dimmed page through it.  Every
+/// dialog of the app passes through here.
+pub fn surface(dialog: Dialog, cx: &App) -> Dialog {
+    dialog.bg(theme::palette(cx).surface)
+}
 
 type Action = Rc<dyn Fn(&mut Window, &mut App)>;
 type Content = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
@@ -125,7 +134,7 @@ impl Alert {
                 },
             ));
             let on_ok = default.map(|index| alert.buttons[index].clone());
-            dialog
+            surface(dialog, cx)
                 .w(px(alert.width))
                 .close_button(false)
                 .overlay_closable(false)
