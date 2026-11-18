@@ -1,5 +1,6 @@
 # The macOS input method: the engine's tests on macOS, the app build (with the Rust engine), its self-test and
-# packaging check.
+# packaging check.  On main the checked app is kept as an artifact: release.yml signs and publishes that app rather
+# than building it again.
 name: macOS
 
 on:
@@ -10,9 +11,10 @@ on:
     paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/macos.yml"]
   workflow_dispatch:
 
+# A new push to a pull request replaces its older run; main's runs all finish, since a release reuses each commit's.
 concurrency:
-  group: macos-${{ github.ref }}
-  cancel-in-progress: true
+  group: macos-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -47,3 +49,14 @@ jobs:
       - run: tools/zt build app
       - name: Self-test and packaging checks
         run: tools/zt check app
+      - name: Keep the app for the release
+        if: github.event_name == 'push'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/ZhuyinType.app dist/ZhuyinType.app.zip
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v6
+        with:
+          name: zhuyintype-macos-app
+          path: dist/ZhuyinType.app.zip
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error

@@ -10,7 +10,11 @@ dir=.tools/sparkle-$version
 if [[ ! -x "$dir/bin/sign_update" ]]; then
     mkdir -p "$dir"
     archive=$(mktemp -t sparkle).tar.xz
-    curl -fsSL -o "$archive" "https://github.com/sparkle-project/Sparkle/releases/download/$version/Sparkle-$version.tar.xz"
+    # Our own copy (the toolchains-1 release) first, then Sparkle's.
+    curl -fsSL --retry 3 -o "$archive" \
+        "${ZT_MIRROR:-https://github.com/henry753951/ZhuyinType/releases/download/toolchains-1}/Sparkle-$version.tar.xz" \
+        || curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$version/Sparkle-$version.tar.xz"
     actual=$(shasum -a 256 "$archive" | cut -d' ' -f1)
     if [[ -n "$checksum" && "$actual" != "$checksum" ]]; then
         echo "Sparkle $version checksum mismatch: $actual" >&2

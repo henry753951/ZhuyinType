@@ -36,17 +36,24 @@ jobs:
         with:
           path: /opt/onnxruntime
           key: ort-linux-x64-${{ env.ORT_VERSION }}
-      # Microsoft's release archive, or (as platforms/desktop/packaging/neural.sh does) the same build from NuGet's
-      # Microsoft.ML.OnnxRuntime package laid out as the SDK (include/, lib/) when GitHub does not serve it.
+      # Microsoft's release archive from this repository's toolchains-1 release (the same file) or Microsoft's, or (as
+      # platforms/desktop/packaging/neural.sh does) the same build from NuGet's Microsoft.ML.OnnxRuntime package laid
+      # out as the SDK (include/, lib/) when neither serves it.  Each is checked against its pinned SHA-256.
       - run: |
           if [ ! -d /opt/onnxruntime/lib ]; then
             sudo mkdir -p /opt && sudo chown "$USER" /opt
-            if curl -fsSL -o /tmp/ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-linux-x64-$ORT_VERSION.tgz"; then
+            mirror=https://github.com/henry753951/ZhuyinType/releases/download/toolchains-1
+            archive=onnxruntime-linux-x64-$ORT_VERSION.tgz
+            if { curl -fsSL --retry 3 -o /tmp/ort.tgz "$mirror/$archive" \
+                 || curl -fsSL --retry 3 -o /tmp/ort.tgz "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/$archive"; } \
+               && echo "3a211fbea252c1e66290658f1b735b772056149f28321e71c308942cdb54b747  /tmp/ort.tgz" | sha256sum -c -; then
               tar -xzf /tmp/ort.tgz -C /opt
               mv "/opt/onnxruntime-linux-x64-$ORT_VERSION" /opt/onnxruntime
             else
               echo "ONNX Runtime $ORT_VERSION from NuGet"
-              curl -fsSL -o /tmp/ort.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/microsoft.ml.onnxruntime.$ORT_VERSION.nupkg"
+              nupkg=microsoft.ml.onnxruntime.$ORT_VERSION.nupkg
+              curl -fsSL --retry 3 -o /tmp/ort.nupkg "$mirror/$nupkg" \
+                || curl -fsSL --retry 3 -o /tmp/ort.nupkg "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$ORT_VERSION/$nupkg"
               echo "4b978d5065b85e7004b6c6f60ca494bd978fbe6836cbf0a0b52d82b61ab99638  /tmp/ort.nupkg" | sha256sum -c -
               mkdir -p /tmp/ort-nuget /opt/onnxruntime/lib /opt/onnxruntime/include
               unzip -q /tmp/ort.nupkg 'build/native/include/*' 'runtimes/linux-x64/native/*' -d /tmp/ort-nuget
@@ -98,7 +105,13 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked --features zhuyin-cli/onnx -- -D warnings
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
       - run: cargo test --workspace --locked
+      # cargo-deny, pinned and kept between runs (building it takes almost two minutes).
+      - id: deny
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-0.21.0-${{ runner.os }}
+      - if: steps.deny.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-deny --version 0.21.0
       - name: Licences and advisories
-        run: |
-          cargo install --locked cargo-deny
-          cargo deny check
+        run: cargo deny check

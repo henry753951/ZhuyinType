@@ -1,12 +1,22 @@
-# A v* tag builds, signs and publishes a release for every platform, then updates the Sparkle appcast and the
-# Windows/Linux update feed (desktop-update.json) on main so installed copies update themselves.  Gate: the tag matches Info.plist and platforms/desktop/Cargo.toml, and
-# docs/releases/<tag>.md exists (notes and benchmark summary).  The Windows installer and the Linux packages come from
-# desktop.yml (called here); the release is published only when all three platforms built, so a release never lacks
-# one of them.  Typical wall time with warm caches: about 6 minutes for macOS, after the desktop builds.
+# A v* tag signs and publishes a release for every platform, then updates the Sparkle appcast and the Windows/Linux
+# update feed (desktop-update.json) on main so installed copies update themselves.  Gate: the tag matches Info.plist
+# and platforms/desktop/Cargo.toml, and docs/releases/<tag>.md exists (notes and benchmark summary).
+#
+# Built once: the tagged commit's own push runs on main (desktop.yml, macos.yml) already built and checked the Windows
+# installer, the Linux packages and the macOS app, so this workflow waits for those runs and takes their artifacts
+# instead of building again.  It fails when one of them failed (rerun its failed jobs, then this one).  Only when a run
+# or its artifacts are missing (an old tag rebuilt by rebuild-releases.yml, a commit the path filters skipped) does it
+# build that platform here, as before.  tools/release.sh does the whole release with one command.  The release is
+# published only when all three platforms are there, so a release never lacks one of them.
 name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: everything but publishing, for the version in Info.plist (the result is an artifact)'
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 
@@ -19,16 +29,46 @@ permissions:
   actions: write
 
 jobs:
+  ci:
+    name: Main CI of this commit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      desktop: ${{ steps.find.outputs.desktop }}
+      macos: ${{ steps.find.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools
+      - id: find
+        run: |
+          desktop=$(tools/ci-run.sh desktop.yml "$GITHUB_SHA" zhuyintype-linux zhuyintype-windows)
+          macos=$(tools/ci-run.sh macos.yml "$GITHUB_SHA" zhuyintype-macos-app)
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          from() { if [ -n "$1" ]; then echo "the artifacts of main's run $1"; else echo "built in this run"; fi; }
+          {
+            echo "- Windows and Linux: $(from "$desktop")"
+            echo "- macOS: $(from "$macos")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   desktop:
+    needs: ci
+    if: needs.ci.outputs.desktop == ''
     uses: ./.github/workflows/desktop.yml
 
   release:
-    needs: desktop
+    needs: [ci, desktop]
+    if: ${{ !cancelled() && needs.ci.result == 'success' && (needs.desktop.result == 'success' || needs.desktop.result == 'skipped') }}
     runs-on: xcode-27
     timeout-minutes: 45
     env:
       GH_TOKEN: ${{ github.token }}
       ZHUYIN_CHECKS_TIMING: warn
+      TAG: ${{ github.ref_name }}
+      DRY_RUN: ${{ inputs.dry_run == true }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,10 +77,15 @@ jobs:
         id: version
         run: |
           version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" platforms/macos/Resources/Info.plist)
-          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match Info.plist $version"; exit 1; }
+          if [ "$DRY_RUN" = true ]; then
+            TAG=v$version
+            echo "TAG=$TAG" >> "$GITHUB_ENV"
+            echo "::notice::Dry run of $TAG from $GITHUB_REF_NAME: everything but publishing"
+          fi
+          [ "v$version" = "$TAG" ] || { echo "Tag $TAG does not match Info.plist $version"; exit 1; }
           desktop=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' platforms/desktop/Cargo.toml)
-          [ "v$desktop" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match platforms/desktop/Cargo.toml $desktop"; exit 1; }
-          [ -f "docs/releases/$GITHUB_REF_NAME.md" ] || { echo "docs/releases/$GITHUB_REF_NAME.md is missing"; exit 1; }
+          [ "v$desktop" = "$TAG" ] || { echo "Tag $TAG does not match platforms/desktop/Cargo.toml $desktop"; exit 1; }
+          [ -f "docs/releases/$TAG.md" ] || { echo "docs/releases/$TAG.md is missing"; exit 1; }
           tools/check-public.sh
           echo "latest=$(gh release view --json tagName --jq .tagName)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v7
@@ -65,7 +110,24 @@ jobs:
         with:
           path: .tools
           key: sparkle-tools-${{ hashFiles('platforms/macos/scripts/sparkle-tools.sh') }}
+      - name: The macOS app main CI built and checked
+        if: needs.ci.outputs.macos != ''
+        uses: actions/download-artifact@v7
+        with:
+          name: zhuyintype-macos-app
+          path: dist
+          run-id: ${{ needs.ci.outputs.macos }}
+          github-token: ${{ github.token }}
+      - name: Unpack the app
+        if: needs.ci.outputs.macos != ''
+        run: |
+          ditto -x -k dist/ZhuyinType.app.zip dist && rm dist/ZhuyinType.app.zip
+          built=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" dist/ZhuyinType.app/Contents/Info.plist)
+          [ "v$built" = "$TAG" ] || { echo "The app from main CI is $built, not $TAG"; exit 1; }
+          codesign --verify --deep --strict dist/ZhuyinType.app
+          echo "ZT_PREBUILT_APP=1" >> "$GITHUB_ENV"
       - name: Engine checks
+        if: needs.ci.outputs.macos == ''
         run: tools/zt check engine
       - name: Build, package, sign the appcast
         env:
@@ -76,11 +138,22 @@ jobs:
           SWIFT_SCRATCH_PATH=.build SPARKLE_ED_KEY_FILE="$key" platforms/macos/scripts/release.sh
           rm -f "$key"
       - name: Self-test and packaging checks
+        if: needs.ci.outputs.macos == ''
         run: tools/zt check app
       - name: Speed, energy and memory on this Mac
         run: |
           tools/zt eval latency --data dist/ZhuyinType.app/Contents/Resources --json dist/release/metrics-mac.json
-      - name: Windows installer and Linux packages
+      - name: Windows installer and Linux packages from main CI
+        if: needs.ci.outputs.desktop != ''
+        uses: actions/download-artifact@v7
+        with:
+          pattern: zhuyintype-*
+          merge-multiple: true
+          path: dist/desktop
+          run-id: ${{ needs.ci.outputs.desktop }}
+          github-token: ${{ github.token }}
+      - name: Windows installer and Linux packages built here
+        if: needs.ci.outputs.desktop == ''
         uses: actions/download-artifact@v7
         with:
           pattern: zhuyintype-*
@@ -90,7 +163,7 @@ jobs:
         # README links to releases/latest/download/<stable name>, which always points at the newest release.  The
         # versioned files stay beside them for anyone keeping several versions.
         run: |
-          version=${GITHUB_REF_NAME#v}
+          version=${TAG#v}
           pkg=$(ls dist/release/ZhuyinType-*.pkg | head -1)
           cp "$pkg" dist/release/ZhuyinType-macOS.pkg
           exe=dist/desktop/ZhuyinType-$version-windows-x64-setup.exe
@@ -113,8 +186,8 @@ jobs:
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
           tools=$(platforms/macos/scripts/sparkle-tools.sh)
           sign() { "$tools/sign_update" --ed-key-file "$key" "$1" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p'; }
-          version=${GITHUB_REF_NAME#v}
-          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          version=${TAG#v}
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
           entry() {
             local signature
             signature=$(sign "dist/release/$1")
@@ -125,24 +198,35 @@ jobs:
           deb=$(entry "zhuyintype_${version}_amd64.deb")
           rpm=$(entry "zhuyintype-$version.x86_64.rpm")
           printf '{"version":"%s","notes":"https://github.com/%s/blob/main/docs/releases/%s.md","assets":{"windows-x64":%s,"linux-deb":%s,"linux-rpm":%s}}' \
-            "$version" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$windows" "$deb" "$rpm" > dist/desktop-feed.json
+            "$version" "$GITHUB_REPOSITORY" "$TAG" "$windows" "$deb" "$rpm" > dist/desktop-feed.json
           signature=$(sign dist/desktop-feed.json)
           [ -n "$signature" ] || { echo "no signature for the feed"; exit 1; }
           python3 -c 'import json, sys; print(json.dumps({"feed": open(sys.argv[1], encoding="utf-8").read(), "signature": sys.argv[2]}))' \
             dist/desktop-feed.json "$signature" > desktop-update.json
           rm -f "$key"
           cat desktop-update.json
+      - name: Keep the dry run's result
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-dry-run
+          path: |
+            dist/release
+            appcast.xml
+            desktop-update.json
+          retention-days: 7
       - name: Publish
+        if: env.DRY_RUN != 'true'
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/release/* --clobber
-            gh release edit "$GITHUB_REF_NAME" --notes-file "docs/releases/$GITHUB_REF_NAME.md"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/release/* --clobber
+            gh release edit "$TAG" --notes-file "docs/releases/$TAG.md"
           else
-            gh release create "$GITHUB_REF_NAME" --title "ZhuyinType ${GITHUB_REF_NAME#v}" \
-              --notes-file "docs/releases/$GITHUB_REF_NAME.md" dist/release/*
+            gh release create "$TAG" --title "ZhuyinType ${TAG#v}" \
+              --notes-file "docs/releases/$TAG.md" dist/release/*
           fi
       - name: Update the appcast on main
-        if: github.event_name != 'workflow_dispatch' || steps.version.outputs.latest == github.ref_name
+        if: env.DRY_RUN != 'true' && (github.event_name != 'workflow_dispatch' || steps.version.outputs.latest == env.TAG)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -152,8 +236,23 @@ jobs:
           cp /tmp/appcast.xml appcast.xml
           cp /tmp/desktop-update.json desktop-update.json
           git add appcast.xml desktop-update.json
-          git diff --cached --quiet || git commit -m "Appcast and update feed for $GITHUB_REF_NAME"
+          git diff --cached --quiet || git commit -m "Appcast and update feed for $TAG [skip ci]"
           git push origin main
       - name: Start ZhuyinBench on the GPU host
         if: github.event_name != 'workflow_dispatch'
-        run: gh workflow run benchmark.yml -f version="$GITHUB_REF_NAME" || echo "Benchmark not started"
+        run: gh workflow run benchmark.yml -f version="$TAG" || echo "Benchmark not started"
+
+  verify:
+    name: Verify what users download
+    needs: release
+    if: inputs.dry_run != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools
+      - name: Assets, stable names, feeds and signatures
+        run: python3 -I tools/verify-release.py "$GITHUB_REF_NAME"

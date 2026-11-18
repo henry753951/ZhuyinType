@@ -6,8 +6,9 @@
 # - DATA_DIR/reranker and DATA_DIR/v3: the JSON files and notices of the `reranker` and `v3` data components (the
 #   macOS app's), with the `onnx` component's models beside them (ORT format, memory-mapped by the app).
 # - RUNTIME_FILE: ONNX Runtime's library from Microsoft's release (pinned by version and SHA-256 below), which the app
-#   loads at run time: onnxruntime.dll beside zhuyintype.exe, /usr/lib/zhuyintype/libonnxruntime.so.1.  When the
-#   GitHub release cannot be downloaded, the same library comes from Microsoft's NuGet package Microsoft.ML.OnnxRuntime
+#   loads at run time: onnxruntime.dll beside zhuyintype.exe, /usr/lib/zhuyintype/libonnxruntime.so.1.  It is
+#   downloaded from this repository's toolchains-1 release (the same files), else from Microsoft's.  When neither
+#   serves the archive, the same library comes from Microsoft's NuGet package Microsoft.ML.OnnxRuntime
 #   of the same version (also pinned; its runtimes/*/native libraries are byte for byte the release archives').
 # - LICENSES_DIR: ONNX Runtime's licence and third-party notices.
 #
@@ -43,11 +44,15 @@ done
 
 echo "== ONNX Runtime $version"
 mkdir -p "$toolchains"
-fetch() { curl -fsSL -o "$toolchains/$1.part" "$2" && mv "$toolchains/$1.part" "$toolchains/$1"; }
+fetch() { curl -fsSL --retry 3 -o "$toolchains/$1.part" "$2" && mv "$toolchains/$1.part" "$toolchains/$1"; }
+# Our own copy first (the toolchains-1 release holds the same files), then Microsoft's release, then NuGet.
+mirror=${ZT_MIRROR:-https://github.com/henry753951/ZhuyinType/releases/download/toolchains-1}
 if [[ ! -f $toolchains/$archive && ! -f $toolchains/$nuget ]]; then
-  fetch "$archive" "https://github.com/microsoft/onnxruntime/releases/download/v$version/$archive" || {
-    echo "neural.sh: 無法從 GitHub 下載 $archive，改用 NuGet 的 Microsoft.ML.OnnxRuntime $version" >&2
-    fetch "$nuget" "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$version/$nuget"
+  fetch "$archive" "$mirror/$archive" \
+    || fetch "$archive" "https://github.com/microsoft/onnxruntime/releases/download/v$version/$archive" || {
+    echo "neural.sh: 無法下載 $archive，改用 NuGet 的 Microsoft.ML.OnnxRuntime $version" >&2
+    fetch "$nuget" "$mirror/$nuget" \
+      || fetch "$nuget" "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/$version/$nuget"
   }
 fi
 if [[ -f $toolchains/$archive ]]; then
