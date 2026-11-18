@@ -264,7 +264,7 @@ mod tests {
         let mut keys: Vec<Key> = ['V', 'U', 'L', 'H', 'E', 'A', 'R', 'T']
             .into_iter()
             .map(|c| key(c as i32, 0))
-            .chain([b'1', b'4', b'9', b'0', b'-', b';', b',', b'/'].into_iter().map(|c| key(i32::from(c), 0)))
+            .chain(b"1490-;,/".iter().copied().map(|c| key(i32::from(c), 0)))
             .chain(
                 [
                     0x20,
