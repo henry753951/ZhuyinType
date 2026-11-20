@@ -1,7 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
-platforms/macos/scripts/build-app.sh release
+# ZT_PREBUILT_APP=1: package dist/ZhuyinType.app as it is (release.yml, with the app main's CI built and checked).
+if [[ ${ZT_PREBUILT_APP:-} == 1 ]]; then
+    [[ -d dist/ZhuyinType.app ]] || { echo "ZT_PREBUILT_APP=1 but there is no dist/ZhuyinType.app" >&2; exit 1; }
+else
+    platforms/macos/scripts/build-app.sh release
+fi
 version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" platforms/macos/Resources/Info.plist)
 work=$(mktemp -d "$PWD/dist/.pkg-stage.XXXXXX")
 trap 'rm -rf "$work"' EXIT

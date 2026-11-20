@@ -2,6 +2,26 @@
 
 `tools/zt` 是 ZhuyinType 所有開發工具的進入點：資料、建置、檢查、評測、訓練與 GPU 主機。
 
+## 發布
+
+```sh
+tools/release.sh 0.7.3             # 版本號、檢查、開 PR、等 PR 的 CI 跑完，然後停下來等確認
+tools/release.sh 0.7.3 --publish   # 已完成的步驟略過；merge、等 main 的 CI、打標籤、等 Release 發布並驗證
+```
+
+在要發布的分支上執行，`docs/releases/v0.7.3.md` 要先提交。每個步驟會先看是否已經做過，所以任何一步失敗時，修正（或重跑失敗的 CI job）後再執行同一個指令即可。
+
+同一份程式只建置一次：
+
+- main 上合併 commit 的 CI（`desktop.yml`、`macos.yml`）建置並檢查 Windows 安裝程式、Linux 套件與 macOS App，保留成 artifacts。
+- 標籤觸發的 Release（`release.yml`）等這些 run 跑完，直接拿它們的 artifacts 簽章、打包、發布，不再重建也不再重跑檢查（`tools/ci-run.sh` 找 run）。找不到 run 或 artifacts 已過期時（例如重建舊版本），才在 Release 裡建置。
+- 發布後，Release 的最後一個 job 從公開的 release 下載每個檔案，比對 GitHub 的雜湊與 `SHA256SUMS-desktop.txt`、穩定檔名，以及更新清單和 appcast 的 Ed25519 簽章（`tools/verify-release.py`，本機也能執行）。
+- appcast 的 commit 帶 `[skip ci]`，不再觸發 CI。
+
+外部下載不會讓建置失敗：ONNX Runtime、nfpm、Sparkle 的原始檔案放在本 repo 的 `toolchains-1` release，腳本先從那裡下載，失敗才找上游，並都以 SHA-256 檢查；CI 另外快取這些檔案，以及 cargo-xwin、cargo-deny。
+
+`zt check app` 的自我測試在 App 的副本上執行，副本有自己的 bundle ID，所以設定從空白開始，和 CI 的全新 runner 相同，也不會讀寫這台 Mac 上安裝的 ZhuyinType 的設定。
+
 GitHub Actions 的 **Rebuild releases** 可手動重新建置並發布既有版本。`version` 填版本標籤（例如 `v0.4.7`），或填 `all` 依序重建所有正式版本；也可執行 `gh workflow run rebuild-releases.yml -f version=all`。各版沿用自己的原始碼、資料與建置流程，成功後替換該版附件與發布說明，只有最新版更新自動更新清單。更新清單依系統需求保留最新可用版本，歷史安裝檔保留在發布頁面。
 
 ## 用途
@@ -73,7 +93,7 @@ Linux／Windows 版只在 Linux 上建置（GPU 主機或 CI），在 Mac 上執
 | 指令 | 說明 |
 |---|---|
 | `zt check engine` | 引擎的測試（`cargo test --release`）：行為、golden 摘要與真實資料上的延遲目標；較慢或忙碌的機器設 `ZHUYIN_CHECKS_TIMING=warn` |
-| `zt check app` | 已建置 App 的自我測試與封裝檢查 |
+| `zt check app` | 已建置 App 的自我測試與封裝檢查；自我測試在另一個 bundle ID 的副本上執行，設定從空白開始（和 CI 相同） |
 | `zt check desktop` | Linux／Windows 版：Linux debug 建置、`cargo test` 與 Fcitx 5 addon 的 CTest（Linux；從 Mac 用 `zt --remote check desktop`） |
 | `zt check python` | `ml/src` 底下 `test_*.py` 的 unittest；`--group train` 帶 PyTorch 執行，`--start src/zhuyintype_ml/remote` 只跑一個目錄（相對於 `ml/` 或版本庫根目錄都可以） |
 | `zt check lint` | ruff；`--fix` 自動修正，`--format` 一併檢查排版 |
@@ -148,6 +168,9 @@ Linux／Windows 版只在 Linux 上建置（GPU 主機或 CI），在 Mac 上執
 | `zt.ps1` | Windows PowerShell 啟動程式，使用相同 uv 專案與指令；例如 `./tools/zt.ps1 check python` |
 | `zt` | 啟動程式（POSIX sh）：找到版本庫與 uv，執行 `uv run --project ml python -m zhuyintype_ml.cli` |
 | `check-public.sh` | 發布前的隱私檢查 |
+| `release.sh` | 一個指令完成發布（見「發布」） |
+| `ci-run.sh` | main 上某個 commit 的 CI run：等它跑完，成功且 artifacts 還在時印出 run ID（`release.yml`、`release.sh` 使用） |
+| `verify-release.py` | 檢查已發布的 release：雜湊、穩定檔名、更新清單與 appcast 的簽章 |
 | `../ml/pyproject.toml`、`../ml/uv.lock`、`../ml/.python-version` | uv 專案、相依群組、ruff 與 mypy 設定、固定的版本 |
 | `../ml/src/zhuyintype_ml/cli/` | 指令列：`main.py` 載入 `commands/` 底下每個模組 |
 

@@ -183,7 +183,11 @@ nfpm_binary() {
     if [[ ! -x $dir/nfpm ]]; then
         step "安裝 nfpm $version 到 $dir" >&2
         mkdir -p "$dir"
-        curl -fsSL -o "$dir/$archive" "https://github.com/goreleaser/nfpm/releases/download/v$version/$archive" \
+        # Our own copy (the toolchains-1 release) first, then goreleaser's.
+        curl -fsSL --retry 3 -o "$dir/$archive" \
+            "${ZT_MIRROR:-https://github.com/henry753951/ZhuyinType/releases/download/toolchains-1}/$archive" \
+            || curl -fsSL --retry 3 -o "$dir/$archive" \
+                "https://github.com/goreleaser/nfpm/releases/download/v$version/$archive" \
             || fail "下載 nfpm 失敗"
         (cd "$dir" && echo "$sum  $archive" | sha256sum -c --quiet && tar -xzf "$archive" nfpm && rm "$archive") \
             || fail "nfpm 檢查碼不符"

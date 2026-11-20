@@ -1,7 +1,7 @@
 # ZhuyinType for Linux and Windows on every change to platforms/desktop or platforms/linux: the .deb and .rpm (built
 # in the Debian 13 image by scripts/build.sh, then installed and removed in clean containers) and the Windows
-# installer (cross-compiled with cargo-xwin, NSIS), kept as artifacts.  release.yml calls this workflow for a v* tag and
-# attaches the artifacts to the release.
+# installer (cross-compiled with cargo-xwin, NSIS), kept as artifacts.  release.yml publishes the artifacts of the
+# tagged commit's run on main, and calls this workflow only when that run is missing.
 name: Desktop
 
 on:
@@ -23,9 +23,11 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# A new push to a pull request replaces its older run; main's runs all finish, since a release reuses each commit's
+# artifacts (release.yml).
 concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -97,7 +99,15 @@ jobs:
           ln -sf "$(readlink -f "$(command -v clang)")" "$HOME/.local/bin/clang-cl"
           ln -sf "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/rust-lld" "$HOME/.local/bin/lld-link"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          cargo install --locked cargo-xwin
+      # cargo-xwin, pinned and kept between runs (building it takes over a minute).
+      - if: steps.script.outputs.present == 'true'
+        id: xwin
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-xwin
+          key: cargo-xwin-0.23.1-${{ runner.os }}
+      - if: steps.script.outputs.present == 'true' && steps.xwin.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-xwin --version 0.23.1
       - if: steps.script.outputs.present == 'true'
         uses: actions/cache@v6
         with:
