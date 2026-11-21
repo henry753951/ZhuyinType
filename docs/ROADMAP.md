@@ -21,6 +21,10 @@
 
 ## 2. 版本
 
+### 0.7.3：Windows 遊戲的懸浮打字框、全螢幕的切換提示、一次就過的發布流程
+
+發布說明見 [releases/v0.7.3.md](releases/v0.7.3.md)。Windows 的文字服務判斷 App 能不能顯示組字（transitory context、沒有系統游標、IMM 的組字與候選字位置都是預設）：Minecraft: Java Edition 等 GLFW、SDL 與遊戲引擎的視窗不能，組字改在候選字視窗顯示，放在遊戲視窗左下角上方，App 只收到送出的字（[IPC.md](../platforms/desktop/IPC.md)〈懸浮打字框〉）；全螢幕視窗中切換到 ZhuyinType 時顯示中英提示。測試機上以 `zt-tsf/examples/game_window.rs` 重現 GLFW、自己處理輸入法訊息、關閉輸入法與全螢幕四種視窗。引擎與模型不變。發布流程改為 `tools/release.sh`：Release 使用 main 上同一個 commit 的 CI 建置結果，只簽章與發布，發布後下載並驗證每個檔案與簽章；第三方工具放在 `toolchains-1` release。
+
 ### 0.7.2：聊天模型加入 PTT、Linux／Windows 的 Ctrl 預設按鍵、符號面板的注音搜尋
 
 發布說明見 [releases/v0.7.2.md](releases/v0.7.2.md)。資料版本 data-11：聊天模型改為 `ptt-cns-genpub`（PTT 八卦版、篩選後的大陸語料與產生的主題句），重排模型以聊天語料重訓（`reranker_chat`），前綴樹在 Core ML 以 fp32 計算，修正 CPU fp16 核心在部分長度算錯的評分；桌面版的 `RerankerTree.ort` 由 `desktop_models.py` 對 PyTorch 檢查每棵樹的誤差。引擎程式只改了加入自訂詞：三個字詞動作都只作用在開著的清單上，快速比對 0 差異。Linux 與 Windows 的預設按鍵依 [DESIGN.md](product/DESIGN.md) §2.1「按鍵的原則」改用 Ctrl（Windows 的 TSF 收不到 Alt 組合鍵），所有顯示按鍵的文字讀同一張按鍵表；符號與 Emoji 面板的搜尋接收所有打字的鍵，↓ 進入格子後 1–9 才選取，Windows 的文字服務在格子顯示時接收所有按鍵。候選字視窗依畫出的內容計算大小，Windows 的字型讀進記憶體，開始功能表的搜尋框中不再出現空白的視窗；面板在 App 回報的游標不在視窗內時依視窗定位。
