@@ -179,6 +179,11 @@ pub(crate) struct TextService {
     activated: Cell<bool>,
     /// A `WM_WARM` is on its way.
     warm_posted: Cell<bool>,
+    /// The focused field's application cannot show the composition (`composition::floating`), as last told to the
+    /// host.
+    floating: Cell<bool>,
+    /// The host's answer to the last `focus` (`inlinePreedit`): false, the composition stays out of the document.
+    inline: Cell<bool>,
     /// 快速設定's switches as the host last reported them (`fullWidth` and `symbols` only come with a `quick` reply).
     quick: Cell<QuickState>,
     /// `QUICK_TIMER` ticks spent waiting for the modifiers to be released.
@@ -230,6 +235,8 @@ impl TextService {
             private: Cell::new(false),
             activated: Cell::new(false),
             warm_posted: Cell::new(false),
+            floating: Cell::new(false),
+            inline: Cell::new(true),
             quick: Cell::new(QuickState { full_width: true, ..QuickState::default() }),
             quick_wait: Cell::new(0),
             _count: ObjectCount::new(),
@@ -478,6 +485,7 @@ impl TextService_Impl {
             };
             let secure = self.secure.get();
             let atoms = self.atoms.get();
+            let inline = self.inline.get();
             let sink: ITfCompositionSink = self.to_interface();
             let document = old.clone();
             // Blur is bound to the old document, even if its edit lock is deferred.  With no broker reply, the
@@ -487,7 +495,7 @@ impl TextService_Impl {
                 hresult(if secure || composition::is_secure(&document, cookie) {
                     composition::finish(cookie, &slot, true)
                 } else if let Some(reply) = &reply {
-                    composition::apply_reply(&document, cookie, &sink, &slot, reply, atoms)
+                    composition::apply_reply(&document, cookie, &sink, &slot, reply, atoms, inline)
                 } else {
                     composition::finish(cookie, &slot, false)
                 })
@@ -536,7 +544,17 @@ impl TextService_Impl {
                 return false;
             }
         }
-        let (rect, scale, owner) = composition::caret(&context, cookie);
+        let (mut rect, scale, owner) = composition::caret(&context, cookie);
+        // A game that shows neither the composition nor where its text is: the candidate window shows the
+        // composition, at the bottom-left of the game's window (懸浮打字框).  A change is told to the host again.
+        let floating = !secure && composition::floating(&context);
+        if floating && let Some(anchor) = composition::floating_anchor(owner, scale) {
+            rect = anchor;
+        }
+        if floating != self.floating.replace(floating) {
+            self.host_focused.set(false);
+        }
+        self.panel.set_floating(floating);
         self.rect.set(rect);
         self.scale.set(scale);
         self.panel.set_owner(owner);
@@ -569,7 +587,9 @@ impl TextService_Impl {
             fields.insert("panel".into(), Value::from(true));
             if self.activated.replace(false) {
                 fields.insert("activated".into(), Value::from(true));
+                fields.insert("fullscreen".into(), Value::from(composition::fullscreen(owner)));
             }
+            fields.insert("inlinePreedit".into(), Value::from(!floating));
             if !secure && !private {
                 put_context(&mut fields, &context, cookie);
             }
@@ -670,7 +690,18 @@ impl TextService_Impl {
             composition::finish(cookie, &self.composition, true)
         } else {
             let sink: ITfCompositionSink = self.to_interface();
-            composition::apply_reply(&context, cookie, &sink, &self.composition, reply, self.atoms.get())
+            if let Some(inline) = reply.inline_preedit {
+                self.inline.set(inline);
+            }
+            composition::apply_reply(
+                &context,
+                cookie,
+                &sink,
+                &self.composition,
+                reply,
+                self.atoms.get(),
+                self.inline.get(),
+            )
         };
         self.applying.set(false);
         if result.is_err() {
@@ -681,7 +712,8 @@ impl TextService_Impl {
         }
         // A commit that leaves only a list (聯想詞) ended the composition: the list goes at the caret after the
         // commit, not where the key was typed.
-        if !self.secure.get() && reply.preedit.is_empty() && !reply.commit.is_empty() {
+        // (懸浮打字框: the window stays at the corner of the game's window, which has no caret.)
+        if !self.secure.get() && reply.preedit.is_empty() && !reply.commit.is_empty() && !self.floating.get() {
             let (rect, scale, _) = composition::caret(&context, cookie);
             self.rect.set(rect);
             self.scale.set(scale);

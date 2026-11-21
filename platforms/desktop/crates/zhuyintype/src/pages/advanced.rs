@@ -150,7 +150,7 @@ impl AdvancedPage {
                     .footer("記錄只存在這台電腦；密碼欄位中不記錄。"),
             )
             .child(
-                ui::section("相容性").row(
+                compatibility(cx).row(
                     ui::row("drill-apps", "在候選字視窗顯示組字的 App")
                         .subtitle("少數 App 需要")
                         .anchor(APPS)
@@ -183,6 +183,13 @@ impl Render for AdvancedPage {
             _ => self.main(cx),
         }
     }
+}
+
+/// 相容性: on Windows it starts with 看不到注音時改用懸浮打字框 (games: `zt-tsf` `composition::floating`); Linux
+/// asks each application through Fcitx whether it shows the composition.
+fn compatibility(cx: &App) -> ui::section::Section {
+    let section = ui::section("相容性");
+    if cfg!(target_os = "windows") { section.row(ui::setting_row("floatingComposition", cx)) } else { section }
 }
 
 /// The title of sub-page `id` (shown in the bar above it), or None if this page has no such sub-page.

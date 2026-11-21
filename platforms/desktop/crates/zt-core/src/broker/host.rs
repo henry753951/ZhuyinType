@@ -112,6 +112,9 @@ pub struct Host {
     flush: bool,
     /// 在候選字視窗顯示組字的 App (executable names, compared without case).
     pub popup_apps: Vec<String>,
+    /// 看不到注音時改用懸浮打字框: a field whose adapter says the app cannot show the composition (`inlinePreedit`
+    /// false) gets it in the candidate window.  Off: the app's own way stands (Windows draws it in a corner).
+    pub floating_composition: bool,
     /// 繁／簡 asked for by `op: "quick"`, for the service to set once its lock is released (a setting's observer
     /// takes that lock).
     pending_script: Option<bool>,
@@ -133,6 +136,7 @@ impl Default for Host {
             anchor: Rect::default(),
             flush: false,
             popup_apps: Vec::new(),
+            floating_composition: true,
             pending_script: None,
             sent_claims: None,
         }
@@ -183,10 +187,11 @@ impl Host {
         !self.client_app.is_empty() && self.popup_apps.iter().any(|app| app.eq_ignore_ascii_case(&self.client_app))
     }
 
-    /// The app shows the composition itself: not when it cannot, or when it is on the 在候選字視窗顯示組字 list.
+    /// The app shows the composition itself: not when it cannot (and 看不到注音時改用懸浮打字框 is on), or when it is
+    /// on the 在候選字視窗顯示組字 list.
     #[must_use]
     pub fn inline_preedit(&self) -> bool {
-        self.inline_preedit && !self.popup_app()
+        (self.inline_preedit || !self.floating_composition) && !self.popup_app()
     }
 
     /// As macOS `ControllerCore.render`: the window shows a list, a notice, or the composition for apps that cannot;
@@ -372,7 +377,7 @@ impl Host {
         if matches!(op, "key" | "focus" | "secure") && flag("secure").is_none() {
             return Err("缺少安全輸入狀態。");
         }
-        for field in ["secure", "private", "activated", "repeat", "capsLock", "inlinePreedit", "panel"]
+        for field in ["secure", "private", "activated", "repeat", "capsLock", "inlinePreedit", "panel", "fullscreen"]
             .into_iter()
             .chain(QUICK.iter().copied().filter(|_| op == "quick"))
         {
@@ -497,6 +502,10 @@ impl Host {
         if op == "focus" {
             if flag("activated") == Some(true) {
                 controller.activated();
+                // Windows' own switcher is under a full-screen window: the 中/英 badge says the switch happened.
+                if flag("fullscreen") == Some(true) {
+                    controller.announce_mode();
+                }
             }
             self.inline_preedit = flag("inlinePreedit").unwrap_or(true);
             let asked = flag("panel").unwrap_or(false);
@@ -566,6 +575,10 @@ impl Host {
         if effects.contains(&Effect::QuickPanel) {
             reply.insert("quickPanel".into(), true.into());
             reply.insert("handled".into(), true.into());
+        }
+        if op == "focus" {
+            // Who shows the composition, as decided: the adapter leaves it out of the app when the window shows it.
+            reply.insert("inlinePreedit".into(), self.inline_preedit().into());
         }
         if op == "quick" {
             reply.insert("quick".into(), self.quick_state(controller));

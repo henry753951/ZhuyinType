@@ -940,6 +940,11 @@ impl InputController {
         self.events.push(ControllerEvent::ModeChanged);
     }
 
+    /// Shows the 中/英 badge for the current mode (a switch to ZhuyinType that Windows' own switcher could not show).
+    pub fn announce_mode(&mut self) {
+        self.events.push(ControllerEvent::ModeSwitched { english: self.english() });
+    }
+
     /// A private field (IPC.md `private`: a browser's private window) on or off: Chinese typing works as anywhere
     /// else, but nothing is learned, no text before the insertion point is read, and nothing sent is remembered as
     /// context — macOS's behaviour under secure input.

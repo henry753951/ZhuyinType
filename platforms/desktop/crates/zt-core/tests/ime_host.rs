@@ -179,6 +179,47 @@ fn composition_fallback_does_not_require_candidate_list() {
 }
 
 #[test]
+fn floating_composition_follows_its_setting() {
+    let mut f = Fixture::new();
+    // An app that cannot show the composition (a game): the window shows it, and the focus reply says so.
+    let reply = f.request("focus", json!({"secure": false, "inlinePreedit": false}));
+    assert_eq!(reply["inlinePreedit"], false);
+    f.keys("su3");
+    // The window shows it; the reply still carries it (Fcitx commits it on focus out), the Windows text service
+    // leaves it out of the app.
+    assert!(f.visible());
+    assert_eq!(f.service.popup().unwrap().presentation.composition, "你");
+    f.request("reset", json!({}));
+    // 看不到注音時改用懸浮打字框 off: the app gets the composition as any other.
+    f.service.settings().set("floatingComposition", json!(false)).unwrap();
+    let reply = f.request("focus", json!({"secure": false, "inlinePreedit": false}));
+    assert_eq!(reply["inlinePreedit"], true);
+    f.keys("su");
+    assert_eq!(f.key('3' as i32)["preedit"], "你");
+    assert!(!f.visible());
+    // An app that shows it: inline, whatever the setting.
+    f.service.settings().set("floatingComposition", json!(true)).unwrap();
+    assert_eq!(f.request("focus", json!({"secure": false}))["inlinePreedit"], true);
+}
+
+#[test]
+fn switching_over_a_full_screen_window_shows_the_mode_badge() {
+    let mut f = Fixture::new();
+    f.request("focus", json!({"secure": false, "rect": [600, 400, 2, 36], "scale": 2}));
+    f.ui_events();
+    let toasts = |f: &mut Fixture| f.ui_events().into_iter().filter(|e| matches!(e, UiEvent::Toast { .. })).count();
+    // Windows' switcher shows a switch, except under a full-screen window (a game).
+    f.request("focus", json!({"secure": false, "activated": true, "rect": [600, 400, 2, 36], "scale": 2}));
+    assert_eq!(toasts(&mut f), 0);
+    f.request(
+        "focus",
+        json!({"secure": false, "activated": true, "fullscreen": true, "rect": [600, 400, 2, 36], "scale": 2}),
+    );
+    assert_eq!(toasts(&mut f), 1);
+    assert!(!ok(&f.request("focus", json!({"secure": false, "fullscreen": 1}))));
+}
+
+#[test]
 fn preceding_text_mode_toast_and_caret() {
     let mut f = Fixture::new();
     let reply = f.request("focus", json!({"secure": false, "app": "org.example.editor", "before": "我說"}));

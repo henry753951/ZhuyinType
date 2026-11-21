@@ -17,7 +17,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 
 | op | 內容 |
 |---|---|
-| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設（Windows：停用 ZhuyinType 時作用中的已是其他鍵盤輸入法或鍵盤配置才算；程式的執行緒結束或開新執行緒不算） |
+| `focus` | `secure` 布林，可選的 `rect: [x,y,width,height]`、`scale`、`capsLock`、`inlinePreedit`、`panel`、`private`、`activated`、`app` 與 `before`；取得焦點。`private`：私人欄位（見〈私人欄位〉）。`activated`：使用者剛從其他輸入法切換回 ZhuyinType，中／英依「開始輸入時使用英文」重設（Windows：停用 ZhuyinType 時作用中的已是其他鍵盤輸入法或鍵盤配置才算；程式的執行緒結束或開新執行緒不算）。`fullscreen`：與 `activated` 一起送，欄位的視窗蓋滿整個螢幕（全螢幕遊戲），Windows 的輸入法切換提示被它擋住，服務改以「中英提示」顯示「中」或「英」。`inlinePreedit: false`：App 不能顯示組字（Linux：Fcitx 沒有 Preedit 能力；Windows：遊戲，見〈懸浮打字框〉），「看不到注音時改用懸浮打字框」開啟時組字改在候選字視窗顯示。回應另含 `inlinePreedit`：最後的決定（也考慮設定與「在候選字視窗顯示組字的 App」），為 false 時回應的 `preedit` 為空，原生端不在 App 裡組字 |
 | `key` | `key`／`modifiers` 為 Qt 數值、`release`／`secure` 布林，可選 `repeat`、`shiftSide`（0 未知、1 左、2 右）、`private`、`app`、`before` 及矩形。原生端也可以只「告知」應用程式自己會收到的按鍵（Windows 沒有組字時的 ⌫、空白、Enter），讓服務更新前文與「送出後刪掉重打」；這時不看回應的 `handled` |
 | `context` | 只更新 `app` 與 `before`（見〈前文〉），不處理按鍵 |
 | `poll` | 取得滑鼠選字後待送出的文字與最新組字，可更新矩形。只在候選字視窗開著時需要（兩鍵之間只有視窗上的點選或剛改的設定會改變組字），其他時候原生端不定時喚醒 |
@@ -134,3 +134,14 @@ X11 與 Windows 可以由 App 指定視窗位置。Wayland 的輸入法 popup su
 Windows 的設定欄位可能在 App 自己的介面執行緒呼叫 TSF。服務的連線執行緒不等待介面執行緒，所以同一個行程內的 TSF 照一般方式等候回應即可，不需要在等候時處理介面的事件。原生端仍須防止重入、保持回應期限與原欄位識別。
 
 `crates/zt-core/tests/ime_host.rs` 使用真實引擎與本機通訊端，驗證送字、選字、安全輸入、失焦隔離、非法封包、重複識別碼、單一實例與顯示設定。平台端仍須各自驗證系統註冊與應用程式送達。
+
+## 懸浮打字框（Windows）
+
+多數遊戲（Minecraft: Java Edition 與其他 GLFW、SDL 或遊戲引擎的視窗）用 WM_CHAR 收字，沒有自己的 TSF 文件（Windows 經 IMM32 給它一個 transitory context），沒有系統游標，也不設定輸入法的組字或候選字視窗位置。Windows 因此把組字畫在螢幕左上角的小框裡（全螢幕時幾乎看不到），遊戲自己處理輸入法訊息時則完全不顯示；微軟注音也一樣。
+
+文字服務在每次準備送鍵時判斷（`composition::floating`）：context 為 `TS_SS_TRANSITORY`、執行緒沒有系統游標、IMM 的組字視窗與候選字視窗位置都是 `CFS_DEFAULT` 時，以 `inlinePreedit: false` 告訴服務，候選字視窗的位置改為遊戲視窗左下角往內 24 像素（遊戲的聊天列通常在那裡），視窗開在它上方。服務回應 `inlinePreedit: false` 時，組字只在候選字視窗顯示，App 只收到送出的字。會自己顯示組字的 IMM32 App（Scintilla、Qt 5、Edit 控制項）有系統游標或會設定這些位置，照舊在 App 裡組字。判斷結果改變時，文字服務重送 `focus`。
+
+在測試機上可以用 `crates/zt-tsf/examples/game_window.rs` 重現：它像 GLFW 一樣收字，`--mode eat` 自己處理輸入法訊息，`--mode noime` 關掉輸入法，`--fullscreen` 蓋滿螢幕。
+
+遊戲把視窗的輸入法關掉時（`ImmAssociateContextEx` 不給 input context，有些遊戲在遊玩時這樣做），Windows 不把按鍵交給任何輸入法，打出的是英文字母；輸入法無法處理，等遊戲打開聊天、重新開啟輸入法即可。
+

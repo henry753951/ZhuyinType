@@ -722,6 +722,9 @@ pub(crate) struct PanelWindow {
     state: RefCell<State>,
     /// The owner `warm` last ran for (it runs once per owner, whether or not it could make everything).
     warmed: Cell<HWND>,
+    /// The application shows neither the composition nor where its text is (懸浮打字框, `composition::floating`):
+    /// the caret is the corner of its window, and the windows open above it.
+    floating: Cell<bool>,
 }
 
 impl PanelWindow {
@@ -734,7 +737,12 @@ impl PanelWindow {
             badge: Surface::new(Role::Badge),
             state: RefCell::new(State::default()),
             warmed: Cell::new(HWND::default()),
+            floating: Cell::new(false),
         }
+    }
+
+    pub(crate) fn set_floating(&self, floating: bool) {
+        self.floating.set(floating);
     }
 
     pub(crate) fn set_notify(&self, window: HWND) {
@@ -1021,7 +1029,7 @@ impl PanelWindow {
             anchor,
             f64::from(width),
             f64::from(height),
-            panel.above,
+            panel.above || self.floating.get(),
             f64::from(inset * scale),
             to_rect(screen),
             f64::from(4. * scale),
@@ -1121,7 +1129,7 @@ impl PanelWindow {
         let Some(window) = self.ensure(Kind::Badge) else { return };
         let (appearance, above) = {
             let state = self.state.borrow();
-            (state.appearance, state.above)
+            (state.appearance, state.above || self.floating.get())
         };
         self.badge.set_dark(appearance.dark(system_dark()));
         self.state.borrow_mut().toast = Some(text.to_owned());
