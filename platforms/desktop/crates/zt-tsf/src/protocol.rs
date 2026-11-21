@@ -74,6 +74,10 @@ pub(crate) struct Reply {
     /// The keys to claim even when nothing is composed (IPC.md §攔截的按鍵): `(key, modifiers)`, already filtered by
     /// the host for this field and mode; `None`: left out (unchanged since the last), keep the last ones.
     pub(crate) claims: Option<Vec<(i32, i32)>>,
+    /// In a `focus` reply: who shows the composition, as the host decided (IPC.md `inlinePreedit`).  False: the
+    /// candidate window shows it and the text service leaves it out of the application.  `None`: left out (other
+    /// ops, older hosts).
+    pub(crate) inline_preedit: Option<bool>,
 }
 
 impl Reply {
@@ -205,6 +209,10 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
             })
         }
     };
+    let inline_preedit = match object.get("inlinePreedit") {
+        None => None,
+        Some(value) => Some(value.as_bool()?),
+    };
     let selection = match object.get("selection") {
         None => false,
         Some(value) => value.as_bool()?,
@@ -242,6 +250,7 @@ pub(crate) fn parse_reply(line: &[u8], id: u64, context: &str) -> Option<Reply> 
         quick_panel: optional("quickPanel")?,
         selection,
         claims,
+        inline_preedit,
     })
 }
 

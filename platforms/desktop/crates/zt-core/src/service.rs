@@ -341,6 +341,7 @@ impl Service {
         let (result, effects, popup) = {
             let mut core = self.inner.core.lock();
             core.host.popup_apps = popup_apps(&self.inner.settings);
+            core.host.floating_composition = self.inner.settings.bool("floatingComposition");
             let result = work(&mut core);
             let Core { controller, host, popup, .. } = &mut *core;
             controller.sync_word_overlay();

@@ -10,7 +10,7 @@ use std::mem::ManuallyDrop;
 use serde_json::{Map, Value};
 use windows::Win32::Foundation::{E_FAIL, HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MapWindowPoints, MonitorFromRect,
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MapWindowPoints, MonitorFromRect, MonitorFromWindow,
 };
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Threading::GetCurrentThreadId;
@@ -18,6 +18,10 @@ use windows::Win32::System::Variant::{VARIANT, VT_I4, VT_UNKNOWN, VariantClear};
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, LogicalToPhysicalPointForPerMonitorDPI,
     SetThreadDpiAwarenessContext,
+};
+use windows::Win32::UI::Input::Ime::{
+    CANDIDATEFORM, CFS_DEFAULT, COMPOSITIONFORM, ImmGetCandidateWindow, ImmGetCompositionWindow, ImmGetContext,
+    ImmReleaseContext,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::Shell::GetScaleFactorForMonitor;
@@ -27,10 +31,11 @@ use windows::Win32::UI::TextServices::{
     ITfComposition, ITfCompositionSink, ITfContext, ITfContextComposition, ITfEditSession, ITfEditSession_Impl,
     ITfInputScope, ITfRange, InputScope, TF_AE_NONE, TF_ANCHOR_START, TF_CONTEXT_EDIT_CONTEXT_FLAGS,
     TF_DEFAULT_SELECTION, TF_ES_ASYNCDONTCARE, TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION, TF_SELECTIONSTYLE,
-    TS_SD_READONLY,
+    TS_SD_READONLY, TS_SS_TRANSITORY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GUITHREADINFO, GWL_STYLE, GetClassNameW, GetGUIThreadInfo, GetWindowLongPtrW,
+    GA_ROOT, GUITHREADINFO, GWL_STYLE, GetAncestor, GetClassNameW, GetDesktopWindow, GetGUIThreadInfo, GetShellWindow,
+    GetWindowLongPtrW, GetWindowRect, IsWindowVisible,
 };
 use windows::core::{BOOL, GUID, HRESULT, Interface, Result, implement};
 
@@ -158,7 +163,9 @@ pub(crate) fn finish(cookie: u32, slot: &Slot, discard: bool) -> Result<()> {
 
 /// Puts a reply into the document: the commit replaces the composition (or the selection) and the caret goes after
 /// it; then the composition shows `preedit`, its words marked with the display attributes of `atoms`
-/// (display_attributes.rs), with the caret at `cursor`, or ends when it is empty.
+/// (display_attributes.rs), with the caret at `cursor`, or ends when it is empty.  Not `inline` (懸浮打字框: the
+/// candidate window shows the composition), the document gets only the commit, through a composition that ends at
+/// once, so an IMM32 application receives it as the result string, as from any IME.
 pub(crate) fn apply_reply(
     context: &ITfContext,
     cookie: u32,
@@ -166,19 +173,26 @@ pub(crate) fn apply_reply(
     slot: &Slot,
     reply: &Reply,
     atoms: Option<display_attributes::Atoms>,
+    inline: bool,
 ) -> Result<()> {
     // SAFETY: valid TSF objects under the write cookie.
     unsafe {
         if !reply.commit.is_empty() {
             let range = match load(slot) {
                 Some(composition) => composition.GetRange()?,
+                None if !inline => {
+                    let owner = context.cast::<ITfContextComposition>()?;
+                    let composition = owner.StartComposition(cookie, &selection(context, cookie)?, sink)?;
+                    store(slot, Some(composition.clone()));
+                    composition.GetRange()?
+                }
                 None => selection(context, cookie)?,
             };
             range.SetText(cookie, 0, &reply.commit)?;
             move_caret(context, cookie, &range, reply.commit.len())?;
             finish(cookie, slot, false)?;
         }
-        if reply.preedit.is_empty() {
+        if reply.preedit.is_empty() || !inline {
             return finish(cookie, slot, true);
         }
         let composition = match load(slot) {
@@ -305,6 +319,78 @@ pub(crate) fn selected_text(context: &ITfContext, cookie: u32, limit: usize) -> 
     // A cut surrogate pair at the end is dropped.
     let end = length - usize::from(length > 0 && (0xd800..=0xdbff).contains(&buffer[length - 1]));
     Some(String::from_utf16_lossy(&buffer[..end]))
+}
+
+/// An application that shows neither the composition nor where its text is: most games (Minecraft: Java Edition and
+/// every GLFW, SDL or engine window that reads WM_CHAR).  They have no TSF document of their own (Windows gives them a
+/// transitory one through IMM32), no system caret, and never place the IME's composition or candidate window, so
+/// Windows draws the composition in a corner of the screen, or nowhere when the game swallows the IME's messages.  The
+/// candidate window shows it instead (懸浮打字框), at [`floating_anchor`].  Applications that do show it, IMM32 ones
+/// included (Scintilla, Qt 5, the Edit control), have a caret or place those windows.
+pub(crate) fn floating(context: &ITfContext) -> bool {
+    // SAFETY: a valid context.
+    let Ok(status) = (unsafe { context.GetStatus() }) else { return false };
+    if status.dwStaticFlags & TS_SS_TRANSITORY == 0 {
+        return false;
+    }
+    let Some(gui) = gui_thread() else { return false };
+    let window = gui.hwndFocus;
+    if !gui.hwndCaret.is_invalid() || window.is_invalid() {
+        return false;
+    }
+    // SAFETY: the focus window of this thread; its input context is released below.
+    unsafe {
+        let himc = ImmGetContext(window);
+        if himc.is_invalid() {
+            return false;
+        }
+        let mut composition = COMPOSITIONFORM::default();
+        let mut candidate = CANDIDATEFORM::default();
+        let placed = (ImmGetCompositionWindow(himc, &mut composition).as_bool() && composition.dwStyle != CFS_DEFAULT)
+            || (ImmGetCandidateWindow(himc, 0, &mut candidate).as_bool() && candidate.dwStyle != CFS_DEFAULT);
+        let _ = ImmReleaseContext(window, himc);
+        !placed
+    }
+}
+
+/// The top-level window of `window` and its rectangle in physical pixels, while it is shown.
+fn top_level(window: HWND) -> Option<(HWND, RECT)> {
+    if window.is_invalid() {
+        return None;
+    }
+    let mut frame = RECT::default();
+    // SAFETY: a window handle from the system; per-monitor awareness makes its rectangle physical.
+    per_monitor(|| unsafe {
+        let top = GetAncestor(window, GA_ROOT);
+        let shown = !top.is_invalid() && IsWindowVisible(top).as_bool() && GetWindowRect(top, &mut frame).is_ok();
+        shown.then_some((top, frame))
+    })
+}
+
+/// `window` fills its monitor (a full-screen game): Windows' input switcher and the taskbar are under it.
+pub(crate) fn fullscreen(window: HWND) -> bool {
+    let Some((top, frame)) = top_level(window) else { return false };
+    // SAFETY: plain window queries.
+    if top == unsafe { GetDesktopWindow() } || top == unsafe { GetShellWindow() } {
+        return false;
+    }
+    let mut monitor = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+    // SAFETY: cbSize is set; per-monitor awareness makes the rectangle physical, as the window's is.
+    let known = per_monitor(|| unsafe {
+        GetMonitorInfoW(MonitorFromWindow(top, MONITOR_DEFAULTTONEAREST), &mut monitor).as_bool()
+    });
+    let m = monitor.rcMonitor;
+    known && frame.left <= m.left && frame.top <= m.top && frame.right >= m.right && frame.bottom >= m.bottom
+}
+
+/// Where the 懸浮打字框 goes in a [`floating`] application, in physical pixels: an empty rectangle near the bottom-left
+/// corner of its window, where games keep their chat line; the candidate window opens above it.
+pub(crate) fn floating_anchor(window: HWND, scale: f64) -> Option<RECT> {
+    let (_, frame) = top_level(window)?;
+    let inset = (24.0 * scale).round() as i32;
+    let x = (frame.left + inset).min(frame.right);
+    let y = (frame.bottom - inset).max(frame.top);
+    Some(RECT { left: x, top: y, right: x, bottom: y })
 }
 
 /// The application's executable name (`app`, IPC.md §前文): separates the text each program was sent.
