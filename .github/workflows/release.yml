@@ -242,17 +242,11 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         run: gh workflow run benchmark.yml -f version="$TAG" || echo "Benchmark not started"
 
+  # The implicit success() of a job is false when any job before it was skipped (desktop, when main's CI built it),
+  # so the condition is spelled out.
   verify:
-    name: Verify what users download
     needs: release
-    if: inputs.dry_run != true
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: tools
-      - name: Assets, stable names, feeds and signatures
-        run: python3 -I tools/verify-release.py "$GITHUB_REF_NAME"
+    if: ${{ !cancelled() && needs.release.result == 'success' && inputs.dry_run != true }}
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      tag: ${{ github.ref_name }}

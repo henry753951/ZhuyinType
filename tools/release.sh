@@ -135,4 +135,7 @@ fi
 step "release.yml for $tag"
 run=$(ZT_CI_BRANCH=$tag ZT_CI_APPEAR=300 tools/ci-run.sh release.yml "$sha") || die "the release failed: see the run above"
 [[ -n $run ]] || die "no release.yml run for $tag"
+# The run succeeds with a skipped job too: the release is verified only when the verify job passed.
+verified=$(gh run view "$run" --json jobs --jq '[.jobs[] | select(.name | test("Verify what users download")) | .conclusion] | first // "missing"')
+[[ $verified == success ]] || die "the release is published, but its check of the downloads is $verified: gh workflow run verify-release.yml -f tag=$tag"
 printf '\n\033[32mZhuyinType %s is published and verified: https://github.com/%s/releases/tag/%s\033[0m\n' "$version" "$repo" "$tag"

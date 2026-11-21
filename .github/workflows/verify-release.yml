@@ -1,0 +1,38 @@
+# A published release as users receive it (tools/verify-release.py): every asset against GitHub's digest and
+# SHA256SUMS, the stable names and releases/latest, and, for the latest release, the feeds on main with every Ed25519
+# signature.  release.yml calls it after publishing; it also runs by hand for any release:
+#
+#   gh workflow run verify-release.yml -f tag=v0.7.3
+name: Verify release
+run-name: Verify ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release to check, e.g. v0.7.3'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify what users download
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: tools
+      - name: Assets, stable names, feeds and signatures
+        run: python3 -I tools/verify-release.py "$TAG"
