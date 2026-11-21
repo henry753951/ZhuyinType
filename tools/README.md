@@ -15,7 +15,7 @@ tools/release.sh 0.7.3 --publish   # 已完成的步驟略過；merge、等 main
 
 - main 上合併 commit 的 CI（`desktop.yml`、`macos.yml`）建置並檢查 Windows 安裝程式、Linux 套件與 macOS App，保留成 artifacts。
 - 標籤觸發的 Release（`release.yml`）等這些 run 跑完，直接拿它們的 artifacts 簽章、打包、發布，不再重建也不再重跑檢查（`tools/ci-run.sh` 找 run）。找不到 run 或 artifacts 已過期時（例如重建舊版本），才在 Release 裡建置。
-- 發布後，Release 的最後一個 job 從公開的 release 下載每個檔案，比對 GitHub 的雜湊與 `SHA256SUMS-desktop.txt`、穩定檔名，以及更新清單和 appcast 的 Ed25519 簽章（`tools/verify-release.py`，本機也能執行）。
+- 發布後，Release 的最後一個 job 從公開的 release 下載每個檔案，比對 GitHub 的雜湊與 `SHA256SUMS-desktop.txt`、穩定檔名，以及更新清單和 appcast 的 Ed25519 簽章（`tools/verify-release.py`，本機也能執行；單獨在 GitHub 上檢查任何版本：`gh workflow run verify-release.yml -f tag=v0.7.3`）。`release.sh` 只在這個檢查通過時才回報完成。
 - appcast 的 commit 帶 `[skip ci]`，不再觸發 CI。
 
 外部下載不會讓建置失敗：ONNX Runtime、nfpm、Sparkle 的原始檔案放在本 repo 的 `toolchains-1` release，腳本先從那裡下載，失敗才找上游，並都以 SHA-256 檢查；CI 另外快取這些檔案，以及 cargo-xwin、cargo-deny。
