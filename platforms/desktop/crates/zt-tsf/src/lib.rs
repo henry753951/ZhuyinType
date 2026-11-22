@@ -43,6 +43,8 @@ mod picker_draw;
 mod registration;
 #[cfg(windows)]
 mod text_service;
+#[cfg(windows)]
+mod trace;
 
 #[cfg(windows)]
 pub use module::{DllCanUnloadNow, DllGetClassObject, DllInstall, DllRegisterServer, DllUnregisterServer};

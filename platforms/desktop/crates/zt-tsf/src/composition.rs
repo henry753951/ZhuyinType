@@ -321,16 +321,21 @@ pub(crate) fn selected_text(context: &ITfContext, cookie: u32, limit: usize) -> 
     Some(String::from_utf16_lossy(&buffer[..end]))
 }
 
-/// An application that shows neither the composition nor where its text is: most games (Minecraft: Java Edition and
+/// An application that shows neither the composition nor where its text is, asked once it has had a composition
+/// (the text service waits for one): most games (Minecraft: Java Edition and
 /// every GLFW, SDL or engine window that reads WM_CHAR).  They have no TSF document of their own (Windows gives them a
 /// transitory one through IMM32), no system caret, and never place the IME's composition or candidate window, so
 /// Windows draws the composition in a corner of the screen, or nowhere when the game swallows the IME's messages.  The
 /// candidate window shows it instead (懸浮打字框), at [`floating_anchor`].  Applications that do show it, IMM32 ones
 /// included (Scintilla, Qt 5, the Edit control), have a caret or place those windows.
-pub(crate) fn floating(context: &ITfContext) -> bool {
+///
+/// Chromium and Electron apps mark their TSF document transitory too, but report where the text is: `caret` (what
+/// the document reports, physical pixels) inside the application's window, away from the screen's origin, is a
+/// place, and such an application is never floating.
+pub(crate) fn floating(context: &ITfContext, caret: RECT, window: HWND) -> bool {
     // SAFETY: a valid context.
     let Ok(status) = (unsafe { context.GetStatus() }) else { return false };
-    if status.dwStaticFlags & TS_SS_TRANSITORY == 0 {
+    if status.dwStaticFlags & TS_SS_TRANSITORY == 0 || caret_is_placed(caret, window) {
         return false;
     }
     let Some(gui) = gui_thread() else { return false };
@@ -351,6 +356,32 @@ pub(crate) fn floating(context: &ITfContext) -> bool {
         let _ = ImmReleaseContext(window, himc);
         !placed
     }
+}
+
+/// `caret` is a place in `window`'s top-level window: a line with a height (for an application that never says,
+/// Windows reports a point at the screen's bottom-right corner, inside a full-screen game), not at its monitor's
+/// origin, and inside the window.
+fn caret_is_placed(caret: RECT, window: HWND) -> bool {
+    let Some((_, frame)) = top_level(window) else { return false };
+    let empty = caret.bottom <= caret.top;
+    let mut monitor = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+    // SAFETY: cbSize is set; per-monitor awareness makes the rectangle physical, as the caret is.
+    let known = per_monitor(|| unsafe {
+        GetMonitorInfoW(MonitorFromRect(&caret, MONITOR_DEFAULTTONEAREST), &mut monitor).as_bool()
+    });
+    let origin = known && caret.left == monitor.rcMonitor.left && caret.top == monitor.rcMonitor.top;
+    let (x, y) = ((caret.left + caret.right) / 2, (caret.top + caret.bottom) / 2);
+    !empty && !origin && (frame.left..=frame.right).contains(&x) && (frame.top..=frame.bottom).contains(&y)
+}
+
+/// The top-level window of `window` (itself when it has none).
+pub(crate) fn root(window: HWND) -> HWND {
+    if window.is_invalid() {
+        return window;
+    }
+    // SAFETY: a window handle from the system.
+    let top = unsafe { GetAncestor(window, GA_ROOT) };
+    if top.is_invalid() { window } else { top }
 }
 
 /// The top-level window of `window` and its rectangle in physical pixels, while it is shown.
