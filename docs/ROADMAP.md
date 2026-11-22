@@ -21,6 +21,10 @@
 
 ## 2. 版本
 
+### 0.7.4：Windows 切換輸入法後的按鍵、懸浮打字框只用在遊戲
+
+發布說明見 [releases/v0.7.4.md](releases/v0.7.4.md)。文字服務啟用時改在登記按鍵通知之前讀取焦點，不再蓋掉通知回報的焦點；從工作列切換到 ZhuyinType 後，按鍵不再全部交給 App。懸浮打字框另外要求文件回報的游標不是視窗內有高度的一行，以及欄位已在 App 裡組過一次字：Chromium 與 Electron App 的 TSF 文件標為 transitory，但會回報游標；Windows 對不知道位置的 App 回報螢幕右下角高度為 0 的點。判斷為遊戲的視窗會記住。文字服務的 `trace` feature 把啟用、焦點、連線與按鍵的處理寫進記錄，只用於測試機。
+
 ### 0.7.3：Windows 遊戲的懸浮打字框、全螢幕的切換提示、一次就過的發布流程
 
 發布說明見 [releases/v0.7.3.md](releases/v0.7.3.md)。Windows 的文字服務判斷 App 能不能顯示組字（transitory context、沒有系統游標、IMM 的組字與候選字位置都是預設）：Minecraft: Java Edition 等 GLFW、SDL 與遊戲引擎的視窗不能，組字改在候選字視窗顯示，放在遊戲視窗左下角上方，App 只收到送出的字（[IPC.md](../platforms/desktop/IPC.md)〈懸浮打字框〉）；全螢幕視窗中切換到 ZhuyinType 時顯示中英提示。測試機上以 `zt-tsf/examples/game_window.rs` 重現 GLFW、自己處理輸入法訊息、關閉輸入法與全螢幕四種視窗。引擎與模型不變。發布流程改為 `tools/release.sh`：Release 使用 main 上同一個 commit 的 CI 建置結果，只簽章與發布，發布後下載並驗證每個檔案與簽章；第三方工具放在 `toolchains-1` release。
