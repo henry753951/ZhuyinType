@@ -61,6 +61,7 @@ use crate::panel_window::{PanelWindow, WM_PANEL_ACTION, action_name};
 use crate::protocol::{PanelUpdate, Reply};
 use crate::quick_menu::{self, Command, Effect, QuickState};
 use crate::registration::guid_string;
+use crate::trace::trace;
 
 /// Adds 前文 to a request: the application's name and the text before the caret (IPC.md §前文).
 fn put_context(fields: &mut Map<String, Value>, context: &ITfContext, cookie: u32) {
@@ -182,6 +183,11 @@ pub(crate) struct TextService {
     /// The focused field's application cannot show the composition (`composition::floating`), as last told to the
     /// host.
     floating: Cell<bool>,
+    /// The application has shown a composition of this text service since its field got focus (`floating` waits
+    /// for one).
+    composed: Cell<bool>,
+    /// Top-level windows found to be games (`composition::floating`), newest last: their fields float at once.
+    floating_windows: RefCell<Vec<HWND>>,
     /// The host's answer to the last `focus` (`inlinePreedit`): false, the composition stays out of the document.
     inline: Cell<bool>,
     /// 快速設定's switches as the host last reported them (`fullWidth` and `symbols` only come with a `quick` reply).
@@ -236,6 +242,8 @@ impl TextService {
             activated: Cell::new(false),
             warm_posted: Cell::new(false),
             floating: Cell::new(false),
+            composed: Cell::new(false),
+            floating_windows: RefCell::new(Vec::new()),
             inline: Cell::new(true),
             quick: Cell::new(QuickState { full_width: true, ..QuickState::default() }),
             quick_wait: Cell::new(0),
@@ -408,6 +416,7 @@ impl TextService_Impl {
     }
 
     fn deactivate(&self) {
+        trace!("deactivate");
         if load(&self.manager).is_some() && switched_away() {
             SWITCHED_AWAY.store(true, std::sync::atomic::Ordering::Relaxed);
         }
@@ -447,10 +456,12 @@ impl TextService_Impl {
     fn refresh_focus(&self) {
         let Some(manager) = load(&self.manager) else { return };
         if !self.thread_focused.get() {
+            trace!("refresh_focus: no thread focus");
             return;
         }
         // SAFETY: a valid thread manager.
         let next = unsafe { manager.GetFocus() }.ok().and_then(|document| unsafe { document.GetTop() }.ok());
+        trace!("refresh_focus: context={}", next.is_some());
         self.switch_context(next);
     }
 
@@ -505,6 +516,7 @@ impl TextService_Impl {
             next = self.deferred_context.try_borrow_mut().ok().and_then(|mut deferred| deferred.take());
         }
         store(&self.context, next.clone());
+        self.composed.set(false);
         self.host_focused.set(false);
         self.secure.set(true);
         self.rect.set(RECT::default());
@@ -529,7 +541,10 @@ impl TextService_Impl {
     /// False when the key (or poll) cannot go to the host now.
     fn prepare(&self, cookie: u32, caps_key: bool) -> bool {
         let generation = self.generation.get();
-        let Some(context) = load(&self.context) else { return false };
+        let Some(context) = load(&self.context) else {
+            trace!("prepare: no context");
+            return false;
+        };
         // An app that ended or restarted since the last key: reconnect now rather than lose this key.
         self.broker.check();
         let secure = self.restricted.get() || composition::is_secure(&context, cookie);
@@ -547,7 +562,28 @@ impl TextService_Impl {
         let (mut rect, scale, owner) = composition::caret(&context, cookie);
         // A game that shows neither the composition nor where its text is: the candidate window shows the
         // composition, at the bottom-left of the game's window (懸浮打字框).  A change is told to the host again.
-        let floating = !secure && composition::floating(&context);
+        // Decided once the application has had a composition: some IMM32 applications place the IME's windows or
+        // make a caret only when one starts.  A window already found to be a game is not asked again.
+        trace!(
+            "prepare: caret=({},{},{},{}) owner={owner:?} composed={}",
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            self.composed.get()
+        );
+        let root = composition::root(owner);
+        let known = self.floating_windows.try_borrow().is_ok_and(|windows| windows.contains(&root));
+        let floating = !secure && (known || self.composed.get()) && composition::floating(&context, rect, owner);
+        if floating
+            && !known
+            && let Ok(mut windows) = self.floating_windows.try_borrow_mut()
+        {
+            if windows.len() >= 8 {
+                windows.remove(0);
+            }
+            windows.push(root);
+        }
         if floating && let Some(anchor) = composition::floating_anchor(owner, scale) {
             rect = anchor;
         }
@@ -565,7 +601,9 @@ impl TextService_Impl {
             self.applying.set(true);
             let _ = composition::finish(cookie, &self.composition, secure);
             self.applying.set(false);
-            if !self.broker.connect() {
+            let connected = self.broker.connect();
+            trace!("prepare: connect {connected}");
+            if !connected {
                 // Keys go to the application as they are until the app answers.
                 if let Some(button) = self.button() {
                     button.set_available(false);
@@ -594,6 +632,7 @@ impl TextService_Impl {
                 put_context(&mut fields, &context, cookie);
             }
             let reply = self.broker.request(&self.name(), "focus", fields);
+            trace!("prepare: focus reply={} floating={floating}", reply.is_some());
             let Some(reply) = reply.filter(|_| generation == self.generation.get()) else { return false };
             self.host_focused.set(true);
             self.secure.set(secure);
@@ -692,6 +731,9 @@ impl TextService_Impl {
             let sink: ITfCompositionSink = self.to_interface();
             if let Some(inline) = reply.inline_preedit {
                 self.inline.set(inline);
+            }
+            if self.inline.get() && !reply.preedit.is_empty() {
+                self.composed.set(true);
             }
             composition::apply_reply(
                 &context,
@@ -954,10 +996,12 @@ impl TextService_Impl {
     fn key_event(&self, context: Ref<ITfContext>, vk: WPARAM, flags: LPARAM, release: bool) -> Result<BOOL> {
         let Some(context) = context.cloned() else { return Ok(false.into()) };
         if !self.thread_focused.get() || self.restricted.get() || self.broker.busy() || !potential_key(vk) {
+            trace!("key vk=0x{:x} up={release} dropped early", vk.0);
             return Ok(false.into());
         }
         // Only keys the test claimed reach here; TSF has already taken them from the application.
         let claimed = self.claims(vk, flags, release);
+        trace!("key vk=0x{:x} up={release} claimed={claimed}", vk.0);
         if !same(Some(&context), load(&self.context).as_ref()) {
             self.switch_context(Some(context.clone()));
         }
@@ -1178,6 +1222,7 @@ impl TextService_Impl {
     }
 
     fn set_thread_focus(&self, focused: bool) {
+        trace!("thread focus {focused}");
         self.thread_focused.set(focused);
         if focused {
             self.refresh_focus();
@@ -1194,11 +1239,28 @@ impl TextService_Impl {
                 && !self.broker.busy()
                 && potential_key(vk);
             if !eligible {
+                trace!(
+                    "test vk=0x{:x} up={release} not eligible: context={} restricted={} focused={} busy={}",
+                    vk.0,
+                    !context.is_null(),
+                    self.restricted.get(),
+                    self.thread_focused.get(),
+                    self.broker.busy()
+                );
                 return Ok(false.into());
             }
             if self.claims(vk, flags, release) {
+                trace!("test vk=0x{:x} up={release} claimed", vk.0);
                 return Ok(true.into());
             }
+            trace!(
+                "test vk=0x{:x} up={release} passed: connected={} host_focused={} english={} composing={}",
+                vk.0,
+                self.broker.connected(),
+                self.host_focused.get(),
+                self.english.get(),
+                self.composing.get()
+            );
             self.observe(vk, flags, release);
             Ok(false.into())
         })
@@ -1328,14 +1390,23 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
         guard(|| {
             let manager = manager.ok()?.clone();
             if load(&self.manager).is_some() {
+                trace!("activate refused: already active");
                 return Err(E_INVALIDARG.into());
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
+            // SAFETY: no preconditions.
+            trace!("activate flags=0x{flags:x} focus={:?}", unsafe { GetFocus() });
             self.activated.set(SWITCHED_AWAY.swap(false, std::sync::atomic::Ordering::Relaxed));
             self.atoms.set(display_attributes::atoms());
             // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
             self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
+            // Until the key sink says otherwise, the thread has focus when one of its windows has.  Advising the
+            // sink reports the focus (`OnSetFocus`), which wins: at a switch made from the taskbar the window gets
+            // its focus back a moment later, so GetFocus is still empty here; read after the sink, it overwrote the
+            // sink's answer, and with no later focus event every key went to the application as a plain letter.
+            // SAFETY: no preconditions.
+            self.thread_focused.set(!unsafe { GetFocus() }.is_invalid());
             // The message window and the 中/英 button come first: advising the key sink already reports the focus
             // (`OnSetFocus`), and handling it starts the poll timer on that window and shows the field's 中/英.
             let sinks = || -> Result<()> {
@@ -1360,8 +1431,7 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
                 self.deactivate();
                 return Err(error);
             }
-            // SAFETY: no preconditions.
-            self.thread_focused.set(!unsafe { GetFocus() }.is_invalid());
+            trace!("activated thread_focused={}", self.thread_focused.get());
             self.refresh_focus();
             Ok(())
         })
@@ -1414,6 +1484,7 @@ impl ITfThreadMgrEventSink_Impl for TextService_Impl {
 impl ITfThreadFocusSink_Impl for TextService_Impl {
     fn OnSetThreadFocus(&self) -> Result<()> {
         guard(|| {
+            trace!("OnSetThreadFocus");
             self.set_thread_focus(true);
             Ok(())
         })
@@ -1421,6 +1492,7 @@ impl ITfThreadFocusSink_Impl for TextService_Impl {
 
     fn OnKillThreadFocus(&self) -> Result<()> {
         guard(|| {
+            trace!("OnKillThreadFocus");
             self.set_thread_focus(false);
             Ok(())
         })
@@ -1430,6 +1502,7 @@ impl ITfThreadFocusSink_Impl for TextService_Impl {
 impl ITfKeyEventSink_Impl for TextService_Impl {
     fn OnSetFocus(&self, foreground: BOOL) -> Result<()> {
         guard(|| {
+            trace!("key sink OnSetFocus {}", foreground.as_bool());
             self.set_thread_focus(foreground.as_bool());
             Ok(())
         })

@@ -12,6 +12,7 @@
 //! - The app's broker runs on its own thread, never on the GUI thread, so even the app's own text fields (whose TSF
 //!   calls arrive on the GUI thread) wait without pumping messages.
 
+use crate::trace::trace;
 use std::cell::Cell;
 
 use serde_json::{Map, Value};
@@ -118,6 +119,7 @@ impl BrokerClient {
             return true;
         }
         if now() < self.retry_at.get() {
+            trace!("connect: waiting to retry");
             return false;
         }
         // Input stays on this computer: only local pipes.
@@ -155,8 +157,12 @@ impl BrokerClient {
             };
             if let Some(pipe) = pipe.filter(|pipe| !pipe.is_invalid()) {
                 self.pipe.set(pipe);
+                trace!("connect: ok");
                 return true;
             }
+            trace!("connect: the pipe did not open");
+        } else {
+            trace!("connect: no endpoint");
         }
         self.retry_at.set(now() + RETRY_MS);
         false
@@ -196,6 +202,7 @@ impl BrokerClient {
         let busy = Busy::set(&self.busy);
         let reply = self.transaction(context, op, fields);
         drop(busy);
+        trace!("request {op}: {}", if reply.is_some() { "ok" } else { "failed" });
         if reply.is_none() {
             self.disconnect(true);
         }
