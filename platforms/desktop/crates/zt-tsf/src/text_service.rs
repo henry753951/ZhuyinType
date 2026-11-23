@@ -562,8 +562,9 @@ impl TextService_Impl {
         let (mut rect, scale, owner) = composition::caret(&context, cookie);
         // A game that shows neither the composition nor where its text is: the candidate window shows the
         // composition, at the bottom-left of the game's window (懸浮打字框).  A change is told to the host again.
-        // Decided once the application has had a composition: some IMM32 applications place the IME's windows or
-        // make a caret only when one starts.  A window already found to be a game is not asked again.
+        // A game engine's window floats at once; another full-screen window once its field has had a composition
+        // (some IMM32 applications place the IME's windows only when one starts).  A window found to be a game is
+        // remembered.
         trace!(
             "prepare: caret=({},{},{},{}) owner={owner:?} composed={}",
             rect.left,
@@ -574,7 +575,7 @@ impl TextService_Impl {
         );
         let root = composition::root(owner);
         let known = self.floating_windows.try_borrow().is_ok_and(|windows| windows.contains(&root));
-        let floating = !secure && (known || self.composed.get()) && composition::floating(&context, rect, owner);
+        let floating = !secure && composition::floating(&context, rect, owner, known || self.composed.get());
         if floating
             && !known
             && let Ok(mut windows) = self.floating_windows.try_borrow_mut()
