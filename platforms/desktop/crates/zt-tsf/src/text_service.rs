@@ -1379,20 +1379,29 @@ impl ITfTextInputProcessor_Impl for TextService_Impl {
     }
 
     fn Deactivate(&self) -> Result<()> {
-        guard(|| {
+        let result = guard(|| {
             self.deactivate();
             Ok(())
-        })
+        });
+        // Even after a fault: an object left holding the thread manager would refuse every later activation, and
+        // Windows would keep the input method the user switched from.
+        if result.is_err() {
+            trace!("deactivate failed");
+            store(&self.manager, None);
+        }
+        result
     }
 }
 
 impl ITfTextInputProcessorEx_Impl for TextService_Impl {
     fn ActivateEx(&self, manager: Ref<ITfThreadMgr>, client: u32, flags: u32) -> Result<()> {
-        guard(|| {
+        let result = guard(|| {
             let manager = manager.ok()?.clone();
             if load(&self.manager).is_some() {
-                trace!("activate refused: already active");
-                return Err(E_INVALIDARG.into());
+                // Activated again without a deactivation (one that faulted): start over rather than refuse, which
+                // would keep the user on the input method they switched from.
+                trace!("activate: still active, deactivating first");
+                self.deactivate();
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
@@ -1429,13 +1438,27 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
                 Ok(())
             };
             if let Err(error) = sinks() {
+                trace!("activate failed: {error:?}");
                 self.deactivate();
                 return Err(error);
             }
             trace!("activated thread_focused={}", self.thread_focused.get());
-            self.refresh_focus();
+            // A fault in reading the focus must not fail the activation: Windows would then go back to the input
+            // method the user switched from.
+            if guard(|| {
+                self.refresh_focus();
+                Ok(())
+            })
+            .is_err()
+            {
+                trace!("activate: reading the focus failed");
+            }
             Ok(())
-        })
+        });
+        if let Err(error) = &result {
+            trace!("ActivateEx failed: {error:?}");
+        }
+        result
     }
 }
 
