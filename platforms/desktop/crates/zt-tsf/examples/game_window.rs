@@ -2,7 +2,7 @@
 //! document of its own (Windows gives it a transitory one through IMM32), WM_CHAR for text, and a choice of what it
 //! does with the IME's messages.
 //!
-//!   game_window.exe [--mode glfw|eat|noime] [--fullscreen] [--class NAME] [--log FILE]
+//!   game_window.exe [--mode glfw|eat|noime] [--fullscreen] [--class NAME] [--mta] [--log FILE]
 //!
 //! - `glfw` (default): as GLFW (Minecraft: Java Edition) does, WM_IME_* go to DefWindowProc.
 //! - `eat`: WM_IME_STARTCOMPOSITION, WM_IME_COMPOSITION and WM_IME_ENDCOMPOSITION are answered without
@@ -11,6 +11,9 @@
 //! - `--fullscreen`: a borderless topmost window covering its monitor.
 //! - `--class`: the window class, `GLFW30` (GLFW's, so Minecraft's) unless given; another name stands for an engine
 //!   the text service does not know.
+//! - `--mta`: the thread joins the multithreaded apartment before its window exists, as a game's thread does when a
+//!   library on it starts WinRT or COM that way (Minecraft: Java Edition loads Windows.Gaming.Input): TSF then
+//!   loads only input methods that work without COM.
 //!
 //! The window draws what it received; the log records the IME messages, the characters and each change of keyboard
 //! layout.  Test machines only: it logs what is typed.
@@ -169,6 +172,12 @@ mod windows_main {
             _ => Mode::Glfw,
         };
         let fullscreen = args.iter().any(|arg| arg == "--fullscreen");
+        if args.iter().any(|arg| arg == "--mta") {
+            // SAFETY: initializes COM on this thread, for the life of the process.
+            let _ = unsafe {
+                windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED)
+            };
+        }
         let class_name: Vec<u16> =
             value("--class").unwrap_or_else(|| "GLFW30".to_owned()).encode_utf16().chain(std::iter::once(0)).collect();
         let log_file = value("--log").and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok());

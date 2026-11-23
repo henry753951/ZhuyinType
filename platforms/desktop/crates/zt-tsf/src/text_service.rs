@@ -37,8 +37,7 @@ use windows::Win32::UI::TextServices::{
     ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
     ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink,
     ITfThreadFocusSink_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl, TF_INPUTPROCESSORPROFILE,
-    TF_INVALID_COOKIE, TF_PROFILETYPE_INPUTPROCESSOR, TF_TMAE_COMLESS, TF_TMAE_SECUREMODE,
-    TF_TMAE_UIELEMENTENABLEDONLY,
+    TF_INVALID_COOKIE, TF_PROFILETYPE_INPUTPROCESSOR, TF_TMAE_SECUREMODE, TF_TMAE_UIELEMENTENABLEDONLY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
@@ -1409,8 +1408,10 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             trace!("activate flags=0x{flags:x} focus={:?}", unsafe { GetFocus() });
             self.activated.set(SWITCHED_AWAY.swap(false, std::sync::atomic::Ordering::Relaxed));
             self.atoms.set(display_attributes::atoms());
-            // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
-            self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
+            // TSF secure-mode and UI-less activation cannot use a desktop candidate window.  COM-less activation (a
+            // thread in the multithreaded apartment, registration.rs) is not restricted: it only means TSF made the
+            // object without COM.
+            self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
             // Until the key sink says otherwise, the thread has focus when one of its windows has.  Advising the
             // sink reports the focus (`OnSetFocus`), which wins: at a switch made from the taskbar the window gets
             // its focus back a moment later, so GetFocus is still empty here; read after the sink, it overwrote the
