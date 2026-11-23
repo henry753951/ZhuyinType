@@ -139,15 +139,18 @@ Windows 的設定欄位可能在 App 自己的介面執行緒呼叫 TSF。服務
 
 多數遊戲（Minecraft: Java Edition 與其他 GLFW、SDL 或遊戲引擎的視窗）用 WM_CHAR 收字，沒有自己的 TSF 文件（Windows 經 IMM32 給它一個 transitory context），沒有系統游標，也不設定輸入法的組字或候選字視窗位置。Windows 因此把組字畫在螢幕左上角的小框裡（全螢幕時幾乎看不到），遊戲自己處理輸入法訊息時則完全不顯示；微軟注音也一樣。
 
-文字服務在每次準備送鍵時判斷（`composition::floating`），以下全部成立才算：
+文字服務在每次準備送鍵時判斷（`composition::floating`）。只針對遊戲，以下全部成立才算：
 
+- 視窗是遊戲：類別是遊戲引擎的視窗（GLFW 的 `GLFW30`（Minecraft: Java Edition）、SDL、Unity、Unreal、Source、LWJGL 2、GameMaker、Godot、Roblox），或者蓋滿螢幕而且這個欄位已經在 App 裡組過一次字；
+- 不是瀏覽器或以瀏覽器做的 App（Chromium、Electron、CEF 的視窗類別，例如 Discord、VS Code；Firefox）；
 - context 為 `TS_SS_TRANSITORY`；
 - 文件回報的游標不是視窗內有高度的一行（不知道位置時，Windows 回報螢幕右下角一個高度為 0 的點，全螢幕遊戲裡這個點也在視窗內）；
 - 執行緒沒有系統游標；
-- IMM 的組字視窗與候選字視窗位置都是 `CFS_DEFAULT`；
-- 這個欄位已經在 App 裡組過一次字。有些 IMM32 App 在組字開始時才設定位置。判斷為遊戲的視窗會記住，之後在同一個視窗打字直接用懸浮打字框。
+- IMM 的組字視窗與候選字視窗位置都是 `CFS_DEFAULT`。
 
-Chromium 與 Electron App 的 TSF 文件也標為 transitory，但會回報游標，所以不算。符合時以 `inlinePreedit: false` 告訴服務，候選字視窗的位置改為遊戲視窗左下角往內 24 像素（遊戲的聊天列通常在那裡），視窗開在它上方。服務回應 `inlinePreedit: false` 時，組字只在候選字視窗顯示，App 只收到送出的字。會自己顯示組字的 IMM32 App（Scintilla、Qt 5、Edit 控制項）有系統游標或會設定這些位置，照舊在 App 裡組字。判斷結果改變時，文字服務重送 `focus`。
+判斷為遊戲的視窗會記住，之後在同一個視窗打字直接用懸浮打字框。
+
+符合時以 `inlinePreedit: false` 告訴服務，候選字視窗的位置改為遊戲視窗左下角往內 24 像素（遊戲的聊天列通常在那裡），視窗開在它上方。服務回應 `inlinePreedit: false` 時，組字只在候選字視窗顯示，App 只收到送出的字。會自己顯示組字的 IMM32 App（Scintilla、Qt 5、Edit 控制項）有系統游標或會設定這些位置，照舊在 App 裡組字。判斷結果改變時，文字服務重送 `focus`。
 
 在測試機上可以用 `crates/zt-tsf/examples/game_window.rs` 重現：它像 GLFW 一樣收字，`--mode eat` 自己處理輸入法訊息，`--mode noime` 關掉輸入法，`--fullscreen` 蓋滿螢幕。
 

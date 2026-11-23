@@ -120,6 +120,7 @@ pub unsafe extern "system" fn DllGetClassObject(
         if unsafe { *clsid } != SERVICE_ID {
             return CLASS_E_CLASSNOTAVAILABLE;
         }
+        crate::trace::trace!("DllGetClassObject");
         let factory: IClassFactory = Factory { _count: ObjectCount::new() }.into();
         // SAFETY: iid and out come from the caller.
         unsafe { factory.query(iid, out) }

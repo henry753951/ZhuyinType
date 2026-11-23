@@ -321,18 +321,52 @@ pub(crate) fn selected_text(context: &ITfContext, cookie: u32, limit: usize) -> 
     Some(String::from_utf16_lossy(&buffer[..end]))
 }
 
-/// An application that shows neither the composition nor where its text is, asked once it has had a composition
-/// (the text service waits for one): most games (Minecraft: Java Edition and
-/// every GLFW, SDL or engine window that reads WM_CHAR).  They have no TSF document of their own (Windows gives them a
-/// transitory one through IMM32), no system caret, and never place the IME's composition or candidate window, so
-/// Windows draws the composition in a corner of the screen, or nowhere when the game swallows the IME's messages.  The
-/// candidate window shows it instead (懸浮打字框), at [`floating_anchor`].  Applications that do show it, IMM32 ones
-/// included (Scintilla, Qt 5, the Edit control), have a caret or place those windows.
+/// The window classes of game engines' windows: GLFW (Minecraft: Java Edition), SDL, Unity, Unreal, Source, LWJGL 2
+/// (older Minecraft), GameMaker, Godot and Roblox.
+const ENGINE_CLASSES: [&str; 9] = [
+    "GLFW30",
+    "SDL_app",
+    "UnityWndClass",
+    "UnrealWindow",
+    "Valve001",
+    "LWJGL",
+    "YYGameMakerYY",
+    "Engine",
+    "WINDOWSCLIENT",
+];
+
+/// The window classes of browsers and of everything built on them (Chromium, Electron and CEF apps: Discord, VS Code,
+/// Slack; Firefox), which show the composition themselves.
+const BROWSER_CLASSES: [&str; 4] =
+    ["Chrome_WidgetWin_", "Chrome_RenderWidgetHostHWND", "CefBrowserWindow", "MozillaWindowClass"];
+
+/// The class name of `window`.
+fn class_name(window: HWND) -> String {
+    let mut class = [0u16; 128];
+    // SAFETY: a writable buffer.
+    let length = usize::try_from(unsafe { GetClassNameW(window, &mut class) }).unwrap_or(0);
+    String::from_utf16_lossy(&class[..length.min(class.len())])
+}
+
+/// A game whose text field shows neither the composition nor where its text is (Minecraft: Java Edition and other
+/// GLFW, SDL or engine windows that read WM_CHAR): the candidate window shows the composition instead (懸浮打字框),
+/// at [`floating_anchor`].  Only games: a window of a game engine ([`ENGINE_CLASSES`]), or, once the field has had a
+/// composition (`composed`), any other window that fills its monitor; never a browser or an app built on one.
 ///
-/// Chromium and Electron apps mark their TSF document transitory too, but report where the text is: `caret` (what
-/// the document reports, physical pixels) inside the application's window, away from the screen's origin, is a
-/// place, and such an application is never floating.
-pub(crate) fn floating(context: &ITfContext, caret: RECT, window: HWND) -> bool {
+/// Such a game has no TSF document of its own (Windows gives it a transitory one through IMM32), no system caret,
+/// never places the IME's composition or candidate window, and its document reports no line inside the window, so
+/// Windows draws the composition in a corner of the screen, or nowhere when the game swallows the IME's messages.
+/// Applications that show it have a caret, place those windows, or report where the text is.
+pub(crate) fn floating(context: &ITfContext, caret: RECT, window: HWND, composed: bool) -> bool {
+    let top = root(window);
+    let classes = [class_name(top), class_name(window)];
+    if classes.iter().any(|class| BROWSER_CLASSES.iter().any(|browser| class.starts_with(browser))) {
+        return false;
+    }
+    let engine = classes.iter().any(|class| ENGINE_CLASSES.contains(&class.as_str()));
+    if !engine && !(composed && fullscreen(window)) {
+        return false;
+    }
     // SAFETY: a valid context.
     let Ok(status) = (unsafe { context.GetStatus() }) else { return false };
     if status.dwStaticFlags & TS_SS_TRANSITORY == 0 || caret_is_placed(caret, window) {

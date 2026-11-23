@@ -756,7 +756,7 @@
     "group": "相容性",
     "kind": "toggle",
     "default": true,
-    "detail": "遊戲等不顯示組字的 App，注音和候選字改在視窗左下角顯示",
+    "detail": "只用在遊戲（例如 Minecraft）：注音和候選字改在遊戲視窗左下角顯示",
     "anchor": "floatingComposition"
   },
   {

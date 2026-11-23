@@ -37,8 +37,7 @@ use windows::Win32::UI::TextServices::{
     ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItemButton, ITfLangBarItemMgr, ITfSource,
     ITfTextInputProcessor_Impl, ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfThreadFocusSink,
     ITfThreadFocusSink_Impl, ITfThreadMgr, ITfThreadMgrEventSink, ITfThreadMgrEventSink_Impl, TF_INPUTPROCESSORPROFILE,
-    TF_INVALID_COOKIE, TF_PROFILETYPE_INPUTPROCESSOR, TF_TMAE_COMLESS, TF_TMAE_SECUREMODE,
-    TF_TMAE_UIELEMENTENABLEDONLY,
+    TF_INVALID_COOKIE, TF_PROFILETYPE_INPUTPROCESSOR, TF_TMAE_SECUREMODE, TF_TMAE_UIELEMENTENABLEDONLY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
@@ -562,8 +561,9 @@ impl TextService_Impl {
         let (mut rect, scale, owner) = composition::caret(&context, cookie);
         // A game that shows neither the composition nor where its text is: the candidate window shows the
         // composition, at the bottom-left of the game's window (懸浮打字框).  A change is told to the host again.
-        // Decided once the application has had a composition: some IMM32 applications place the IME's windows or
-        // make a caret only when one starts.  A window already found to be a game is not asked again.
+        // A game engine's window floats at once; another full-screen window once its field has had a composition
+        // (some IMM32 applications place the IME's windows only when one starts).  A window found to be a game is
+        // remembered.
         trace!(
             "prepare: caret=({},{},{},{}) owner={owner:?} composed={}",
             rect.left,
@@ -574,7 +574,7 @@ impl TextService_Impl {
         );
         let root = composition::root(owner);
         let known = self.floating_windows.try_borrow().is_ok_and(|windows| windows.contains(&root));
-        let floating = !secure && (known || self.composed.get()) && composition::floating(&context, rect, owner);
+        let floating = !secure && composition::floating(&context, rect, owner, known || self.composed.get());
         if floating
             && !known
             && let Ok(mut windows) = self.floating_windows.try_borrow_mut()
@@ -1378,20 +1378,29 @@ impl ITfTextInputProcessor_Impl for TextService_Impl {
     }
 
     fn Deactivate(&self) -> Result<()> {
-        guard(|| {
+        let result = guard(|| {
             self.deactivate();
             Ok(())
-        })
+        });
+        // Even after a fault: an object left holding the thread manager would refuse every later activation, and
+        // Windows would keep the input method the user switched from.
+        if result.is_err() {
+            trace!("deactivate failed");
+            store(&self.manager, None);
+        }
+        result
     }
 }
 
 impl ITfTextInputProcessorEx_Impl for TextService_Impl {
     fn ActivateEx(&self, manager: Ref<ITfThreadMgr>, client: u32, flags: u32) -> Result<()> {
-        guard(|| {
+        let result = guard(|| {
             let manager = manager.ok()?.clone();
             if load(&self.manager).is_some() {
-                trace!("activate refused: already active");
-                return Err(E_INVALIDARG.into());
+                // Activated again without a deactivation (one that faulted): start over rather than refuse, which
+                // would keep the user on the input method they switched from.
+                trace!("activate: still active, deactivating first");
+                self.deactivate();
             }
             store(&self.manager, Some(manager.clone()));
             self.client.set(client);
@@ -1399,8 +1408,10 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
             trace!("activate flags=0x{flags:x} focus={:?}", unsafe { GetFocus() });
             self.activated.set(SWITCHED_AWAY.swap(false, std::sync::atomic::Ordering::Relaxed));
             self.atoms.set(display_attributes::atoms());
-            // TSF secure-mode and UI-less activation cannot use a desktop candidate window.
-            self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_COMLESS | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
+            // TSF secure-mode and UI-less activation cannot use a desktop candidate window.  COM-less activation (a
+            // thread in the multithreaded apartment, registration.rs) is not restricted: it only means TSF made the
+            // object without COM.
+            self.restricted.set(flags & (TF_TMAE_SECUREMODE | TF_TMAE_UIELEMENTENABLEDONLY) != 0);
             // Until the key sink says otherwise, the thread has focus when one of its windows has.  Advising the
             // sink reports the focus (`OnSetFocus`), which wins: at a switch made from the taskbar the window gets
             // its focus back a moment later, so GetFocus is still empty here; read after the sink, it overwrote the
@@ -1428,13 +1439,27 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
                 Ok(())
             };
             if let Err(error) = sinks() {
+                trace!("activate failed: {error:?}");
                 self.deactivate();
                 return Err(error);
             }
             trace!("activated thread_focused={}", self.thread_focused.get());
-            self.refresh_focus();
+            // A fault in reading the focus must not fail the activation: Windows would then go back to the input
+            // method the user switched from.
+            if guard(|| {
+                self.refresh_focus();
+                Ok(())
+            })
+            .is_err()
+            {
+                trace!("activate: reading the focus failed");
+            }
             Ok(())
-        })
+        });
+        if let Err(error) = &result {
+            trace!("ActivateEx failed: {error:?}");
+        }
+        result
     }
 }
 

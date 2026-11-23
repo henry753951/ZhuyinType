@@ -140,3 +140,15 @@ GPUI 的 Windows 後端只在 Windows 主機上以 `fxc.exe` 編譯 HLSL，在 L
 | 可被修改的安裝資料夾 | 給 Authenticated Users 修改權限後啟動服務：取得清單但不下載、不安裝，App 不受影響 |
 
 尚未驗證：真正經過 UAC 視窗的安裝（UAC 是安全桌面，無法以程式操作）與它的完成頁（`OpenSession` 以 `sc start … relaunch` 直接驗證：設定視窗以該工作階段的使用者開啟）、Windows 10、ARM 版 Windows 的拒絕訊息。
+
+## 文字服務的記錄（找問題用）
+
+文字服務預設不寫任何記錄。要找出某個程式裡為什麼切換不到 ZhuyinType、或按鍵沒有處理，可以暫時開啟記錄。記錄裡只有啟用、焦點、連線與每個按鍵怎麼處理，不含打的字：
+
+```powershell
+New-Item "$env:LOCALAPPDATA\ZhuyinType\tsf-trace" -Force      # 開啟；之後才啟動的程式會記錄
+notepad "$env:LOCALAPPDATA\ZhuyinType\tsf-trace.log"           # 每一行開頭是時間、程式名稱、程序與執行緒
+Remove-Item "$env:LOCALAPPDATA\ZhuyinType\tsf-trace"           # 關閉
+```
+
+開啟後要重新啟動想檢查的程式。程式裡完全沒有記錄，代表 Windows 沒有在那個程式載入文字服務。`ActivateEx failed` 與 `activate failed` 記下啟用失敗的原因（`platforms/desktop/crates/zt-tsf/src/trace.rs`）。

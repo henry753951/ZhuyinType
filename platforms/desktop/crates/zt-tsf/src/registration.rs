@@ -18,8 +18,9 @@ use windows::Win32::System::Registry::{
 use windows::Win32::UI::Input::KeyboardAndMouse::HKL;
 use windows::Win32::UI::TextServices::{
     CLSID_TF_CategoryMgr, CLSID_TF_InputProcessorProfiles, GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
-    GUID_TFCAT_TIP_KEYBOARD, GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT, GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
-    GUID_TFCAT_TIPCAP_UIELEMENTENABLED, ITfCategoryMgr, ITfInputProcessorProfileMgr, ITfInputProcessorProfiles,
+    GUID_TFCAT_TIP_KEYBOARD, GUID_TFCAT_TIPCAP_COMLESS, GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
+    GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT, GUID_TFCAT_TIPCAP_UIELEMENTENABLED, ITfCategoryMgr, ITfInputProcessorProfileMgr,
+    ITfInputProcessorProfiles,
 };
 use windows::core::{BOOL, GUID, HSTRING, PCWSTR, Result, s, w};
 
@@ -28,12 +29,18 @@ use crate::module::{LANGUAGE, NAME, PROFILE_ID, SERVICE_ID, module};
 /// Keyboard text service; works in Store/immersive apps and in the system tray's input indicator; declares UI-less
 /// support so applications that draw their own candidates still activate it (it then passes keys through, see
 /// `TextService::restricted`); provides the composition's display attributes (display_attributes.rs).
-const CATEGORIES: [GUID; 5] = [
+///
+/// COM-less: in a thread that joined the multithreaded apartment (a game whose libraries start WinRT or COM that way:
+/// Minecraft: Java Edition), TSF activates only text services that declare it, loading the DLL and calling
+/// DllGetClassObject itself.  Without it TSF skipped ZhuyinType there and kept the input method the user switched
+/// from (Microsoft Bopomofo declares it).  Nothing here needs an apartment.
+const CATEGORIES: [GUID; 6] = [
     GUID_TFCAT_TIP_KEYBOARD,
     GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER,
     GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT,
     GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT,
     GUID_TFCAT_TIPCAP_UIELEMENTENABLED,
+    GUID_TFCAT_TIPCAP_COMLESS,
 ];
 
 /// `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.

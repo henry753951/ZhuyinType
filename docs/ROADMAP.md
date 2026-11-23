@@ -21,6 +21,10 @@
 
 ## 2. 版本
 
+### 0.7.5：Minecraft 裡切換得到 ZhuyinType、懸浮打字框只用在遊戲
+
+發布說明見 [releases/v0.7.5.md](releases/v0.7.5.md)。文字服務註冊 `GUID_TFCAT_TIPCAP_COMLESS`：加入多執行緒 COM 模式的執行緒（Minecraft: Java Edition）裡，TSF 只啟用宣告 COM-less 的文字服務，之前會略過 ZhuyinType、留在原本的輸入法；COM-less 啟用不再視為受限模式。文字服務的記錄可以在正式版用 `%LOCALAPPDATA%\ZhuyinType\tsf-trace` 開啟（[packaging/windows/README.md](../platforms/desktop/packaging/windows/README.md)）。懸浮打字框只在遊戲引擎的視窗類別（GLFW、SDL、Unity、Unreal、Source、LWJGL 2、GameMaker、Godot、Roblox）立即使用；其他視窗要蓋滿螢幕，而且已組過一次字；Chromium、Electron、CEF 與 Firefox 的視窗一律不用（[IPC.md](../platforms/desktop/IPC.md)〈懸浮打字框〉）。
+
 ### 0.7.4：Windows 切換輸入法後的按鍵、懸浮打字框只用在遊戲
 
 發布說明見 [releases/v0.7.4.md](releases/v0.7.4.md)。文字服務啟用時改在登記按鍵通知之前讀取焦點，不再蓋掉通知回報的焦點；從工作列切換到 ZhuyinType 後，按鍵不再全部交給 App。懸浮打字框另外要求文件回報的游標不是視窗內有高度的一行，以及欄位已在 App 裡組過一次字：Chromium 與 Electron App 的 TSF 文件標為 transitory，但會回報游標；Windows 對不知道位置的 App 回報螢幕右下角高度為 0 的點。判斷為遊戲的視窗會記住。文字服務的 `trace` feature 把啟用、焦點、連線與按鍵的處理寫進記錄，只用於測試機。
