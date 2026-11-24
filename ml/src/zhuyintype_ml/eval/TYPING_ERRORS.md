@@ -24,7 +24,7 @@ zt eval typing-errors --config engine -n 300 --seed 7 \
 - 交換（swap）對調兩個相鄰且不同的按鍵，包括聲調鍵與一聲的 Space。`swap-in-syllable` 限於同一音節內；`swap-across` 跨越音節邊界。rollover 從這兩種中抽樣，並把被對調的這對按鍵之間的間隔設為 0–15 ms 均勻分布。一般交換保留一般抽樣的計時。
 - hotspot 以目標按鍵為中心的高斯分布抽樣落點（水平 sigma 0.45，垂直 sigma 0.30），對齊到最近的實體按鍵中心，並捨棄未改變或非相鄰的落點（距離超過 1.6 個鍵寬）。實體標點鍵仍可能被誤觸。寬的 Space 不作為 hotspot／extra-key 的錨點；它仍可能被交換或漏打。extra-key 在錨點之前或之後插入一個抽樣的相鄰鍵，該對按鍵間隔為 0–20 ms 均勻分布。
 - 條件 3–9 在每個適用的段落中恰好注入一個錯誤。`swap-across-2`、`rollover-2` 與 `hotspot-2` 在互不重疊的位置注入兩個錯誤。missing-key 漏掉一個按鍵；tone 只對調 3↔4 或 6↔7。
-- nospace 只省略**後面還有其他音節**的標準一聲 Space；最後的 Space 保留。`nospace-all` 移除所有符合條件的 Space；`nospace-30` 以 30% 機率對每個 Space 獨立抽樣。只有實際發生省略的段落才計入，因此這一列是以觀察到錯誤為條件。
+- nospace 只省略**後面還有其他音節**的標準一聲 Space；最後的 Space 保留。`nospace-all` 移除所有符合條件的 Space；`nospace-30` 以 30% 機率對每個 Space 獨立抽樣；`nospace-all-fast`、`nospace-30-fast` 用快速的按鍵間隔（中位數 60 ms）。只有實際發生省略的段落才計入，因此這一列是以觀察到錯誤為條件。
 - mixed 在每個音節最多選一種錯誤：3% hotspot、2% rollover、1% extra、1% missing、1% tone，其餘不加錯誤。不適用的錯誤直接略過，不以其他類型替代。它另外獨立省略 30% 符合條件的一聲 Space，並在 30% 的段落選用快速設定。mixed 包含沒有任何改變的段落；JSON 記錄每個段落實際的錯誤數與設定。
 - 固定的每段落／每條件 RNG 讓各設定使用相同的按鍵腳本；RNG 以評測集原本的路徑（例如 `data/build/corpus/dev_colloquial.txt`）為種子的一部分，不受資料目錄位置影響。批次分給 `--jobs` 個 CLI 行程平行執行；批次模式在每一行輸入時重設上下文與學習。送出用的腳本以 Enter 結尾；recall 用的腳本不加。recall 會去除 reranker 選項，並在等價的設定之間重用同一份純引擎結果。
 - 整段準確率要求送出的文字完全相同。字元準確率為 `max(0, 1 - total Levenshtein distance / reference characters)`，沿用 `zt eval typo`。Recall@16 要求完整的參考答案出現在引擎清單中。誤修正指輸出與**該設定在正常、標準輸入下的 exact 輸出**不同，不論基準本身是否正確；因此 exact 依定義為 0%，exact-fast 衡量的是速度造成的改變。這與 `zt eval typo` 中以正確性為條件的 off-mode 指標不同。

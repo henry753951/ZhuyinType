@@ -24,6 +24,10 @@
 ### 下一版：更新後的提示、回報問題、移除的原因
 
 更新後提示一次這版的更新內容（內容由 `docs/releases/` 打包，不上網）；「關於 › 意見與問題」與輸入法選單開啟 GitHub 的 issue form，只預填版本與系統；Windows 解除安裝的最後一頁與 macOS、Linux 的「移除 ZhuyinType」頁可以選填原因。設計與不做的事見 [DESIGN.md](product/DESIGN.md) §3.6、§4.5.2。發布後要確認：issue form 在 GitHub 上的預填（範本要在 `main` 才會生效）。
+||||||| ba5827aa
+### 0.7.6：常用詞不再被改成別的詞
+
+發布說明見 [releases/v0.7.6.md](releases/v0.7.6.md)。記住的修正要取代詞庫裡的詞時，記滿 3 次才採用；單一音節的修正只在單獨打那個音節時採用；改選後以最後選的為準（[MODEL.md §9.1](engine/MODEL.md#91-記住選過的字詞recall)）。按鍵解碼器可以在一起按下的兩鍵之間切開音節，也可以在沒有聲母的音節前切開（[MODEL.md §3](engine/MODEL.md#3-按鍵層級解碼器keydecoder)）。數字見研究紀錄 2026-11-25。
 
 ### 0.7.5：Minecraft 裡切換得到 ZhuyinType、懸浮打字框只用在遊戲
 

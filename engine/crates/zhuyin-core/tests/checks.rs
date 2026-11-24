@@ -393,6 +393,9 @@ fn key_run_decoding() {
     assert_ne!(decode(&set, KeyDecoderMethod::Boundaries, "jia3p7g4", &[]), ["ㄨㄛˇ", "ㄇㄣ˙", "ㄕˋ"]);
     assert_eq!(decode(&set, KeyDecoderMethod::Reorder, "jia3p7g4", &[]), ["ㄨㄛˇ", "ㄇㄣ˙", "ㄕˋ"]);
     assert_eq!(decode(&set, KeyDecoderMethod::Timed, "suc3l3", &[(3, 0.006)]), ["ㄋㄧˇ", "ㄏㄠˇ"]);
+    // Timed: a first tone without Space rolled into the next syllable is still two syllables.
+    let folder = syllables_of("ㄗ\t資\t-2\nㄌㄧㄠˋ\t料\t-2\nㄐㄧㄚˊ\t夾\t-2\nㄌㄧㄠ\t撩\t-3\n");
+    assert_eq!(decode(&folder, KeyDecoderMethod::Timed, "yxul4ru86", &[(1, 0.02)]), ["ㄗ", "ㄌㄧㄠˋ", "ㄐㄧㄚˊ"]);
     // An initial typed after its final, then the tone: one syllable, not the final with that tone and the initial
     // left over (a swap across the tone key typed last).
     let bare = syllables_of("ㄚ\t啊\t-2\nㄅㄚ˙\t吧\t-2\nㄋㄧˇ\t你\t-2\nㄧ\t一\t-2\nㄉㄥˋ\t鄧\t-2\nㄉㄧㄥˋ\t定\t-2\n");

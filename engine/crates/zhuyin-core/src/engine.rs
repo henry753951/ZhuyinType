@@ -162,6 +162,10 @@ impl RecallValue {
     pub const LONG_HALF_LIFE: f64 = 90.0 * 86400.0;
     /// Picked this many times, a recall keeps a floor and is never forgotten.
     pub const FLOOR_PICKS: i64 = 3;
+    /// Counted this many times, a correction replaces a dictionary word that the typed reading spells
+    /// (`Engine::contested`): one pick there may be a slip, and would change a common word for months.  A pick that is
+    /// the whole composition counts twice (as the word and as the composition), so one pick never reaches it.
+    pub const CONFIRM_PICKS: i64 = 3;
 
     fn new(kind: RecallKind) -> Self {
         Self { kind, short: DecayingCount::default(), long: DecayingCount::default(), picks: 0 }
@@ -706,6 +710,52 @@ impl Engine {
         }
     }
 
+    /// The lexicon (or a user phrase) has `word` for exactly `reading`, or any word without one.
+    fn spells(&self, state: &State, reading: &str, word: Option<&str>) -> bool {
+        let matches = |entry: &str| word.is_none_or(|word| word == entry);
+        match &self.mapped {
+            Some(mapped) => mapped.entry_refs(reading).any(|entry| matches(entry.word)),
+            None => state.lexicon.get(reading).is_some_and(|entries| entries.iter().any(|e| matches(&e.word))),
+        }
+    }
+
+    /// Whether `word` corrects `reading` where the keys as typed already spell a dictionary word of two or more
+    /// syllables (`ㄗ ㄌㄧㄠˋ ㄐㄧㄚˊ` remembered as 衣料夾, where ㄗ ㄌㄧㄠˋ is 資料).  A choice among homophones is not a
+    /// correction, and neither is a syllable no dictionary word explains.
+    fn contested(&self, state: &State, reading: &str, word: &str) -> bool {
+        let typed: Vec<&str> = reading.split(' ').filter(|p| !p.is_empty()).collect();
+        let written: Vec<&str> = graphemes(word);
+        if typed.len() != written.len() {
+            return false;
+        }
+        let count = typed.len();
+        let mut read = vec![false; count];
+        let mut spelled = vec![false; count];
+        for start in 0..count {
+            for end in start + 1..=count {
+                let part = typed[start..end].join(" ");
+                if self.spells(state, &part, Some(&written[start..end].concat())) {
+                    read[start..end].fill(true);
+                } else if end - start >= 2 && self.spells(state, &part, None) {
+                    spelled[start..end].fill(true);
+                }
+            }
+        }
+        (0..count).any(|i| !read[i] && spelled[i])
+    }
+
+    /// Whether `word` corrects one syllable that has words of its own as typed.  Remembered anywhere it would break
+    /// every word with that syllable (ㄗ remembered as 一 turns 資訊 into 一迅), so it is used only for the syllable alone;
+    /// in a sentence the span around the pick, the personal n-grams and the key's slip discount carry it.
+    fn corrects_syllable(&self, state: &State, reading: &str, word: &str) -> bool {
+        !reading.contains(' ') && !self.spells(state, reading, Some(word)) && self.spells(state, reading, None)
+    }
+
+    /// A correction remembered against a dictionary word that has not been picked often enough to replace it.
+    fn unconfirmed(&self, state: &State, value: &RecallValue, reading: &str, word: &str) -> bool {
+        value.picks < RecallValue::CONFIRM_PICKS && self.contested(state, reading, word)
+    }
+
     /// Memories decay, so cached lookups live for at most a day.
     fn expire_caches_on_new_day(&self, state: &mut State) {
         let today = (self.personal.now() / 86400.0) as i64;
@@ -793,16 +843,24 @@ impl Engine {
         let mut learned: Vec<String> =
             state.learned_words.get(reading).map(|w| w.iter().cloned().collect()).unwrap_or_default();
         learned.sort();
-        for word in learned {
-            let Some(value) = state.learned.get(&PhraseKey::new(reading, word.as_str())).copied() else { continue };
-            if !value.is_active(now) {
+        let remembered: Vec<(String, RecallValue)> = learned
+            .into_iter()
+            .filter_map(|word| {
+                let value = *state.learned.get(&PhraseKey::new(reading, word.as_str()))?;
+                (value.is_active(now) && !self.unconfirmed(&state, &value, reading, &word)).then_some((word, value))
+            })
+            .collect();
+        // What the user replaced (`weaken` clears its picks) gives way to what they picked instead.
+        let picked = remembered.iter().any(|(_, value)| value.picks > 0);
+        for (word, value) in remembered {
+            if picked && value.picks == 0 {
                 continue;
             }
             let source = self.best_reading(&state, &word);
             let id = self.resolve_id(&mut state, &word);
             let mut entry = WordEntry::new(word.as_str(), source.map_or(-7.0, |s| s.1)).with_word_id(Some(id));
             entry.recalled = true;
-            entry.whole_only = value.kind == RecallKind::Whole;
+            entry.whole_only = value.kind == RecallKind::Whole || self.corrects_syllable(&state, reading, &word);
             result.push(entry);
         }
         if state.entry_cache.len() >= 4096 {
@@ -1664,7 +1722,12 @@ impl Engine {
     pub fn remembers(&self, word: &ConvertedWord, history: LanguageModelHistory) -> bool {
         let state = self.lock();
         let phrase = grapheme_count(&word.text) > 1;
-        if phrase && state.learned.get(&PhraseKey::new(&*word.reading, &*word.text)).is_some_and(|v| v.picks > 0) {
+        if phrase
+            && state
+                .learned
+                .get(&PhraseKey::new(&*word.reading, &*word.text))
+                .is_some_and(|v| v.picks > 0 && !self.unconfirmed(&state, v, &word.reading, &word.text))
+        {
             return true;
         }
         let id = word.word_id.or_else(|| self.known_word_id(&state, &word.text));
