@@ -117,6 +117,27 @@ pub fn notifications_unwelcome() -> bool {
     unsafe { SHQueryUserNotificationState() }.map_or(true, |state| state != QUNS_ACCEPTS_NOTIFICATIONS)
 }
 
+/// The app's icon on its notifications: `IconUri` beside the name GPUI registers for `identity` (the icon the installer
+/// puts next to the executable).
+pub fn set_notification_icon(identity: &str) {
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW};
+    use windows::core::{HSTRING, w};
+    let Some(icon) = std::env::current_exe().ok().map(|exe| exe.with_file_name("zhuyintype.ico")) else { return };
+    if !icon.is_file() {
+        return;
+    }
+    let value = HSTRING::from(icon.as_os_str());
+    let key = HSTRING::from(format!(r"Software\Classes\AppUserModelId\{identity}"));
+    let bytes = u32::try_from((value.len() + 1) * 2).unwrap_or(0);
+    // SAFETY: the strings outlive the call; `value` is NUL-terminated and `bytes` long.
+    let result = unsafe {
+        RegSetKeyValueW(HKEY_CURRENT_USER, &key, w!("IconUri"), REG_SZ.0, Some(value.as_ptr().cast::<c_void>()), bytes)
+    };
+    if result.is_err() {
+        log::warn!("notification icon: {result:?}");
+    }
+}
+
 /// The settings and wizard windows: the app draws the title bar; everything else stays a native Windows 11 window,
 /// as Discord's or Claude's do.  GPUI's client-drawn window keeps `WS_THICKFRAME` (resizing, Snap), this asks for
 /// rounded corners explicitly (`DWMWCP_ROUND`) and extends the frame one pixel into the client area, which is what

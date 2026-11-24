@@ -36,20 +36,19 @@ pub struct Item {
 }
 
 impl Item {
-    /// In one line: the feature's name, or the first sentence.
-    #[must_use]
-    pub fn headline(&self) -> String {
+    /// In one line of at most `limit` characters: the feature's name, or the first sentence.
+    fn headline(&self, limit: usize) -> String {
         let line =
             self.title.as_deref().unwrap_or_else(|| self.text.split('。').next().unwrap_or_default()).trim().to_owned();
-        if line.chars().count() <= HEADLINE_LIMIT {
+        if line.chars().count() <= limit {
             return line;
         }
-        line.chars().take(HEADLINE_LIMIT - 1).chain(['…']).collect()
+        line.chars().take(limit - 1).chain(['…']).collect()
     }
 }
 
-/// A headline's length; the notification wraps it to two lines at most.
-const HEADLINE_LIMIT: usize = 44;
+/// A line's length in the notification.  A Windows toast shows four lines of about 22 characters and cuts the rest.
+const HEADLINE_LIMIT: usize = if cfg!(windows) { 22 } else { 44 };
 
 /// 新功能, 改進 or 修正.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -134,7 +133,7 @@ fn announcement(releases: &[&Release], current: &str) -> Announcement {
             if lines.len() < HIGHLIGHTS {
                 // A fix's first sentence says what went wrong.
                 let label = if kind == "修正" { "修正：" } else { "" };
-                lines.push(format!("{label}{}", item.headline()));
+                lines.push(format!("{label}{}", item.headline(HEADLINE_LIMIT - label.chars().count())));
             }
         }
     }
@@ -276,8 +275,8 @@ mod tests {
     #[test]
     fn a_headline_is_short() {
         let item = Item { title: None, text: "長".repeat(80), platforms: Vec::new() };
-        assert_eq!(item.headline().chars().count(), HEADLINE_LIMIT);
-        assert!(item.headline().ends_with('…'));
+        assert_eq!(item.headline(22).chars().count(), 22);
+        assert!(item.headline(22).ends_with('…'));
     }
 
     #[test]

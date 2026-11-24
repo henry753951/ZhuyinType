@@ -80,6 +80,8 @@ fn tick(cx: &mut App) -> bool {
 fn show(announcement: Announcement, cx: &App) {
     // Only now: on Windows the identity also groups the app's windows on the taskbar.
     cx.set_app_identity(IDENTITY, "ZhuyinType");
+    #[cfg(windows)]
+    crate::platform::windows::set_notification_icon(IDENTITY);
     let action =
         |id: &'static str, label: &'static str| SystemNotificationAction { id: id.into(), label: label.into() };
     cx.show_system_notification(SystemNotification {

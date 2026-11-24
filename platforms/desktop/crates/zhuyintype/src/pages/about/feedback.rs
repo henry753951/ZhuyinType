@@ -1,7 +1,7 @@
 //! 意見與問題 and 移除 ZhuyinType (macOS `FeedbackSection`, `RemovalPane`): links that open a GitHub issue form with the
 //! version and the system filled in (`zt_core::feedback`), and how to remove the app.
 
-use gpui_kit::{AnyElement, App, ClipboardItem, IntoElement, ParentElement, SharedString, Styled};
+use gpui_kit::{AnyElement, App, IntoElement, ParentElement, SharedString, Styled};
 use zt_core::feedback::{self, Topic, UNINSTALL_REASONS};
 
 use super::{REMOVAL, VERSION};
@@ -86,7 +86,7 @@ fn steps(cx: &App) -> impl IntoElement + use<> {
             "拷貝指令",
             ButtonKind::Normal,
             true,
-            move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(command.to_owned())),
+            move |_, _, cx| cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(command.to_owned())),
             cx,
         )))
         .row(ui::row("remove-fcitx", "移除輸入方式").subtitle("在 Fcitx 5 設定的輸入法清單中刪除 ZhuyinType"))
