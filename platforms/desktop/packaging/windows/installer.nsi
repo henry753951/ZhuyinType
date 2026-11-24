@@ -29,11 +29,13 @@ SetCompressorDictSize 64
 !include "WinVer.nsh"
 !include "x64.nsh"
 !include "StrFunc.nsh"
+!include "nsDialogs.nsh"
 ${StrStr}
 
 !define PRODUCT "ZhuyinType"
 !define PUBLISHER "ZhuyinType"
 !define WEBSITE "https://github.com/Henry753951/ZhuyinType"
+!define ISSUES "https://github.com/henry753951/ZhuyinType/issues/new"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ZhuyinType"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 ; Active Setup adds the input method to the list of every other user once, at their next sign-in.  Its version
@@ -43,6 +45,8 @@ ${StrStr}
 !define APP "zhuyintype.exe"
 ; Installs updates (zt_core::update): started on demand by the signed-in user's app, runs as LocalSystem.
 !define UPDATE_SERVICE "ZhuyinTypeUpdate"
+; The identity the app's notifications use (update_notice.rs), which GPUI registers for the user.
+!define NOTIFICATION_KEY "Software\Classes\AppUserModelId\org.zhuyintype.ZhuyinType"
 !define TSF64 "zhuyintype-tsf-x64.dll"
 !define TSF32 "zhuyintype-tsf-x86.dll"
 
@@ -105,6 +109,9 @@ VIAddVersionKey /LANG=1028 "LegalCopyright" "AGPL-3.0-only"
 !insertmacro MUI_UNPAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "ZhuyinType 已移除"
 !define MUI_FINISHPAGE_TEXT "ZhuyinType 已從這台電腦移除。$\r$\n$\r$\n仍在使用輸入法的程式結束後就不再載入它；剩下的檔案會在下次重新開機時刪除。"
+; 移除的原因: optional, on the page that is shown anyway (a silent uninstall shows none).
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ShowReasons
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.OpenReason
 !insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "TradChinese"
@@ -229,7 +236,8 @@ FunctionEnd
 ; Whether this installer runs as the user signed in to its session ($0 = 1): an administrator who answered the UAC
 ; prompt.  A standard user who typed an administrator's name and password runs it as that administrator ($0 = 0), and
 ; Explorer would not start the app as them.
-Function IsSessionUser
+!macro IsSessionUser UN
+Function ${UN}IsSessionUser
   StrCpy $0 1
   System::Call 'wtsapi32::WTSQuerySessionInformationW(p 0, i -1, i 5, *p .r1, *i .r2) i .r3'
   ${If} $3 == 0
@@ -253,6 +261,9 @@ Function IsSessionUser
     StrCpy $0 0
   ${EndIf}
 FunctionEnd
+!macroend
+!insertmacro IsSessionUser ""
+!insertmacro IsSessionUser "un."
 
 ; Has the update service start the app as each listed session's own user (installer.nsi writes the request under
 ; HKLM\Software\ZhuyinType; zt_core::update::windows::relaunch_sessions).  The service runs as SYSTEM, which can act
@@ -548,6 +559,68 @@ Function un.onInit
   SetShellVarContext all
 FunctionEnd
 
+; 移除的原因, on the last page: a list that starts at 「不說明」.  A reason picked opens the GitHub issue form in the
+; user's browser with the version, Windows' build and the reason filled in; nothing is sent unless they send it there.
+; Not for an administrator other than the person signed in (a browser would open as that administrator).
+Var ReasonList
+
+; The reasons with their percent-encoding, the same as zt_core::feedback::UNINSTALL_REASONS (a test compares them).
+!macro Reasons DO
+  !insertmacro ${DO} "轉換或選字不準" "%E8%BD%89%E6%8F%9B%E6%88%96%E9%81%B8%E5%AD%97%E4%B8%8D%E6%BA%96"
+  !insertmacro ${DO} "不穩定、變慢或無法輸入" "%E4%B8%8D%E7%A9%A9%E5%AE%9A%E3%80%81%E8%AE%8A%E6%85%A2%E6%88%96%E7%84%A1%E6%B3%95%E8%BC%B8%E5%85%A5"
+  !insertmacro ${DO} "缺少需要的功能" "%E7%BC%BA%E5%B0%91%E9%9C%80%E8%A6%81%E7%9A%84%E5%8A%9F%E8%83%BD"
+  !insertmacro ${DO} "操作習慣不同" "%E6%93%8D%E4%BD%9C%E7%BF%92%E6%85%A3%E4%B8%8D%E5%90%8C"
+  !insertmacro ${DO} "改用其他輸入法" "%E6%94%B9%E7%94%A8%E5%85%B6%E4%BB%96%E8%BC%B8%E5%85%A5%E6%B3%95"
+  !insertmacro ${DO} "其他原因" "%E5%85%B6%E4%BB%96%E5%8E%9F%E5%9B%A0"
+!macroend
+!macro AddReason TEXT ENCODED
+  ${NSD_CB_AddString} $ReasonList "${TEXT}"
+!macroend
+!macro EncodeReason TEXT ENCODED
+  ${If} $0 == "${TEXT}"
+    StrCpy $1 "${ENCODED}"
+  ${EndIf}
+!macroend
+
+Function un.ShowReasons
+  StrCpy $ReasonList ""
+  Call un.IsSessionUser
+  ${If} $0 != 1
+    Return
+  ${EndIf}
+  ; The page's text leaves room for the list (its label would reach down to the bottom).
+  System::Call 'user32::GetClientRect(p $mui.FinishPage.Text, @ r1)'
+  System::Call '*$1(i, i, i .r2, i .r3)'
+  IntOp $3 $3 / 2
+  System::Call 'user32::SetWindowPos(p $mui.FinishPage.Text, p 0, i 0, i 0, i r2, i r3, i 0x16)'
+  ${NSD_CreateLabel} 120u 118u 195u 10u "為什麼移除？（選填）"
+  Pop $0
+  SetCtlColors $0 "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+  ${NSD_CreateDropList} 120u 130u 195u 100u ""
+  Pop $ReasonList
+  ${NSD_CB_AddString} $ReasonList "不說明"
+  !insertmacro Reasons AddReason
+  ${NSD_CB_SelectString} $ReasonList "不說明"
+  ${NSD_CreateLabel} 120u 148u 195u 28u "選了原因，按「完成」後會在瀏覽器開啟 GitHub 的頁面，由您決定寫什麼、要不要送出。"
+  Pop $0
+  SetCtlColors $0 "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+FunctionEnd
+
+Function un.OpenReason
+  ${If} $ReasonList == ""
+    Return
+  ${EndIf}
+  ${NSD_GetText} $ReasonList $0
+  StrCpy $1 ""
+  !insertmacro Reasons EncodeReason
+  ${If} $1 == ""
+    Return
+  ${EndIf}
+  ReadRegStr $2 HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion" "CurrentBuild"
+  ; Through Explorer, so the browser runs as the user and not elevated like this program.
+  Exec '"$WINDIR\explorer.exe" "${ISSUES}?template=uninstall.yml&version=${VERSION}&system=Windows%20build%20$2&reason=$1"'
+FunctionEnd
+
 Section "un.ZhuyinType" UnSecMain
   SectionIn RO
   SetShellVarContext all
@@ -560,6 +633,7 @@ Section "un.ZhuyinType" UnSecMain
 
   DeleteRegKey HKLM "${ACTIVE_SETUP_KEY}"
   DeleteRegKey HKCU "${ACTIVE_SETUP_KEY}"
+  DeleteRegKey HKCU "${NOTIFICATION_KEY}"
   DeleteRegValue HKLM "${RUN_KEY}" "ZhuyinType"
   Delete "$SMPROGRAMS\${SHORTCUT}"
 

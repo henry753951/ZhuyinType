@@ -217,6 +217,7 @@ final class ZhuyinInputController: IMKInputController {
             Self.keyLog.debug("key \(event.keyCode) t=\(event.timestamp) repeat=\(event.isARepeat) handled=\(handled)")
             EngineHost.restartIfIdle()
             Updater.shared.installIfIdle()
+            UpdateNotice.shared.typed()
             return handled
         case .flagsChanged:
             return core.flagsChanged(keyCode: event.keyCode, modifiers: event.modifierFlags,
@@ -254,6 +255,8 @@ final class ZhuyinInputController: IMKInputController {
             tour.target = self
         }
         menu.addItem(.separator())
+        let feedback = menu.addItem(withTitle: "回報問題…", action: #selector(openFeedback(_:)), keyEquivalent: "")
+        feedback.target = self
         let about = menu.addItem(withTitle: "關於 ZhuyinType", action: #selector(openAbout(_:)), keyEquivalent: "")
         about.target = self
         return menu
@@ -314,6 +317,7 @@ final class ZhuyinInputController: IMKInputController {
     }
     @objc private func openWords(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.words)) }
     @objc private func openAbout(_ sender: Any?) { SettingsWindowController.shared.show(SettingsPlace(.about)) }
+    @objc private func openFeedback(_ sender: Any?) { SettingsWindowController.shared.show(Feedback.place) }
     @objc private func openWizard(_ sender: Any?) { WizardWindowController.shared.show(.quick) }
     @objc private func openTour(_ sender: Any?) {
         WizardWindowController.shared.show(.newSince(WizardProgress.seenVersion ?? "0"))

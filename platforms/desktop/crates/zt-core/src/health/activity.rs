@@ -52,19 +52,24 @@ impl Activity {
         self.last_key.store(elapsed + 1, Ordering::Relaxed);
     }
 
+    /// How long ago the last key was pressed; None before the first.
+    #[must_use]
+    pub fn since_key(&self) -> Option<Duration> {
+        match self.last_key.load(Ordering::Relaxed) {
+            0 => None,
+            at => Some(self.started.elapsed().saturating_sub(Duration::from_millis(at - 1))),
+        }
+    }
+
     /// The facts now.
     #[must_use]
     pub fn diagnostics(&self, version: &str) -> Diagnostics {
         let uptime = self.started.elapsed();
-        let last_key = match self.last_key.load(Ordering::Relaxed) {
-            0 => None,
-            at => Some(uptime.saturating_sub(Duration::from_millis(at - 1))),
-        };
         Diagnostics {
             version: version.to_owned(),
             started: self.started_at.duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs()),
             uptime: uptime.as_secs(),
-            last_key: last_key.map(|ago| ago.as_secs()),
+            last_key: self.since_key().map(|ago| ago.as_secs()),
             connections: self.connections.lock().len(),
             recent: super::recent::lines(),
         }
@@ -138,6 +143,7 @@ mod tests {
     fn connections_keys_and_the_reply() {
         let activity = Activity::default();
         assert_eq!(activity.diagnostics("0.7.1").last_key, None);
+        assert_eq!(activity.since_key(), None);
         activity.seen(3);
         activity.seen(3);
         activity.seen(4);

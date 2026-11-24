@@ -74,6 +74,8 @@ App 一律以登入的使用者身分啟動、不提升權限：broker 的 named
 4. 刪除程式檔案。仍被應用程式載入的 DLL 改名後排定下次開機刪除，安裝資料夾也在那時刪除。
 5. 個人資料（`%APPDATA%\ZhuyinType` 的設定、`%LOCALAPPDATA%\ZhuyinType` 的自訂詞、學習記錄、使用統計與改字記錄）預設保留；在「選取元件」頁勾選「同時刪除我的自訂詞、學習記錄與設定」才刪除。刪除的是執行解除安裝程式的帳號的資料：一般使用者輸入系統管理員密碼解除安裝時，刪除的是那位系統管理員的資料，使用者自己的資料要手動刪除。從輸入法清單移除（第 1 步）也只對這個帳號，其他使用者的清單不變（文字服務已取消登記）。
 
+最後一頁有「為什麼移除？（選填）」的清單，預設「不說明」。選了原因、按「完成」後，透過 Explorer 以登入的使用者身分開啟瀏覽器到 GitHub 的 `uninstall.yml`（只帶版本、Windows 的組建編號與原因）；解除安裝程式自己不連網路。`/S` 沒有頁面所以不問，更新由安裝程式直接覆蓋、不執行解除安裝程式，執行身分不是螢幕前的使用者時不顯示。原因清單和 `zt_core::feedback::UNINSTALL_REASONS` 相同，由測試比對。解除安裝時也刪除通知用的 `HKCU\Software\Classes\AppUserModelId\org.zhuyintype.ZhuyinType`。
+
 ## 發布
 
 推送 `vX.Y.Z` 標籤時，`release.yml` 呼叫 `desktop.yml` 建置安裝程式，附加到 GitHub release：`ZhuyinType-<版本>-windows-x64-setup.exe`，以及固定檔名的 `ZhuyinType-Windows-x64-setup.exe`（README 的下載連結指向 `releases/latest/download/` 的這個檔名），檢查碼在 `SHA256SUMS-desktop.txt`。

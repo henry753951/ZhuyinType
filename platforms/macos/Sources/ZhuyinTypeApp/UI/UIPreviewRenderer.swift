@@ -74,6 +74,13 @@ enum UIPreviewRenderer {
                 // 檢查輸入法 and 回報問題, with everything in place and with problems.
                 try renderHealth(settings, to: directory.appendingPathComponent("health"))
             }
+            // 更新內容 over several versions, whatever this build's version changed on macOS.
+            ReleaseNotesPane.sample = ReleaseNotes.between(ReleaseNotes.all, previous: "0.7.0", current: "0.7.5")
+            defer { ReleaseNotesPane.sample = nil }
+            if only == "feedback" || only == nil {
+                // The notice after an update, 關於, 更新內容 and 移除 ZhuyinType.
+                try renderFeedback(settings, to: directory.appendingPathComponent("feedback"))
+            }
             if only == "links" {
                 // The window on every page, and links arriving at their rows (SETTINGS_IA.md §4.1), light and dark.
                 try renderLinks(settings, to: directory.appendingPathComponent("links"))
@@ -491,10 +498,10 @@ enum UIPreviewRenderer {
     private static let pages: [(SettingsPane, SettingsSubpage?, CGFloat)] = [
         (.intro, nil, 1700), (.analytics, nil, 2500), (.typing, nil, 760), (.punctuation, nil, 900), (.mode, nil, 820),
         (.choosing, nil, 640), (.corrections, nil, 980), (.words, nil, 1040), (.candidates, nil, 1600), (.colors, nil, 760),
-        (.keys, nil, 2700), (.health, nil, 900), (.advanced, nil, 660), (.about, nil, 560),
+        (.keys, nil, 2700), (.health, nil, 900), (.advanced, nil, 660), (.about, nil, 1200),
         (.typing, .typingKeys, 760), (.corrections, .fuzzy, 680), (.choosing, .context, 780),
         (.words, .learnedWords, 620), (.words, .phrases, 620),
-        (.analytics, .performance, 760), (.advanced, .apps, 460),
+        (.analytics, .performance, 760), (.advanced, .apps, 460), (.about, .releaseNotes, 900), (.about, .removal, 760),
     ]
 
     private static func renderSettings(_ settings: SettingsWindowController, to directory: URL, suffix: String) throws {
@@ -800,6 +807,27 @@ enum UIPreviewRenderer {
             }
         }
         settings.model.subpage = nil
+    }
+
+    private static func renderFeedback(_ settings: SettingsWindowController, to directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let releases = ReleaseNotesPane.sample ?? []
+        for (name, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            NSApp.appearance = NSAppearance(named: appearanceName)
+            for (label, announcement) in [
+                ("one", ReleaseNotes.announcement(releases.filter { $0.version == "0.7.2" }, current: "0.7.2")),
+                ("several", ReleaseNotes.announcement(releases, current: "0.7.5")),
+                ("none", ReleaseNotes.announcement([], current: "0.7.5")),
+            ] {
+                // On a plain card: the panel's glass is not drawn offscreen.
+                try capture(swiftUI: UpdateNoticeView(announcement: announcement) { _ in }
+                                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: InputSurface.cornerRadius)),
+                            width: UpdateNoticeView.width,
+                            to: directory.appendingPathComponent("notice-\(label)-\(name).png"), settle: 0.3)
+            }
+            try renderPages(settings, [(.about, nil, 1200), (.about, .releaseNotes, 900), (.about, .removal, 760)],
+                            to: directory, label: "", suffix: name)
+        }
     }
 
     /// A correction log with three sample lines in a temporary folder, so the 進階 page never reads the user's.

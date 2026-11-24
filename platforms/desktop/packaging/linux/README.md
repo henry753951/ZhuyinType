@@ -4,6 +4,8 @@ ZhuyinType 的 Linux 版以一般的發行版套件安裝：Debian／Ubuntu 用 
 
 ## 安裝與移除（使用者）
 
+移除腳本以 root 執行，不詢問移除的原因；「關於 › 移除 ZhuyinType」列出指令，也可以選填原因（DESIGN.md §4.5.2）。
+
 ```sh
 sudo apt install ./ZhuyinType-Linux-amd64.deb        # Debian 13、Ubuntu 25.04 以後
 sudo dnf install ./ZhuyinType-Linux-x86_64.rpm       # Fedora 42 以後

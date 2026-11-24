@@ -103,6 +103,7 @@ final class Preferences: ObservableObject {
             Key.recordsUsageStats: true,
             Key.showCorrections: true,
             Key.undoCorrectionWithBackspace: true,
+            Key.showsUpdateNotes: true,
         ])
     }
 
@@ -166,6 +167,8 @@ final class Preferences: ObservableObject {
         static let showCorrections = "showCorrections"
         /// 「⌫ 還原自動修正」 (`ComposerOptions.undoCorrectionWithBackspace`).  On by default.
         static let undoCorrectionWithBackspace = "undoCorrectionWithBackspace"
+        /// 「更新後提示更新內容」 (`UpdateNotice`).  On by default.
+        static let showsUpdateNotes = "showUpdateNotes"
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
@@ -174,7 +177,7 @@ final class Preferences: ObservableObject {
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
                           recordsUsageStats, accentColor, showCorrections, undoCorrectionWithBackspace,
-                          associatedPhrases]
+                          associatedPhrases, showsUpdateNotes]
     }
 
     func resetToDefaults() {
@@ -461,6 +464,11 @@ final class Preferences: ObservableObject {
     var recordsUsageStats: Bool {
         get { defaults.bool(forKey: Key.recordsUsageStats) }
         set { defaults.set(newValue, forKey: Key.recordsUsageStats); changed() }
+    }
+
+    var showsUpdateNotes: Bool {
+        get { defaults.bool(forKey: Key.showsUpdateNotes) }
+        set { defaults.set(newValue, forKey: Key.showsUpdateNotes); changed() }
     }
 
     /// Optional key features that are off.

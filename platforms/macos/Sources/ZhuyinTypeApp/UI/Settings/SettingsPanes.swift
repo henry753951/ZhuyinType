@@ -215,6 +215,7 @@ enum CorrectionLogActions {
 
 struct AboutPane: View {
     @ObservedObject var model: SettingsModel
+    @ObservedObject var preferences: Preferences
     @ObservedObject private var updater = Updater.shared
     @State private var document: LicenseDocument?
 
@@ -265,6 +266,12 @@ struct AboutPane: View {
                     }
                 }
             }
+            SettingsSection("更新內容") {
+                DrillRow(model: model, title: "這一版的更新內容", value: ReleaseNotes.currentVersion ?? "",
+                         subpage: .releaseNotes)
+                RegistryRow("showUpdateNotes", preferences)
+            }
+            FeedbackSection()
             SettingsSection {
                 SettingRow(title: "程式授權") {
                     Button("AGPL 3.0") { document = LicenseDocument(file: "AGPL-3.0.txt", entry: "ZhuyinType") }
@@ -275,6 +282,8 @@ struct AboutPane: View {
                 }
                 DrillRow(model: model, title: "授權與資料來源", subtitle: "程式庫、詞庫、資料集與模型的授權與署名",
                          value: "", subpage: .sources)
+                DrillRow(model: model, title: "移除 ZhuyinType", subtitle: "移除的方式，與個人資料的位置", value: "",
+                         subpage: .removal)
             }
         }
         .sheet(item: $document) { DocumentSheet(document: $0) }

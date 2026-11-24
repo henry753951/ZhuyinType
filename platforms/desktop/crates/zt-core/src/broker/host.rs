@@ -362,7 +362,7 @@ impl Host {
             let place = match r.get("place") {
                 None => None,
                 Some(value) => Some(
-                    ["words", "about", "wizard", "tour"]
+                    ["words", "about", "wizard", "tour", "feedback"]
                         .into_iter()
                         .find(|place| value.as_str() == Some(place))
                         .ok_or("設定頁面無效。")?,

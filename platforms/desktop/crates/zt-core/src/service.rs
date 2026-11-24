@@ -668,6 +668,16 @@ impl Service {
         self.inner.activity.diagnostics(&self.inner.app_version)
     }
 
+    /// How long the user has not typed; None before the first key, while something is being composed or listed, and
+    /// in a password field.
+    #[must_use]
+    pub fn typing_paused(&self) -> Option<std::time::Duration> {
+        let since = self.inner.activity.since_key()?;
+        let core = self.inner.core.lock();
+        let busy = core.controller.secure() || !core.controller.presentation().is_empty() || core.popup.is_some();
+        (!busy).then_some(since)
+    }
+
     /// Why the neural models are missing although their files are there (ONNX Runtime not found, a model that
     /// failed to load), once they have been loaded.
     #[must_use]

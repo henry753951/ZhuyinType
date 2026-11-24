@@ -1,10 +1,13 @@
 //! 「關於」 page (macOS `AboutPane`, `SourcesPane`, `DocumentSheet`): the app's icon, name and version; 更新 (自動檢查更新,
 //! 自動安裝更新, a newer version found, 檢查更新 with the last check; `crate::updates`); 程式授權 (AGPL 3.0, read in the
-//! app); 原始碼 (this version on GitHub); and the 授權與資料來源 sub-page.
+//! app); 原始碼 (this version on GitHub); and the 授權與資料來源 sub-page.  更新內容 (what this version changed), 意見與問題
+//! (GitHub issue forms) and 移除 ZhuyinType are in `notes` and `feedback`.
 
 mod document;
+mod feedback;
 pub(crate) mod health;
 mod legal;
+mod notes;
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -21,8 +24,20 @@ use crate::ui::content::{app_header, disclosure};
 use crate::ui::{self, h, v};
 
 const SOURCES: &str = "sources";
+const NOTES: &str = "notes";
+const REMOVAL: &str = "removal";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REPOSITORY: &str = "https://github.com/henry753951/ZhuyinType";
+
+/// 更新內容.
+pub fn notes_place() -> Place {
+    Place::subpage(Page::About, NOTES)
+}
+
+/// 意見與問題 (the input method's menu, the update notification).
+pub fn feedback_place() -> Place {
+    Place::row(Page::About, feedback::SECTION)
+}
 
 pub struct AboutPage {
     /// The entries of 授權與資料來源 that are open.
@@ -51,6 +66,17 @@ impl AboutPage {
             .child(ui::section("").bare().first().row(app_header("ZhuyinType", format!("版本 {VERSION}"), cx)))
             .child(updates_section(cx))
             .child(
+                ui::section("更新內容")
+                    .row(
+                        ui::row("drill-notes", "這一版的更新內容")
+                            .value(VERSION)
+                            .anchor(NOTES)
+                            .on_click(|_, _, cx| app::go(notes_place(), cx)),
+                    )
+                    .row(ui::setting_row(zt_core::release_notes::SHOW_KEY, cx)),
+            )
+            .child(feedback::section())
+            .child(
                 ui::section("")
                     .row(ui::row("row-license", "程式授權").anchor("license").trailing(link_button(
                         "agpl",
@@ -69,7 +95,8 @@ impl AboutPage {
                             .subtitle("程式庫、詞庫、資料集與模型的授權與署名")
                             .anchor(SOURCES)
                             .on_click(|_, _, cx| app::go(Place::subpage(Page::About, SOURCES), cx)),
-                    ),
+                    )
+                    .row(feedback::removal_row()),
             )
             .into_any_element()
     }
@@ -117,6 +144,12 @@ impl Render for AboutPage {
         self.open_demo_states(window, cx);
         match app::nav(cx).subpage.as_deref() {
             Some(SOURCES) => self.sources(cx),
+            Some(NOTES) => {
+                // Read here: the notification has nothing more to say.
+                crate::update_notice::seen(cx);
+                notes::page(cx)
+            }
+            Some(REMOVAL) => feedback::removal(cx),
             _ => self.main(cx),
         }
     }
@@ -202,6 +235,8 @@ fn updates_section(cx: &mut Context<AboutPage>) -> impl IntoElement + use<> {
 pub fn subpage_title(id: &str) -> Option<&'static str> {
     match id {
         SOURCES => Some("授權與資料來源"),
+        NOTES => Some("更新內容"),
+        REMOVAL => Some("移除 ZhuyinType"),
         _ => None,
     }
 }

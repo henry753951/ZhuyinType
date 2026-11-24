@@ -38,6 +38,7 @@ cp -R -X platforms/macos/Resources/Licenses/. "$contents/Resources/Licenses/"
 cp -X LICENSE "$contents/Resources/Licenses/AGPL-3.0.txt"
 cp -X NOTICE "$contents/Resources/Licenses/NOTICE.txt"
 cp -X resources/sources.json "$contents/Resources/Licenses/sources.json"
+/usr/bin/python3 -I tools/release_notes.py "$contents/Resources/release-notes.json"
 swift platforms/macos/scripts/rust-licenses.swift "$contents/Resources/Licenses/Rust-crates.txt"
 cp -X resources/SOURCES.md "$contents/Resources/Licenses/SOURCES.md"
 if [[ -f data/build/reranker/vocab.json && ( -d data/build/reranker/RerankerTree.mlmodelc || -d data/build/reranker/Reranker.mlmodelc ) ]]; then

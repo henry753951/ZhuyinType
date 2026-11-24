@@ -24,6 +24,8 @@ tools/release.sh 0.7.3 --publish   # 已完成的步驟略過；merge、等 main
 
 GitHub Actions 的 **Rebuild releases** 可手動重新建置並發布既有版本。`version` 填版本標籤（例如 `v0.4.7`），或填 `all` 依序重建所有正式版本；也可執行 `gh workflow run rebuild-releases.yml -f version=all`。各版沿用自己的原始碼、資料與建置流程，成功後替換該版附件與發布說明，只有最新版更新自動更新清單。更新清單依系統需求保留最新可用版本，歷史安裝檔保留在發布頁面。
 
+`tools/release_notes.py` 把 `docs/releases/` 整理成 App 內的更新內容（JSON）；`build-app.sh` 與 `zt-core` 的 `build.rs` 在建置時執行。發布說明改了要重新建置，所以 `macos.yml` 與 `desktop.yml` 也看 `docs/releases/`。
+
 ## 用途
 
 同一個指令在 Mac、Linux 主機與 CI 上的寫法完全相同。`zt` 用 uv 在版本庫根目錄的 `.venv` 執行 `python -m zhuyintype_ml.cli`，可以從任何目錄呼叫，參數原樣傳下去。任何指令前加 `--remote` 就改在 GPU 主機上執行，主機設定只放在不進 git 的 `.remote.env`。

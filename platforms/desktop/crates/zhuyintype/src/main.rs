@@ -18,6 +18,7 @@ mod scroll;
 mod shell;
 mod theme;
 mod ui;
+mod update_notice;
 mod updates;
 mod wizard;
 
@@ -53,6 +54,8 @@ struct Args {
     panel: Option<String>,
     /// `--popup demo`: the real floating windows at a caret, with an example list.
     popup: Option<String>,
+    /// `--update-notice`: only the notification after an update, at once (screenshots; `update_notice::demo`).
+    update_notice: bool,
     /// `--wizard SPEC` (or `ZT_WIZARD=SPEC`): only the setup wizard, still (screenshots; `wizard::open_preview`).
     wizard: Option<String>,
     /// `--after-crash`: started by a copy whose UI thread panicked; wait for it to end, then take over.
@@ -74,6 +77,7 @@ fn parse_args() -> Args {
         endpoint: None,
         panel: None,
         popup: None,
+        update_notice: false,
         wizard: std::env::var("ZT_WIZARD").ok().filter(|spec| !spec.is_empty()),
         after_crash: false,
     };
@@ -105,6 +109,7 @@ fn parse_args() -> Args {
             "--ime-socket" => args.endpoint = iter.next(),
             "--panel" => args.panel = iter.next(),
             "--popup" => args.popup = iter.next(),
+            "--update-notice" => args.update_notice = true,
             "--wizard" => args.wizard = iter.next(),
             "--after-crash" => args.after_crash = true,
             _ => {}
@@ -128,7 +133,7 @@ fn main() {
         data_dir: args.data_dir.clone(),
         endpoint: args.endpoint.clone(),
         settings_file: args.settings_file.clone(),
-        broker: !args.no_broker && args.popover.is_none() && args.wizard.is_none(),
+        broker: !args.no_broker && !args.update_notice && args.popover.is_none() && args.wizard.is_none(),
         // Sign-in and the Fcitx5 addon start `--background`; a second one ends quietly (packaging/linux/README.md).
         quiet_if_running: args.background,
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -179,7 +184,11 @@ fn main() {
         // The copy that serves the input method runs until the session ends: closing the settings window or the
         // wizard must not end it.  GPUI otherwise quits when the last window closes, and on Windows the app has no
         // other window (the text service draws the candidate window inside each application), so typing stopped.
-        let serves = service.is_some() && !args.no_broker && args.popover.is_none() && args.wizard.is_none();
+        let serves = service.is_some()
+            && !args.no_broker
+            && !args.update_notice
+            && args.popover.is_none()
+            && args.wizard.is_none();
         if serves {
             cx.set_quit_mode(gpui_kit::QuitMode::Explicit);
             relaunch_after_panic();
@@ -202,6 +211,10 @@ fn main() {
             candidate::showcase::open(variant, args.dark == Some(true), cx).expect("the panel window opens");
             return;
         }
+        if args.update_notice {
+            update_notice::demo(cx);
+            return;
+        }
         if args.popup.is_some() {
             candidate::showcase::popup_demo(cx);
             return;
@@ -213,6 +226,7 @@ fn main() {
         }
         // The copy that serves the input method keeps it up to date (screenshots and second copies never do).
         if !args.no_broker && args.settings_file.is_none() && app::service(cx).is_some() {
+            update_notice::start(cx);
             updates::start(cx);
         }
         if args.background {

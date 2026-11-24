@@ -789,5 +789,15 @@
     "default": true,
     "detail": "在組字結束後換上新版本",
     "anchor": "automaticUpdateInstalls"
+  },
+  {
+    "key": "showUpdateNotes",
+    "title": "更新後提示更新內容",
+    "page": "about",
+    "group": "更新內容",
+    "kind": "toggle",
+    "default": true,
+    "detail": "每一版一次，在停止打字時以系統的通知顯示",
+    "anchor": "showUpdateNotes"
   }
 ]

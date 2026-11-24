@@ -26,6 +26,26 @@ pub fn fcitx_helper() -> Option<PathBuf> {
     .find(|path| path.is_file())
 }
 
+/// The active X11 window is full screen.  In a Wayland session no client may know; the desktop itself holds
+/// notifications back there (GNOME and KDE do over a full-screen window).
+pub fn full_screen() -> bool {
+    use x11rb::connection::Connection as _;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
+
+    fn active_window_is_full_screen() -> Option<bool> {
+        let (connection, screen) = x11rb::connect(None).ok()?;
+        let root = connection.setup().roots.get(screen)?.root;
+        let atom = |name: &[u8]| Some(connection.intern_atom(false, name).ok()?.reply().ok()?.atom);
+        let (active, state, full) =
+            (atom(b"_NET_ACTIVE_WINDOW")?, atom(b"_NET_WM_STATE")?, atom(b"_NET_WM_STATE_FULLSCREEN")?);
+        let window = connection.get_property(false, root, active, AtomEnum::WINDOW, 0, 1).ok()?.reply().ok()?;
+        let window = window.value32()?.next()?;
+        let states = connection.get_property(false, window, state, AtomEnum::ATOM, 0, 32).ok()?.reply().ok()?;
+        Some(states.value32()?.any(|state| state == full))
+    }
+    active_window_is_full_screen().unwrap_or(false)
+}
+
 /// What the notice says.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Framework {

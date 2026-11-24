@@ -160,6 +160,7 @@ pub(crate) fn show_report(window: &mut Window, cx: &mut App) {
     let scroll = SmoothScroll::new(ScrollHandle::new());
     window.open_dialog(cx, move |dialog, window, cx| {
         let p = theme::palette(cx);
+        let paste = report.clone();
         let copy = report.clone();
         let save = report.clone();
         let viewport = window.viewport_size();
@@ -194,6 +195,17 @@ pub(crate) fn show_report(window: &mut Window, cx: &mut App) {
             .child(
                 h().gap(size::ROW_PADDING_Y)
                     .justify_end()
+                    .child(push_button(
+                        "health-issue",
+                        "拷貝並到 GitHub 回報…",
+                        ButtonKind::Normal,
+                        true,
+                        move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(paste.to_string()));
+                            super::feedback::open(zt_core::feedback::Topic::Crash, cx);
+                        },
+                        cx,
+                    ))
                     .child(push_button(
                         "health-copy",
                         "拷貝",

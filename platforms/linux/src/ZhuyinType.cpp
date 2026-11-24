@@ -182,10 +182,11 @@ ZhuyinType::ZhuyinType(fcitx::Instance &instance)
             active_.unwatch();
             timer_->setEnabled(false);
         });
-    const std::array<std::pair<const char *, const char *>, 5> menu{{{"zhuyintype-settings", "ZhuyinType 設定…"},
+    const std::array<std::pair<const char *, const char *>, 6> menu{{{"zhuyintype-settings", "ZhuyinType 設定…"},
         {"zhuyintype-words", "自訂詞與學到的詞…"}, {"zhuyintype-wizard", "設定嚮導…"},
-        {"zhuyintype-tour", "新功能導覽…"}, {"zhuyintype-about", "關於 ZhuyinType"}}};
-    const std::array<const char *, 5> places{nullptr, "words", "wizard", "tour", "about"};
+        {"zhuyintype-tour", "新功能導覽…"}, {"zhuyintype-feedback", "回報問題…"},
+        {"zhuyintype-about", "關於 ZhuyinType"}}};
+    const std::array<const char *, 6> places{nullptr, "words", "wizard", "tour", "feedback", "about"};
     for (size_t i = 0; i < menu.size(); ++i) {
         actions_[i] = std::make_unique<fcitx::SimpleAction>();
         actions_[i]->setShortText(menu[i].second);

@@ -26,7 +26,7 @@ private:
     fcitx::Instance &instance_;
     Broker broker_;
     // The input method's menu in Fcitx (the macOS input menu): settings, words, the wizard, the tour, about.
-    std::array<std::unique_ptr<fcitx::SimpleAction>, 5> actions_;
+    std::array<std::unique_ptr<fcitx::SimpleAction>, 6> actions_;
     void showSettings(const char *place);
     // 快速設定 (IPC `quick`): 英文, 半形標點, 簡體, 暫停學習 as check items above the menu, then a separator.
     std::array<std::unique_ptr<fcitx::SimpleAction>, 4> quick_;

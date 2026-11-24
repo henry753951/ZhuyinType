@@ -221,6 +221,12 @@ struct HealthReportSheet: View {
                 .disabled(text == nil)
                 Button("儲存為檔案…") { text.map(HealthReportSheet.save) }
                     .disabled(text == nil)
+                Button("拷貝並到 GitHub 回報…") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text ?? "", forType: .string)
+                    Feedback.open(.crash)
+                }
+                .disabled(text == nil)
                 Spacer()
                 Button("關閉") { dismiss() }.keyboardShortcut(.defaultAction)
             }

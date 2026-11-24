@@ -115,6 +115,8 @@ Linux／Windows 版（`platforms/desktop/`）的設定描述是一份 JSON：`pl
 | `theme` | `system`、`light`、`dark` | `system` | 主題：App 畫的每個視窗 |
 | `transparency` | `system`、`on`、`off` | `system` | 透明效果；系統沒有可用的背景材質時不論設定都不透明 |
 
+`showUpdateNotes`（更新後提示更新內容，開關，預設開啟）三個平台同名。`updateNotesSeenVersion` 與 `updateNotesPreviousVersion`（提示過的版本與它之前的版本，文字，DESIGN.md §3.6）也同名，不出現在設定頁，「回復預設設定」不清除。
+
 `wordActionHintCount`（整數，預設 0，和 macOS 共用同一個鍵）：候選字清單下方顯示過「Ctrl+Del 不要再推薦・右鍵看更多」的次數；到 5 次後不再顯示。不出現在設定頁，由輸入法自己累加（`zt_core::controller::WORD_ACTION_TIP_KEY`）；macOS 存在 App 的 UserDefaults，同名，在 `ControllerCore+WordActions.swift`）。macOS 的提示寫「⌃⌫ 不要再推薦・右鍵看更多」。
 
 三個平台都有的 `accentColor`（強調色）：`system`（跟隨系統，預設）或 `zhuyintype`（ZhuyinType 藍）。macOS 在 `Preferences`，Linux／Windows 在 `settings.json`；顏色的計算在 `zt_panel::a11y`（Linux／Windows）與 `UI/Accessibility/ContrastMath.swift`（macOS），見 [DESKTOP.md](DESKTOP.md)「無障礙」。`candidateFontSize`（字級）三個平台都是 13–36 pt。
