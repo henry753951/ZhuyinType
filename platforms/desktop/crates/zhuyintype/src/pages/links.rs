@@ -179,6 +179,8 @@ pub fn quick_settings_links() -> [(&'static str, Place); 3] {
 /// unknown page.
 pub fn resolve(page: &str, subpage: Option<&str>, row: Option<&str>) -> Option<Place> {
     let (page, implied) = match page {
+        // The input method's menu (`show-settings`).
+        "feedback" => return Some(super::about::feedback_place()),
         "general" => (Page::Typing, None),
         "context" => (Page::Choosing, Some("context")),
         "phrases" => (Page::Words, Some("phrases")),
@@ -320,6 +322,7 @@ pub fn targets() -> Vec<(String, Place)> {
     add("快捷鍵 › 單按 Shift", shift_tap_place());
     add("快捷鍵 › 鍵上的符號", punctuation_keys_place());
     add("設定嚮導 › 自行設定…", Place::page(Page::Keys));
+    add("輸入法選單 › 回報問題…", super::about::feedback_place());
     // A row under 快捷鍵's 固定的按鍵 (`--row`): the disclosure opens by itself.
     add("快捷鍵 › 固定的按鍵 › 拼注音", Place::row(Page::Keys, "row-zhuyin"));
     for (page, subpage, row) in LEGACY {
@@ -332,7 +335,7 @@ pub fn targets() -> Vec<(String, Place)> {
 
 #[cfg(test)]
 /// The sub-pages, each opened by a row on its page anchored with its id.
-pub const SUBPAGES: [(Page, &str); 8] = [
+pub const SUBPAGES: [(Page, &str); 10] = [
     (Page::Analytics, "performance"),
     (Page::Typing, "typingKeys"),
     (Page::Choosing, "context"),
@@ -341,6 +344,8 @@ pub const SUBPAGES: [(Page, &str); 8] = [
     (Page::Words, "phrases"),
     (Page::Advanced, "apps"),
     (Page::About, "sources"),
+    (Page::About, "notes"),
+    (Page::About, "removal"),
 ];
 
 /// The 快捷鍵 overview's section of conflicts (shown while there are some).
@@ -520,6 +525,7 @@ mod tests {
         // The input method's menu (`show-settings`).
         assert_eq!(resolve("words", None, None), place(Page::Words, None, None));
         assert_eq!(resolve("about", None, None), place(Page::About, None, None));
+        assert_eq!(resolve("feedback", None, None), place(Page::About, None, Some("意見與問題")));
         assert_eq!(resolve("nowhere", None, None), None);
         for page in Page::ALL {
             assert_eq!(resolve(page.id(), None, None), place(page, None, None));

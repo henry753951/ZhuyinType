@@ -26,10 +26,11 @@ pub(crate) enum Command {
     Symbols,
     Wizard,
     Tour,
+    Feedback,
     About,
 }
 
-const COMMANDS: [Command; 10] = [
+const COMMANDS: [Command; 11] = [
     Command::English,
     Command::HalfWidth,
     Command::Simplified,
@@ -39,6 +40,7 @@ const COMMANDS: [Command; 10] = [
     Command::Symbols,
     Command::Wizard,
     Command::Tour,
+    Command::Feedback,
     Command::About,
 ];
 
@@ -73,6 +75,7 @@ impl Command {
             Self::Symbols => Effect::Settings(Some("symbols")),
             Self::Wizard => Effect::Settings(Some("wizard")),
             Self::Tour => Effect::Settings(Some("tour")),
+            Self::Feedback => Effect::Settings(Some("feedback")),
             Self::About => Effect::Settings(Some("about")),
         }
     }
@@ -123,6 +126,7 @@ pub(crate) fn items(state: &QuickState, switches: bool, taskbar: bool) -> Vec<It
             Item::command(Command::Wizard, "設定嚮導…"),
             Item::command(Command::Tour, "新功能導覽…"),
             Item::separator(),
+            Item::command(Command::Feedback, "回報問題…"),
             Item::command(Command::About, "關於 ZhuyinType"),
         ]);
     }
@@ -205,6 +209,7 @@ mod tests {
                 "設定嚮導…",
                 "新功能導覽…",
                 "-",
+                "回報問題…",
                 "關於 ZhuyinType"
             ]
         );
@@ -218,7 +223,7 @@ mod tests {
             assert_eq!(Command::from_id(command.id()), Some(command));
         }
         assert_eq!(Command::from_id(0), None);
-        assert_eq!(Command::from_id(11), None);
+        assert_eq!(Command::from_id(12), None);
         let state = QuickState {
             english: false,
             full_width: true,

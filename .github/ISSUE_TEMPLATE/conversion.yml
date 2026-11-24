@@ -1,0 +1,59 @@
+name: 轉換錯誤、選字問題
+description: 打對了注音，卻出現不對的字；或是選字、修正的結果不符合預期
+title: "[選字] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        這裡的內容是公開的。請不要貼上私人的文字、姓名、電話、地址、帳號或密碼；例句請改成意思相近、沒有私人內容的句子。
+  - type: textarea
+    id: typed
+    attributes:
+      label: 打的注音
+      description: 依照按鍵的順序寫出注音；按錯鍵或省略聲調也照實寫。
+      placeholder: 例如 ㄗ ㄌㄧㄠˋ ㄐㄧㄚ
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: 希望出現的字
+      placeholder: 例如 資料夾
+    validations:
+      required: true
+  - type: input
+    id: actual
+    attributes:
+      label: 實際出現的字
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 多常發生
+      options:
+        - 每次都這樣
+        - 有時候
+        - 只發生過一次
+  - type: textarea
+    id: more
+    attributes:
+      label: 其他說明（選填）
+      description: 例如改選之後下次是否仍然不對、是否與前面的文字有關。
+  - type: input
+    id: version
+    attributes:
+      label: ZhuyinType 版本
+      description: 「設定 › 關於」最上方；從 App 開啟這一頁時已經填好。
+      placeholder: 例如 0.7.6
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系統
+      description: 作業系統與版本；Linux 另外寫桌面環境與 X11 或 Wayland。
+      placeholder: 例如 macOS 26.1、Windows 11 24H2、Ubuntu 25.04（GNOME，Wayland）
+    validations:
+      required: true

@@ -57,6 +57,8 @@ if arguments.contains("--self-test") {
 let application = NSApplication.shared
 application.setActivationPolicy(.accessory)
 let inputMethodServer = IMKServer(name: EngineHost.connectionName, bundleIdentifier: Bundle.main.bundleIdentifier)
+// Before anything makes the personal data folder: whether this launch is an update or a first install.
+UpdateNotice.shared.start()
 EngineHost.load()
 ScreenReader.start()
 Updater.shared.start()

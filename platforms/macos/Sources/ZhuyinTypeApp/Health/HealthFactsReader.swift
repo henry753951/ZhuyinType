@@ -137,7 +137,7 @@ enum HealthFactsReader {
         return .readable
     }
 
-    private static func sysctl(_ name: String) -> String? {
+    static func sysctl(_ name: String) -> String? {
         var size = 0
         guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return nil }
         var buffer = [CChar](repeating: 0, count: size)
@@ -145,7 +145,7 @@ enum HealthFactsReader {
         return String(cString: buffer)
     }
 
-    private static func machine() -> String {
+    static func machine() -> String {
         var name = utsname()
         uname(&name)
         return withUnsafeBytes(of: &name.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }

@@ -44,6 +44,7 @@ enum SettingsLinks {
             ("快速設定 › 繁／簡", SettingsPlace(.choosing, row: SettingsRow.outputScript)),
             ("快速設定 › 暫停學習", SettingsPlace(.words, row: SettingsRow.pauseLearning)),
         ]
+        links.append(("輸入法選單 › 回報問題…", Feedback.place))
         let keys = CurrentKeys(preferences)
         links += IntroFeature.all(keys, preferences: preferences).map { ("介紹 › 功能 › \($0.title)", $0.place) }
         links += KeySection.allCases.map { ("「\($0.title)」的頁尾 › 快捷鍵總覽", .keysSection($0)) }

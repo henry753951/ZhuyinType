@@ -1,0 +1,56 @@
+name: 當機、沒反應、無法輸入
+description: 輸入法沒有反應、當機、打不出注音，或切換不到 ZhuyinType
+title: "[當機] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        這裡的內容是公開的。請不要貼上私人的文字、姓名、電話、地址、帳號或密碼；截圖前請先確認畫面上沒有私人內容。
+  - type: textarea
+    id: what
+    attributes:
+      label: 發生了什麼
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎麼做會發生
+      description: 一步一行。不確定時，寫下發生之前做了什麼。
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: 在哪一個 App（選填）
+      description: 只有和特定的 App 有關時才需要寫。
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 多常發生
+      options:
+        - 每次都這樣
+        - 有時候
+        - 只發生過一次
+  - type: input
+    id: version
+    attributes:
+      label: ZhuyinType 版本
+      description: 「設定 › 關於」最上方；從 App 開啟這一頁時已經填好。
+      placeholder: 例如 0.7.6
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系統
+      description: 作業系統與版本；Linux 另外寫桌面環境與 X11 或 Wayland。
+      placeholder: 例如 macOS 26.1、Windows 11 24H2、Ubuntu 25.04（GNOME，Wayland）
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 診斷資料（選填）
+      description: 「設定 › 檢查輸入法 › 回報問題…」會列出檢查結果，不含你打的字。看過內容後再貼上，或把存下的檔案拖進這一格。

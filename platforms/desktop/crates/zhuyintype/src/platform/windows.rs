@@ -26,7 +26,9 @@ use windows::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute,
 };
 use windows::Win32::UI::Controls::MARGINS;
-use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows::Win32::UI::Shell::{
+    DefSubclassProc, QUNS_ACCEPTS_NOTIFICATIONS, RemoveWindowSubclass, SHQueryUserNotificationState, SetWindowSubclass,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetWindowLongPtrW, GetWindowRect, HTTRANSPARENT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE, SW_HIDE,
     SW_SHOWNOACTIVATE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
@@ -106,6 +108,13 @@ unsafe extern "system" fn subclass(
         }
         DefSubclassProc(window, message, wparam, lparam)
     }
+}
+
+/// A full-screen app or game, a presentation, a locked screen or the first hour of a new account
+/// (`SHQueryUserNotificationState`).
+pub fn notifications_unwelcome() -> bool {
+    // SAFETY: no arguments; not knowing counts as unwelcome.
+    unsafe { SHQueryUserNotificationState() }.map_or(true, |state| state != QUNS_ACCEPTS_NOTIFICATIONS)
 }
 
 /// The settings and wizard windows: the app draws the title bar; everything else stays a native Windows 11 window,

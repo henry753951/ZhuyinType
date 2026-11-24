@@ -8,7 +8,7 @@ import ZhuyinEngine
 
 /// Pages one level down from a sidebar page.
 enum SettingsSubpage: String, CaseIterable, Identifiable {
-    case typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources
+    case typingKeys, fuzzy, context, learnedWords, phrases, performance, apps, sources, releaseNotes, removal
     var id: String { rawValue }
 
     var pane: SettingsPane {
@@ -19,7 +19,7 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .learnedWords, .phrases: return .words
         case .performance: return .analytics
         case .apps: return .advanced
-        case .sources: return .about
+        case .sources, .releaseNotes, .removal: return .about
         }
     }
 
@@ -33,6 +33,8 @@ enum SettingsSubpage: String, CaseIterable, Identifiable {
         case .performance: return "效能"
         case .apps: return "在候選字視窗顯示組字的 App"
         case .sources: return "授權與資料來源"
+        case .releaseNotes: return "更新內容"
+        case .removal: return "移除 ZhuyinType"
         }
     }
 }
@@ -83,6 +85,7 @@ enum SettingsRow {
     static let modeToast = "modeToast"
     static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
     static let associatedPhrases = "associatedPhrases", outputScript = "outputScript", candidateAnchor = "candidateAnchor"
+    static let showUpdateNotes = "showUpdateNotes"
     static let symbolPicker = "symbolPicker", context = "context", learning = "learning", pauseLearning = "pauseLearning"
 }
 
@@ -224,7 +227,7 @@ struct SettingsPaneView: View {
         case .keys: KeysPane(preferences: preferences, model: model)
         case .health: HealthPage()
         case .advanced: AdvancedPane(model: model, preferences: preferences)
-        case .about: AboutPane(model: model)
+        case .about: AboutPane(model: model, preferences: preferences)
         }
     }
 
@@ -244,6 +247,8 @@ struct SettingsPaneView: View {
         case .performance: PerformancePage()
         case .apps: AppsPage(model: model)
         case .sources: SourcesPane()
+        case .releaseNotes: ReleaseNotesPane(preferences: preferences, model: model)
+        case .removal: RemovalPane()
         }
     }
 }

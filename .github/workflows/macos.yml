@@ -6,9 +6,9 @@ name: macOS
 on:
   push:
     branches: [main]
-    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/macos.yml"]
+    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", "docs/releases/**", ".github/workflows/macos.yml"]
   pull_request:
-    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", ".github/workflows/macos.yml"]
+    paths: ["platforms/macos/**", "engine/**", "resources/**", "ml/src/**", "ml/pyproject.toml", "tools/**", "docs/releases/**", ".github/workflows/macos.yml"]
   workflow_dispatch:
 
 # A new push to a pull request replaces its older run; main's runs all finish, since a release reuses each commit's.

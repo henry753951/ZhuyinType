@@ -245,6 +245,8 @@ enum SettingsRegistry {
                detail: { _ in "改字時記下打的鍵與改前改後的字，用來改進選字" }),
         toggle("recordsCorrectionContext", "一併記錄游標前的文字", place(.advanced), \.recordsCorrectionContext),
         toggle("recordsUsageStats", "記錄使用統計", place(.analytics), \.recordsUsageStats),
+        toggle("showUpdateNotes", "更新後提示更新內容", place(.about, SettingsRow.showUpdateNotes), \.showsUpdateNotes,
+               detail: { _ in "每一版一次，在停止打字時顯示在螢幕右上角" }, keywords: ["更新", "發布說明"]),
     ]
 
     // MARK: 按鍵

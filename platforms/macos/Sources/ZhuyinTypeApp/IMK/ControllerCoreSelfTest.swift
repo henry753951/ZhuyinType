@@ -1947,6 +1947,8 @@ enum ControllerCoreSelfTest {
 
         // 檢查輸入法 (Health).
         HealthSelfTest.run(test: test)
+        // 更新內容 and 意見與問題 (Update/ReleaseNotes.swift, Feedback).
+        FeedbackSelfTest.run(test: test)
         // Every link of the settings window leads to a drawn row, which takes the focus (UI/Settings/SettingsLinks.swift).
         SettingsLinksSelfTest.run(test: test)
 

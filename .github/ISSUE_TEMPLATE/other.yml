@@ -1,0 +1,41 @@
+name: 其他問題
+description: 介面、設定、安裝、更新、相容性等問題
+title: "[問題] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        這裡的內容是公開的。請不要貼上私人的文字、姓名、電話、地址、帳號或密碼；截圖前請先確認畫面上沒有私人內容。
+  - type: textarea
+    id: what
+    attributes:
+      label: 發生了什麼
+      description: 可以附上截圖。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 原本預期的結果（選填）
+  - type: input
+    id: version
+    attributes:
+      label: ZhuyinType 版本
+      description: 「設定 › 關於」最上方；從 App 開啟這一頁時已經填好。
+      placeholder: 例如 0.7.6
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系統
+      description: 作業系統與版本；Linux 另外寫桌面環境與 X11 或 Wayland。
+      placeholder: 例如 macOS 26.1、Windows 11 24H2、Ubuntu 25.04（GNOME，Wayland）
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 診斷資料（選填）
+      description: 「設定 › 檢查輸入法 › 回報問題…」會列出檢查結果，不含你打的字。看過內容後再貼上，或把存下的檔案拖進這一格。

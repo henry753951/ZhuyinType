@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安裝、移除與基本按鍵
+    url: https://github.com/henry753951/ZhuyinType#readme
+    about: README 的安裝步驟、移除方式與按鍵表
+  - name: 各版本的更新內容
+    url: https://github.com/henry753951/ZhuyinType/releases
+    about: 每一版的新功能、修正與已知問題

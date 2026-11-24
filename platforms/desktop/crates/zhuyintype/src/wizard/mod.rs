@@ -542,6 +542,11 @@ fn seen_version(cx: &App) -> Option<String> {
     app::settings(cx).get(SEEN_KEY).as_str().map(str::to_owned)
 }
 
+/// Whether the wizard has opened before.
+pub fn seen(cx: &App) -> bool {
+    seen_version(cx).is_some()
+}
+
 fn mark_seen(cx: &mut App) {
     if let Err(error) = app::settings(cx).set(SEEN_KEY, Value::from(data::current_version())) {
         log::warn!("recording the wizard's version: {error:#}");

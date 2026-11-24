@@ -28,7 +28,7 @@ Fcitx5／TSF 負責系統按鍵、焦點、安全輸入、組字範圍、游標�
 | `selection` | `text` 字串（最多 32 個 UTF-16 單位，沒選取時是空字串）；回應裡有 `selection: true` 時才送：欄位中選取的文字，服務以它開啟填好的「加入自訂詞」（見〈選取的字加入自訂詞〉）。安全或私人欄位不送，服務也不接受 |
 | `mode` | `english` 布林；設定中／英（Windows 工作列的輸入指示器）。和單按 Shift 相同，組字中與安全欄位不切換 |
 | `quick` | 快速設定：可選的 `english`、`fullWidth`、`simplified`、`learningPaused` 布林，只套用有送的欄位，都沒有時只讀取（見〈快速設定〉） |
-| `show-settings` | 顯示既有設定視窗；可選 `place`：`words`（自訂詞與學到的詞）、`about`、`wizard`（設定嚮導）、`tour`（新功能導覽）。輸入法選單用 |
+| `show-settings` | 顯示既有設定視窗；可選 `place`：`words`（自訂詞與學到的詞）、`about`、`wizard`（設定嚮導）、`tour`（新功能導覽）、`feedback`（關於 › 意見與問題）。輸入法選單用 |
 | `diagnostics` | 「回報問題」與 `zhuyintype --health` 用：回應 `version`、`started`（Unix 秒）、`uptime`（秒）、`lastKey`（距離上次按鍵的秒數，還沒有按鍵時為 `null`）、`connections`（目前連線的原生端數量）與 `recent`（服務最近的警告與錯誤，`zt_core::health::recent`）。只有次數與時間，不含按鍵、文字或 App 名稱；不需要 `v` 以外的欄位，也不改變任何狀態。舊版服務回應失敗 |
 
 按鍵與修飾鍵沿用 Qt 的數值（`zt_core::keys::code`、`zt_core::keys::modifier`），Linux 與 Windows 的 Control 為 `0x04000000`，Windows 鍵或 Super 為 `0x10000000`。

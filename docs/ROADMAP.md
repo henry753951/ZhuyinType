@@ -21,6 +21,10 @@
 
 ## 2. 版本
 
+### 下一版：更新後的提示、回報問題、移除的原因
+
+更新後提示一次這版的更新內容（內容由 `docs/releases/` 打包，不上網）；「關於 › 意見與問題」與輸入法選單開啟 GitHub 的 issue form，只預填版本與系統；Windows 解除安裝的最後一頁與 macOS、Linux 的「移除 ZhuyinType」頁可以選填原因。設計與不做的事見 [DESIGN.md](product/DESIGN.md) §3.6、§4.5.2。發布後要確認：issue form 在 GitHub 上的預填（範本要在 `main` 才會生效）。
+
 ### 0.7.5：Minecraft 裡切換得到 ZhuyinType、懸浮打字框只用在遊戲
 
 發布說明見 [releases/v0.7.5.md](releases/v0.7.5.md)。文字服務註冊 `GUID_TFCAT_TIPCAP_COMLESS`：加入多執行緒 COM 模式的執行緒（Minecraft: Java Edition）裡，TSF 只啟用宣告 COM-less 的文字服務，之前會略過 ZhuyinType、留在原本的輸入法；COM-less 啟用不再視為受限模式。文字服務的記錄可以在正式版用 `%LOCALAPPDATA%\ZhuyinType\tsf-trace` 開啟（[packaging/windows/README.md](../platforms/desktop/packaging/windows/README.md)）。懸浮打字框只在遊戲引擎的視窗類別（GLFW、SDL、Unity、Unreal、Source、LWJGL 2、GameMaker、Godot、Roblox）立即使用；其他視窗要蓋滿螢幕，而且已組過一次字；Chromium、Electron、CEF 與 Firefox 的視窗一律不用（[IPC.md](../platforms/desktop/IPC.md)〈懸浮打字框〉）。
