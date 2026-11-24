@@ -114,7 +114,8 @@ unsafe extern "system" fn subclass(
 /// (`SHQueryUserNotificationState`).
 pub fn notifications_unwelcome() -> bool {
     // SAFETY: no arguments; not knowing counts as unwelcome.
-    unsafe { SHQueryUserNotificationState() }.map_or(true, |state| state != QUNS_ACCEPTS_NOTIFICATIONS)
+    let state = unsafe { SHQueryUserNotificationState() };
+    state != Ok(QUNS_ACCEPTS_NOTIFICATIONS)
 }
 
 /// The app's icon on its notifications: `IconUri` beside the name GPUI registers for `identity` (the icon the installer
