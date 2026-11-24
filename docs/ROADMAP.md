@@ -21,6 +21,10 @@
 
 ## 2. 版本
 
+### 0.7.6：常用詞不再被改成別的詞
+
+發布說明見 [releases/v0.7.6.md](releases/v0.7.6.md)。記住的修正要取代詞庫裡的詞時，記滿 3 次才採用；單一音節的修正只在單獨打那個音節時採用；改選後以最後選的為準（[MODEL.md §9.1](engine/MODEL.md#91-記住選過的字詞recall)）。按鍵解碼器可以在一起按下的兩鍵之間切開音節，也可以在沒有聲母的音節前切開（[MODEL.md §3](engine/MODEL.md#3-按鍵層級解碼器keydecoder)）。數字見研究紀錄 2026-11-25。
+
 ### 0.7.5：Minecraft 裡切換得到 ZhuyinType、懸浮打字框只用在遊戲
 
 發布說明見 [releases/v0.7.5.md](releases/v0.7.5.md)。文字服務註冊 `GUID_TFCAT_TIPCAP_COMLESS`：加入多執行緒 COM 模式的執行緒（Minecraft: Java Edition）裡，TSF 只啟用宣告 COM-less 的文字服務，之前會略過 ZhuyinType、留在原本的輸入法；COM-less 啟用不再視為受限模式。文字服務的記錄可以在正式版用 `%LOCALAPPDATA%\ZhuyinType\tsf-trace` 開啟（[packaging/windows/README.md](../platforms/desktop/packaging/windows/README.md)）。懸浮打字框只在遊戲引擎的視窗類別（GLFW、SDL、Unity、Unreal、Source、LWJGL 2、GameMaker、Godot、Roblox）立即使用；其他視窗要蓋滿螢幕，而且已組過一次字；Chromium、Electron、CEF 與 Firefox 的視窗一律不用（[IPC.md](../platforms/desktop/IPC.md)〈懸浮打字框〉）。
