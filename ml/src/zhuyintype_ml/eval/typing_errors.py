@@ -53,6 +53,8 @@ CONDITIONS = (
     "tone",
     "nospace-all",
     "nospace-30",
+    "nospace-all-fast",
+    "nospace-30-fast",
     "mixed",
 )
 RERANK_OPTIONS = {"--reranker", "--rerank-weight", "--rerank-count", "--exact-margin"}
@@ -167,10 +169,10 @@ def condition(readings: list[str], name: str, rng: random.Random) -> tuple[list[
     """Strokes for `readings` typed under a condition, whether typed fast, and how many errors were made; None when
     the condition does not apply."""
     strokes = canonical(readings)
-    fast = name == "exact-fast"
+    fast = name.endswith("-fast")
     edits = 0
     if name.startswith("nospace-"):
-        changed = omit_spaces(strokes, rng, 1 if name == "nospace-all" else 0.3, len(readings) - 1)
+        changed = omit_spaces(strokes, rng, 1 if name.startswith("nospace-all") else 0.3, len(readings) - 1)
         edits = len(strokes) - len(changed)
         if not edits:
             return None

@@ -210,6 +210,13 @@ fn keys_symbols_and_tones() {
         assert_eq!(text(&composer(&tiny, &key.to_string())), symbol.to_string(), "keyboard {key} = {symbol}");
     }
     assert_eq!(text(&composer(&tiny, "1q8iujm")), "ㄆㄩㄛ", "replace all three slots");
+    // A first tone without Space before a syllable without an initial: the language model settles it.
+    let bare = engine("ㄧㄣ\t音\t-4\nㄩㄝˋ\t樂\t-4\nㄩㄝˋ\t越\t-3\nㄧㄣˋ\t印\t-9\nㄧㄣ ㄩㄝˋ\t音樂\t-1\n");
+    assert_eq!(text(&composer_with(&bare, "upm,4", ComposerOptions::default())), "音樂");
+    assert_eq!(text(&composer_with(&bare, "m,4", ComposerOptions::default())), "越");
+    // While the syllable is unfinished, an initial typed after its medial stays in it.
+    let late = engine("ㄧ\t一\t-1\nㄐㄧㄣ\t今\t-2\n");
+    assert_eq!(text(&composer_with(&late, "ur", ComposerOptions::default())), "ㄐㄧ");
     let mut ordered = composer(&tiny, "0u1");
     assert_eq!(text(&ordered), "ㄅㄧㄢ", "slot order independent of key order");
     ordered.handle(KeyInput::Space);
