@@ -1254,8 +1254,9 @@ impl Composer {
     /// `CHARACTER_CANDIDATES` of them.  A reading-channel variant's character ranks without the variant's cost, so
     /// the model sees it ([`VariantScores`] says how it is scored).
     // One function, as in Swift, with the reading channel's additions in place.
-    /// The run's split: the decoder's cheapest, unless another split of the same shape (as many syllables, the same
-    /// unfinished part) close in cost reads better to the language model.
+    /// The run's split: the decoder's cheapest, unless another split close in cost (as finished, with as many
+    /// syllables or, when both are finished, one more) reads better to the language model.  Never one with fewer: the model prefers shorter
+    /// sentences, and such a split drops a character that was typed (docs/engine/MODEL.md §11).
     fn best_split(&self) -> Option<DecodeResult> {
         let tolerance = self.options.typo_tolerance;
         let method = if tolerance == TypoTolerance::Off
@@ -1280,12 +1281,15 @@ impl Composer {
         if !cheapest.cost.is_finite() {
             return None;
         }
+        // With an unfinished syllable the model sees fewer syllables of one split than of the other, so they are
+        // compared only between as many.
+        let most = cheapest.syllables.len() + usize::from(cheapest.buffer_keys.is_empty());
         let rivals: Vec<&DecodeResult> = splits
             .iter()
             .filter(|s| {
                 s.cost.is_finite()
                     && s.cost <= cheapest.cost + self.tuning.split_margin
-                    && s.syllables.len() == cheapest.syllables.len()
+                    && (cheapest.syllables.len()..=most).contains(&s.syllables.len())
                     && s.buffer_keys.is_empty() == cheapest.buffer_keys.is_empty()
             })
             .collect();

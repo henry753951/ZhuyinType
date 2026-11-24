@@ -63,6 +63,11 @@ pub struct DecodeResult {
 pub struct Costs {
     /// First tone without Space before the next initial.
     pub implicit_boundary: f64,
+    /// For `Timed`, on top of `implicit_boundary`: the boundary falls between keys pressed together.
+    pub boundary_together: f64,
+    /// First tone without Space before a syllable that has no initial, where the next key's slot is filled
+    /// (`ㄧㄣ ㄩㄝˋ`).  Above `overwrite`, so it is taken when the language model prefers it.
+    pub bare_boundary: f64,
     /// A filled slot typed again (the slot keeps the later key).
     pub overwrite: f64,
     /// Two keys in the other order (`Reorder`).
@@ -89,6 +94,8 @@ impl Default for Costs {
         // Chosen with `zt eval typing-errors` on both dev sets (docs/engine/MODEL.md §3).
         Self {
             implicit_boundary: 4.0,
+            boundary_together: 1.0,
+            bare_boundary: 12.0,
             overwrite: 10.0,
             swap: 10.0,
             skip: 13.0,
@@ -140,6 +147,11 @@ impl State {
             last: last.map(|node| node.reading.clone()),
             before_last: last.and_then(|node| node.previous.as_ref()).map(|node| node.reading.clone()),
         }
+    }
+
+    /// Every key typed is still in its slot.
+    fn replaced_none(&self) -> bool {
+        self.keys.chars().count() == self.slots.iter().flatten().count()
     }
 
     fn has_symbols(&self) -> bool {
@@ -258,7 +270,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
     }
 
     /// The states reached by taking one more key.  `pressed_with_previous`: this key went down almost together with
-    /// the one before it (`Timed` then never ends a syllable between them).
+    /// the one before it (for `Timed`, ending a syllable between them then costs more).
     fn take(&self, state: &State, key: Key, pressed_with_previous: bool, out: &mut Vec<State>) {
         let character = key.character;
         let tone = keyboard::tone(character).or(if character == ' ' { Some("") } else { None });
@@ -292,14 +304,21 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
         placed.slots[slot] = Some(symbol);
         placed.keys.push(character);
         out.push(placed);
-        // The syllable so far is a whole first-tone syllable and this key starts the next one.
+        // The syllable so far is a whole first-tone syllable and this key starts the next one: an initial, or a medial
+        // or final whose slot is filled (and nothing typed again before it).  Keys pressed together are less likely to be in two syllables, not never: a
+        // fast typist who leaves out Space rolls from one syllable into the next.
         if self.method != KeyDecoderMethod::Slots
-            && slot == 0
             && state.has_symbols()
-            && !(self.method == KeyDecoderMethod::Timed && pressed_with_previous)
+            && (slot == 0 || (state.slots[slot].is_some() && state.replaced_none()))
             && let Some(mut closed) = self.close(state, "", ' ', true)
         {
-            closed.slots[0] = Some(symbol);
+            if slot != 0 {
+                closed.cost += self.costs.bare_boundary - self.costs.implicit_boundary;
+            }
+            if self.method == KeyDecoderMethod::Timed && pressed_with_previous {
+                closed.cost += self.costs.boundary_together;
+            }
+            closed.slots[slot] = Some(symbol);
             closed.keys = character.to_string();
             out.push(closed);
         }

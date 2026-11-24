@@ -340,3 +340,49 @@ fn matches_rejects_out_of_bounds_start() {
     assert!(engine.matches(&tokens, tokens.len(), TypoTolerance::Off).is_empty());
     assert!(engine.matches(&tokens, usize::MAX, TypoTolerance::Off).is_empty());
 }
+
+/// One pick of a correction must not change the dictionary word the keys spell: the correction pick of 衣料夾 once made
+/// ㄗ ㄌㄧㄠˋ ㄐㄧㄚˊ 衣料夾 for months, and that of 一迅 made ㄗ 一 in every word.
+#[test]
+fn corrections_do_not_replace_dictionary_words() {
+    let lexicon = "ㄗ\t資\t-2\nㄧ\t一\t-2\nㄧ\t衣\t-3\nㄌㄧㄠˋ\t料\t-2\nㄐㄧㄚˊ\t夾\t-2\nㄗ ㄌㄧㄠˋ\t資料\t-3\nㄧ ㄌㄧㄠˋ\t衣料\t-3\n\
+                   ㄒㄩㄣˋ\t訊\t-3\nㄒㄩㄣˋ\t迅\t-2\nㄗ ㄒㄩㄣˋ\t資訊\t-3\n";
+    let word = |range: std::ops::Range<usize>, text: &str, reading: &str, picked: bool| CommittedWord {
+        range,
+        text: text.into(),
+        reading: reading.into(),
+        word_id: None,
+        picked,
+    };
+    let folder = [word(0..2, "衣料", "ㄗ ㄌㄧㄠˋ", true), word(2..3, "夾", "ㄐㄧㄚˊ", false)];
+    let engine = text(lexicon, None);
+    engine.learn(&folder, 3, &[]);
+    assert_eq!(convert(&engine, "y xul4ru86"), "資料夾", "one pick does not replace the whole composition");
+    assert_eq!(convert(&engine, "y xul4"), "資料", "nor the word anywhere else");
+    for _ in 0..2 {
+        engine.learn(&folder, 3, &[]);
+    }
+    assert_eq!(convert(&engine, "y xul4ru86"), "衣料夾", "picked three times, it does");
+
+    let engine = text(lexicon, None);
+    for _ in 0..4 {
+        engine.learn(&[word(0..1, "一", "ㄗ", true)], 1, &[]);
+    }
+    assert_eq!(convert(&engine, "y "), "一", "a syllable alone is remembered");
+    assert_eq!(convert(&engine, "y vmp4"), "資訊", "but not inside other words");
+    assert_eq!(convert(&engine, "y xul4ru86"), "資料夾");
+
+    let engine = text(
+        "ㄧㄥ	應	-2
+ㄧㄥ ㄍㄞ	應該	-2
+ㄧㄥ ㄍㄞ	英該	-9
+",
+        None,
+    );
+    let choose = |text: &str| engine.learn(&[word(0..2, text, "ㄧㄥ ㄍㄞ", true)], 2, &[]);
+    choose("英該");
+    assert_eq!(convert(&engine, "u/ e9 "), "英該", "a choice between homophones is remembered at once");
+    engine.weaken("英該", "ㄧㄥ ㄍㄞ", None, None);
+    choose("應該");
+    assert_eq!(convert(&engine, "u/ e9 "), "應該", "and gives way to the next choice");
+}
