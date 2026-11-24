@@ -64,7 +64,7 @@ class TimedErrors(unittest.TestCase):
             for seed in range(30):
                 result = condition(self.readings, name, random.Random(seed))
                 if result is None:
-                    self.assertEqual(name, "nospace-30")
+                    self.assertIn(name, ("nospace-30", "nospace-30-fast"))
                     continue
                 strokes, fast, edits = result
                 self.assertTrue(all(s.key in POSITIONS for s in strokes))
