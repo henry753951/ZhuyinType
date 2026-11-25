@@ -29,7 +29,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--predict N] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--boundary-together COST] [--bare-boundary COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--predict N] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--user-phrases FILE] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--boundary-together COST] [--bare-boundary COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -44,6 +44,8 @@ struct Settings {
     lexicon: String,
     batch: bool,
     keep_memory: bool,
+    /// `--user-phrases FILE`: custom words (自訂詞), one `reading<tab>word` per line, as `user_phrases.tsv` holds them.
+    user_phrases: Option<String>,
     reranker: Option<String>,
     model_server: Option<String>,
     rerank_weight: f64,
@@ -106,6 +108,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> (Settings, Vec<String>) {
         lexicon: "data/build/lexicon.tsv".to_owned(),
         batch: false,
         keep_memory: false,
+        user_phrases: None,
         reranker: None,
         model_server: None,
         rerank_weight: 0.5,
@@ -253,6 +256,7 @@ fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> O
             s.keep_memory = true;
             take = 1;
         }
+        "--user-phrases" => s.user_phrases = Some(next_value(arguments).to_owned()),
         "--model-server" => s.model_server = Some(next_value(arguments).to_owned()),
         "--reranker" => s.reranker = Some(next_value(arguments).to_owned()),
         "--rerank-count" => {
@@ -908,6 +912,14 @@ fn main() {
     }
     if s.predict > 0 {
         predict::run(&engine, s.predict, s.timing);
+    }
+    if let Some(path) = &s.user_phrases {
+        let text = std::fs::read_to_string(path).unwrap_or_else(|e| fail(&format!("{path}: {e}")));
+        for line in text.lines().filter(|l| !l.is_empty()) {
+            let (reading, word) =
+                line.split_once('\t').unwrap_or_else(|| fail("--user-phrases needs reading<tab>word"));
+            engine.add_user_phrase(word, reading).unwrap_or_else(|e| fail(&format!("{line}: {e}")));
+        }
     }
     let engine = Arc::new(engine);
     let models = load_models(&s).unwrap_or_else(|e| fail(&e));

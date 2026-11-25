@@ -84,7 +84,7 @@ enum SettingsRow {
     static let placement = "placement", appearance = "appearance", accentColor = "accentColor", motion = "motion"
     static let modeToast = "modeToast"
     static let showCorrections = "showCorrections", undoCorrection = "undoCorrection"
-    static let associatedPhrases = "associatedPhrases", outputScript = "outputScript", candidateAnchor = "candidateAnchor"
+    static let associatedPhrases = "nextWordSuggestions", outputScript = "outputScript", candidateAnchor = "candidateAnchor"
     static let showUpdateNotes = "showUpdateNotes"
     static let symbolPicker = "symbolPicker", context = "context", learning = "learning", pauseLearning = "pauseLearning"
 }

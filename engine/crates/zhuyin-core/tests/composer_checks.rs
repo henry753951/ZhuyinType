@@ -214,6 +214,19 @@ fn keys_symbols_and_tones() {
     let bare = engine("ㄧㄣ\t音\t-4\nㄩㄝˋ\t樂\t-4\nㄩㄝˋ\t越\t-3\nㄧㄣˋ\t印\t-9\nㄧㄣ ㄩㄝˋ\t音樂\t-1\n");
     assert_eq!(text(&composer_with(&bare, "upm,4", ComposerOptions::default())), "音樂");
     assert_eq!(text(&composer_with(&bare, "m,4", ComposerOptions::default())), "越");
+    // A custom word spelled without a first tone's Space stays when typing goes on (it became 徐佑老師).
+    let name = engine("ㄒㄩˊ\t徐\t-5\nㄧ\t一\t-4\nㄧㄡˋ\t佑\t-5\nㄌㄠˇ ㄕ\t老師\t-3\nㄉㄜ˙\t的\t-1\n");
+    assert_eq!(text(&composer_with(&name, "vm6uu.42k7", ComposerOptions::default())), "徐佑的");
+    name.add_user_phrase("徐禕佑", "ㄒㄩˊ ㄧ ㄧㄡˋ").unwrap();
+    for (keys, shown) in [
+        ("vm6uu.4", "徐禕佑"),
+        ("vm6u u.4", "徐禕佑"),
+        ("vm6uu.42k7", "徐禕佑的"),
+        ("vm6uu.4xl3g ", "徐禕佑老師"),
+        ("vm6u.42k7", "徐佑的"),
+    ] {
+        assert_eq!(text(&composer_with(&name, keys, ComposerOptions::default())), shown, "{keys}");
+    }
     // While the syllable is unfinished, an initial typed after its medial stays in it.
     let late = engine("ㄧ\t一\t-1\nㄐㄧㄣ\t今\t-2\n");
     assert_eq!(text(&composer_with(&late, "ur", ComposerOptions::default())), "ㄐㄧ");

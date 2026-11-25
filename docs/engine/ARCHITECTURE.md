@@ -305,7 +305,7 @@ c 的算法：把前文切詞，算每個詞在兩個模型的平均對數機率
 
 ### 9.0 聯想詞
 
-`Composer::set_associated_phrases(true)`（設定 `associatedPhrases`）後，一個鍵送出了結尾是中文字的文字、又沒有留下組字時，`composer/association.rs` 以送出後的前文歷史（`leading_history`）呼叫 `Engine::predict_after`（`prediction.rs`），把結果放進 `Presentation.candidates`，`CandidateList::associated()` 為真、`text` 是空的。安全輸入（`set_learning_suspended`）時不列出。
+`Composer::set_associated_phrases(true)`（設定 `nextWordSuggestions`）後，一個鍵送出了結尾是中文字的文字、又沒有留下組字時，`composer/association.rs` 以送出後的前文歷史（`leading_history`）呼叫 `Engine::predict_after`（`prediction.rs`），把結果放進 `Presentation.candidates`，`CandidateList::associated()` 為真、`text` 是空的。安全輸入（`set_learning_suspended`）時不列出。
 
 - 候選：語言模型在前文之後存的詞（`VocabularyLanguageModel::followers`：二元的那一組，三元模型再加上前兩個詞的那一組；兩個領域的混合模型取兩邊的聯集，以目前的比重計分），以及個人連詞在同一個前文之後的詞（`PersonalLanguageModel::followers`）。各取前 64 個。
 - 篩選：全是中文字、在詞庫中、不是「不記住」的詞；單字要 P(詞 | 前文) ≥ 5% 而且本身的機率 ≥ 0.01%，不列「的之了著地得於及與或等其」；兩個字以上 ≥ 0.1%。以設定的寫法（台／臺）去掉重複。

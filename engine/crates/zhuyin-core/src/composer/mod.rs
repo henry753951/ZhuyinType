@@ -1366,6 +1366,12 @@ impl Composer {
         self.run_tokens = decoded.syllables.len();
         self.buffer = decoded.buffer;
         self.buffer_keys = decoded.buffer_keys;
+        // The decoder keeps one history per last syllable, the cheapest: after one more syllable a custom word spelled
+        // with a first tone without Space (`ㄒㄩˊ ㄧ ㄧㄡˋ` typed vm6uu.4) would give way to the split without it.
+        if growing && self.buffer_keys.is_empty() && self.ends_in_user_phrase(&decoded.syllables) {
+            self.settle_run();
+            return true;
+        }
         // A long run settles its head, which keeps the search short.  The last syllables stay in the run, so the
         // next keys can still change how they were split.
         if self.run.len() > RUN_KEYS {
@@ -1378,6 +1384,18 @@ impl Composer {
             }
         }
         true
+    }
+
+    /// Whether the run's syllables, the last tokens before the cursor, end in a custom word (自訂詞) that has a first
+    /// tone without Space.
+    fn ends_in_user_phrase(&self, syllables: &[crate::key_decoder::Syllable]) -> bool {
+        (2..=syllables.len().min(6)).any(|count| {
+            let tail = &syllables[syllables.len() - count..];
+            tail.iter().any(|s| s.implicit) && {
+                let reading = tail.iter().map(|s| s.reading.as_str()).collect::<Vec<_>>().join(" ");
+                self.engine.has_user_phrase(&reading)
+            }
+        })
     }
 
     fn syllable_count(&self) -> usize {

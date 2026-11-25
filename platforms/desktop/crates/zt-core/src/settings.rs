@@ -18,6 +18,10 @@ use serde_json::Value;
 /// The descriptors, built into the binary.
 const REGISTRY: &str = include_str!("../../../settings.json");
 
+/// Keys no longer read, dropped with the next save.  `associatedPhrases` (送出後列出聯想詞, until 0.7.6): 0.7.7 turned it off
+/// for everyone once; turning it on again is stored as `nextWordSuggestions`.
+const RETIRED: &[&str] = &["associatedPhrases"];
+
 /// One option of a choice setting.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Choice {
@@ -149,7 +153,12 @@ impl Settings {
     pub fn open(path: Option<PathBuf>) -> Self {
         let mut unreadable = false;
         let values = match path.as_deref().map(|path| (path, read(path))) {
-            Some((_, Ok(values))) => values,
+            Some((_, Ok(mut values))) => {
+                for key in RETIRED {
+                    values.remove(*key);
+                }
+                values
+            }
             Some((path, Err(error))) => {
                 unreadable = path.exists();
                 if unreadable {
@@ -404,6 +413,21 @@ mod tests {
         let path = dir.join("settings.json");
         std::fs::write(&path, "\u{feff}{\"panelAppearance\": \"dark\"}").unwrap();
         assert_eq!(Settings::open(Some(path)).string("panelAppearance"), "dark");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn suggestions_turned_on_before_0_7_7_are_off_and_can_be_turned_on_again() {
+        let dir = std::env::temp_dir().join(format!("zt-settings-retired-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, "{\"associatedPhrases\": true, \"panelAppearance\": \"dark\"}").unwrap();
+        let settings = Settings::open(Some(path.clone()));
+        assert!(!settings.bool("nextWordSuggestions"));
+        assert_eq!(settings.string("panelAppearance"), "dark");
+        settings.set("nextWordSuggestions", Value::Bool(true)).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("associatedPhrases"));
+        assert!(Settings::open(Some(path)).bool("nextWordSuggestions"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

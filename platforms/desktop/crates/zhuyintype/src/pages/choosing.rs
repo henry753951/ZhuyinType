@@ -69,7 +69,7 @@ fn choosing_page(cx: &App) -> AnyElement {
             "依前文選字；只在記憶體中",
             if settings.bool("usesPrecedingText") { "開啟" } else { "關閉" },
         )))
-        .child(section("聯想詞").row(setting_row("associatedPhrases", cx)))
+        .child(section("聯想詞").row(setting_row("nextWordSuggestions", cx)))
         .into_any_element()
 }
 

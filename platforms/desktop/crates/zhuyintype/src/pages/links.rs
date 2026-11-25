@@ -147,7 +147,7 @@ pub fn intro_cards() -> [(&'static str, Place); 13] {
         ("整句輸入", Place::row(Page::Choosing, "轉換")),
         ("按錯鍵也能打對", typo_place()),
         ("依前文選字", Place::row(Page::Choosing, "context")),
-        ("聯想詞", Place::row(Page::Choosing, "associatedPhrases")),
+        ("聯想詞", Place::row(Page::Choosing, "nextWordSuggestions")),
         ("記住你的用法", Place::row(Page::Words, "learningEnabled")),
         ("在候選字視窗管理字詞", Place::row(Page::Words, WORD_ACTIONS)),
         ("標點與全半形", command_place("togglePunctuationWidth")),
