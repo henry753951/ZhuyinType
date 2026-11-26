@@ -1309,11 +1309,17 @@ impl Composer {
         Some(best.clone())
     }
 
+    /// The best sentence's score less the split's cost, each cost counted once: a corrected syllable's cost is in the
+    /// sentence's score already (the engine charges the correction it reads), so only the rest of the split's cost
+    /// is taken off.  Taking it twice made a corrected key lose to the same key read as one typed by mistake.
     fn split_score(&self, split: &DecodeResult, settled: &[CompositionToken]) -> f64 {
         let mut candidate = settled.to_vec();
         candidate.extend(split.syllables.iter().map(|s| CompositionToken::syllable(&s.reading, &s.keys, s.implicit)));
         let request = self.request(&candidate);
-        self.engine.sentences(&request, 1).first().map_or(f64::NEG_INFINITY, |s| s.score - split.cost)
+        self.engine
+            .sentences(&request, 1)
+            .first()
+            .map_or(f64::NEG_INFINITY, |s| s.score - (split.cost - split.corrections))
     }
 
     fn erase_from_run(&mut self) -> KeyResult {

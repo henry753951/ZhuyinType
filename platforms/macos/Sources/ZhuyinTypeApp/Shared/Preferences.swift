@@ -130,7 +130,9 @@ final class Preferences: ObservableObject {
         static let startInEnglish = "startInEnglish"
         static let learningEnabled = "learningEnabled"
         /// 「送出後列出聯想詞」: after a commit the candidate window lists likely next words.  Off by default.
-        static let associatedPhrases = "associatedPhrases"
+        /// Until 0.7.6 it was stored as `associatedPhrases`; 0.7.7 turned it off for everyone once, so that value is not
+        /// read.  Turning it on again is kept under this key.
+        static let associatedPhrases = "nextWordSuggestions"
         /// Bundle identifiers of apps that get the composition in the candidate window instead of inline.  Empty by
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"

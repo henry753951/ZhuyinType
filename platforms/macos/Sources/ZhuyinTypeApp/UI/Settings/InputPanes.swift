@@ -128,7 +128,7 @@ struct ChoosingPane: View {
                          value: preferences.usesPrecedingText ? "開啟" : "關閉", subpage: .context, anchor: SettingsRow.context)
             }
             SettingsSection("聯想詞") {
-                RegistryRow("associatedPhrases", preferences)
+                RegistryRow("nextWordSuggestions", preferences)
             }
         }
     }

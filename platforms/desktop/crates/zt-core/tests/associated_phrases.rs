@@ -22,7 +22,7 @@ fn controller(dir: &TempDir, on: bool) -> InputController {
     std::fs::write(lm.join("bigram.tsv"), "<s>\t謝謝\t-1\n謝謝\t你\t-0.5\n謝謝\t大家\t-1\n大家\t好\t-0.3\n").unwrap();
     std::fs::write(lm.join("backoff.tsv"), "").unwrap();
     let settings = Settings::open(Some(dir.join("settings.json")));
-    settings.set("associatedPhrases", Value::Bool(on)).unwrap();
+    settings.set("nextWordSuggestions", Value::Bool(on)).unwrap();
     let shortcuts = Shortcuts::new(settings.clone());
     let mut session = EngineSession::new();
     session.apply(&settings).unwrap();
@@ -57,7 +57,10 @@ fn rows(input: &InputController) -> Vec<String> {
 #[test]
 fn off_by_default_and_when_off() {
     let dir = TempDir::new();
-    assert_eq!(zt_core::settings::descriptor("associatedPhrases").map(|d| d.default.clone()), Some(Value::Bool(false)));
+    assert_eq!(
+        zt_core::settings::descriptor("nextWordSuggestions").map(|d| d.default.clone()),
+        Some(Value::Bool(false))
+    );
     let mut input = controller(&dir, false);
     thanks(&mut input);
     assert!(!input.presentation().has_list());

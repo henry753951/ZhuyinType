@@ -335,7 +335,7 @@ fn features(cx: &App) -> Vec<Feature> {
         (false, true) => "；按 ⌫ 還原修正",
         (false, false) => "",
     };
-    let associated = if settings.bool("associatedPhrases") {
+    let associated = if settings.bool("nextWordSuggestions") {
         "送出後列出常接在後面的詞，按 ↓ 進入清單再選。"
     } else {
         "開啟後，送出時列出常接在後面的詞，按 ↓ 進入清單再選。"
