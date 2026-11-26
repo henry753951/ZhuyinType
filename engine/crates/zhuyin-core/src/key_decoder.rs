@@ -56,6 +56,9 @@ pub struct DecodeResult {
     pub buffer_keys: String,
     /// The split's cost.
     pub cost: f64,
+    /// The part of `cost` that corrects syllables no reading has (`closing_cost`).  The engine charges its own
+    /// correction when a sentence reads such a syllable as another, so a sentence's score already holds it.
+    pub corrections: f64,
 }
 
 /// Costs on the keyboard channel's scale (transposition 9, extra or missing key 12.5, neighbour 11).
@@ -126,27 +129,34 @@ struct State {
     keys: String,
     last: Option<Rc<Node>>,
     cost: f64,
+    corrections: f64,
 }
 
-/// States agreeing on the unfinished syllable and the last two syllables compete; earlier differences are settled,
-/// so the search stays a beam while close alternatives survive for the language model.
+/// Finished syllables a state's signature holds: the longest word (lexicon and custom words alike).  Splits that
+/// differ inside the last word's span are told apart only by the language model, so they must reach it; merging on
+/// fewer syllables dropped the dearer one before any word was read (`ㄒㄩˊ ㄧ ㄧㄡˋ` gave way to `ㄒㄩˊ ㄧㄡˋ` once a
+/// syllable followed).
+pub const HISTORY_SYLLABLES: usize = 6;
+
+/// States agreeing on the unfinished syllable and the last `HISTORY_SYLLABLES` syllables compete; earlier differences
+/// are settled, so the search stays a beam while every split a word could tell apart survives for the language model.
 #[derive(PartialEq, Eq, Hash)]
 struct Signature {
     slots: [Option<char>; 3],
     keys: String,
-    last: Option<Rc<str>>,
-    before_last: Option<Rc<str>>,
+    history: [Option<Rc<str>>; HISTORY_SYLLABLES],
 }
 
 impl State {
     fn signature(&self) -> Signature {
-        let last = self.last.as_ref();
-        Signature {
-            slots: self.slots,
-            keys: self.keys.clone(),
-            last: last.map(|node| node.reading.clone()),
-            before_last: last.and_then(|node| node.previous.as_ref()).map(|node| node.reading.clone()),
+        let mut history: [Option<Rc<str>>; HISTORY_SYLLABLES] = Default::default();
+        let mut node = self.last.as_deref();
+        for reading in &mut history {
+            let Some(current) = node else { break };
+            *reading = Some(current.reading.clone());
+            node = current.previous.as_deref();
         }
+        Signature { slots: self.slots, keys: self.keys.clone(), history }
     }
 
     /// Every key typed is still in its slot.
@@ -207,7 +217,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
     /// The `limit` cheapest splits, cheapest first (each a different unfinished syllable or a different history).
     pub fn decode(&self, keys: &[Key], limit: usize) -> Vec<DecodeResult> {
         let mut levels: Vec<Level> = (0..=keys.len()).map(|_| Level::default()).collect();
-        levels[0].offer(State { slots: [None; 3], keys: String::new(), last: None, cost: 0.0 });
+        levels[0].offer(State { slots: [None; 3], keys: String::new(), last: None, cost: 0.0, corrections: 0.0 });
         let reorders = matches!(self.method, KeyDecoderMethod::Reorder | KeyDecoderMethod::Timed);
         let mut next = Vec::with_capacity(2);
         let mut swapped_first = Vec::with_capacity(2);
@@ -266,6 +276,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
             buffer: [None; 3],
             buffer_keys: String::new(),
             cost: f64::INFINITY,
+            corrections: 0.0,
         })
     }
 
@@ -341,6 +352,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
             keys: String::new(),
             last: Some(Rc::new(node)),
             cost: state.cost + (cost + if implicit { self.costs.implicit_boundary } else { 0.0 }),
+            corrections: state.corrections + cost,
         })
     }
 
@@ -390,7 +402,13 @@ fn result(state: &State) -> DecodeResult {
         node = current.previous.as_deref();
     }
     syllables.reverse();
-    DecodeResult { syllables, buffer: state.slots, buffer_keys: state.keys.clone(), cost: state.cost }
+    DecodeResult {
+        syllables,
+        buffer: state.slots,
+        buffer_keys: state.keys.clone(),
+        cost: state.cost,
+        corrections: state.corrections,
+    }
 }
 
 impl Drop for Node {

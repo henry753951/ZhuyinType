@@ -1269,11 +1269,6 @@ impl Engine {
         keys
     }
 
-    /// Whether some user phrase has exactly this reading.
-    pub(crate) fn has_user_phrase(&self, reading: &str) -> bool {
-        self.lock().phrase_index.get(reading).is_some_and(|words| !words.is_empty())
-    }
-
     /// Adds a user phrase.
     ///
     /// # Errors

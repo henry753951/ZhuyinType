@@ -214,7 +214,20 @@ fn keys_symbols_and_tones() {
     let bare = engine("ㄧㄣ\t音\t-4\nㄩㄝˋ\t樂\t-4\nㄩㄝˋ\t越\t-3\nㄧㄣˋ\t印\t-9\nㄧㄣ ㄩㄝˋ\t音樂\t-1\n");
     assert_eq!(text(&composer_with(&bare, "upm,4", ComposerOptions::default())), "音樂");
     assert_eq!(text(&composer_with(&bare, "m,4", ComposerOptions::default())), "越");
-    // A custom word spelled without a first tone's Space stays when typing goes on (it became 徐佑老師).
+    // A word spelled without a first tone's Space stays when typing goes on: the decoder kept one history per last
+    // two syllables, so the split that read better to the language model was gone a syllable later (徐佑老師).
+    let word = engine("ㄒㄩˊ\t徐\t-5\nㄧ\t一\t-4\nㄧㄡˋ\t佑\t-5\nㄒㄩˊ ㄧ ㄧㄡˋ\t徐禕佑\t-2\nㄉㄜ˙\t的\t-1\n");
+    for (keys, shown) in [("vm6uu.4", "徐禕佑"), ("vm6uu.42k7", "徐禕佑的"), ("vm6uu.42k72k7", "徐禕佑的的")]
+    {
+        assert_eq!(text(&composer_with(&word, keys, ComposerOptions::default())), shown, "{keys}");
+    }
+    // A neighbouring key's correction is charged once when splits are compared: the sentence's score has it, so it
+    // no longer loses to the same key read as one typed by mistake (新蘆線 typed with ㄖ for ㄒ became 因路線).
+    let near = engine(
+        "ㄒㄧㄣ\t新\t-4\nㄧㄣ\t因\t-4\nㄌㄨˊ\t蘆\t-6\nㄌㄨˋ\t路\t-4\nㄒㄧㄢˋ\t線\t-4\nㄌㄨˋ ㄒㄧㄢˋ\t路線\t-3\nㄒㄧㄣ ㄌㄨˊ ㄒㄧㄢˋ\t新蘆線\t-6\n",
+    );
+    assert_eq!(text(&composer_with(&near, "bup xj6vu04", ComposerOptions::default())), "新蘆線");
+    // The same for a custom word.
     let name = engine("ㄒㄩˊ\t徐\t-5\nㄧ\t一\t-4\nㄧㄡˋ\t佑\t-5\nㄌㄠˇ ㄕ\t老師\t-3\nㄉㄜ˙\t的\t-1\n");
     assert_eq!(text(&composer_with(&name, "vm6uu.42k7", ComposerOptions::default())), "徐佑的");
     name.add_user_phrase("徐禕佑", "ㄒㄩˊ ㄧ ㄧㄡˋ").unwrap();
