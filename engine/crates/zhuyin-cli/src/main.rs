@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use zhuyin_core::api::{
-    CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, FuzzySounds, KeyDecoderMethod, KeyInput,
-    KeyResult, PunctuationKeys, PunctuationWidth, SpaceAction, TypoTolerance,
+    CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, CorrectionUse, FuzzySounds,
+    KeyDecoderMethod, KeyInput, KeyResult, PunctuationKeys, PunctuationWidth, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::{Composer, VariantScores};
 use zhuyin_core::engine::{Engine, EngineConfig};
@@ -29,7 +29,7 @@ use zhuyin_core::swift_format::{format_double, graphemes};
 use zhuyin_core::tsv::{parse_double, parse_int};
 use zhuyin_models::{NeuralReranker, RerankerModel, SyllableModel, SyllableScorer, check_vectors};
 
-const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|standard|aggressive] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--predict N] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--user-phrases FILE] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--boundary-together COST] [--bare-boundary COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
+const USAGE: &str = "Usage: zhuyin-cli [--models DIR] [--model-server PATH] [--lexicon PATH] [--typo off|list|standard|aggressive] [--key-order auto|list|off] [--punctuation windows|mac] [--punctuation-width legacy|full|half] [--space openCandidates|commit|commitAndSpace|insertSpace] [--page-at-list-edge on|off] [--max-syllables N] [--early-commit N] [--anchor after|before] [--nbest K] [--predict N] [--sentence-boundaries on|off] [--fuzzy zh,ch,sh,en,an] [--reranker DIR [--rerank-weight W] [--exact-margin M] [--context TEXT] [--timing]] [--channel off|on|PATH [--channel-classes LIST] [--channel-single-classes LIST|none] [--channel-offset CLASS=NATS] [--channel-state CLASS=accepted|correction] [--channel-sandhi both|forward] [--channel-cap N] [--channel-max-cost NATS] [--reading-margin M] [--v3-variants standard|best|zero|typed] [--v3-variant-window NATS] [--channel-report] [--channel-table]] [--neutral-costs TONED,UNTONED] [--user-phrases FILE] [--batch [--keep-memory] [--report-nbest K] [--decoder slots|boundaries|reorder|timed] [--late-initial COST] [--boundary-together COST] [--bare-boundary COST] [--together-gap MS] [--split-margin NATS] [--hotspot on|off] | \"<keys>\"]";
 
 fn fail(message: &str) -> ! {
     let mut error = std::io::stderr();
@@ -233,13 +233,24 @@ fn parse_channel_option(s: &mut Settings, option: &str, arguments: &[String]) ->
     Some(take)
 }
 
+/// `--typo VALUE`: `list` corrects at the standard costs, in the candidate window only.
+fn set_typo(options: &mut ComposerOptions, value: &str) {
+    options.typo_list_only = value == "list";
+    options.typo_tolerance = if options.typo_list_only {
+        TypoTolerance::Standard
+    } else {
+        TypoTolerance::from_raw(value).unwrap_or_else(|| fail(USAGE))
+    };
+}
+
 fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
     let mut take = 2;
     match option {
         "--lexicon" => next_value(arguments).clone_into(&mut s.lexicon),
-        "--typo" => {
-            s.options.typo_tolerance = TypoTolerance::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
+        "--key-order" => {
+            s.options.key_order = CorrectionUse::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
         }
+        "--typo" => set_typo(&mut s.options, next_value(arguments)),
         "--punctuation" => {
             s.options.punctuation_keys =
                 PunctuationKeys::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));

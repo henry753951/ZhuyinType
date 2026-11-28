@@ -171,6 +171,9 @@ public final class Composer {
         o.max_syllables = max(0, options.maxSyllables)
         o.early_commit_syllables = max(0, options.earlyCommitSyllables)
         o.typo_tolerance = UInt32(typos[options.typoTolerance]!)
+        o.typo_list_only = options.typoListOnly
+        let orders: [CorrectionUse: Int32] = [.auto: ZT_KEY_ORDER_AUTO, .list: ZT_KEY_ORDER_LIST, .off: ZT_KEY_ORDER_OFF]
+        o.key_order = UInt32(orders[options.keyOrder]!)
         o.candidate_anchor = UInt32(options.candidateAnchor == .afterCursor ? ZT_ANCHOR_AFTER_CURSOR : ZT_ANCHOR_BEFORE_CURSOR)
         o.key_decoder = UInt32(decoders[options.keyDecoder]!)
         o.vertical_list = options.verticalList

@@ -253,6 +253,10 @@
         "label": "關閉"
       },
       {
+        "value": "list",
+        "label": "只列出"
+      },
+      {
         "value": "standard",
         "label": "標準"
       },
@@ -261,13 +265,43 @@
         "label": "積極"
       }
     ],
-    "detail": "修正按到相鄰的鍵、多按、漏按、順序與聲調",
+    "detail": "修正按到相鄰的鍵、多按、漏按與聲調",
     "details": {
       "off": "照按下的鍵解讀注音",
-      "standard": "修正按到相鄰的鍵、多按、漏按、順序與聲調",
+      "list": "照按下的鍵打出，修正過的字列在候選字清單",
+      "standard": "修正按到相鄰的鍵、多按、漏按與聲調",
       "aggressive": "比「標準」更容易採用修正"
     },
     "anchor": "typo"
+  },
+  {
+    "key": "keyOrder",
+    "title": "按鍵順序",
+    "page": "choosing",
+    "group": "按錯鍵",
+    "kind": "choice",
+    "default": "auto",
+    "options": [
+      {
+        "value": "auto",
+        "label": "自動修正"
+      },
+      {
+        "value": "list",
+        "label": "只列出"
+      },
+      {
+        "value": "off",
+        "label": "關閉"
+      }
+    ],
+    "detail": "同一個字的注音順序打錯，例如 ㄠㄔ，也打成 ㄔㄠ",
+    "details": {
+      "auto": "同一個字的注音順序打錯，例如 ㄠㄔ，也打成 ㄔㄠ",
+      "list": "照按下的順序打出，順序對的字列在候選字清單",
+      "off": "照按下的順序解讀注音"
+    },
+    "anchor": "keyOrder"
   },
   {
     "key": "readingChannel",

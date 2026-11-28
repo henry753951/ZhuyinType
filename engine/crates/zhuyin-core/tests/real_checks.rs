@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use common::TempDir;
-use zhuyin_core::api::{ComposerOptions, KeyDecoderMethod, KeyInput, PunctuationKeys, TypoTolerance};
+use zhuyin_core::api::{ComposerOptions, CorrectionUse, KeyDecoderMethod, KeyInput, PunctuationKeys, TypoTolerance};
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
 use zhuyin_core::key_channel;
@@ -209,16 +209,19 @@ fn real_lexicon_behaviour() {
         run_edit.handle_at(if key == ' ' { KeyInput::Space } else { KeyInput::Char(key) }, 2.0);
     }
     assert_eq!(text(&run_edit), "今天", "Backspace inside the run, then typing on");
-    let mut as_typed = Composer::new(
-        real.clone(),
-        ComposerOptions {
-            key_decoder: KeyDecoderMethod::Timed,
-            typo_tolerance: TypoTolerance::Off,
-            ..unlearned.clone()
-        },
-    );
+    // ㄇ typed before ㄨㄛ's tone: a key-order slip, repaired with typo correction off unless the order is off too.
+    let off = |key_order| ComposerOptions {
+        key_decoder: KeyDecoderMethod::Timed,
+        typo_tolerance: TypoTolerance::Off,
+        key_order,
+        ..unlearned.clone()
+    };
+    let mut in_order = Composer::new(real.clone(), off(CorrectionUse::Auto));
+    type_keys("jia3p7g4", &mut in_order);
+    assert_eq!(text(&in_order), "我們是", "with typo correction off, the key order is still repaired");
+    let mut as_typed = Composer::new(real.clone(), off(CorrectionUse::Off));
     type_keys("jia3p7g4", &mut as_typed);
-    assert_ne!(text(&as_typed), "我們是", "with correction off, keys are taken as typed");
+    assert_ne!(text(&as_typed), "我們是", "with both off, keys are taken as typed");
 
     let slips = open(&data);
     let before = slips.typo_alternatives("ek4").into_iter().find(|a| a.0 == "ㄍㄜˋ");

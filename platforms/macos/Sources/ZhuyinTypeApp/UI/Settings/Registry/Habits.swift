@@ -104,8 +104,7 @@ enum Habits {
         .value("candidateAnchor", .text(AnchorSetting.before.rawValue), title: "游標左邊的字"),
     ])
     static let typo = HabitGroup(id: "typo", title: "按錯鍵修正", exclusive: true, styles: TypoSetting.allCases.map {
-        .value("typoTolerance", .text($0.rawValue), title: ["關閉", "標準", "積極"][TypoSetting.allCases.firstIndex(of: $0) ?? 0],
-               detail: OptionDemos.typoSubtitle($0))
+        .value("typoTolerance", .text($0.rawValue), title: $0.label, detail: OptionDemos.typoSubtitle($0))
     })
     static let context = HabitGroup(id: "context", title: "前文", exclusive: true, styles: [
         .value("usesPrecedingText", .bool(true), title: "參考游標前的文字"), .value("usesPrecedingText", .bool(false), title: "不參考"),

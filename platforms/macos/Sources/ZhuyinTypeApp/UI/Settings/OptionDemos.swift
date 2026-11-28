@@ -108,8 +108,17 @@ enum OptionDemos {
     static func typoSubtitle(_ setting: TypoSetting) -> String {
         switch setting {
         case .off: return "照按下的鍵解讀注音"
-        case .standard: return "修正按到相鄰的鍵、多按、漏按、順序與聲調"
+        case .list: return "照按下的鍵打出，修正過的字列在候選字清單"
+        case .standard: return "修正按到相鄰的鍵、多按、漏按與聲調"
         case .aggressive: return "比「標準」更容易採用修正"
+        }
+    }
+
+    static func keyOrderSubtitle(_ setting: KeyOrderSetting) -> String {
+        switch setting {
+        case .auto: return "同一個字的注音順序打錯，例如 ㄠㄔ，也打成 ㄔㄠ"
+        case .list: return "照按下的順序打出，順序對的字列在候選字清單"
+        case .off: return "照按下的順序解讀注音"
         }
     }
 

@@ -44,6 +44,7 @@ fn corrections_page(cx: &App) -> AnyElement {
         .child(
             section("按錯鍵")
                 .row(setting_row("typoTolerance", cx).info("按錯鍵修正", |_, cx| typo_info(cx)))
+                .row(setting_row("keyOrder", cx))
                 .row(setting_row("readingChannel", cx))
                 .row(drill_row(
                     Page::Corrections,

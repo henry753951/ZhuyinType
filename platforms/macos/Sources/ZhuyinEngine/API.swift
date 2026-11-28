@@ -177,6 +177,11 @@ public enum TypoTolerance: String, Sendable, CaseIterable {
     case off, standard, aggressive
 }
 
+/// How a kind of key correction is used: in what is shown, only in the candidate list, or not at all.
+public enum CorrectionUse: String, Sendable, CaseIterable {
+    case auto, list, off
+}
+
 /// Sound pairs many speakers merge.  With a pair on, each sound also matches the other one at a small cost, so an
 /// exact match ranks first unless the other word is clearly likelier; a syllable can use one initial and one final pair.
 public struct FuzzySounds: OptionSet, Hashable, Sendable {
@@ -239,6 +244,10 @@ public struct ComposerOptions: Equatable, Sendable {
     public var earlyCommitSyllables: Int = 0
     /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
     public var typoTolerance: TypoTolerance = .standard
+    /// With a tolerance on: the composition as typed; the candidate window offers the corrections.
+    public var typoListOnly = false
+    /// Keys of one syllable typed in another order (ㄠㄔ for ㄔㄠ), apart from `typoTolerance`.
+    public var keyOrder: CorrectionUse = .auto
     public var candidateAnchor: CandidateAnchor = .afterCursor
     /// How keys typed at the end of the composition become syllables (see `KeyDecoderMethod`).
     public var keyDecoder: KeyDecoderMethod = .timed

@@ -32,7 +32,7 @@ channel.codes	1861	0640a532f1cb5cec
 channel.alternatives	7845	2ca671c95577de19
 channel.discount	785	8654fca1341640fc
 channel.hotspot	785	9e1914e9b7e452c9
-decoder	49304	4481825feb13a832
+decoder	49304	05c0ef685f00d802
 format.doubles	59994	577861679050afeb
 conversion.options	90	da8ca626b343b64e
 conversion.text	120	a518506918c27583
@@ -46,12 +46,12 @@ learning.files	2854	ae94378ca62bb4cd
 learning.export	2851	de09de09ee8efb12
 learning.import	2852	0bf0ffe208c82e74
 learning.reload	124	9aabf9a5123c976a
-composer.app	11081	f04617cbcdd4ccbc
-composer.standard-forms	11081	ec5990b1f28bd46b
-composer.legacy	11081	c45a89c0589eb7bc
-composer.other	11081	7b59210947b0f324
-composer.insert-space	11081	d831d7dc9d243963
+composer.app	11081	e85282e3d27df01a
+composer.standard-forms	11081	d1de49dd22df05b7
+composer.legacy	11081	08197c60b0c82e9c
+composer.other	11081	d2dadeac265a0b92
+composer.insert-space	11081	526c7008ceaeb91d
 # Recorded from the Rust engine (behaviour the Swift engine never had):
-composer.edge-stays	11081	d04a425021c2642f
+composer.edge-stays	11081	07920b4ea531d3cb
 # Recorded from the Rust engine, 0.4.2 (a key past max_syllables, 12 in this setup, commits the head of the composition):
 composer.commit	11081	77e7e74008f51889

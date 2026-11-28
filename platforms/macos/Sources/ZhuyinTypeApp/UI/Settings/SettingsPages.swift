@@ -77,6 +77,7 @@ enum SettingsRow {
     static let space = "space", escape = "escape", punctuationKeys = "punctuationKeys", shiftTap = "shiftTap"
     static let shiftSide = "shiftSide", startInEnglish = "startInEnglish"
     static let capsLock = "capsLock", newline = "newline", deleteWord = "deleteWord", corrections = "corrections"
+    static let keyOrder = "keyOrder"
     static let typeZhuyin = "typeZhuyin", selectPhrase = "selectPhrase", deleteAfterCommit = "deleteAfterCommit"
     static let pageKeys = "pageKeys", single = "single", zhuyinRow = "zhuyinRow", selection = "selection"
     static let layout = "layout", typo = "typo", fuzzy = "fuzzy", controlPunctuation = "controlPunctuation"

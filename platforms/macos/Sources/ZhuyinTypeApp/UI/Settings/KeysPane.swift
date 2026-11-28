@@ -40,8 +40,8 @@ extension Preferences {
         case .zhuyinRowClick where !showsZhuyinHint:
             return KeyAvailability(note: "「顯示注音」已關閉，候選字視窗沒有注音列",
                                    place: SettingsPlace(.candidates, row: SettingsRow.showsZhuyin), linkTitle: "視窗與提示")
-        case .correctionsList where typoTolerance == .off && fuzzySounds.isEmpty:
-            return KeyAvailability(note: "「按錯鍵修正」關閉且沒有開啟模糊音：這個鍵開啟一般清單",
+        case .correctionsList where typoTolerance == .off && keyOrder != .list && fuzzySounds.isEmpty:
+            return KeyAvailability(note: "「按錯鍵修正」關閉、「按鍵順序」不是只列出，也沒有開啟模糊音：這個鍵開啟一般清單",
                                    place: SettingsPlace(.corrections, row: SettingsRow.typo), linkTitle: "修正")
         default:
             return nil

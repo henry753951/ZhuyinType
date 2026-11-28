@@ -35,12 +35,13 @@ pub fn availability(key: &str, cx: &App) -> Option<Availability> {
         }),
         "feature.correctionsList"
             if settings.string("typoTolerance") == "off"
+                && settings.string("keyOrder") != "list"
                 && !["zZh", "cCh", "sSh", "enEng", "anAng"]
                     .iter()
                     .any(|pair| settings.bool(&format!("fuzzy.{pair}"))) =>
         {
             Some(Availability {
-                note: "「按錯鍵修正」關閉且沒有開啟模糊音：這個鍵開啟一般清單",
+                note: "「按錯鍵修正」關閉、「按鍵順序」不是只列出，也沒有開啟模糊音：這個鍵開啟一般清單",
                 place: links::typo_place(),
                 link_title: "修正",
             })
