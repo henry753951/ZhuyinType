@@ -4,8 +4,8 @@
 use std::ffi::{c_char, c_void};
 
 use zhuyin_core::api::{
-    CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput, KeyResult,
-    PunctuationKeys, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
+    CandidateAnchor, CharacterForms, CharacterModelSyllable, ComposerOptions, CorrectionUse, KeyDecoderMethod,
+    KeyInput, KeyResult, PunctuationKeys, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::{Composer, VariantScores};
 
@@ -176,6 +176,12 @@ pub const ZT_FORMS_STANDARD: u32 = 1;
 pub const ZT_PUNCTUATION_WINDOWS: u32 = 0;
 /// `ZtComposerOptions::punctuation_keys`: as macOS Zhuyin.
 pub const ZT_PUNCTUATION_MAC: u32 = 1;
+/// `ZtComposerOptions::key_order`: keys of a syllable put in order in the composition.
+pub const ZT_KEY_ORDER_AUTO: u32 = 0;
+/// `ZtComposerOptions::key_order`: the composition as typed; the candidate window offers the keys in order.
+pub const ZT_KEY_ORDER_LIST: u32 = 1;
+/// `ZtComposerOptions::key_order`: keys read as typed.
+pub const ZT_KEY_ORDER_OFF: u32 = 2;
 
 /// The composer's options (Swift's `ComposerOptions`); start from [`zt_composer_options_default`].
 #[repr(C)]
@@ -209,6 +215,10 @@ pub struct ZtComposerOptions {
     pub early_commit_syllables: usize,
     /// The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting.
     pub undo_correction_with_backspace: bool,
+    /// With a typo tolerance on: the composition as typed; the candidate window offers the corrections.
+    pub typo_list_only: bool,
+    /// One of `ZT_KEY_ORDER_*`.
+    pub key_order: u32,
 }
 
 static DEFAULT_SELECTION_KEYS: &[u8] = b"123456789\0";
@@ -232,6 +242,8 @@ pub extern "C" fn zt_composer_options_default() -> ZtComposerOptions {
         punctuation_keys: options.punctuation_keys as u32,
         early_commit_syllables: options.early_commit_syllables,
         undo_correction_with_backspace: options.undo_correction_with_backspace,
+        typo_list_only: options.typo_list_only,
+        key_order: options.key_order as u32,
     }
 }
 
@@ -247,6 +259,7 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
         || !pick(o.key_decoder, 4)
         || !pick(o.character_forms, 2)
         || !pick(o.punctuation_keys, 2)
+        || !pick(o.key_order, CorrectionUse::ALL.len())
     {
         return None;
     }
@@ -268,6 +281,8 @@ unsafe fn composer_options(options: *const ZtComposerOptions) -> Option<Composer
         punctuation_keys: PunctuationKeys::ALL[o.punctuation_keys as usize],
         early_commit_syllables: o.early_commit_syllables,
         undo_correction_with_backspace: o.undo_correction_with_backspace,
+        typo_list_only: o.typo_list_only,
+        key_order: CorrectionUse::ALL[o.key_order as usize],
     })
 }
 

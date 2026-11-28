@@ -70,6 +70,11 @@ class CorrectionLogTest(unittest.TestCase):
 
     def test_punctuation_width_and_historical_recordings(self) -> None:
         self.assertNotIn("--punctuation-width", corrections.cli_options({}))
+        self.assertNotIn("--key-order", corrections.cli_options({}))
+        self.assertIn("--key-order", corrections.cli_options({"typo_tolerance": "off"}))
+        order = corrections.cli_options({"typo_tolerance": "off", "key_order": "auto"})
+        self.assertNotIn("--key-order", order)
+        self.assertEqual(corrections.cli_options({"key_order": "list"})[-2:], ["--key-order", "list"])
         for width in ("legacy", "full", "half"):
             options = corrections.cli_options({"punctuation_width": width})
             self.assertEqual(options[options.index("--punctuation-width") + 1], width)

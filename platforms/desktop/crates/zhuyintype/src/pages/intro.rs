@@ -413,6 +413,7 @@ impl Render for IntroPage {
         let punctuation = if settings.string("punctuationKeys") == "mac" { "macOS" } else { "Windows" };
         let typo = match settings.string("typoTolerance").as_str() {
             "off" => "關閉",
+            "list" => "只列出",
             "aggressive" => "積極",
             _ => "標準",
         };

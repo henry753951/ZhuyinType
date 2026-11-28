@@ -16,8 +16,8 @@ use std::time::Instant;
 use anyhow::{Context as _, Result, anyhow, ensure};
 use serde_json::{Map, Value};
 use zhuyin_core::api::{
-    CandidateAnchor, CharacterForms, ComposerOptions, FuzzySounds, KeyInput, PunctuationKeys, PunctuationWidth,
-    SpaceAction, TypoTolerance,
+    CandidateAnchor, CharacterForms, ComposerOptions, CorrectionUse, FuzzySounds, KeyInput, PunctuationKeys,
+    PunctuationWidth, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::{CandidateAction, Composer};
 use zhuyin_core::engine::{Engine, EngineConfig, PhraseKey};
@@ -257,7 +257,10 @@ impl Values {
             },
             escape_clears_composition: self.string("escape") == "composition",
             learning_enabled: self.bool("learningEnabled", true),
+            // `list`: corrections in the candidate window only, at the standard costs.
             typo_tolerance: TypoTolerance::from_raw(self.string("typoTolerance")).unwrap_or(TypoTolerance::Standard),
+            typo_list_only: self.string("typoTolerance") == "list",
+            key_order: CorrectionUse::from_raw(self.string("keyOrder")).unwrap_or_default(),
             candidate_anchor: if self.string("candidateAnchor") == "before" {
                 CandidateAnchor::BeforeCursor
             } else {

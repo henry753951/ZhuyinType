@@ -21,6 +21,8 @@ extension PunctuationWidth {
 /// Engine settings that change what the keys produce, recorded with each composition.
 struct CorrectionSettings: Encodable, Equatable {
     var typoTolerance = "standard"
+    /// 「按鍵順序」 (auto, list, off); absent in recordings made before it was its own setting.
+    var keyOrder = "auto"
     /// zh, ch, sh, en, an: the fuzzy pairs that are on (zhuyin-cli --fuzzy names).
     var fuzzySounds: [String] = []
     var punctuationKeys = "windows"
@@ -39,7 +41,8 @@ struct CorrectionSettings: Encodable, Equatable {
     init() {}
 
     init(options: ComposerOptions, fuzzy: FuzzySounds, precedingText: Bool, readingChannel: Bool = true) {
-        typoTolerance = options.typoTolerance.rawValue
+        typoTolerance = options.typoListOnly && options.typoTolerance != .off ? "list" : options.typoTolerance.rawValue
+        keyOrder = options.keyOrder.rawValue
         fuzzySounds = [(FuzzySounds.zZh, "zh"), (.cCh, "ch"), (.sSh, "sh"), (.enEng, "en"), (.anAng, "an")]
             .filter { fuzzy.contains($0.0) }.map(\.1)
         punctuationKeys = options.punctuationKeys.rawValue

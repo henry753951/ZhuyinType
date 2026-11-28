@@ -15,10 +15,20 @@ enum ShiftToggle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// 「按錯鍵修正」: `list` corrects at the standard costs, in the candidate window only.
 enum TypoSetting: String, CaseIterable, Identifiable {
-    case off, standard, aggressive
+    case off, list, standard, aggressive
     var id: String { rawValue }
     var tolerance: TypoTolerance { TypoTolerance(rawValue: rawValue) ?? .standard }
+    var label: String { ["關閉", "只列出", "標準", "積極"][Self.allCases.firstIndex(of: self) ?? 2] }
+}
+
+/// 「按鍵順序」.
+enum KeyOrderSetting: String, CaseIterable, Identifiable {
+    case auto, list, off
+    var id: String { rawValue }
+    var use: CorrectionUse { CorrectionUse(rawValue: rawValue) ?? .auto }
+    var label: String { ["自動修正", "只列出", "關閉"][Self.allCases.firstIndex(of: self) ?? 0] }
 }
 
 enum AnchorSetting: String, CaseIterable, Identifiable {
@@ -89,6 +99,7 @@ final class Preferences: ObservableObject {
             Key.associatedPhrases: false,
             Key.popupCompositionApps: [String](),
             Key.typoTolerance: TypoSetting.standard.rawValue,
+            Key.keyOrder: KeyOrderSetting.auto.rawValue,
             Key.candidateAnchor: AnchorSetting.after.rawValue,
             Key.fuzzySounds: 0,
             Key.readingChannel: true,
@@ -137,6 +148,7 @@ final class Preferences: ObservableObject {
         /// default: every app, Electron ones included, gets inline marked text unless the user adds it here.
         static let popupCompositionApps = "popupCompositionApps"
         static let typoTolerance = "typoTolerance"
+        static let keyOrder = "keyOrder"
         static let candidateAnchor = "candidateAnchor"
         static let fuzzySounds = "fuzzySounds"
         /// 「接受常見的其他讀法」: the engine's reading channel (有邊讀邊, 輕聲 typed with its tone, Taiwan readings
@@ -174,7 +186,7 @@ final class Preferences: ObservableObject {
 
         static let all = [candidateLayout, candidateFontSize, selectionKeys, legacySpaceOpensCandidates, spaceAction,
                           escapeClearsComposition, shiftToggle, showModeToast, startInEnglish, learningEnabled,
-                          popupCompositionApps, typoTolerance, candidateAnchor, fuzzySounds, readingChannel, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
+                          popupCompositionApps, typoTolerance, keyOrder, candidateAnchor, fuzzySounds, readingChannel, usesPrecedingText, shortcuts, keyBindings, keyBindingsVersion, pageAtListEdge,
                           characterForms, outputScript, punctuationKeys, candidatesPerPage, candidatePlacement, candidateDensity,
                           showsZhuyinHint, showsAnnotations, showsListSwitches, panelAppearance, panelAnimation,
                           recordsCorrections, recordsCorrectionContext, disabledKeyFeatures, lastShiftSide,
@@ -308,6 +320,11 @@ final class Preferences: ObservableObject {
     var typoTolerance: TypoSetting {
         get { TypoSetting(rawValue: defaults.string(forKey: Key.typoTolerance) ?? "") ?? .standard }
         set { defaults.set(newValue.rawValue, forKey: Key.typoTolerance); changed() }
+    }
+
+    var keyOrder: KeyOrderSetting {
+        get { KeyOrderSetting(rawValue: defaults.string(forKey: Key.keyOrder) ?? "") ?? .auto }
+        set { defaults.set(newValue.rawValue, forKey: Key.keyOrder); changed() }
     }
     var characterForms: CharacterForms {
         get { CharacterForms(rawValue: defaults.string(forKey: Key.characterForms) ?? "") ?? .common }
@@ -536,6 +553,8 @@ final class Preferences: ObservableObject {
         o.escapeClearsComposition = escapeClearsComposition
         o.learningEnabled = learningEnabled
         o.typoTolerance = typoTolerance.tolerance
+        o.typoListOnly = typoTolerance == .list
+        o.keyOrder = keyOrder.use
         o.candidateAnchor = candidateAnchor == .after ? .afterCursor : .beforeCursor
         o.verticalList = candidateLayout == .vertical
         o.characterForms = characterForms

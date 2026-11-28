@@ -146,6 +146,7 @@ struct CorrectionsPane: View {
             SettingsSection("按錯鍵") {
                 RegistryRow("typoTolerance", preferences, accessory: .info(title: "按錯鍵修正", content: AnyView(TypoInfo(
                     current: preferences.typoTolerance, correctionsKey: CurrentKeys(preferences).text(.correctionsList)))))
+                RegistryRow("keyOrder", preferences)
                 RegistryRow("readingChannel", preferences)
                 DrillRow(model: model, title: "模糊音", subtitle: "ㄗ／ㄓ、ㄣ／ㄥ 等容易混的音",
                          value: fuzzy == 0 ? "關閉" : "已開啟 \(fuzzy) 項", subpage: .fuzzy, anchor: SettingsRow.fuzzy)

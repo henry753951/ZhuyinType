@@ -170,6 +170,15 @@
 // `ZtComposerOptions::punctuation_keys`: as macOS Zhuyin.
 #define ZT_PUNCTUATION_MAC 1
 
+// `ZtComposerOptions::key_order`: keys of a syllable put in order in the composition.
+#define ZT_KEY_ORDER_AUTO 0
+
+// `ZtComposerOptions::key_order`: the composition as typed; the candidate window offers the keys in order.
+#define ZT_KEY_ORDER_LIST 1
+
+// `ZtComposerOptions::key_order`: keys read as typed.
+#define ZT_KEY_ORDER_OFF 2
+
 // Each syllable's candidate characters, passed to a character scorer hook; valid during the callback.  Read with
 // the `zt_candidate_rows_*` functions or hand it to
 // `zt_syllable_scorer_scores_rows`.
@@ -225,6 +234,10 @@ typedef struct {
   size_t early_commit_syllables;
   // The first ⌫ after a key that made a correction appear converts its keys as typed instead of deleting.
   bool undo_correction_with_backspace;
+  // With a typo tolerance on: the composition as typed; the candidate window offers the corrections.
+  bool typo_list_only;
+  // One of `ZT_KEY_ORDER_*`.
+  uint32_t key_order;
 } ZtComposerOptions;
 
 // What a key did (Swift's `KeyResult`).

@@ -380,6 +380,39 @@ impl TypoTolerance {
     }
 }
 
+/// How a kind of key correction is used: in what is shown, only in the candidate list, or not at all.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum CorrectionUse {
+    /// The composition shows the corrected reading.
+    #[default]
+    Auto,
+    /// The composition is as typed; the candidate window offers the correction.
+    List,
+    /// Keys are read as typed.
+    Off,
+}
+
+impl CorrectionUse {
+    /// Every option, in declaration order.
+    pub const ALL: [CorrectionUse; 3] = [CorrectionUse::Auto, CorrectionUse::List, CorrectionUse::Off];
+
+    /// The name used by settings and the command line (`auto`, `list`, `off`).
+    #[must_use]
+    pub fn raw_value(self) -> &'static str {
+        match self {
+            CorrectionUse::Auto => "auto",
+            CorrectionUse::List => "list",
+            CorrectionUse::Off => "off",
+        }
+    }
+
+    /// The option named `raw` (see [`raw_value`](Self::raw_value)).
+    #[must_use]
+    pub fn from_raw(raw: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|value| value.raw_value() == raw)
+    }
+}
+
 /// Sound pairs many speakers merge.  With a pair on, each sound also matches the other one at a small cost, so an
 /// exact match ranks first unless the other word is clearly likelier; a syllable can use one initial and one final
 /// pair.  A bit set with the same raw values as the Swift `OptionSet`.
@@ -646,8 +679,13 @@ pub struct ComposerOptions {
     /// 0: off.  Otherwise a typing key that makes the composition longer than this many syllables first commits
     /// everything up to the last sentence-ending punctuation (。！？…), if there is one before the cursor.
     pub early_commit_syllables: usize,
-    /// Keyboard typo correction; aggressive uses 70% of standard channel costs.
+    /// Keyboard typo correction (a neighbouring key, an extra or missing key, the tone); aggressive uses 70% of
+    /// standard channel costs.
     pub typo_tolerance: TypoTolerance,
+    /// With a tolerance on: the composition is as typed and the candidate window offers the corrections.
+    pub typo_list_only: bool,
+    /// Keys of one syllable typed in another order (`ㄠㄔ` for `ㄔㄠ`), apart from `typo_tolerance`.
+    pub key_order: CorrectionUse,
     /// Which side of the cursor the candidate window is for.
     pub candidate_anchor: CandidateAnchor,
     /// How keys typed at the end of the composition become syllables.
@@ -670,6 +708,12 @@ pub struct ComposerOptions {
 }
 
 impl ComposerOptions {
+    /// The typo tolerance of what is shown: off when the corrections are only listed.
+    #[must_use]
+    pub fn shown_typo_tolerance(&self) -> TypoTolerance {
+        if self.typo_list_only { TypoTolerance::Off } else { self.typo_tolerance }
+    }
+
     /// Space opens the candidate window (true) or commits the composition (false).
     #[must_use]
     pub fn space_opens_candidates(&self) -> bool {
@@ -692,6 +736,8 @@ impl Default for ComposerOptions {
             max_syllables: 60,
             early_commit_syllables: 0,
             typo_tolerance: TypoTolerance::Standard,
+            typo_list_only: false,
+            key_order: CorrectionUse::Auto,
             candidate_anchor: CandidateAnchor::AfterCursor,
             key_decoder: KeyDecoderMethod::Timed,
             vertical_list: true,
@@ -713,6 +759,7 @@ mod tests {
         assert_eq!(options.punctuation_keys, PunctuationKeys::Windows, "Windows punctuation keys by default");
         assert_eq!(options.typo_tolerance, TypoTolerance::Standard, "standard typo tolerance is the public default");
         assert_eq!(options.key_decoder, KeyDecoderMethod::Timed);
+        assert_eq!((options.typo_list_only, options.key_order), (false, CorrectionUse::Auto));
         assert_eq!(options.selection_keys.len(), 9);
         assert_eq!(options.max_syllables, 60);
         assert_eq!(options.early_commit_syllables, 0, "no early commit by default");

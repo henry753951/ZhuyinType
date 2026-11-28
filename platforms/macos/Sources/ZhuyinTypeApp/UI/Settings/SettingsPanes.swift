@@ -56,11 +56,11 @@ struct TypoInfo: View {
         VStack(alignment: .leading, spacing: 12) {
             MiniDemo(frames: OptionDemos.typo(correctionsKey: correctionsKey), restingFrame: 2, pinned: DemoPinning.mini)
             VStack(alignment: .leading, spacing: 6) {
-                ForEach([TypoSetting.off, .standard, .aggressive]) { setting in
+                ForEach(TypoSetting.allCases) { setting in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(setting == .off ? "關閉" : setting == .standard ? "標準" : "積極")
+                        Text(setting.label)
                             .fontWeight(setting == current ? .semibold : .regular)
-                            .frame(width: 34, alignment: .leading)
+                            .frame(width: 48, alignment: .leading)
                         Text(OptionDemos.typoSubtitle(setting))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

@@ -29,8 +29,7 @@ struct IntroPane: View {
                            place: SettingsLinks.Summary.space)
                 SummaryRow(title: "標點按法", value: preferences.punctuationKeys == .windows ? "Windows" : "macOS",
                            place: SettingsLinks.Summary.punctuation)
-                SummaryRow(title: "按錯鍵修正", value: ["關閉", "標準", "積極"][[TypoSetting.off, .standard, .aggressive]
-                    .firstIndex(of: preferences.typoTolerance) ?? 1], place: SettingsLinks.Summary.typo)
+                SummaryRow(title: "按錯鍵修正", value: preferences.typoTolerance.label, place: SettingsLinks.Summary.typo)
                 SummaryRow(title: "中英切換", value: CurrentKeys(preferences).modeKey.map { "按 \($0)" } ?? "不使用",
                            place: SettingsLinks.Summary.mode)
             }

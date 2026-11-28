@@ -117,9 +117,13 @@ impl KeyItem {
             "feature.zhuyinRowClick" if !settings.bool("showsZhuyinHint") => {
                 Some(Availability { note: "「顯示注音」已關閉，候選字視窗沒有注音列" })
             }
-            "feature.correctionsList" if settings.string("typoTolerance") == "off" && !fuzzy_on(settings) => {
+            "feature.correctionsList"
+                if settings.string("typoTolerance") == "off"
+                    && settings.string("keyOrder") != "list"
+                    && !fuzzy_on(settings) =>
+            {
                 Some(Availability {
-                    note: "「按錯鍵修正」關閉且沒有開啟模糊音：這個鍵開啟一般清單"
+                    note: "「按錯鍵修正」關閉、「按鍵順序」不是只列出，也沒有開啟模糊音：這個鍵開啟一般清單",
                 })
             }
             _ => None,

@@ -27,7 +27,7 @@ impl Composer {
             if self.tokens[start].reading().is_none() {
                 continue;
             }
-            for m in self.engine.matches(&self.tokens, start, self.options.typo_tolerance) {
+            for m in self.engine.matches(&self.tokens, start, self.options.shown_typo_tolerance()) {
                 let prior = m.entry.logp + m.entry.reading_prior - m.entry.penalty;
                 for (offset, character) in graphemes(&m.entry.word).into_iter().enumerate() {
                     if start + offset >= count {

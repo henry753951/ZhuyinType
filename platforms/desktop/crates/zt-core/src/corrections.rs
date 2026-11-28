@@ -76,6 +76,7 @@ pub fn correction_settings(settings: &Settings, punctuation_width: Option<Punctu
     };
     let mut object = Map::new();
     object.insert("typo_tolerance".into(), settings.string("typoTolerance").into());
+    object.insert("key_order".into(), settings.string("keyOrder").into());
     object.insert("fuzzy_sounds".into(), Value::Array(fuzzy));
     object.insert("punctuation_keys".into(), settings.string("punctuationKeys").into());
     if let Some(width) = punctuation_width {

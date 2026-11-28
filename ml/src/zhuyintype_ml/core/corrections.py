@@ -91,6 +91,12 @@ def cli_options(settings: dict[str, Any]) -> list[str]:
         "--forms",
         str(settings.get("character_forms", "common")),
     ]
+    # 「按鍵順序」, recorded from 0.7.8 on.  Before, it came with 「按錯鍵修正」: off read the keys as typed.
+    key_order = settings.get("key_order", "off" if settings.get("typo_tolerance") == "off" else "auto")
+    if key_order not in ("auto", "list", "off"):
+        raise ValueError("unknown key order in correction settings")
+    if key_order != "auto":
+        options += ["--key-order", key_order]
     fuzzy = [name for name in settings.get("fuzzy_sounds", []) if name in FUZZY]
     # 「接受常見的其他讀法」: zhuyin-cli --models turns the reading channel on as the app does; a record made with it
     # off replays with it off.

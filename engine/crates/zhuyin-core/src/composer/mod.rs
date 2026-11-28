@@ -6,6 +6,7 @@
 
 mod association;
 mod candidates;
+mod key_order;
 mod scoring;
 mod word_actions;
 pub use word_actions::CandidateAction;
@@ -18,12 +19,12 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::api::{
-    Candidate, CandidateAnchor, CandidateList, CharacterModelSyllable, ComposerOptions, KeyDecoderMethod, KeyInput,
-    KeyResult, Presentation, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
+    Candidate, CandidateAnchor, CandidateList, CharacterModelSyllable, ComposerOptions, CorrectionUse,
+    KeyDecoderMethod, KeyInput, KeyResult, Presentation, PunctuationWidth, ScoredSentence, SpaceAction, TypoTolerance,
 };
 use crate::conversion::{CharacterScores, CompositionToken, ConversionCache, ConvertedWord, FixedWord, Request};
 use crate::engine::{CommittedWord, Engine, Match};
-use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder, Syllable};
+use crate::key_decoder::{Costs, DecodeResult, Key, KeyDecoder, Repairs, Syllable};
 use crate::keyboard;
 use crate::language_model::{LanguageModel, LanguageModelHistory};
 use crate::lexicon::swift_max;
@@ -70,6 +71,13 @@ fn settled_head(run: &[Key], syllables: &[Syllable]) -> Option<(usize, usize)> {
         }
     }
     best
+}
+
+/// Keys a split takes, the unfinished syllable's included (an implicit syllable's Space was not typed).
+fn keys_used(split: &DecodeResult) -> usize {
+    let syllables: usize =
+        split.syllables.iter().map(|s| s.keys.chars().count() - usize::from(s.implicit && s.keys.ends_with(' '))).sum();
+    syllables + split.buffer_keys.chars().count()
 }
 
 /// The character model's cost bucket for a correction of this cost: the keyboard channel's and the reading
@@ -244,6 +252,8 @@ pub struct Composer {
     predictions: Option<association::Suggestions>,
     /// The last word action from the candidate window, until undone or replaced by the next.
     word_undo: Option<crate::engine::WordUndo>,
+    /// The repaired key order the open candidate window offers (`key_order` listing it only).
+    order_choice: Option<key_order::OrderChoice>,
 }
 
 /// What a composition is made of, to put it back after the backtick key (Zhuyin as typed).
@@ -340,6 +350,7 @@ impl Composer {
             reverted: false,
             associated_phrases: false,
             predictions: None,
+            order_choice: None,
         }
     }
 
@@ -395,7 +406,10 @@ impl Composer {
     /// Changes the options: a change closes the candidate window and redraws.
     pub fn set_options(&mut self, options: ComposerOptions) {
         let old = std::mem::replace(&mut self.options, options);
-        if self.options.typo_tolerance != old.typo_tolerance {
+        if self.options.typo_tolerance != old.typo_tolerance
+            || self.options.typo_list_only != old.typo_list_only
+            || self.options.key_order != old.key_order
+        {
             self.conversion_dirty = true;
         }
         if self.options != old {
@@ -516,7 +530,7 @@ impl Composer {
     }
 
     fn request<'a>(&'a self, tokens: &'a [CompositionToken]) -> Request<'a> {
-        let mut request = Request::new(tokens, &self.fixed, self.options.typo_tolerance);
+        let mut request = Request::new(tokens, &self.fixed, self.options.shown_typo_tolerance());
         request.start = self.leading_history;
         request
     }
@@ -981,6 +995,12 @@ impl Composer {
             debug_assert!(self.invariants_hold());
             return KeyResult::CONSUMED;
         };
+        if let Some(order) = self.order_choice.take_if(|order| order.word == choice) {
+            self.apply_order_choice(&order);
+            self.close_candidates();
+            self.refresh();
+            return KeyResult::CONSUMED;
+        }
         if choice.reading.is_empty() {
             self.fixed.retain(|f| !overlaps(&f.range, &choice.range));
             self.tokens[choice.range.start] = CompositionToken::Literal(choice.text.clone());
@@ -1255,11 +1275,21 @@ impl Composer {
     /// the model sees it ([`VariantScores`] says how it is scored).
     // One function, as in Swift, with the reading channel's additions in place.
     /// The run's split: the decoder's cheapest, unless another split close in cost (as finished, with as many
-    /// syllables or, when both are finished, one more) reads better to the language model.  Never one with fewer: the model prefers shorter
-    /// sentences, and such a split drops a character that was typed (docs/engine/MODEL.md §11).
+    /// syllables or, when both are finished, one more) reads better to the language model.  One with fewer only when it
+    /// takes every key typed: the model prefers shorter sentences, and a split that leaves a key out drops a character
+    /// that was typed (docs/engine/MODEL.md §11), while one that puts a syllable's keys in order does not.
     fn best_split(&self) -> Option<DecodeResult> {
-        let tolerance = self.options.typo_tolerance;
-        let method = if tolerance == TypoTolerance::Off
+        let settled = &self.tokens[..self.tokens.len() - self.run_tokens];
+        self.split(&self.run, settled, self.options.key_order == CorrectionUse::Auto)
+    }
+
+    /// The best split of `keys` typed after `settled` (see [`best_split`](Self::best_split)).  `order`: keys of a
+    /// syllable may be in another order.  Typos are corrected as the composition shows them.
+    fn split(&self, keys: &[Key], settled: &[CompositionToken], order: bool) -> Option<DecodeResult> {
+        let tolerance = self.options.shown_typo_tolerance();
+        let repairs = Repairs { order, extra_keys: tolerance != TypoTolerance::Off };
+        let method = if !repairs.order
+            && !repairs.extra_keys
             && matches!(self.options.key_decoder, KeyDecoderMethod::Reorder | KeyDecoderMethod::Timed)
         {
             KeyDecoderMethod::Boundaries
@@ -1275,8 +1305,9 @@ impl Composer {
                 return None;
             }
             engine.alternatives(keys).first().map(|a| a.cost * tolerance.cost_multiplier())
-        });
-        let splits = decoder.decode(&self.run, 6);
+        })
+        .with_repairs(repairs);
+        let splits = decoder.decode(keys, 6);
         let cheapest = splits.first()?;
         if !cheapest.cost.is_finite() {
             return None;
@@ -1284,19 +1315,22 @@ impl Composer {
         // With an unfinished syllable the model sees fewer syllables of one split than of the other, so they are
         // compared only between as many.
         let most = cheapest.syllables.len() + usize::from(cheapest.buffer_keys.is_empty());
+        // Fewer syllables only when keys are put in order and every key typed is in them (`ㄠㄔ ㄢㄗˋ` read as
+        // `ㄔㄠ ㄗㄢˋ`), not a key left out.
         let rivals: Vec<&DecodeResult> = splits
             .iter()
             .filter(|s| {
                 s.cost.is_finite()
                     && s.cost <= cheapest.cost + self.tuning.split_margin
-                    && (cheapest.syllables.len()..=most).contains(&s.syllables.len())
+                    && (s.syllables.len() <= most
+                        && (s.syllables.len() >= cheapest.syllables.len()
+                            || (repairs.order && keys_used(s) == keys.len())))
                     && s.buffer_keys.is_empty() == cheapest.buffer_keys.is_empty()
             })
             .collect();
         if rivals.len() <= 1 || self.options.key_decoder == KeyDecoderMethod::Slots {
             return Some(cheapest.clone());
         }
-        let settled = &self.tokens[..self.tokens.len() - self.run_tokens];
         let mut best = rivals[0];
         let mut best_score = self.split_score(best, settled);
         for &rival in &rivals[1..] {
@@ -1505,7 +1539,7 @@ impl Composer {
         let keys = format!("{}{tone_key}", self.buffer_keys);
         if self.engine.is_valid_syllable(&reading)
             || (allowing_typo
-                && self.options.typo_tolerance != TypoTolerance::Off
+                && self.options.shown_typo_tolerance() != TypoTolerance::Off
                 && !self.engine.alternatives(&keys).is_empty())
         {
             self.insert(CompositionToken::syllable(&reading, &keys, false));
@@ -1802,7 +1836,9 @@ impl Composer {
     }
 
     fn corrections_available(&self) -> bool {
-        self.options.typo_tolerance != TypoTolerance::Off || !self.engine.fuzzy_sounds().is_empty()
+        self.options.typo_tolerance != TypoTolerance::Off
+            || self.options.key_order == CorrectionUse::List
+            || !self.engine.fuzzy_sounds().is_empty()
     }
 
     /// The list for the span at the cursor: words for the keys as typed, longest spans first, each span ranked in
@@ -1884,7 +1920,7 @@ impl Composer {
             all_matches.extend(restored);
             let mut ranked: Vec<(&Match, f64)> = all_matches
                 .iter()
-                .filter(|m| tolerant || m.annotation.is_none())
+                .filter(|m| tolerant || self.options.typo_list_only || m.annotation.is_none())
                 .map(|m| (m, self.engine.score(&m.entry, &reading, history)))
                 .collect();
             let compare = |a: &(&Match, f64), b: &(&Match, f64)| {
@@ -1953,11 +1989,18 @@ impl Composer {
                 }
             }
         }
+        // Keys in another order, when only listed, come right after what is shown: nothing else offers them.
+        self.order_choice =
+            if self.options.key_order == CorrectionUse::List { self.order_choice(target) } else { None };
+        let order = self.order_choice.as_ref().map(|o| o.word.clone());
         // Two forms of one word (臺北, 台北) are shown once, in the preferred form.
         let forms = self.options.character_forms;
         let mut choices: Vec<FixedWord> = vec![];
-        let ordered = head.into_iter().chain(if tolerant {
+        let ordered = head.into_iter().chain(order).chain(if tolerant {
             corrected.into_iter().chain(exact).collect::<Vec<_>>()
+        } else if self.options.typo_list_only {
+            // Nothing is corrected as shown, so the list offers the corrections after the words as typed.
+            exact.into_iter().chain(corrected).collect()
         } else {
             exact
         });

@@ -63,7 +63,7 @@ enum HealthSettings {
             Key.spaceAction: raw(SpaceAction.self), Key.candidatePlacement: raw(CandidatePlacement.self),
             Key.candidateDensity: raw(CandidateDensity.self), Key.panelAppearance: raw(PanelAppearance.self),
             Key.accentColor: raw(AccentColorSetting.self), Key.shiftToggle: raw(ShiftToggle.self),
-            Key.typoTolerance: raw(TypoSetting.self), Key.candidateAnchor: raw(AnchorSetting.self),
+            Key.typoTolerance: raw(TypoSetting.self), Key.keyOrder: raw(KeyOrderSetting.self), Key.candidateAnchor: raw(AnchorSetting.self),
             Key.characterForms: raw(CharacterForms.self), Key.outputScript: raw(OutputScript.self),
             Key.punctuationKeys: raw(PunctuationKeys.self),
         ]

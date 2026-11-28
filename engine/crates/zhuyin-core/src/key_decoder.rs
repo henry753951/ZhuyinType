@@ -112,6 +112,22 @@ impl Default for Costs {
     }
 }
 
+/// Which repairs `Reorder` and `Timed` make, so each kind of correction can be turned off alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Repairs {
+    /// Keys of a syllable in another order: two neighbouring keys swapped, an initial typed after its final.  Off,
+    /// an initial after its final is priced as `Boundaries` prices it.
+    pub order: bool,
+    /// An extra key skipped.
+    pub extra_keys: bool,
+}
+
+impl Default for Repairs {
+    fn default() -> Self {
+        Self { order: true, extra_keys: true }
+    }
+}
+
 /// States kept per key position.
 pub const BEAM_WIDTH: usize = 24;
 
@@ -130,6 +146,9 @@ struct State {
     last: Option<Rc<Node>>,
     cost: f64,
     corrections: f64,
+    /// The syllable began at a bare boundary (a medial or final after a first tone without Space) and has no initial
+    /// yet: an initial typed late refunds the boundary's extra cost.
+    bare: bool,
 }
 
 /// Finished syllables a state's signature holds: the longest word (lexicon and custom words alike).  Splits that
@@ -145,6 +164,7 @@ struct Signature {
     slots: [Option<char>; 3],
     keys: String,
     history: [Option<Rc<str>>; HISTORY_SYLLABLES],
+    bare: bool,
 }
 
 impl State {
@@ -156,7 +176,7 @@ impl State {
             *reading = Some(current.reading.clone());
             node = current.previous.as_deref();
         }
-        Signature { slots: self.slots, keys: self.keys.clone(), history }
+        Signature { slots: self.slots, keys: self.keys.clone(), history, bare: self.bare }
     }
 
     /// Every key typed is still in its slot.
@@ -205,19 +225,35 @@ pub struct KeyDecoder<F> {
     pub method: KeyDecoderMethod,
     /// The decoder's costs (the Swift engine's shared `KeyDecoder.costs`).
     pub costs: Costs,
+    /// The repairs made (`Reorder` and `Timed`).
+    pub repairs: Repairs,
     closing_cost: F,
 }
 
 impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
     /// A decoder with the given method, costs and closing cost.
     pub fn new(method: KeyDecoderMethod, costs: Costs, closing_cost: F) -> Self {
-        Self { method, costs, closing_cost }
+        Self { method, costs, repairs: Repairs::default(), closing_cost }
+    }
+
+    /// The same decoder making only `repairs`.
+    #[must_use]
+    pub fn with_repairs(mut self, repairs: Repairs) -> Self {
+        self.repairs = repairs;
+        self
     }
 
     /// The `limit` cheapest splits, cheapest first (each a different unfinished syllable or a different history).
     pub fn decode(&self, keys: &[Key], limit: usize) -> Vec<DecodeResult> {
         let mut levels: Vec<Level> = (0..=keys.len()).map(|_| Level::default()).collect();
-        levels[0].offer(State { slots: [None; 3], keys: String::new(), last: None, cost: 0.0, corrections: 0.0 });
+        levels[0].offer(State {
+            slots: [None; 3],
+            keys: String::new(),
+            last: None,
+            cost: 0.0,
+            corrections: 0.0,
+            bare: false,
+        });
         let reorders = matches!(self.method, KeyDecoderMethod::Reorder | KeyDecoderMethod::Timed);
         let mut next = Vec::with_capacity(2);
         let mut swapped_first = Vec::with_capacity(2);
@@ -232,12 +268,35 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                 for successor in next.drain(..) {
                     levels[index + 1].offer(successor);
                 }
+                // A tone key right after a syllable ended fits nothing, and the composer ignores it.  Without the
+                // extra-key repair it is ignored here as well (free), so no swap reads the syllables again around it
+                // (情人 and a stray ˋ as 其仍嗯).  With it, the same tone key again (a tone pressed twice) is skipped at
+                // an extra key's cost: two swaps no longer read 會議 and one more ˋ as 護愛意, while one swap of a tone
+                // key still wins.
+                if reorders
+                    && !state.has_symbols()
+                    && state.last.is_some()
+                    && keyboard::tone(keys[index].character).is_some()
+                {
+                    let cost = if !self.repairs.extra_keys {
+                        Some(0.0)
+                    } else if index > 0 && keys[index - 1].character == keys[index].character {
+                        Some(self.skip_cost(keys, index))
+                    } else {
+                        None
+                    };
+                    if let Some(cost) = cost {
+                        let mut skipped = state.clone();
+                        skipped.cost += cost;
+                        levels[index + 1].offer(skipped);
+                    }
+                }
                 if !reorders {
                     continue;
                 }
                 // Skip a Zhuyin key pressed by mistake.  A tone key or Space that fits nothing is ignored by the
                 // composer instead, as it always was.
-                if keyboard::symbol(keys[index].character).is_some() {
+                if self.repairs.extra_keys && keyboard::symbol(keys[index].character).is_some() {
                     let mut skipped = state.clone();
                     skipped.cost += self.skip_cost(keys, index);
                     levels[index + 1].offer(skipped);
@@ -246,7 +305,8 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                 // that leaves the key alone in a syllable no later key confirms, and ties with the same key read out
                 // of order inside its own syllable (`ㄚ ㄅ ˙` as `ㄚ˙` and `ㄅ` instead of `ㄅㄚ˙`).  The next key
                 // decodes the run again, so the swap stays possible once something follows it.
-                if index + 1 < keys.len()
+                if self.repairs.order
+                    && index + 1 < keys.len()
                     && keys[index].character != keys[index + 1].character
                     && !(index + 2 == keys.len() && closes_syllable(keys[index + 1].character))
                 {
@@ -301,6 +361,8 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
             placed.cost += self.costs.overwrite;
         } else if slot == 0 && (state.slots[1].is_some() || state.slots[2].is_some()) {
             placed.cost += match self.method {
+                KeyDecoderMethod::Slots => 0.0,
+                _ if !self.repairs.order => self.costs.swap,
                 KeyDecoderMethod::Timed => {
                     if pressed_with_previous {
                         self.costs.swap_together
@@ -308,9 +370,14 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
                         self.costs.late_initial
                     }
                 }
-                KeyDecoderMethod::Slots => 0.0,
                 _ => self.costs.swap,
             };
+            // A syllable typed final first after a first tone without Space (`ㄔㄠ ㄢㄗˋ`) had no initial when it
+            // began; with one now, the boundary was an ordinary one.
+            if state.bare && self.repairs.order && self.method != KeyDecoderMethod::Boundaries {
+                placed.cost -= self.costs.bare_boundary - self.costs.implicit_boundary;
+            }
+            placed.bare = false;
         }
         placed.slots[slot] = Some(symbol);
         placed.keys.push(character);
@@ -325,6 +392,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
         {
             if slot != 0 {
                 closed.cost += self.costs.bare_boundary - self.costs.implicit_boundary;
+                closed.bare = true;
             }
             if self.method == KeyDecoderMethod::Timed && pressed_with_previous {
                 closed.cost += self.costs.boundary_together;
@@ -353,6 +421,7 @@ impl<F: Fn(&str, &str) -> Option<f64>> KeyDecoder<F> {
             last: Some(Rc::new(node)),
             cost: state.cost + (cost + if implicit { self.costs.implicit_boundary } else { 0.0 }),
             corrections: state.corrections + cost,
+            bare: false,
         })
     }
 

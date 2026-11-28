@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use common::TempDir;
 use zhuyin_core::api::{
-    CandidateAnchor, ComposerOptions, KeyInput, KeyResult, PunctuationKeys, SpaceAction, TypoTolerance,
+    CandidateAnchor, ComposerOptions, CorrectionUse, KeyInput, KeyResult, PunctuationKeys, SpaceAction, TypoTolerance,
 };
 use zhuyin_core::composer::Composer;
 use zhuyin_core::engine::{Engine, EngineConfig};
@@ -60,9 +60,11 @@ fn engine_with(lexicon: &str, user: Option<&Path>, model: Option<&Path>) -> Arc<
     Arc::new(Engine::from_text(lexicon, user, model, EngineConfig::default()))
 }
 
+/// Keys as typed: no typo correction and no key-order repair.
 fn legacy() -> ComposerOptions {
     ComposerOptions {
         typo_tolerance: TypoTolerance::Off,
+        key_order: CorrectionUse::Off,
         punctuation_keys: PunctuationKeys::Mac,
         ..ComposerOptions::default()
     }
@@ -227,6 +229,36 @@ fn keys_symbols_and_tones() {
         "ㄒㄧㄣ\t新\t-4\nㄧㄣ\t因\t-4\nㄌㄨˊ\t蘆\t-6\nㄌㄨˋ\t路\t-4\nㄒㄧㄢˋ\t線\t-4\nㄌㄨˋ ㄒㄧㄢˋ\t路線\t-3\nㄒㄧㄣ ㄌㄨˊ ㄒㄧㄢˋ\t新蘆線\t-6\n",
     );
     assert_eq!(text(&composer_with(&near, "bup xj6vu04", ComposerOptions::default())), "新蘆線");
+    // Keys of a syllable in another order are their own setting: with typo correction off they are still put in
+    // order (超讚 typed ㄠㄔ ㄢㄗˋ), unless the order is off too.
+    let order = engine(
+        "ㄔㄠ\t超\t-4\nㄗㄢˋ\t讚\t-5\nㄔㄠ ㄗㄢˋ\t超讚\t-2\nㄠ\t凹\t-5\nㄔ\t吃\t-4\nㄢ\t安\t-4\nㄗˋ\t字\t-4\nㄔㄢ\t攙\t-7\n",
+    );
+    let with = |typo: TypoTolerance, list_only: bool, key_order: CorrectionUse| ComposerOptions {
+        typo_tolerance: typo,
+        typo_list_only: list_only,
+        key_order,
+        ..ComposerOptions::default()
+    };
+    assert_eq!(text(&composer_with(&order, "lt0y4", ComposerOptions::default())), "超讚");
+    assert_eq!(text(&composer_with(&order, "lt0y4", with(TypoTolerance::Off, false, CorrectionUse::Auto))), "超讚");
+    let as_typed =
+        text(&composer_with(&order, "lt0y4", with(TypoTolerance::Off, false, CorrectionUse::Off))).to_owned();
+    assert_ne!(as_typed, "超讚");
+    // Listed only: the composition is as typed, and the list offers the keys in order right after it.
+    let mut listed = composer_with(&order, "lt0y4", with(TypoTolerance::Off, false, CorrectionUse::List));
+    assert_eq!(text(&listed), as_typed);
+    listed.handle(KeyInput::Down);
+    assert_eq!(index_of(&listed, "超讚"), 1, "{:?}", items(&listed));
+    listed.select_candidate(1);
+    assert_eq!(text(&listed), "超讚");
+    assert!(listed.presentation().candidates.is_none());
+    // Typo corrections listed only: shown as typed, offered after the words as typed.
+    let typo = engine("ㄌㄨˋ\t路\t-4\nㄑㄧㄢˋ\t欠\t-6\nㄒㄧㄢˋ\t線\t-4\nㄌㄨˋ ㄒㄧㄢˋ\t路線\t-2\n");
+    let mut listed = composer_with(&typo, "xj4fu04", with(TypoTolerance::Standard, true, CorrectionUse::Auto));
+    assert_eq!(text(&listed), "路欠");
+    listed.handle(KeyInput::Down);
+    assert!(items(&listed).contains(&"路線".to_owned()), "{:?}", items(&listed));
     // The same for a custom word.
     let name = engine("ㄒㄩˊ\t徐\t-5\nㄧ\t一\t-4\nㄧㄡˋ\t佑\t-5\nㄌㄠˇ ㄕ\t老師\t-3\nㄉㄜ˙\t的\t-1\n");
     assert_eq!(text(&composer_with(&name, "vm6uu.42k7", ComposerOptions::default())), "徐佑的");
