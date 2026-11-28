@@ -233,6 +233,16 @@ fn parse_channel_option(s: &mut Settings, option: &str, arguments: &[String]) ->
     Some(take)
 }
 
+/// `--typo VALUE`: `list` corrects at the standard costs, in the candidate window only.
+fn set_typo(options: &mut ComposerOptions, value: &str) {
+    options.typo_list_only = value == "list";
+    options.typo_tolerance = if options.typo_list_only {
+        TypoTolerance::Standard
+    } else {
+        TypoTolerance::from_raw(value).unwrap_or_else(|| fail(USAGE))
+    };
+}
+
 fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> Option<usize> {
     let mut take = 2;
     match option {
@@ -240,16 +250,7 @@ fn parse_input_option(s: &mut Settings, option: &str, arguments: &[String]) -> O
         "--key-order" => {
             s.options.key_order = CorrectionUse::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
         }
-        "--typo" => {
-            let value = next_value(arguments);
-            // `list`: corrections in the candidate window only, at the standard costs.
-            s.options.typo_list_only = value == "list";
-            s.options.typo_tolerance = if s.options.typo_list_only {
-                TypoTolerance::Standard
-            } else {
-                TypoTolerance::from_raw(value).unwrap_or_else(|| fail(USAGE))
-            };
-        }
+        "--typo" => set_typo(&mut s.options, next_value(arguments)),
         "--punctuation" => {
             s.options.punctuation_keys =
                 PunctuationKeys::from_raw(next_value(arguments)).unwrap_or_else(|| fail(USAGE));
